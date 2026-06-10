@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from .agent import HeuristicAgent
 from .config import DEFAULT
 from .genome import TARGETS, VARIABLES, VERBS, random_genome, to_dict
-from .llm import AnthropicClient, author_genome
+from .llm import PERSONAS, AnthropicClient, author_genome
 from .tick import step
 from .world import World
 
@@ -101,7 +101,7 @@ TARGET_DESC = {
 TICK_INTERVAL = 1.0
 
 
-class World1:
+class Automata:
     def __init__(self):
         self.world = World(DEFAULT, seed=1)
         self.world.seed(DEFAULT.initial_population)
@@ -120,10 +120,13 @@ class World1:
 
     def _assign_llm_tribes(self) -> None:
         self.world.llm_tribes.clear()
+        self.personas: dict[int, str] = {}
         if not LLM_ENABLED:
             return
         house = sorted(lin for lin, ctrl in self.world.tribes.items() if ctrl.startswith("house:"))
-        self.world.llm_tribes.update(house[:LLM_TRIBES])
+        for i, lin in enumerate(house[:LLM_TRIBES]):
+            self.world.llm_tribes.add(lin)
+            self.personas[lin] = PERSONAS[i % len(PERSONAS)]  # a distinct temperament each
 
     def has_remote_agents(self) -> bool:
         lineages = {o.lineage_id for o in self.world.organisms.values()}
@@ -164,6 +167,7 @@ class World1:
                 genome = await author_genome(
                     self.llm,
                     name,
+                    self.personas.get(lineage, PERSONAS[0]),
                     self._tribe_summary(members),
                     to_dict(members[0].genome),
                     self.world.cfg.max_genes,
@@ -223,7 +227,7 @@ class World1:
         }
 
 
-G = World1()
+G = Automata()
 
 
 class Intend(BaseModel):

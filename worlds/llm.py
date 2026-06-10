@@ -44,8 +44,29 @@ SYSTEM = (
 )
 
 
+# Distinct temperaments keep LLM tribes from all converging on the same optimal
+# genome. Each LLM tribe is handed one — so the world grows divergent strategies
+# (cultures) you can watch compete, instead of identical clones.
+PERSONAS = (
+    "an aggressive expansionist — divide as fast and often as possible to spread your "
+    "lineage, tolerating danger. Growth over safety.",
+    "a cautious survivalist — avoid toxin above all and prize longevity. Grow slowly and "
+    "steadily; never gamble the whole tribe.",
+    "a nomadic forager — keep moving toward the richest nutrient, rarely sitting still; "
+    "divide opportunistically while roaming.",
+    "a toxin-tolerant pioneer — push into the high-toxin frontier timid tribes flee, and "
+    "claim the empty space there.",
+    "a patient hoarder — build deep energy reserves by feeding in rich cells, and divide "
+    "only when extremely strong.",
+    "a swarm — stay tightly clustered and divide into open neighbors to dominate territory "
+    "by sheer numbers.",
+)
+
+
 class ModelClient(Protocol):
-    async def complete(self, system: str, user: str, max_tokens: int) -> str: ...
+    async def complete(
+        self, system: str, user: str, max_tokens: int, temperature: float
+    ) -> str: ...
 
 
 class AnthropicClient:
@@ -53,7 +74,9 @@ class AnthropicClient:
         self.api_key = api_key
         self.model = model
 
-    async def complete(self, system: str, user: str, max_tokens: int = 900) -> str:
+    async def complete(
+        self, system: str, user: str, max_tokens: int = 900, temperature: float = 1.0
+    ) -> str:
         async with httpx.AsyncClient(timeout=25) as c:
             r = await c.post(
                 "https://api.anthropic.com/v1/messages",
@@ -65,6 +88,7 @@ class AnthropicClient:
                 json={
                     "model": self.model,
                     "max_tokens": max_tokens,
+                    "temperature": temperature,
                     "system": system,
                     "messages": [{"role": "user", "content": user}],
                 },
@@ -76,14 +100,15 @@ class AnthropicClient:
             )
 
 
-def build_prompt(name: str, summary: dict, current: dict) -> str:
+def build_prompt(name: str, persona: str, summary: dict, current: dict) -> str:
     return (
-        f"Your tribe '{name}' right now: {summary['population']} organisms, "
-        f"avg energy {summary['avg_energy']}, avg age {summary['avg_age']}, "
-        f"avg toxin in their cells {summary['avg_toxin']}, "
+        f"Your tribe '{name}' is {persona}\n"
+        f"Right now: {summary['population']} organisms, avg energy {summary['avg_energy']}, "
+        f"avg age {summary['avg_age']}, avg toxin in their cells {summary['avg_toxin']}, "
         f"avg free neighbor cells {summary['avg_free']}.\n"
         f"Your tribe's current DNA: {json.dumps(current)}\n"
-        "Improve it and return the new genome."
+        "Rewrite the DNA to express your temperament while keeping the tribe alive. "
+        "Return the new genome."
     )
 
 
@@ -135,7 +160,7 @@ def parse_genome(text: str, max_genes: int) -> Genome | None:
 
 
 async def author_genome(
-    client: ModelClient, name: str, summary: dict, current: dict, max_genes: int
+    client: ModelClient, name: str, persona: str, summary: dict, current: dict, max_genes: int
 ) -> Genome | None:
-    text = await client.complete(SYSTEM, build_prompt(name, summary, current), max_tokens=900)
+    text = await client.complete(SYSTEM, build_prompt(name, persona, summary, current))
     return parse_genome(text, max_genes)
