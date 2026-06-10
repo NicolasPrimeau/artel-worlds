@@ -60,17 +60,27 @@ def test_tribe_play():
 
     with TestClient(server.app) as client:
         joined = client.post("/join", json={"agent_id": "chieftain"}).json()
-        tribe = joined["tribe"]
+        tribe, token = joined["tribe"], joined["token"]
+        hdr = {"Authorization": f"Bearer {token}"}
         assert len(joined["organisms"]) >= 1
-        bundle = client.get(f"/tribe/{tribe}/perceive").json()
+        bundle = client.get(f"/tribe/{tribe}/perceive", headers=hdr).json()
         assert bundle["controller"] == "chieftain"
         assert set(bundle["members"]) == {str(i) for i in joined["organisms"]}
         ids = list(bundle["members"])
         actions = {i: {"verb": "migrate", "target": "toxin_min"} for i in ids}
-        applied = client.post(f"/tribe/{tribe}/intend", json={"actions": actions}).json()
+        applied = client.post(
+            f"/tribe/{tribe}/intend", json={"actions": actions}, headers=hdr
+        ).json()
         assert applied["applied"] == len(ids)
-        # can't drive a tribe you don't control
-        assert client.get("/tribe/999999/perceive").status_code == 404
+        # no token, or the wrong one, can't touch the tribe
+        assert client.get(f"/tribe/{tribe}/perceive").status_code == 401
+        assert (
+            client.get(
+                f"/tribe/{tribe}/perceive", headers={"Authorization": "Bearer nope"}
+            ).status_code
+            == 401
+        )
+        assert client.get("/tribe/999999/perceive", headers=hdr).status_code == 404
 
 
 def test_agent_card_and_playbook():

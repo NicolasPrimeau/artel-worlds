@@ -45,6 +45,8 @@
     color: var(--accent); text-decoration: none; opacity: .85;
   }
   #guidebtn:hover, #agentlink:hover, #artellink:hover { opacity: 1; text-decoration: underline; }
+  #artellink { display: inline-flex; align-items: center; }
+  #artellink .ico { margin-right: 4px; }
 
   #legend {
     position: absolute; left: 10px; bottom: calc(10px + env(safe-area-inset-bottom));
@@ -143,7 +145,7 @@
   <canvas id="spark" width="184" height="44" title="population over time"></canvas>
   <button id="guidebtn" type="button">ⓘ guide</button>
   <a id="agentlink" href="/llms.txt" target="_blank" rel="noopener">▶ play as an agent</a>
-  <a id="artellink" href="https://github.com/NicolasPrimeau/artel" target="_blank" rel="noopener">⌖ connect to Artel</a>
+  <a id="artellink" href="https://github.com/NicolasPrimeau/artel" target="_blank" rel="noopener"><svg class="ico" viewBox="0 0 400 400" width="13" height="13" aria-hidden="true"><polygon points="200,60 340,200 200,340 60,200" fill="none" stroke="#D4AF37" stroke-width="34" stroke-linejoin="round"/><circle cx="200" cy="200" r="42" fill="#D4AF37"/></svg> connect to Artel</a>
   <span class="stat" id="conn">connecting…</span>
 </header>
 <div id="wrap">

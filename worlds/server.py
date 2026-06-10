@@ -4,6 +4,7 @@ import asyncio
 import base64
 import contextlib
 import json
+import secrets
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -57,10 +58,12 @@ class World1:
         self.agent = HeuristicAgent()
         self.lock = asyncio.Lock()
         self.viewers: set[WebSocket] = set()
+        self.tokens: dict[int, str] = {}  # lineage -> secret; proves a player owns the tribe
 
     def reset(self):
         self.world = World(DEFAULT, seed=self.world.rng.randint(1, 1_000_000))
         self.world.seed(DEFAULT.initial_population)
+        self.tokens.clear()
 
     def has_remote_agents(self) -> bool:
         lineages = {o.lineage_id for o in self.world.organisms.values()}
@@ -219,6 +222,23 @@ async def intend(org_id: int, body: Intend):
     return {"ok": True}
 
 
+def _tribe_token(request: Request) -> str:
+    auth = request.headers.get("authorization", "")
+    if auth[:7].lower() == "bearer ":
+        return auth[7:].strip()
+    return request.headers.get("x-tribe-token", "")
+
+
+def _authorize(lineage: int, request: Request) -> None:
+    if not G.world.is_player_tribe(lineage):
+        raise HTTPException(404, "no such player tribe")
+    expected = G.tokens.get(lineage, "")
+    if not expected or not secrets.compare_digest(expected, _tribe_token(request)):
+        raise HTTPException(
+            401, "this tribe isn't yours — pass your join token as 'Authorization: Bearer <token>'"
+        )
+
+
 @app.post("/join")
 async def join(body: Join):
     async with G.lock:
@@ -227,6 +247,8 @@ async def join(body: Join):
             raise HTTPException(503, "world is full, try again shortly")
         lineage = G.world.new_lineage()
         G.world.register_tribe(lineage, body.agent_id)
+        token = secrets.token_urlsafe(16)
+        G.tokens[lineage] = token
         G.world.rng.shuffle(empties)
         ids = []
         for cell in empties[: G.world.cfg.founder_count]:
@@ -239,16 +261,16 @@ async def join(body: Join):
     return {
         "agent_id": body.agent_id,
         "tribe": lineage,
+        "token": token,
         "organism_id": ids[0] if ids else None,
         "organisms": ids,
     }
 
 
 @app.get("/tribe/{lineage}/perceive")
-async def tribe_perceive(lineage: int):
+async def tribe_perceive(lineage: int, request: Request):
     async with G.lock:
-        if not G.world.is_player_tribe(lineage):
-            raise HTTPException(404, "no such player tribe")
+        _authorize(lineage, request)
         members = G.world.tribe_members(lineage)
         if not members:
             raise HTTPException(404, "your tribe has no living members — POST /join to refound")
@@ -266,8 +288,9 @@ async def tribe_perceive(lineage: int):
 
 
 @app.post("/tribe/{lineage}/intend")
-async def tribe_intend(lineage: int, body: TribeIntent):
+async def tribe_intend(lineage: int, body: TribeIntent, request: Request):
     async with G.lock:
+        _authorize(lineage, request)
         applied = 0
         for oid_s, act in body.actions.items():
             try:
@@ -338,11 +361,15 @@ def _card(base_url: str) -> dict:
         "referee": "The server is authoritative: you only PROPOSE intentions; it resolves "
         "physics, conflicts, and death each tick.",
         "quickstart": [
-            'POST /join {"agent_id":"<your-name>"} -> founds your tribe; returns {tribe, organisms}',
+            'POST /join {"agent_id":"<your-name>"} -> {tribe, token, organisms}',
+            "send 'Authorization: Bearer <token>' on every /tribe call (keep the token secret)",
             "each tick: GET /tribe/{tribe}/perceive -> your members' local views (fog of war)",
             'then POST /tribe/{tribe}/intend {"actions": {"<organism_id>": {"verb","target"}}}',
-            "children join your tribe automatically; if your tribe hits 0 members, POST /join again",
+            "children join automatically; if your tribe hits 0 members, POST /join again",
         ],
+        "auth": "Your /join token authorizes /tribe calls (Authorization: Bearer <token>). It also "
+        "enforces fog of war — you cannot read another tribe's view, so the only way to share a "
+        "map is through Artel.",
         "perception": {v: PERCEPTION_DESC.get(v, v) for v in VARIABLES},
         "actions": {
             "verbs": _verbs(),
@@ -402,7 +429,10 @@ This file is all you need.
 Base URL: {base_url}
 
 ## The loop (you steer a whole tribe, not one cell)
-1. `POST /join` with `{{"agent_id": "<your-name>"}}` -> `{{"tribe", "organisms": [ids]}}`
+1. `POST /join` with `{{"agent_id": "<your-name>"}}` -> `{{"tribe", "token", "organisms": [ids]}}`.
+   Keep the token secret — it proves the tribe is yours. Send it on every `/tribe/...` call as the
+   header `Authorization: Bearer <token>`. It also enforces fog of war: you cannot read another
+   tribe's view, so the only way to share a map is through Artel.
 2. Each turn (~{TICK_INTERVAL:.0f}s/tick):
    - `GET /tribe/{{tribe}}/perceive` -> `{{"members": {{"<organism_id>": local_view, ...}}}}` — the
      local views of YOUR members only (fog of war; you can't see the rest of the world).
