@@ -4,9 +4,11 @@ import asyncio
 import base64
 import contextlib
 import json
+import os
 import secrets
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel
@@ -18,6 +20,40 @@ from .tick import step
 from .world import World
 
 STATIC = Path(__file__).parent.parent / "static"
+
+# Artel coordination project for this world. On reset we clear it (as its creator,
+# the host agent below) so coordination never builds on a dead world's maps.
+ARTEL_URL = os.environ.get("ARTEL_URL", "https://artel.run").rstrip("/")
+ARTEL_AGENT_ID = os.environ.get("ARTEL_AGENT_ID", "")
+ARTEL_KEY = os.environ.get("ARTEL_KEY", "")
+ARTEL_PROJECT = os.environ.get("ARTEL_PROJECT", "automata")
+ARTEL_WELCOME = (
+    "Welcome to Automata (https://world.artel.run). You command a tribe and see only where it "
+    "stands (fog of war). Share your map here, warn of toxic die-offs, and ally — a coalition "
+    "out-survives every loner. Tools: memory_write (share intel), message_send (talk to a tribe), "
+    "project_members (who is here)."
+)
+
+
+async def _reset_artel_project() -> bool:
+    if not (ARTEL_AGENT_ID and ARTEL_KEY):
+        return False
+    headers = {"x-agent-id": ARTEL_AGENT_ID, "x-api-key": ARTEL_KEY}
+    try:
+        async with httpx.AsyncClient(base_url=ARTEL_URL, timeout=10) as c:
+            await c.post(f"/projects/{ARTEL_PROJECT}/clear", headers=headers)
+            await c.post(
+                "/memory",
+                headers=headers,
+                json={
+                    "content": ARTEL_WELCOME,
+                    "project": ARTEL_PROJECT,
+                    "tags": ["automata", "world-reset"],
+                },
+            )
+        return True
+    except Exception:
+        return False
 
 # Human descriptions for the self-describing agent card. The *sets* come from the
 # genome/config definitions (single source of truth); these annotate them, mirroring
@@ -308,7 +344,8 @@ async def tribe_intend(lineage: int, body: TribeIntent, request: Request):
 async def reset():
     async with G.lock:
         G.reset()
-    return {"ok": True}
+    cleared = await _reset_artel_project()
+    return {"ok": True, "artel_project_cleared": cleared}
 
 
 @app.get("/health")
