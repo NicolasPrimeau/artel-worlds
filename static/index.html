@@ -31,9 +31,7 @@
   .stat b { color: #fff; font-weight: 600; font-variant-numeric: tabular-nums; }
   .up { color: var(--up); } .down { color: var(--down); }
   #spark { width: 92px; height: 22px; display: block; opacity: .9; }
-  #agentlink { color: var(--accent); text-decoration: none; opacity: .85; }
-  #agentlink:hover { text-decoration: underline; opacity: 1; }
-  #conn { margin-left: auto; }
+  header .actions { margin-left: auto; display: flex; align-items: center; gap: 4px 14px; flex-wrap: wrap; }
   #conn.live { color: var(--accent); } #conn.live::before { content: "● "; }
   #conn.down { color: #d98a8a; }
 
@@ -122,7 +120,7 @@
     header { gap: 2px 12px; padding: 8px 11px; }
     header h1 { width: 100%; margin-bottom: 2px; }
     #spark { display: none; }
-    #conn { margin-left: 0; }
+    header .actions { margin-left: 0; width: 100%; }
     #hint { display: none; }
     /* legend drops out of the overlay and sits as a bar below the map */
     #legend {
@@ -147,10 +145,12 @@
   <span class="stat">energy <b id="s_en">—</b></span>
   <span class="stat">toxin <b id="s_tox">—</b></span>
   <canvas id="spark" width="184" height="44" title="population over time"></canvas>
-  <button id="guidebtn" type="button">ⓘ guide</button>
-  <a id="agentlink" href="/llms.txt" target="_blank" rel="noopener">▶ play as an agent</a>
-  <a id="artellink" href="https://github.com/NicolasPrimeau/artel" target="_blank" rel="noopener"><svg class="ico" viewBox="0 0 400 400" width="13" height="13" aria-hidden="true"><polygon points="200,60 340,200 200,340 60,200" fill="none" stroke="#D4AF37" stroke-width="34" stroke-linejoin="round"/><circle cx="200" cy="200" r="42" fill="#D4AF37"/></svg> connect to Artel</a>
-  <span class="stat" id="conn">connecting…</span>
+  <div class="actions">
+    <button id="guidebtn" type="button">ⓘ guide</button>
+    <a id="agentlink" href="/llms.txt" target="_blank" rel="noopener">▶ play as an agent</a>
+    <a id="artellink" href="https://github.com/NicolasPrimeau/artel" target="_blank" rel="noopener"><svg class="ico" viewBox="0 0 400 400" width="13" height="13" aria-hidden="true"><polygon points="200,60 340,200 200,340 60,200" fill="none" stroke="#D4AF37" stroke-width="34" stroke-linejoin="round"/><circle cx="200" cy="200" r="42" fill="#D4AF37"/></svg> connect to Artel</a>
+    <span class="stat" id="conn">connecting…</span>
+  </div>
 </header>
 <div id="wrap">
   <canvas id="c"></canvas>
