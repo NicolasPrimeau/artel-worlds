@@ -15,6 +15,7 @@ from .genome import (
     Condition,
     Gene,
     Genome,
+    dedupe,
 )
 
 # An LLM tribe does not act tick-by-tick. It (re)writes its tribe's GENOME — the
@@ -40,7 +41,7 @@ SYSTEM = (
     'Reply with ONLY a JSON genome, no prose: {"regulators": {'
     + ", ".join(f'"{r}": <0-100>' for r in REGULATORS)
     + '}, "behaviors": [{"cond1": {"variable": "...", "op": ">", "threshold": 0}, '
-    '"cond2": null, "verb": "...", "target": "..."}, ...]}. At most 8 rules.'
+    '"cond2": null, "verb": "...", "target": "..."}, ...]}. At most 8 rules, all distinct.'
 )
 
 
@@ -154,9 +155,10 @@ def parse_genome(text: str, max_genes: int) -> Genome | None:
             continue
         target = b.get("target") if b.get("target") in TARGETS else "random"
         behaviors.append(Gene(c1, c2, verb, target))
+    behaviors = dedupe(behaviors)
     if not behaviors:
         return None
-    return Genome(regs, tuple(behaviors))
+    return Genome(regs, behaviors)
 
 
 async def author_genome(

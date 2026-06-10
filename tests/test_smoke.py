@@ -1,10 +1,27 @@
+import random
+
 from fastapi.testclient import TestClient
 
 from worlds.agent import HeuristicAgent
 from worlds.config import DEFAULT
-from worlds.genome import random_genome
+from worlds.genome import crossover, mutate, random_genome
 from worlds.tick import step
 from worlds.world import World
+
+
+def test_genomes_never_have_duplicate_genes():
+    rng = random.Random(0)
+    pool = [random_genome(rng, DEFAULT.max_genes) for _ in range(40)]
+    for _ in range(3000):
+        g = rng.choice(pool)
+        g = (
+            mutate(g, rng, DEFAULT)
+            if rng.random() < 0.5
+            else crossover(g, rng.choice(pool), rng, DEFAULT.max_genes)
+        )
+        pool.append(g)
+    for g in pool:
+        assert len(g.behaviors) == len(set(g.behaviors)), g.behaviors
 
 
 def test_world_seeds_and_ticks():

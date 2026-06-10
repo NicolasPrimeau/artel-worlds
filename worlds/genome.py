@@ -86,7 +86,7 @@ def _rand_gene(rng: random.Random) -> Gene:
 def random_genome(rng: random.Random, max_genes: int = 8) -> Genome:
     regs = {r: rng.randint(0, 100) for r in REGULATORS}
     n = rng.randint(1, max(1, max_genes // 2))
-    return Genome(regs, tuple(_rand_gene(rng) for _ in range(n)))
+    return Genome(regs, dedupe(_rand_gene(rng) for _ in range(n)))
 
 
 def mutate(genome: Genome, rng: random.Random, cfg) -> Genome:
@@ -105,12 +105,25 @@ def mutate(genome: Genome, rng: random.Random, cfg) -> Genome:
     if rng.random() < cfg.p_del and len(behaviors) > 1:
         behaviors.pop(rng.randrange(len(behaviors)))
     if rng.random() < cfg.p_dup and len(behaviors) < cfg.max_genes:
-        behaviors.append(behaviors[rng.randrange(len(behaviors))])
+        # duplicate-and-diverge: a copy that's immediately point-mutated, so it's a
+        # new related gene rather than dead-code identical to the original
+        behaviors.append(_point_mutate_gene(behaviors[rng.randrange(len(behaviors))], rng, cfg))
     if rng.random() < cfg.p_swap and len(behaviors) > 1:
         i, j = rng.sample(range(len(behaviors)), 2)
         behaviors[i], behaviors[j] = behaviors[j], behaviors[i]
 
-    return Genome(regs, tuple(behaviors))
+    return Genome(regs, dedupe(behaviors))
+
+
+def dedupe(behaviors) -> tuple[Gene, ...]:
+    """Drop exact-duplicate rules (the CA is first-match-wins, so a repeat is dead
+    code wasting a gene slot). Keeps first occurrence and order."""
+    seen, out = set(), []
+    for g in behaviors:
+        if g not in seen:
+            seen.add(g)
+            out.append(g)
+    return tuple(out)
 
 
 def _tune_threshold(c: Condition, rng: random.Random, cfg) -> Condition:
@@ -154,4 +167,4 @@ def crossover(g1: Genome, g2: Genome, rng: random.Random, max_genes: int) -> Gen
         r: (g1.regulators[r] if rng.random() < 0.5 else g2.regulators.get(r, g1.regulators[r]))
         for r in g1.regulators
     }
-    return Genome(regs, tuple(behaviors[:max_genes]))
+    return Genome(regs, dedupe(behaviors)[:max_genes])
