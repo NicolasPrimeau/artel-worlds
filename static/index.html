@@ -68,6 +68,14 @@
   #tip td { padding: 1px 0; color: var(--dim); }
   #tip td.v { color: var(--fg); text-align: right; padding-left: 14px; font-variant-numeric: tabular-nums; }
   #tip .delta { font-size: 10px; }
+  #tip .dna { margin-top: 7px; border-top: 1px solid #2b323d; padding-top: 6px; }
+  #tip .dna .lbl { color: var(--dim); font-size: 10px; letter-spacing: .5px; margin-bottom: 4px; }
+  #tip .dna .bc { display: flex; gap: 1px; height: 13px; border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
+  #tip .dna .bc i { flex: 1 1 0; min-width: 3px; }
+  #tip .dna .rule { display: flex; align-items: flex-start; gap: 6px; color: var(--dim); font-size: 11px; line-height: 1.5; }
+  #tip .dna .rule .vd { width: 7px; height: 7px; border-radius: 2px; margin-top: 4px; flex: 0 0 auto; }
+  #tip .dna .rule b { color: var(--fg); font-weight: 600; }
+  #tip .dna .regs { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; color: var(--dim); font-size: 10px; }
 
   #hint {
     position: absolute; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom));
@@ -103,7 +111,7 @@
     <div class="row"><span class="barn"></span> nutrient (food)</div>
     <div class="row"><span class="bar"></span> toxin&nbsp;→&nbsp;lethal</div>
   </div>
-  <div id="hint">hover to inspect · click to pin &amp; track</div>
+  <div id="hint">hover to inspect · click to pin, track &amp; read DNA</div>
 </div>
 <div id="tip"></div>
 <script>
@@ -120,10 +128,30 @@ let hoverId = null, pinnedId = null, pinnedLineage = 0;
 let lastCursor = { x: 0, y: 0 };
 let prevIds = null, diedTimer = null;
 const popHist = [], HIST = 90;
+const genomeCache = {};
 
 const SQRT3 = Math.sqrt(3);
 const hue = lin => (lin * 47) % 360;
 const esc = s => String(s).replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+const VERB_COLOR = { metabolize: '#3fb950', divide: '#4a9eff', migrate: '#e3a72c', dormant: '#8b949e' };
+
+function fetchGenome(id) {
+  if (genomeCache[id] !== undefined) return;
+  genomeCache[id] = 'loading';
+  fetch(`/organism/${id}`).then(r => (r.ok ? r.json() : null)).then(d => {
+    genomeCache[id] = d ? d.genome : null; updateDisplay();
+  }).catch(() => { genomeCache[id] = null; updateDisplay(); });
+}
+const condText = c => c ? `${c.variable.replace(/_/g, ' ')} ${c.op} ${c.threshold}` : '';
+function dnaHTML(g) {
+  const b = g.behaviors;
+  const bars = b.map(x => `<i style="background:${VERB_COLOR[x.verb] || '#666'}" title="${esc(condText(x.cond1) + (x.cond2 ? ' & ' + condText(x.cond2) : ''))} → ${x.verb}(${x.target})"></i>`).join('');
+  const rules = b.map(x => `<div class="rule"><span class="vd" style="background:${VERB_COLOR[x.verb] || '#666'}"></span>`
+    + `<span><b>${x.verb}</b> → ${x.target}<br><span style="opacity:.8">if ${esc(condText(x.cond1))}${x.cond2 ? ' &amp; ' + esc(condText(x.cond2)) : ''}</span></span></div>`).join('');
+  const regs = Object.entries(g.regulators).map(([k, v]) => `${k.replace(/_/g, ' ')} <b style="color:var(--fg)">${v}</b>`).join('');
+  return `<div class="dna"><div class="lbl">⬡ DNA · ${b.length} gene${b.length !== 1 ? 's' : ''} · first match wins</div>`
+    + `<div class="bc">${bars}</div>${rules}<div class="regs">${regs}</div></div>`;
+}
 
 function decodeField(b64) {
   const bin = atob(b64), n = bin.length, out = new Uint8Array(n);
@@ -239,7 +267,14 @@ function tipHTML(o, pinned) {
     + `<tr><td>age</td><td class="v">${o.age} ticks</td></tr>`
     + `<tr><td>cell</td><td class="v">${o.q}, ${o.r}</td></tr>`
     + `<tr><td>nutrient here</td><td class="v">${nut}</td></tr>`
-    + `<tr><td>toxin here</td><td class="v">${tox}${tox >= snap.toxin_lethal ? ' ☠' : ''}</td></tr></table>`;
+    + `<tr><td>toxin here</td><td class="v">${tox}${tox >= snap.toxin_lethal ? ' ☠' : ''}</td></tr></table>`
+    + (pinned ? dnaSection(o.id) : '');
+}
+function dnaSection(id) {
+  const g = genomeCache[id];
+  if (g && g !== 'loading') return dnaHTML(g);
+  if (g === null) return '';
+  return `<div class="dna"><div class="lbl">⬡ decoding DNA…</div></div>`;
 }
 
 function place(clientX, clientY) {
@@ -288,7 +323,7 @@ function onMove(e) {
 }
 function togglePin(h) {
   if (h && pinnedId === h.o.id) { pinnedId = null; }
-  else if (h) { pinnedId = h.o.id; pinnedLineage = h.o.lineage; clearTimeout(diedTimer); }
+  else if (h) { pinnedId = h.o.id; pinnedLineage = h.o.lineage; clearTimeout(diedTimer); fetchGenome(h.o.id); }
   else { pinnedId = null; }
 }
 

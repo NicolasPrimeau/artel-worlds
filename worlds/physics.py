@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-from .genome import mutate
+from .genome import crossover, mutate
 from .world import Cell, Organism, World
 
 
@@ -38,6 +38,15 @@ def migrate(world: World, org: Organism, cell: Cell, dest: Cell) -> bool:
     return True
 
 
+def _donor(world: World, cell: Cell) -> Organism | None:
+    occupied = [n.organism for n in world.neighbors(cell.q, cell.r) if n.organism is not None]
+    if occupied:
+        return world.rng.choice(occupied)
+    if world.organisms:
+        return world.rng.choice(list(world.organisms.values()))
+    return None
+
+
 def divide(world: World, org: Organism, cell: Cell, dest: Cell) -> Organism | None:
     cfg = world.cfg
     if dest.organism is not None or org.energy < cfg.cost_division:
@@ -45,7 +54,12 @@ def divide(world: World, org: Organism, cell: Cell, dest: Cell) -> Organism | No
     org.energy -= cfg.cost_division
     share = org.energy // 2
     org.energy -= share
-    child_genome = mutate(org.genome, world.rng, cfg)
+    base = org.genome
+    if cfg.p_crossover and world.rng.random() < cfg.p_crossover:
+        donor = _donor(world, cell)
+        if donor is not None and donor is not org:
+            base = crossover(org.genome, donor.genome, world.rng, cfg.max_genes)
+    child_genome = mutate(base, world.rng, cfg)
     world._next_org_id += 1
     child = Organism(world._next_org_id, share, 0, child_genome, org.lineage_id)
     dest.organism = child
@@ -60,17 +74,14 @@ def environment_step(world: World) -> None:
         cell.toxin = max(0, cell.toxin - cfg.toxin_degradation)
 
 
-def death_step(world: World, dormant_ids: set[int] | None = None) -> int:
+def death_step(world: World) -> int:
     cfg = world.cfg
-    dormant_ids = dormant_ids or set()
     dead = []
     for cell in world.cells.values():
         org = cell.organism
         if org is None:
             continue
-        starved = org.energy <= 0 and org.id not in dormant_ids
-        poisoned = cell.toxin >= cfg.toxin_lethal
-        if starved or poisoned:
+        if org.energy <= 0 or cell.toxin >= cfg.toxin_lethal or org.age >= cfg.max_age:
             dead.append((cell, org))
     for cell, org in dead:
         cell.organism = None

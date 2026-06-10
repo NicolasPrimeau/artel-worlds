@@ -4,9 +4,21 @@ from collections import defaultdict
 
 from . import physics
 from .agent import Agent, HeuristicAgent
+from .genome import random_genome
 from .world import World
 
 DEFAULT_INTENTION = ("metabolize", "random")
+
+
+def _immigrate(world: World) -> None:
+    cfg = world.cfg
+    empties = [c for c in world.cells.values() if c.organism is None]
+    if not empties:
+        return
+    world.rng.shuffle(empties)
+    for cell in empties[: cfg.immigration_count]:
+        g = random_genome(world.rng, cfg.max_genes)
+        world.spawn(cell.q, cell.r, g, world.new_lineage(), cfg.birth_energy)
 
 
 def step(world: World, local_agent: Agent | None = None) -> dict:
@@ -58,12 +70,11 @@ def step(world: World, local_agent: Agent | None = None) -> dict:
                 if it is not winner:
                     it[2], it[3] = "metabolize", None
 
-    dormant_ids: set[int] = set()
     for org, cell, verb, dest in resolved:
         if verb == "metabolize":
             physics.metabolize(world, org, cell)
         elif verb == "dormant":
-            dormant_ids.add(org.id)
+            org.energy -= world.cfg.cost_dormant
         elif verb == "migrate" and dest is not None:
             if not physics.migrate(world, org, cell, dest):
                 physics.metabolize(world, org, cell)
@@ -71,15 +82,18 @@ def step(world: World, local_agent: Agent | None = None) -> dict:
             if physics.divide(world, org, cell, dest) is None:
                 physics.metabolize(world, org, cell)
         org.age += 1
+        org.energy -= org.age // world.cfg.senescence_scale  # senescence upkeep
 
     world.pending.clear()
 
     # --- 3. ENVIRONMENT ---
     physics.environment_step(world)
     # --- 4. DEATH ---
-    deaths = physics.death_step(world, dormant_ids)
+    deaths = physics.death_step(world)
     # --- 5. TRACE ---
     world.tick_count += 1
+    if world.cfg.immigration_interval and world.tick_count % world.cfg.immigration_interval == 0:
+        _immigrate(world)
     s = world.stats()
     s["deaths"] = deaths
     return s

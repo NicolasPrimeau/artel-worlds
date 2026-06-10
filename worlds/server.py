@@ -127,6 +127,46 @@ async def _lifespan(app: FastAPI):
 app = FastAPI(title="Artel Worlds — World 1", lifespan=_lifespan)
 
 
+def _cond(c) -> dict | None:
+    if c is None:
+        return None
+    return {"variable": c.variable, "op": c.op, "threshold": c.threshold}
+
+
+def _genome_dict(g) -> dict:
+    return {
+        "regulators": g.regulators,
+        "behaviors": [
+            {
+                "cond1": _cond(gene.cond1),
+                "cond2": _cond(gene.cond2),
+                "verb": gene.verb,
+                "target": gene.target,
+            }
+            for gene in g.behaviors
+        ],
+    }
+
+
+@app.get("/organism/{org_id}")
+async def organism(org_id: int):
+    async with G.lock:
+        org = G.world.organisms.get(org_id)
+        if org is None:
+            raise HTTPException(404, "organism not found (it may have died)")
+        cell = G.world.cell_of(org)
+        return {
+            "id": org.id,
+            "lineage": org.lineage_id,
+            "energy": org.energy,
+            "age": org.age,
+            "agent": org.agent_id,
+            "q": cell.q,
+            "r": cell.r,
+            "genome": _genome_dict(org.genome),
+        }
+
+
 @app.get("/perceive/{org_id}")
 async def perceive(org_id: int):
     async with G.lock:

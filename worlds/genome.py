@@ -92,8 +92,45 @@ def mutate(genome: Genome, rng: random.Random, cfg) -> Genome:
     return Genome(regs, tuple(behaviors))
 
 
-def _point_mutate_gene(gene: Gene, rng: random.Random, cfg) -> Gene:
-    c = gene.cond1
+def _tune_threshold(c: Condition, rng: random.Random, cfg) -> Condition:
     delta = rng.randint(1, cfg.point_delta) * rng.choice((-1, 1))
-    new_thr = max(0, min(VAR_MAX[c.variable], c.threshold + delta))
-    return replace(gene, cond1=replace(c, threshold=new_thr))
+    return replace(c, threshold=max(0, min(VAR_MAX[c.variable], c.threshold + delta)))
+
+
+def _point_mutate_gene(gene: Gene, rng: random.Random, cfg) -> Gene:
+    # Morph a random facet of the gene, not just one threshold — so a gene can
+    # gradually change what it senses and what it does, not only fine-tune.
+    roll = rng.random()
+    if roll < 0.42:  # tune a threshold (cond1 or cond2)
+        if gene.cond2 is not None and rng.random() < 0.5:
+            return replace(gene, cond2=_tune_threshold(gene.cond2, rng, cfg))
+        return replace(gene, cond1=_tune_threshold(gene.cond1, rng, cfg))
+    if roll < 0.56:  # flip comparison direction
+        return replace(gene, cond1=replace(gene.cond1, op="<" if gene.cond1.op == ">" else ">"))
+    if roll < 0.70:  # re-sense: change which variable cond1 reads
+        var = rng.choice(VARIABLES)
+        return replace(gene, cond1=Condition(var, gene.cond1.op, rng.randint(0, VAR_MAX[var])))
+    if roll < 0.83:  # change action
+        return replace(gene, verb=rng.choice(VERBS))
+    if roll < 0.93:  # change action target
+        return replace(gene, target=rng.choice(TARGETS))
+    if gene.cond2 is None:  # grow a second condition
+        return replace(gene, cond2=_rand_condition(rng))
+    return replace(gene, cond2=None)  # drop the second condition
+
+
+def crossover(g1: Genome, g2: Genome, rng: random.Random, max_genes: int) -> Genome:
+    """Single-point recombination of two genomes' rule lists, regulators picked
+    per-gene from either parent. Used for horizontal gene transfer on division."""
+    b1, b2 = list(g1.behaviors), list(g2.behaviors)
+    if b1 and b2:
+        behaviors = b1[: rng.randint(0, len(b1))] + b2[rng.randint(0, len(b2)) :]
+    else:
+        behaviors = b1 or b2
+    if not behaviors:
+        behaviors = [rng.choice(b1 or b2)]
+    regs = {
+        r: (g1.regulators[r] if rng.random() < 0.5 else g2.regulators.get(r, g1.regulators[r]))
+        for r in g1.regulators
+    }
+    return Genome(regs, tuple(behaviors[:max_genes]))

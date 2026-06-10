@@ -18,8 +18,23 @@ class Config:
     cost_base: int = 1
     cost_migration: int = 3
     cost_division: int = 10
+    cost_dormant: int = 1
     consumption_max: int = 5
     gain_per_nutrient: int = 1
+
+    # Senescence: aging upkeep grows with age, and a hard lifespan cap. Together
+    # these kill the "dormant immortal" attractor so adaptive behavior pays.
+    senescence_scale: int = 40
+    max_age: int = 200
+
+    # Diversity: periodic immigration of fresh random lineages keeps the gene pool
+    # from collapsing into a monoculture.
+    immigration_interval: int = 40
+    immigration_count: int = 3
+
+    # Recombination: on division, chance to splice a gene line from a neighbor
+    # (horizontal gene transfer) before mutating — the main exploration operator.
+    p_crossover: float = 0.5
 
     # Nutrient field
     nutrient_max: int = 100
