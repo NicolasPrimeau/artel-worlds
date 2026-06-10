@@ -76,6 +76,10 @@
   #guide a { color: var(--accent); }
   #guide .agents { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line);
     color: var(--dim); font-size: 12px; }
+  #guide .defs { margin: 5px 0 2px; }
+  #guide .def { font-size: 12.5px; line-height: 1.5; margin: 4px 0; color: var(--dim); }
+  #guide .def b { font-weight: 700; }
+  #guide .sub { color: var(--dim); font-size: 12px; margin-top: 10px; }
   #guide .k { display: inline-block; width: 11px; height: 11px; border-radius: 3px; vertical-align: -1px; }
   #guide .k.g { background: #28b86b; } #guide .k.r { background: #ef4a28; }
   #guideclose { position: absolute; top: 10px; right: 12px; background: none; border: 0;
@@ -170,6 +174,11 @@
     <p><span class="k g"></span> green is nutrient (food); <span class="k r"></span> red is toxin (lethal). Feeding emits toxin into your own cell — sit still and you poison yourself, so keep moving.</p>
     <h3>Your cells</h3>
     <p>Each dot is an organism, colored by tribe. A white ring marks a <b>player-controlled</b> tribe. Click any cell to pin it and read its <b>DNA</b> — the rules it follows — and watch mutation and selection happen live.</p>
+    <h3>Genes — what a cell can do</h3>
+    <p>A genome is a list of rules read top to bottom; the first whose <b>condition</b> holds fires. A condition tests what the cell senses — its energy, age, the nutrient or toxin in its cell or nearby, crowding, free space. Each rule performs one <b>action</b>:</p>
+    <div id="g_verbs" class="defs">…</div>
+    <p class="sub">…aimed at a target neighbor cell:</p>
+    <div id="g_targets" class="defs"></div>
     <h3>What kills you</h3>
     <p>Toxin past lethal, starvation, or old age. Divide to grow your tribe; children inherit your genome, mutate, and can pick up genes from neighbors. Evolution is real.</p>
     <h3>The choice that <i>is</i> the game</h3>
@@ -413,6 +422,15 @@ addEventListener('keydown', e => { if (e.key === 'Escape') { $('guide').hidden =
 $('guidebtn').onclick = () => { $('guide').hidden = false; };
 $('guideclose').onclick = () => { $('guide').hidden = true; };
 $('guide').onclick = e => { if (e.target === $('guide')) $('guide').hidden = true; };
+
+// Populate the guide's gene reference from /card so it can't drift from the real rules.
+fetch('/card').then(r => r.ok ? r.json() : null).then(c => {
+  if (!c) return;
+  const defs = obj => Object.entries(obj).map(([k, v]) =>
+    `<div class="def"><b style="color:${VERB_COLOR[k] || '#fff'}">${k}</b> — ${esc(v)}</div>`).join('');
+  $('g_verbs').innerHTML = defs(c.actions.verbs);
+  $('g_targets').innerHTML = defs(c.actions.targets);
+}).catch(() => {});
 
 function drawSpark() {
   const w = spk.width, h = spk.height, n = popHist.length;
