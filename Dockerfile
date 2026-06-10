@@ -7,17 +7,16 @@ WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev
 
-COPY worlds/ worlds/
-COPY static/ static/
+COPY automata/ automata/
 
 ENV PATH="/app/.venv/bin:$PATH"
 
-RUN useradd --no-create-home --uid 1000 worlds && chown -R worlds /app
-USER worlds
+RUN useradd --no-create-home --uid 1000 app && chown -R app /app
+USER app
 
 EXPOSE 8000
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=5 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"
 
-CMD ["uvicorn", "worlds.server:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "automata.server:app", "--host", "0.0.0.0", "--port", "8000"]

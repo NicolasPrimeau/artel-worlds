@@ -29,7 +29,7 @@ The loop: `POST /join` founds your **tribe** → then each tick `GET /tribe/{tri
 ## Run the simulation (headless)
 
 ```bash
-python -m worlds --ticks 500
+python -m automata --ticks 500
 ```
 
 ## Stack

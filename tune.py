@@ -4,9 +4,9 @@ oscillating edge-of-chaos regime (not extinction, not saturation)."""
 import dataclasses
 import statistics
 
-from worlds.config import DEFAULT
-from worlds.tick import step
-from worlds.world import World
+from automata.config import DEFAULT
+from automata.tick import step
+from automata.world import World
 
 CAP = DEFAULT.width * DEFAULT.height
 TICKS = 300

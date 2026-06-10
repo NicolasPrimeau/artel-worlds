@@ -20,7 +20,7 @@ from .llm import PERSONAS, AnthropicClient, author_genome
 from .tick import step
 from .world import World
 
-STATIC = Path(__file__).parent.parent / "static"
+STATIC = Path(__file__).parent / "static"
 
 # LLM-driven house tribes: one decision per tribe every LLM_INTERVAL ticks (only
 # while watched — see the tick loop). Disabled unless ANTHROPIC_API_KEY is set, so

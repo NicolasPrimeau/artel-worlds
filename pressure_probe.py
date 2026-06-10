@@ -1,10 +1,10 @@
 """Measure evolutionary pressure: run headless (no reset) and watch whether the
 genome distribution shifts away from random toward survival-favoring strategies."""
 
-from worlds.agent import HeuristicAgent
-from worlds.config import DEFAULT
-from worlds.tick import step
-from worlds.world import World
+from automata.agent import HeuristicAgent
+from automata.config import DEFAULT
+from automata.tick import step
+from automata.world import World
 
 
 def toxin_aware(g):

@@ -2,11 +2,11 @@ import random
 
 from fastapi.testclient import TestClient
 
-from worlds.agent import HeuristicAgent
-from worlds.config import DEFAULT
-from worlds.genome import crossover, mutate, random_genome
-from worlds.tick import step
-from worlds.world import World
+from automata.agent import HeuristicAgent
+from automata.config import DEFAULT
+from automata.genome import crossover, mutate, random_genome
+from automata.tick import step
+from automata.world import World
 
 
 def test_genomes_never_have_duplicate_genes():
@@ -57,7 +57,7 @@ def test_remote_organism_uses_same_path():
 
 
 def test_server_endpoints():
-    from worlds import server
+    from automata import server
 
     with TestClient(server.app) as client:
         assert client.get("/health").json()["status"] == "ok"
@@ -73,7 +73,7 @@ def test_server_endpoints():
 
 
 def test_tribe_play():
-    from worlds import server
+    from automata import server
 
     with TestClient(server.app) as client:
         joined = client.post("/join", json={"agent_id": "chieftain"}).json()
@@ -101,7 +101,7 @@ def test_tribe_play():
 
 
 def test_agent_card_and_playbook():
-    from worlds import server
+    from automata import server
 
     with TestClient(server.app) as client:
         card = client.get("/card").json()
