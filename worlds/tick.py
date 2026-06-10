@@ -33,13 +33,13 @@ def step(world: World, local_agent: Agent | None = None) -> dict:
 
     # --- 1. INTENTIONS ---
     for org in living:
-        if org.agent_id is None:  # house/CA organism: decide now, same contract
+        if not world.is_player_tribe(org.lineage_id):  # house/wild: decide in-process
             perception = world.perceive(org.id)
             if perception is None:
                 continue
             verb, target = local_agent.act(perception, org.genome)
             world.submit(org.id, verb, target)
-        # remote organisms already wrote world.pending via submit(); missing -> default
+        # player-tribe organisms already wrote world.pending via the tribe API; missing -> default
 
     # --- 2. RESOLUTION (referee) ---
     # Build (org, cell, verb, dest) from the buffer; unsubmitted -> default action.

@@ -8,8 +8,10 @@ class Config:
     height: int = 60
     toric: bool = True
 
-    # Seed population (house organisms)
+    # Seed population, organized into house tribes (one lineage each, LLM/CA-driven).
     initial_population: int = 80
+    house_tribes: int = 5
+    founder_count: int = 3  # cells a joining player's tribe starts with
 
     # Energy economy (tuned 'lean_consume': leaner energy keeps density off the
     # grid ceiling so spatial dynamics stay visible; evolution still drifts toward

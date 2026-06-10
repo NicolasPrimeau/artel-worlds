@@ -7,6 +7,7 @@ from .config import Config
 from .genome import Genome, random_genome
 
 AXIAL_DIRS = ((1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))
+HOUSE_NAMES = ("alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta")
 
 
 @dataclass
@@ -40,8 +41,12 @@ class World:
             for r in range(cfg.height):
                 self.cells[(q, r)] = Cell(q, r, cfg.nutrient_initial, 0)
         self.organisms: dict[int, Organism] = {}
-        # Intention buffer — the shared contract. Local heuristic agents and
-        # remote LLM/BYO agents both write here; the tick resolves it.
+        # A tribe = a lineage_id + a controller. "house:<name>" tribes are driven
+        # in-process; a player tribe's controller is the joining agent_id; wild
+        # immigrant lineages are unregistered (also driven in-process).
+        self.tribes: dict[int, str] = {}
+        # Intention buffer — the shared contract. In-process agents and remote
+        # players both write here; the tick resolves it.
         self.pending: dict[int, tuple[str, str]] = {}
 
     # --- topology ---
@@ -59,6 +64,20 @@ class World:
             if key is not None:
                 out.append(self.cells[key])
         return out
+
+    # --- tribes ---
+    def register_tribe(self, lineage_id: int, controller: str) -> None:
+        self.tribes[lineage_id] = controller
+
+    def controller_of(self, lineage_id: int) -> str | None:
+        return self.tribes.get(lineage_id)
+
+    def is_player_tribe(self, lineage_id: int) -> bool:
+        c = self.tribes.get(lineage_id)
+        return bool(c) and not c.startswith("house:")
+
+    def tribe_members(self, lineage_id: int) -> list[Organism]:
+        return [o for o in self.organisms.values() if o.lineage_id == lineage_id]
 
     # --- lifecycle ---
     def new_lineage(self) -> int:
@@ -119,11 +138,23 @@ class World:
         return self._oc
 
     def seed(self, n: int):
+        # Seed n organisms split across house_tribes lineages (the house tribes).
+        tribes = max(1, self.cfg.house_tribes)
+        per = [n // tribes] * tribes
+        for i in range(n % tribes):
+            per[i] += 1
         empties = [c for c in self.cells.values() if c.organism is None]
         self.rng.shuffle(empties)
-        for cell in empties[:n]:
-            g = random_genome(self.rng, self.cfg.max_genes)
-            self.spawn(cell.q, cell.r, g, self.new_lineage(), self.cfg.birth_energy)
+        it = iter(empties)
+        for t in range(tribes):
+            lineage = self.new_lineage()
+            self.register_tribe(lineage, f"house:{HOUSE_NAMES[t % len(HOUSE_NAMES)]}")
+            for _ in range(per[t]):
+                cell = next(it, None)
+                if cell is None:
+                    return
+                g = random_genome(self.rng, self.cfg.max_genes)
+                self.spawn(cell.q, cell.r, g, lineage, self.cfg.birth_energy)
 
     def stats(self) -> dict:
         orgs = list(self.organisms.values())

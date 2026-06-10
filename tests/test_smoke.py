@@ -55,6 +55,24 @@ def test_server_endpoints():
         assert "behaviors" in detail["genome"]
 
 
+def test_tribe_play():
+    from worlds import server
+
+    with TestClient(server.app) as client:
+        joined = client.post("/join", json={"agent_id": "chieftain"}).json()
+        tribe = joined["tribe"]
+        assert len(joined["organisms"]) >= 1
+        bundle = client.get(f"/tribe/{tribe}/perceive").json()
+        assert bundle["controller"] == "chieftain"
+        assert set(bundle["members"]) == {str(i) for i in joined["organisms"]}
+        ids = list(bundle["members"])
+        actions = {i: {"verb": "migrate", "target": "toxin_min"} for i in ids}
+        applied = client.post(f"/tribe/{tribe}/intend", json={"actions": actions}).json()
+        assert applied["applied"] == len(ids)
+        # can't drive a tribe you don't control
+        assert client.get("/tribe/999999/perceive").status_code == 404
+
+
 def test_agent_card_and_playbook():
     from worlds import server
 
