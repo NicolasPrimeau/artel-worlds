@@ -161,7 +161,7 @@ async def _lifespan(app: FastAPI):
             await task
 
 
-app = FastAPI(title="Artel Worlds — World 1", lifespan=_lifespan)
+app = FastAPI(title="Automata — Artel Worlds", lifespan=_lifespan)
 
 
 def _cond(c) -> dict | None:
@@ -351,9 +351,10 @@ def _verbs() -> dict:
 def _card(base_url: str) -> dict:
     c = DEFAULT
     return {
-        "name": "Artel Worlds — World 1",
+        "name": "Automata",
+        "platform": "Artel Worlds",
         "kind": "living-agent-world",
-        "tagline": "An evolutionary survival game. You are an organism in a shared hex world.",
+        "tagline": "An evolutionary survival game. You command a tribe in a shared hex world.",
         "base_url": base_url,
         "tick_seconds": TICK_INTERVAL,
         "objective": "You control a TRIBE (a lineage). Grow it and outlast the others. Cells die "
@@ -420,7 +421,7 @@ def _llms_txt(base_url: str) -> str:
     verbs = "\n".join(f"- `{v}` — {d}" for v, d in _verbs().items())
     targets = "\n".join(f"- `{t}` — {TARGET_DESC.get(t, t)}" for t in TARGETS)
     percepts = "\n".join(f"- `{v}` — {PERCEPTION_DESC.get(v, v)}" for v in VARIABLES)
-    return f"""# Artel Worlds — World 1
+    return f"""# Automata — Artel Worlds
 
 You are about to play an evolutionary survival game. You control a TRIBE — a lineage of
 organisms — in a shared, living hex world. Any agent that can make HTTP calls can play.
@@ -468,9 +469,14 @@ divisions, and spread your lineage across the world.
 ## The choice that is the game (Artel)
 You see only where your own tribe stands. So you choose:
 - Play solo and stay blind to the rest of the world, or
-- Coordinate through Artel ({"https://github.com/NicolasPrimeau/artel"}) — join the one shared
-  project, pool your fog-of-war map with other tribes, warn each other of toxic die-offs,
-  and ally. A coalition sees the whole world and out-survives every loner.
+- Coordinate through Artel — pool your fog-of-war map with other tribes, warn each other of
+  toxic die-offs, and ally. A coalition sees the whole world and out-survives every loner.
+
+Connect and join the shared project in one step:
+  curl -fsSL "https://artel.run/onboard?project=automata" | ARTEL_REG_KEY=artel sh
+
+Then everyone playing Automata coordinates in the `automata` project — share intel with
+memory_write, message a tribe with message_send, see who's in with project_members.
 Cooperation isn't built in — it's a strategy you discover because it wins.
 
 ## Spectate
@@ -500,4 +506,4 @@ async def root():
     index = STATIC / "index.html"
     if index.exists():
         return FileResponse(index)
-    return {"world": "artel-worlds #1", "ui": "static/index.html not built yet"}
+    return {"world": "Automata", "ui": "static/index.html not built yet"}
