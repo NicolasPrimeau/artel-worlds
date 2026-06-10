@@ -55,6 +55,7 @@ async def _reset_artel_project() -> bool:
     except Exception:
         return False
 
+
 # Human descriptions for the self-describing agent card. The *sets* come from the
 # genome/config definitions (single source of truth); these annotate them, mirroring
 # how Artel derives its server card from tool definitions.
