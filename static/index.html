@@ -31,6 +31,8 @@
   .stat b { color: #fff; font-weight: 600; font-variant-numeric: tabular-nums; }
   .up { color: var(--up); } .down { color: var(--down); }
   #spark { width: 92px; height: 22px; display: block; opacity: .9; }
+  #agentlink { color: var(--accent); text-decoration: none; opacity: .85; }
+  #agentlink:hover { text-decoration: underline; opacity: 1; }
   #conn { margin-left: auto; }
   #conn.live { color: var(--accent); } #conn.live::before { content: "● "; }
   #conn.down { color: #d98a8a; }
@@ -64,6 +66,9 @@
   #tip .badge { font-size: 10px; padding: 1px 5px; border-radius: 4px; background: #243; color: var(--accent); letter-spacing: .5px; }
   #tip .badge.house { background: #222733; color: var(--dim); }
   #tip .pin { font-size: 10px; color: var(--accent); margin-left: auto; }
+  #tip .pin.dead { color: var(--down); }
+  #tip.dead { border-color: var(--down); }
+  #tip .lastknown { font-size: 10px; color: var(--down); opacity: .8; margin: -2px 0 5px; }
   #tip table { border-collapse: collapse; }
   #tip td { padding: 1px 0; color: var(--dim); }
   #tip td.v { color: var(--fg); text-align: right; padding-left: 14px; font-variant-numeric: tabular-nums; }
@@ -100,6 +105,7 @@
   <span class="stat">toxin <b id="s_tox">—</b></span>
   <span class="stat">players <b id="s_pl">—</b></span>
   <canvas id="spark" width="184" height="44" title="population over time"></canvas>
+  <a class="stat" id="agentlink" href="/llms.txt" target="_blank" rel="noopener">▶ play as an agent</a>
   <span class="stat" id="conn">connecting…</span>
 </header>
 <div id="wrap">
@@ -124,9 +130,9 @@ const tip = $('tip');
 
 let snap = null, L = null, hits = [];
 let dpr = 1, cssW = 0, cssH = 0;
-let hoverId = null, pinnedId = null, pinnedLineage = 0;
+let hoverId = null, pinnedId = null, pinnedLast = null, pinnedDead = false, deathTick = 0;
 let lastCursor = { x: 0, y: 0 };
-let prevIds = null, diedTimer = null;
+let prevIds = null;
 const popHist = [], HIST = 90;
 const genomeCache = {};
 
@@ -242,7 +248,13 @@ function blit() {
   ctx.clearRect(0, 0, cv.width, cv.height);
   ctx.drawImage(scene, 0, 0);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  if (pinnedId != null) ring(pinnedId, getComputedStyle(document.body).getPropertyValue('--accent'), 4);
+  if (pinnedId != null && !pinnedDead) ring(pinnedId, getComputedStyle(document.body).getPropertyValue('--accent'), 4);
+  else if (pinnedDead && pinnedLast) {
+    const [x, y] = center(pinnedLast.q, pinnedLast.r);   // dashed marker where it died
+    ctx.beginPath(); ctx.arc(x, y, Math.max(4, L.size * 0.85), 0, 7);
+    ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(224,138,138,.75)';
+    ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]);
+  }
   if (hoverId != null && hoverId !== pinnedId) ring(hoverId, '#fff', 3.5);
 }
 
@@ -255,20 +267,22 @@ function pick(px, py) {
   return best;
 }
 
-function tipHTML(o, pinned) {
+function tipHTML(o, pinned, dead) {
   const idx = o.q * snap.height + o.r;
   const tox = decodeField(snap.toxin)[idx], nut = decodeField(snap.nutrient)[idx];
   const player = !!o.agent;
   return `<div class="hd"><span class="dot" style="background:hsl(${hue(o.lineage)} 72% 60%)"></span>`
     + `lineage #${o.lineage}<span class="badge ${player ? '' : 'house'}">${player ? 'PLAYER' : 'HOUSE'}</span>`
-    + (pinned ? `<span class="pin">📌 tracking</span>` : '') + `</div><table>`
+    + (dead ? `<span class="pin dead">✝ died · tick ${deathTick}</span>`
+      : pinned ? `<span class="pin">📌 tracking</span>` : '') + `</div>`
+    + (dead ? `<div class="lastknown">last known state</div>` : '') + `<table>`
     + (player ? `<tr><td>agent</td><td class="v">${esc(o.agent)}</td></tr>` : '')
     + `<tr><td>energy</td><td class="v">${o.energy}</td></tr>`
     + `<tr><td>age</td><td class="v">${o.age} ticks</td></tr>`
     + `<tr><td>cell</td><td class="v">${o.q}, ${o.r}</td></tr>`
     + `<tr><td>nutrient here</td><td class="v">${nut}</td></tr>`
     + `<tr><td>toxin here</td><td class="v">${tox}${tox >= snap.toxin_lethal ? ' ☠' : ''}</td></tr></table>`
-    + (pinned ? dnaSection(o.id) : '');
+    + (pinned || dead ? dnaSection(o.id) : '');
 }
 function dnaSection(id) {
   const g = genomeCache[id];
@@ -285,32 +299,27 @@ function place(clientX, clientY) {
   tip.style.left = Math.max(8, tx) + 'px'; tip.style.top = Math.max(8, ty) + 'px';
 }
 
-// Decide what the tooltip shows: live hover (at cursor) else pinned (follows organism).
+// Decide what the tooltip shows: live hover (at cursor) else pinned (follows organism,
+// and stays open showing last-known state after the organism dies).
 function updateDisplay() {
   if (hoverId != null) {
     const h = hits.find(x => x.o.id === hoverId);
-    if (h) { tip.className = 'show'; tip.innerHTML = tipHTML(h.o, false); place(lastCursor.x, lastCursor.y); return; }
+    if (h) { tip.className = 'show'; tip.innerHTML = tipHTML(h.o, false, false); place(lastCursor.x, lastCursor.y); return; }
   }
-  if (pinnedId != null) {
+  if (pinnedId != null && pinnedLast) {
+    const r = cv.getBoundingClientRect();
     const h = hits.find(x => x.o.id === pinnedId);
-    if (h) {
-      const r = cv.getBoundingClientRect();
-      tip.className = 'show pinned'; tip.innerHTML = tipHTML(h.o, true);
+    if (h && !pinnedDead) {
+      pinnedLast = h.o;
+      tip.className = 'show pinned'; tip.innerHTML = tipHTML(h.o, true, false);
       place(r.left + h.x, r.top + h.y); return;
     }
+    // dead — keep the panel open with last-known state until dismissed
+    const [lx, ly] = center(pinnedLast.q, pinnedLast.r);
+    tip.className = 'show pinned dead'; tip.innerHTML = tipHTML(pinnedLast, true, true);
+    place(r.left + lx, r.top + ly); return;
   }
   tip.className = '';
-}
-
-function announceDeath() {
-  const r = cv.getBoundingClientRect();
-  tip.className = 'show pinned';
-  tip.innerHTML = `<div class="hd"><span class="dot" style="background:hsl(${hue(pinnedLineage)} 72% 60%)"></span>`
-    + `lineage #${pinnedLineage}<span class="pin">✝ died</span></div>`
-    + `<div style="color:var(--dim)">organism #${pinnedId} died at tick ${snap.tick}</div>`;
-  place(r.left + cssW / 2, r.top + cssH / 2);
-  clearTimeout(diedTimer);
-  diedTimer = setTimeout(() => { pinnedId = null; updateDisplay(); blit(); }, 2600);
 }
 
 function onMove(e) {
@@ -321,10 +330,11 @@ function onMove(e) {
   if (id !== hoverId) { hoverId = id; blit(); }
   updateDisplay();
 }
+function unpin() { pinnedId = null; pinnedLast = null; pinnedDead = false; }
 function togglePin(h) {
-  if (h && pinnedId === h.o.id) { pinnedId = null; }
-  else if (h) { pinnedId = h.o.id; pinnedLineage = h.o.lineage; clearTimeout(diedTimer); fetchGenome(h.o.id); }
-  else { pinnedId = null; }
+  if (h && pinnedId === h.o.id) { unpin(); }
+  else if (h) { pinnedId = h.o.id; pinnedLast = h.o; pinnedDead = false; deathTick = 0; fetchGenome(h.o.id); }
+  else { unpin(); }
 }
 
 cv.addEventListener('pointermove', e => { if (e.pointerType === 'mouse') onMove(e); });
@@ -337,9 +347,9 @@ cv.addEventListener('pointerdown', e => {
   updateDisplay(); blit();
 });
 document.addEventListener('pointerdown', e => {
-  if (e.pointerType !== 'mouse' && e.target !== cv && pinnedId != null) { pinnedId = null; updateDisplay(); blit(); }
+  if (e.pointerType !== 'mouse' && e.target !== cv && pinnedId != null) { unpin(); updateDisplay(); blit(); }
 });
-addEventListener('keydown', e => { if (e.key === 'Escape') { pinnedId = null; hoverId = null; updateDisplay(); blit(); } });
+addEventListener('keydown', e => { if (e.key === 'Escape') { unpin(); hoverId = null; updateDisplay(); blit(); } });
 
 function drawSpark() {
   const w = spk.width, h = spk.height, n = popHist.length;
@@ -379,8 +389,10 @@ function apply(s) {
   $('s_tox').textContent = s.avg_toxin;
   $('s_pl').textContent = s.players;
 
-  if (pinnedId != null && !cur.has(pinnedId)) announceDeath();
-  else updateDisplay();
+  if (pinnedId != null && pinnedLast && !cur.has(pinnedId) && !pinnedDead) {
+    pinnedDead = true; deathTick = s.tick;
+  }
+  updateDisplay();
   blit();
 }
 

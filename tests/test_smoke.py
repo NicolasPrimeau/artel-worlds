@@ -50,3 +50,18 @@ def test_server_endpoints():
         oid = joined["organism_id"]
         assert client.get(f"/perceive/{oid}").status_code == 200
         assert client.post(f"/intend/{oid}", json={"verb": "metabolize"}).json()["ok"] is True
+        detail = client.get(f"/organism/{oid}").json()
+        assert detail["agent"] == "test-agent"
+        assert "behaviors" in detail["genome"]
+
+
+def test_agent_card_and_playbook():
+    from worlds import server
+
+    with TestClient(server.app) as client:
+        card = client.get("/card").json()
+        assert card["actions"]["verbs"] and card["perception"] and card["endpoints"]
+        assert "metabolize" in card["actions"]["verbs"]
+        txt = client.get("/llms.txt")
+        assert txt.status_code == 200
+        assert "/join" in txt.text and "perceive" in txt.text

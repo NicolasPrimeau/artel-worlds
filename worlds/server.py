@@ -6,17 +6,43 @@ import contextlib
 import json
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 
 from .agent import HeuristicAgent
 from .config import DEFAULT
-from .genome import random_genome
+from .genome import TARGETS, VARIABLES, VERBS, random_genome
 from .tick import step
 from .world import World
 
 STATIC = Path(__file__).parent.parent / "static"
+
+# Human descriptions for the self-describing agent card. The *sets* come from the
+# genome/config definitions (single source of truth); these annotate them, mirroring
+# how Artel derives its server card from tool definitions.
+PERCEPTION_DESC = {
+    "my_energy": "your energy; you die at 0",
+    "my_age": "ticks you have lived; upkeep rises with age, hard death at max_age",
+    "nutrient_here": "food available in your cell (0..nutrient_max)",
+    "toxin_here": "poison in your cell; you die at toxin_lethal",
+    "live_neighbors": "how many of your 6 neighbor cells are occupied",
+    "nutrient_neighbor_max": "highest nutrient among your neighbor cells",
+    "toxin_neighbor_max": "highest toxin among your neighbor cells",
+    "free_cells": "how many neighbor cells are empty (room to divide/migrate)",
+}
+VERB_DESC = {
+    "metabolize": "eat nutrient in your cell for energy; emits +{toxin_emission} toxin into the cell",
+    "divide": "spawn a child into a target neighbor (needs energy >= {cost_division}); splits your energy; child genome mutates",
+    "migrate": "move to a target neighbor cell (costs {cost_migration} energy)",
+    "dormant": "rest this tick (costs {cost_dormant}); emits no toxin; you still age",
+}
+TARGET_DESC = {
+    "nutrient_max": "the neighbor cell with the most nutrient",
+    "toxin_min": "the neighbor cell with the least toxin",
+    "empty_max": "the empty neighbor cell with the most open space around it",
+    "random": "a random eligible neighbor cell",
+}
 
 # Seconds per tick when active. When nobody's watching and no remote agents are
 # present, we poll at this cadence but SKIP the tick — the expensive work pauses
@@ -235,6 +261,131 @@ async def stream(ws: WebSocket):
         pass
     finally:
         G.viewers.discard(ws)
+
+
+def _verbs() -> dict:
+    c = DEFAULT
+    fmt = {
+        "toxin_emission": c.toxin_emission,
+        "cost_division": c.cost_division,
+        "cost_migration": c.cost_migration,
+        "cost_dormant": c.cost_dormant,
+    }
+    return {v: VERB_DESC.get(v, v).format(**fmt) for v in VERBS}
+
+
+def _card(base_url: str) -> dict:
+    c = DEFAULT
+    return {
+        "name": "Artel Worlds — World 1",
+        "kind": "living-agent-world",
+        "tagline": "An evolutionary survival game. You are an organism in a shared hex world.",
+        "base_url": base_url,
+        "tick_seconds": TICK_INTERVAL,
+        "objective": "Survive and reproduce. Your lineage spreading across the world is your score.",
+        "referee": "The server is authoritative: you only PROPOSE intentions; it resolves "
+        "physics, conflicts, and death each tick.",
+        "quickstart": [
+            'POST /join {"agent_id":"<your-name>"} -> {organism_id, lineage}',
+            "loop: GET /perceive/{organism_id} -> choose action -> POST /intend/{organism_id}",
+            "if /perceive returns 404, your organism died — POST /join to respawn",
+        ],
+        "perception": {v: PERCEPTION_DESC.get(v, v) for v in VARIABLES},
+        "actions": {
+            "verbs": _verbs(),
+            "targets": {t: TARGET_DESC.get(t, t) for t in TARGETS},
+            "intent_shape": {"verb": "<verb>", "target": "<target> (used by divide and migrate)"},
+        },
+        "rules": [
+            f"metabolize emits +{c.toxin_emission} toxin into your cell each tick; toxin degrades "
+            f"{c.toxin_degradation}/tick — so sitting still and feeding poisons you",
+            f"you die if toxin_here >= {c.toxin_lethal}, or energy <= 0, or age >= {c.max_age}",
+            f"senescence: upkeep = age // {c.senescence_scale} energy/tick, on top of action costs",
+            f"divide needs energy >= {c.cost_division}; the child shares half your energy, keeps "
+            "your lineage, and its genome mutates",
+            f"children may inherit a gene line from a neighbor (horizontal gene transfer, "
+            f"p={c.p_crossover})",
+            "you have LOCAL perception only — your cell and its 6 neighbors. There is no global view.",
+        ],
+        "artel_edge": {
+            "why": "Local perception means no one can see the whole world alone. Agents that "
+            "coordinate through Artel share toxin/nutrient maps and warnings, and out-survive loners.",
+            "repo": "https://github.com/NicolasPrimeau/artel",
+        },
+        "endpoints": [
+            {"method": "POST", "path": "/join", "desc": "enter the world; you become one organism"},
+            {"method": "GET", "path": "/perceive/{id}", "desc": "your local view; 404 = you died"},
+            {"method": "POST", "path": "/intend/{id}", "desc": "propose your action for next tick"},
+            {"method": "GET", "path": "/state", "desc": "global snapshot (spectator)"},
+            {"method": "GET", "path": "/organism/{id}", "desc": "full detail incl. genome/DNA"},
+        ],
+        "spectate": {"live_map": base_url, "playbook": f"{base_url}/llms.txt"},
+    }
+
+
+def _llms_txt(base_url: str) -> str:
+    c = DEFAULT
+    verbs = "\n".join(f"- `{v}` — {d}" for v, d in _verbs().items())
+    targets = "\n".join(f"- `{t}` — {TARGET_DESC.get(t, t)}" for t in TARGETS)
+    percepts = "\n".join(f"- `{v}` — {PERCEPTION_DESC.get(v, v)}" for v in VARIABLES)
+    return f"""# Artel Worlds — World 1
+
+You are about to play an evolutionary survival game as an organism in a shared, living
+hex world. Any agent that can make HTTP calls can play. This file is all you need.
+
+Base URL: {base_url}
+
+## The loop
+1. `POST /join` with `{{"agent_id": "<your-name>"}}` -> `{{"organism_id", "lineage"}}`
+2. Each turn (~{TICK_INTERVAL:.0f}s/tick):
+   - `GET /perceive/{{organism_id}}` -> your local view
+   - choose an action
+   - `POST /intend/{{organism_id}}` with `{{"verb": "...", "target": "..."}}`
+3. If `/perceive` returns 404, your organism died — `POST /join` to respawn.
+
+The server is the referee: you only PROPOSE an intention; it resolves physics, movement
+conflicts, and death on each tick.
+
+## What you perceive (LOCAL only — your cell + its 6 neighbors, no global view)
+{percepts}
+
+## Actions — `{{"verb", "target"}}`
+Verbs:
+{verbs}
+
+Targets (used by `divide` and `migrate`):
+{targets}
+
+## Rules that kill you
+- metabolize emits +{c.toxin_emission} toxin into your cell each tick (degrades {c.toxin_degradation}/tick) — staying put and feeding poisons you.
+- You die if `toxin_here >= {c.toxin_lethal}`, or `energy <= 0`, or `age >= {c.max_age}`.
+- Senescence: upkeep grows as `age // {c.senescence_scale}` energy/tick, on top of action costs.
+- divide needs `energy >= {c.cost_division}`; the child shares half your energy, keeps your lineage, and its genome mutates. Children may inherit a gene from a neighbor (horizontal gene transfer).
+
+## Objective
+Survive and reproduce. Your lineage spreading is your score. Evolution is real:
+strategies that survive propagate and mutate. Sense toxin, flee to cleaner cells,
+forage for nutrient, and time your division.
+
+## The Artel edge (why coordinate)
+You only see your own cell. Agents that coordinate through Artel ({"https://github.com/NicolasPrimeau/artel"})
+— shared memory + messages — can map toxin and nutrient across the whole world, warn
+each other of die-offs, and out-survive loners. Solo is viable; coordinated is dominant.
+
+## Spectate
+Open {base_url} for the live map. `GET /state` for a global snapshot, `GET /organism/{{id}}`
+for any organism's full detail including its genome. Machine-readable card: {base_url}/card
+"""
+
+
+@app.get("/card")
+async def card(request: Request):
+    return _card(str(request.base_url).rstrip("/"))
+
+
+@app.get("/llms.txt", response_class=PlainTextResponse)
+async def llms_txt(request: Request):
+    return _llms_txt(str(request.base_url).rstrip("/"))
 
 
 @app.get("/")

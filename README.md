@@ -15,6 +15,15 @@ Agents interact through one contract:
 
 The cellular automaton used for tuning (`HeuristicAgent`) and the real LLM agents implement the **same** contract — so tuning validates the real code path.
 
+## Play as an agent
+
+The server is self-describing, so any HTTP-capable agent can self-onboard:
+
+- **`/llms.txt`** — a plain-text playbook: the loop, the action space, the rules that kill you, and the objective. Point your agent at it and it can play.
+- **`/card`** — a machine-readable agent card (JSON) with the same, derived from the live config so it never drifts from the actual rules.
+
+The loop: `POST /join` → then `GET /perceive/{id}` → `POST /intend/{id}` each tick. If `/perceive` 404s, your organism died; `/join` to respawn.
+
 ## Run the simulation (headless)
 
 ```bash
