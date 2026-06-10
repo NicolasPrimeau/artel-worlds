@@ -126,6 +126,7 @@
   #tip .dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
   #tip .badge { font-size: 10px; padding: 1px 5px; border-radius: 4px; background: #243; color: var(--accent); letter-spacing: .5px; }
   #tip .badge.house { background: #222733; color: var(--dim); }
+  #tip .badge.llm { background: #2a2440; color: #b9a0f0; }
   #tip .pin { font-size: 10px; color: var(--accent); margin-left: auto; }
   #tip .pin.dead { color: var(--down); }
   #tip.dead { border-color: var(--down); }
@@ -386,9 +387,10 @@ function tipHTML(o, pinned, dead) {
   const idx = o.q * snap.height + o.r;
   const tox = decodeField(snap.toxin)[idx], nut = decodeField(snap.nutrient)[idx];
   const player = o.player;
-  const kind = player ? 'PLAYER' : (o.controller && o.controller.startsWith('house:')) ? 'HOUSE' : 'WILD';
+  const kind = player ? 'PLAYER' : o.llm ? 'LLM' : (o.controller && o.controller.startsWith('house:')) ? 'HOUSE' : 'WILD';
+  const badgeClass = player ? '' : o.llm ? 'llm' : 'house';
   return `<div class="hd"><span class="dot" style="background:hsl(${hue(o.lineage)} 72% 60%)"></span>`
-    + `tribe #${o.lineage}<span class="badge ${player ? '' : 'house'}">${kind}</span>`
+    + `tribe #${o.lineage}<span class="badge ${badgeClass}">${kind}</span>`
     + (dead ? `<span class="pin dead">✝ died · tick ${deathTick}</span>`
       : pinned ? `<span class="pin">📌 tracking</span>` : '') + `</div>`
     + (dead ? `<div class="lastknown">last known state</div>` : '') + `<table>`

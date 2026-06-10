@@ -15,11 +15,24 @@ from pydantic import BaseModel
 
 from .agent import HeuristicAgent
 from .config import DEFAULT
-from .genome import TARGETS, VARIABLES, VERBS, random_genome
+from .genome import TARGETS, VARIABLES, VERBS, random_genome, to_dict
+from .llm import AnthropicClient, author_genome
 from .tick import step
 from .world import World
 
 STATIC = Path(__file__).parent.parent / "static"
+
+# LLM-driven house tribes: one decision per tribe every LLM_INTERVAL ticks (only
+# while watched — see the tick loop). Disabled unless ANTHROPIC_API_KEY is set, so
+# deploying without a key keeps every house tribe on the free heuristic CA. Swap
+# models with LLM_MODEL; the CA fills in anything the LLM doesn't return.
+# The genome persists and the CA runs it every tick, so the LLM re-authors only
+# every LLM_INTERVAL ticks (cheap). Only fires while watched (see the tick loop).
+LLM_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+LLM_MODEL = os.environ.get("LLM_MODEL", "claude-haiku-4-5-20251001")
+LLM_TRIBES = int(os.environ.get("LLM_TRIBES", "2"))
+LLM_INTERVAL = max(1, int(os.environ.get("LLM_INTERVAL", "20")))
+LLM_ENABLED = bool(LLM_KEY) and LLM_TRIBES > 0
 
 # Artel coordination project for this world. On reset we clear it (as its creator,
 # the host agent below) so coordination never builds on a dead world's maps.
@@ -96,15 +109,75 @@ class World1:
         self.lock = asyncio.Lock()
         self.viewers: set[WebSocket] = set()
         self.tokens: dict[int, str] = {}  # lineage -> secret; proves a player owns the tribe
+        self.llm = AnthropicClient(LLM_KEY, LLM_MODEL) if LLM_ENABLED else None
+        self._assign_llm_tribes()
 
     def reset(self):
         self.world = World(DEFAULT, seed=self.world.rng.randint(1, 1_000_000))
         self.world.seed(DEFAULT.initial_population)
         self.tokens.clear()
+        self._assign_llm_tribes()
+
+    def _assign_llm_tribes(self) -> None:
+        self.world.llm_tribes.clear()
+        if not LLM_ENABLED:
+            return
+        house = sorted(lin for lin, ctrl in self.world.tribes.items() if ctrl.startswith("house:"))
+        self.world.llm_tribes.update(house[:LLM_TRIBES])
 
     def has_remote_agents(self) -> bool:
         lineages = {o.lineage_id for o in self.world.organisms.values()}
         return any(self.world.is_player_tribe(lin) for lin in lineages)
+
+    def _tribe_summary(self, members: list) -> dict:
+        n = len(members)
+        toxin, free = [], []
+        for o in members:
+            p = self.world.perceive(o.id)
+            if p:
+                toxin.append(p["toxin_here"])
+                free.append(p["free_cells"])
+
+        def avg(xs):
+            return round(sum(xs) / len(xs), 1) if xs else 0
+
+        return {
+            "population": n,
+            "avg_energy": avg([o.energy for o in members]),
+            "avg_age": avg([o.age for o in members]),
+            "avg_toxin": avg(toxin),
+            "avg_free": avg(free),
+        }
+
+    async def llm_author(self) -> None:
+        """Each LLM tribe rewrites its DNA; the whole tribe adopts it. Offspring
+        then mutate from it until the next authoring. Best-effort per tribe."""
+        if self.llm is None:
+            return
+
+        async def one(lineage: int) -> None:
+            members = self.world.tribe_members(lineage)
+            if not members:
+                return
+            name = self.world.controller_of(lineage) or "house"
+            try:
+                genome = await author_genome(
+                    self.llm,
+                    name,
+                    self._tribe_summary(members),
+                    to_dict(members[0].genome),
+                    self.world.cfg.max_genes,
+                )
+            except Exception:
+                return
+            if genome is None:
+                return
+            for o in members:
+                o.genome = genome
+
+        await asyncio.gather(
+            *(one(lin) for lin in list(self.world.llm_tribes)), return_exceptions=True
+        )
 
     def _field(self, attr: str) -> str:
         w = self.world
@@ -142,6 +215,7 @@ class World1:
                     "age": c.organism.age,
                     "controller": w.controller_of(c.organism.lineage_id),
                     "player": w.is_player_tribe(c.organism.lineage_id),
+                    "llm": c.organism.lineage_id in w.llm_tribes,
                 }
                 for c in w.cells.values()
                 if c.organism
@@ -181,6 +255,8 @@ async def _tick_loop():
     while True:
         if bool(G.viewers) or G.has_remote_agents():
             async with G.lock:
+                if LLM_ENABLED and G.world.tick_count % LLM_INTERVAL == 0:
+                    await G.llm_author()
                 step(G.world, G.agent)
                 snap = G.snapshot()
             await _broadcast(snap)

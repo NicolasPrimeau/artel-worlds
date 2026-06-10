@@ -52,6 +52,27 @@ class Genome:
     behaviors: tuple[Gene, ...]
 
 
+def _cond_dict(c: Condition | None) -> dict | None:
+    if c is None:
+        return None
+    return {"variable": c.variable, "op": c.op, "threshold": c.threshold}
+
+
+def to_dict(g: Genome) -> dict:
+    return {
+        "regulators": g.regulators,
+        "behaviors": [
+            {
+                "cond1": _cond_dict(gene.cond1),
+                "cond2": _cond_dict(gene.cond2),
+                "verb": gene.verb,
+                "target": gene.target,
+            }
+            for gene in g.behaviors
+        ],
+    }
+
+
 def _rand_condition(rng: random.Random) -> Condition:
     var = rng.choice(VARIABLES)
     return Condition(var, rng.choice(OPS), rng.randint(0, VAR_MAX[var]))

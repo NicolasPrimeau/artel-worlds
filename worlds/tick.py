@@ -32,14 +32,18 @@ def step(world: World, local_agent: Agent | None = None) -> dict:
     world.rng.shuffle(living)
 
     # --- 1. INTENTIONS ---
+    # The CA running an organism's genome is its instinct — the universal default.
+    # Players override per tick by submitting over HTTP; LLM tribes override by
+    # rewriting the genome (done in the server before step()). Anyone who hasn't
+    # submitted an action this tick falls back to instinct.
     for org in living:
-        if not world.is_player_tribe(org.lineage_id):  # house/wild: decide in-process
-            perception = world.perceive(org.id)
-            if perception is None:
-                continue
-            verb, target = local_agent.act(perception, org.genome)
-            world.submit(org.id, verb, target)
-        # player-tribe organisms already wrote world.pending via the tribe API; missing -> default
+        if org.id in world.pending:
+            continue
+        perception = world.perceive(org.id)
+        if perception is None:
+            continue
+        verb, target = local_agent.act(perception, org.genome)
+        world.submit(org.id, verb, target)
 
     # --- 2. RESOLUTION (referee) ---
     # Build (org, cell, verb, dest) from the buffer; unsubmitted -> default action.

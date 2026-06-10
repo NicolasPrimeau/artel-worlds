@@ -45,6 +45,8 @@ class World:
         # in-process; a player tribe's controller is the joining agent_id; wild
         # immigrant lineages are unregistered (also driven in-process).
         self.tribes: dict[int, str] = {}
+        # House lineages whose decisions come from an LLM (the rest use the CA).
+        self.llm_tribes: set[int] = set()
         # Intention buffer — the shared contract. In-process agents and remote
         # players both write here; the tick resolves it.
         self.pending: dict[int, tuple[str, str]] = {}
