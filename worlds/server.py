@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import json
 from pathlib import Path
@@ -38,12 +39,30 @@ class World1:
     def has_remote_agents(self) -> bool:
         return any(o.agent_id for o in self.world.organisms.values())
 
+    def _field(self, attr: str) -> str:
+        w = self.world
+        width, height = w.cfg.width, w.cfg.height
+        buf = bytearray(width * height)
+        cells = w.cells
+        for q in range(width):
+            base = q * height
+            for r in range(height):
+                v = getattr(cells[(q, r)], attr)
+                buf[base + r] = 255 if v > 255 else v
+        return base64.b64encode(bytes(buf)).decode()
+
     def snapshot(self) -> dict:
         w = self.world
         return {
             **w.stats(),
             "width": w.cfg.width,
             "height": w.cfg.height,
+            "toxin_lethal": w.cfg.toxin_lethal,
+            "toxin_max": w.cfg.toxin_max,
+            "nutrient_max": w.cfg.nutrient_max,
+            "players": len({o.agent_id for o in w.organisms.values() if o.agent_id}),
+            "toxin": self._field("toxin"),
+            "nutrient": self._field("nutrient"),
             "organisms": [
                 {
                     "id": c.organism.id,
@@ -51,6 +70,7 @@ class World1:
                     "r": c.r,
                     "lineage": c.organism.lineage_id,
                     "energy": c.organism.energy,
+                    "age": c.organism.age,
                     "agent": c.organism.agent_id,
                 }
                 for c in w.cells.values()

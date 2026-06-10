@@ -2,63 +2,326 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0b0f">
 <title>Artel Worlds — World 1</title>
 <style>
-  :root { --bg:#0d0f14; --fg:#cdd3de; --dim:#5b6472; }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg);
-         font:13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
-  header { padding:10px 14px; display:flex; gap:18px; align-items:baseline;
-           border-bottom:1px solid #1b1f28; }
-  header h1 { font-size:14px; margin:0; letter-spacing:.5px; }
-  header .stat b { color:#fff; } header .stat { color:var(--dim); }
-  #wrap { display:flex; justify-content:center; padding:16px; }
-  canvas { background:#070809; border:1px solid #1b1f28; border-radius:6px; }
-  .pulse { color:#7fd17f; }
+  :root {
+    --bg: #0a0b0f; --panel: rgba(16,18,24,.82); --line: #1c2129;
+    --fg: #d7dce5; --dim: #717b8c; --accent: #7fd1a8;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--fg); overflow: hidden;
+    font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    display: flex; flex-direction: column; height: 100dvh;
+  }
+  header {
+    flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: baseline;
+    gap: 4px 16px; padding: 10px 14px calc(10px + env(safe-area-inset-top));
+    padding-top: max(10px, env(safe-area-inset-top)); border-bottom: 1px solid var(--line);
+  }
+  header h1 {
+    font-size: 13px; margin: 0; letter-spacing: 2px; font-weight: 700;
+    color: #fff; margin-right: 4px;
+  }
+  header h1 span { color: var(--dim); font-weight: 400; letter-spacing: 1px; }
+  .stat { color: var(--dim); white-space: nowrap; }
+  .stat b { color: #fff; font-weight: 600; }
+  #conn { margin-left: auto; }
+  #conn.live { color: var(--accent); }
+  #conn.live::before { content: "● "; }
+  #conn.down { color: #d98a8a; }
+
+  #wrap { position: relative; flex: 1 1 auto; min-height: 0; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  #legend {
+    position: absolute; left: 10px; bottom: calc(10px + env(safe-area-inset-bottom));
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 10px; backdrop-filter: blur(6px); max-width: 46vw;
+    pointer-events: none; font-size: 11px; color: var(--dim); line-height: 1.7;
+  }
+  #legend .row { display: flex; align-items: center; gap: 7px; }
+  #legend .sw { width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto; }
+  #legend .sw.ring { background: #8aa0c0; box-shadow: 0 0 0 2px #fff inset; }
+  #legend .bar {
+    width: 34px; height: 8px; border-radius: 2px; flex: 0 0 auto;
+    background: linear-gradient(90deg, #1a1c22, #e6aa28, #ef5a28, #ff2820);
+  }
+  #legend .barn {
+    width: 34px; height: 8px; border-radius: 2px; flex: 0 0 auto;
+    background: linear-gradient(90deg, #1a1c22, #50c878);
+  }
+  #legend .t { color: var(--fg); font-weight: 600; letter-spacing: .5px;
+    display: block; margin-bottom: 3px; }
+
+  #tip {
+    position: fixed; z-index: 10; pointer-events: none; opacity: 0;
+    transition: opacity .08s; background: var(--panel); border: 1px solid #2b323d;
+    border-radius: 8px; padding: 8px 10px; backdrop-filter: blur(8px);
+    box-shadow: 0 6px 22px rgba(0,0,0,.5); font-size: 12px; max-width: 230px;
+  }
+  #tip.show { opacity: 1; }
+  #tip .hd { font-weight: 700; color: #fff; margin-bottom: 4px;
+    display: flex; align-items: center; gap: 6px; }
+  #tip .dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
+  #tip .badge { font-size: 10px; padding: 1px 5px; border-radius: 4px;
+    background: #243; color: var(--accent); letter-spacing: .5px; }
+  #tip .badge.house { background: #222733; color: var(--dim); }
+  #tip table { border-collapse: collapse; }
+  #tip td { padding: 1px 0; color: var(--dim); }
+  #tip td.v { color: var(--fg); text-align: right; padding-left: 14px;
+    font-variant-numeric: tabular-nums; }
+
+  #hint {
+    position: absolute; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom));
+    color: var(--dim); font-size: 11px; pointer-events: none; opacity: .75;
+  }
+  @media (max-width: 520px) {
+    header { gap: 2px 12px; padding: 8px 11px; }
+    header h1 { width: 100%; margin-bottom: 2px; }
+    #conn { margin-left: 0; }
+    #legend { font-size: 10px; padding: 6px 8px; }
+    #hint { display: none; }
+  }
 </style>
 </head>
 <body>
 <header>
-  <h1>ARTEL WORLDS · 1</h1>
-  <span class="stat">tick <b id="tick">—</b></span>
-  <span class="stat">pop <b id="pop">—</b></span>
-  <span class="stat">lineages <b id="lin">—</b></span>
-  <span class="stat">avg energy <b id="energy">—</b></span>
-  <span class="stat">avg toxin <b id="tox">—</b></span>
+  <h1>ARTEL WORLDS <span>· World 1</span></h1>
+  <span class="stat">tick <b id="s_tick">—</b></span>
+  <span class="stat">pop <b id="s_pop">—</b></span>
+  <span class="stat">lineages <b id="s_lin">—</b></span>
+  <span class="stat">avg energy <b id="s_en">—</b></span>
+  <span class="stat">players <b id="s_pl">—</b></span>
   <span class="stat" id="conn">connecting…</span>
 </header>
-<div id="wrap"><canvas id="c" width="760" height="700"></canvas></div>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="legend">
+    <span class="t">LEGEND</span>
+    <div class="row"><span class="sw" style="background:hsl(140 70% 55%)"></span> organism (color = lineage)</div>
+    <div class="row"><span class="sw ring"></span> player-controlled agent</div>
+    <div class="row"><span class="bar"></span> toxin&nbsp;→&nbsp;lethal</div>
+    <div class="row"><span class="barn"></span> nutrient</div>
+  </div>
+  <div id="hint">hover or tap an organism</div>
+</div>
+<div id="tip"></div>
 <script>
-const SIZE = 6, OX = 14, OY = 14;
-const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
+const cv = $('c'), ctx = cv.getContext('2d');
+const scene = document.createElement('canvas'), sctx = scene.getContext('2d');
+const heat = document.createElement('canvas'), hctx = heat.getContext('2d');
+const tip = $('tip');
 
-function hue(lineage) { return (lineage * 47) % 360; }
-function axial(q, r) {
-  return [OX + SIZE * Math.sqrt(3) * (q + r / 2), OY + SIZE * 1.5 * r];
+let snap = null;       // latest snapshot
+let L = null;          // layout {size, offX, offY, gridW, gridH, sqrt3}
+let hits = [];         // [{x,y,r,o}] organism screen positions (CSS px)
+let dpr = 1, cssW = 0, cssH = 0;
+let hoverId = null;
+
+const SQRT3 = Math.sqrt(3);
+const hue = lin => (lin * 47) % 360;
+
+function decodeField(b64) {
+  const bin = atob(b64), n = bin.length, out = new Uint8Array(n);
+  for (let i = 0; i < n; i++) out[i] = bin.charCodeAt(i);
+  return out;
 }
-function draw(s) {
-  ctx.clearRect(0, 0, cv.width, cv.height);
-  for (const o of s.organisms) {
-    const [x, y] = axial(o.q, o.r);
-    const light = Math.min(65, 25 + o.energy / 4);
-    ctx.fillStyle = `hsl(${hue(o.lineage)} 70% ${light}%)`;
-    ctx.beginPath(); ctx.arc(x % cv.width, y % cv.height, SIZE * 0.7, 0, 7); ctx.fill();
+
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const wrap = $('wrap');
+  cssW = wrap.clientWidth; cssH = wrap.clientHeight;
+  for (const cnv of [cv, scene]) {
+    cnv.width = Math.round(cssW * dpr);
+    cnv.height = Math.round(cssH * dpr);
   }
-  $('tick').textContent = s.tick;
-  $('pop').textContent = s.population;
-  $('lin').textContent = s.lineages;
-  $('energy').textContent = s.avg_energy;
-  $('tox').textContent = s.avg_toxin;
+  cv.style.width = scene.style.width = cssW + 'px';
+  cv.style.height = scene.style.height = cssH + 'px';
+  if (snap) { computeLayout(); render(); }
 }
+
+function computeLayout() {
+  const cols = snap.width, rows = snap.height;
+  const size = Math.min(cssW / (SQRT3 * (cols + 0.5)), cssH / (1.5 * rows + 0.5));
+  const gridW = SQRT3 * size * (cols + 0.5);
+  const gridH = (1.5 * rows + 0.5) * size;
+  L = { size, gridW, gridH, offX: (cssW - gridW) / 2, offY: (cssH - gridH) / 2 };
+}
+
+function center(q, r) {
+  return [
+    L.offX + SQRT3 * L.size * (q + 0.5 * (r & 1) + 0.5),
+    L.offY + L.size * (1.5 * r + 1),
+  ];
+}
+
+function buildHeat() {
+  const cols = snap.width, rows = snap.height;
+  heat.width = cols; heat.height = rows;
+  const img = hctx.createImageData(cols, rows);
+  const d = img.data;
+  const tox = decodeField(snap.toxin), nut = decodeField(snap.nutrient);
+  const tmax = snap.toxin_max, nmax = snap.nutrient_max, lethal = snap.toxin_lethal;
+  for (let q = 0; q < cols; q++) {
+    for (let r = 0; r < rows; r++) {
+      const idx = q * rows + r;
+      let R = 10, G = 11, B = 15;
+      // nutrient: quiet green wash
+      const an = (nut[idx] / nmax) * 0.16;
+      R += (40 - R) * an; G += (150 - G) * an; B += (95 - B) * an;
+      // toxin: amber -> red, brighter past the lethal threshold
+      const t = Math.min(1, tox[idx] / tmax);
+      if (t > 0.02) {
+        const hot = tox[idx] >= lethal;
+        const at = Math.min(0.7, t * 1.15);
+        const tr = hot ? 255 : 232, tg = hot ? 60 : 168, tb = hot ? 40 : 38;
+        R += (tr - R) * at; G += (tg - G) * at; B += (tb - B) * at;
+      }
+      const p = (r * cols + q) * 4;
+      d[p] = R; d[p + 1] = G; d[p + 2] = B; d[p + 3] = 255;
+    }
+  }
+  hctx.putImageData(img, 0, 0);
+}
+
+function render() {
+  if (!snap || !L) return;
+  sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  sctx.clearRect(0, 0, cssW, cssH);
+  sctx.fillStyle = '#070809';
+  sctx.fillRect(0, 0, cssW, cssH);
+
+  // heat backdrop, smoothly upscaled into the grid rect
+  sctx.imageSmoothingEnabled = true;
+  sctx.imageSmoothingQuality = 'high';
+  sctx.globalAlpha = 1;
+  sctx.drawImage(heat, L.offX, L.offY, L.gridW, L.gridH);
+
+  // organisms
+  hits = [];
+  const rad = Math.max(1.6, L.size * 0.62);
+  for (const o of snap.organisms) {
+    const [x, y] = center(o.q, o.r);
+    const light = 42 + Math.min(28, o.energy / 3);
+    sctx.beginPath();
+    sctx.arc(x, y, rad, 0, 7);
+    sctx.fillStyle = `hsl(${hue(o.lineage)} 72% ${light}%)`;
+    sctx.fill();
+    if (o.agent) {                       // player-controlled: bright ring
+      sctx.lineWidth = Math.max(1, rad * 0.4);
+      sctx.strokeStyle = '#fff';
+      sctx.stroke();
+    }
+    hits.push({ x, y, r: rad, o });
+  }
+  blit();
+}
+
+function blit() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.drawImage(scene, 0, 0);
+  if (hoverId != null) {
+    const h = hits.find(h => h.o.id === hoverId);
+    if (h) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.beginPath();
+      ctx.arc(h.x, h.y, h.r + 3.5, 0, 7);
+      ctx.lineWidth = 2; ctx.strokeStyle = '#fff';
+      ctx.stroke();
+    }
+  }
+}
+
+function pick(px, py) {
+  let best = null, bd = 196;          // generous radius for touch (14px)^2
+  for (const h of hits) {
+    const dx = px - h.x, dy = py - h.y, d = dx * dx + dy * dy;
+    const reach = Math.max(h.r + 6, 13);
+    if (d < reach * reach && d < bd) { bd = d; best = h; }
+  }
+  return best;
+}
+
+function showTip(h, clientX, clientY) {
+  const o = h.o;
+  const idx = o.q * snap.height + o.r;
+  const tox = decodeField(snap.toxin)[idx], nut = decodeField(snap.nutrient)[idx];
+  const player = !!o.agent;
+  tip.innerHTML =
+    `<div class="hd"><span class="dot" style="background:hsl(${hue(o.lineage)} 72% 60%)"></span>`
+    + `lineage #${o.lineage}`
+    + `<span class="badge ${player ? '' : 'house'}">${player ? 'PLAYER' : 'HOUSE'}</span></div>`
+    + `<table>`
+    + (player ? `<tr><td>agent</td><td class="v">${esc(o.agent)}</td></tr>` : '')
+    + `<tr><td>energy</td><td class="v">${o.energy}</td></tr>`
+    + `<tr><td>age</td><td class="v">${o.age} ticks</td></tr>`
+    + `<tr><td>cell</td><td class="v">${o.q}, ${o.r}</td></tr>`
+    + `<tr><td>nutrient here</td><td class="v">${nut}</td></tr>`
+    + `<tr><td>toxin here</td><td class="v">${tox}${tox >= snap.toxin_lethal ? ' ☠' : ''}</td></tr>`
+    + `</table>`;
+  tip.classList.add('show');
+  const r = tip.getBoundingClientRect();
+  let tx = clientX + 16, ty = clientY + 16;
+  if (tx + r.width > innerWidth - 8) tx = clientX - r.width - 16;
+  if (ty + r.height > innerHeight - 8) ty = clientY - r.height - 16;
+  tip.style.left = Math.max(8, tx) + 'px';
+  tip.style.top = Math.max(8, ty) + 'px';
+}
+function hideTip() { tip.classList.remove('show'); hoverId = null; blit(); }
+const esc = s => String(s).replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+
+function onPoint(e) {
+  const rect = cv.getBoundingClientRect();
+  const h = pick(e.clientX - rect.left, e.clientY - rect.top);
+  if (h) {
+    if (h.o.id !== hoverId) { hoverId = h.o.id; blit(); }
+    showTip(h, e.clientX, e.clientY);
+  } else if (hoverId != null) {
+    hideTip();
+  }
+}
+cv.addEventListener('pointermove', e => { if (e.pointerType === 'mouse') onPoint(e); });
+cv.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') hideTip(); });
+cv.addEventListener('pointerdown', e => {
+  if (e.pointerType !== 'mouse') { e.preventDefault(); onPoint(e); }
+});
+document.addEventListener('pointerdown', e => {
+  if (e.pointerType !== 'mouse' && e.target !== cv) hideTip();
+});
+
+function apply(s) {
+  const first = !snap || snap.width !== s.width;
+  snap = s;
+  if (!L || first) computeLayout();
+  buildHeat();
+  render();
+  $('s_tick').textContent = s.tick;
+  $('s_pop').textContent = s.population;
+  $('s_lin').textContent = s.lineages;
+  $('s_en').textContent = s.avg_energy;
+  $('s_pl').textContent = s.players;
+}
+
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const ws = new WebSocket(`${proto}://${location.host}/stream`);
-  ws.onopen = () => { $('conn').textContent = 'live'; $('conn').className = 'stat pulse'; };
-  ws.onmessage = e => draw(JSON.parse(e.data));
-  ws.onclose = () => { $('conn').textContent = 'reconnecting…'; $('conn').className = 'stat'; setTimeout(connect, 1500); };
+  ws.onopen = () => { $('conn').textContent = 'live'; $('conn').className = 'stat live'; };
+  ws.onmessage = e => apply(JSON.parse(e.data));
+  ws.onclose = () => {
+    $('conn').textContent = 'reconnecting…'; $('conn').className = 'stat down';
+    setTimeout(connect, 1500);
+  };
+  ws.onerror = () => ws.close();
 }
+
+new ResizeObserver(resize).observe($('wrap'));
+resize();
 connect();
 </script>
 </body>
