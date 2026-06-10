@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from .config import Config
 from .genome import Genome, random_genome
@@ -65,8 +65,15 @@ class World:
         self._next_lineage += 1
         return self._next_lineage
 
-    def spawn(self, q: int, r: int, genome: Genome, lineage_id: int,
-              energy: int, agent_id: str | None = None) -> Organism | None:
+    def spawn(
+        self,
+        q: int,
+        r: int,
+        genome: Genome,
+        lineage_id: int,
+        energy: int,
+        agent_id: str | None = None,
+    ) -> Organism | None:
         cell = self.cells.get((q, r))
         if cell is None or cell.organism is not None:
             return None

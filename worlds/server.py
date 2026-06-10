@@ -45,10 +45,16 @@ class World1:
             "width": w.cfg.width,
             "height": w.cfg.height,
             "organisms": [
-                {"id": c.organism.id, "q": c.q, "r": c.r,
-                 "lineage": c.organism.lineage_id, "energy": c.organism.energy,
-                 "agent": c.organism.agent_id}
-                for c in w.cells.values() if c.organism
+                {
+                    "id": c.organism.id,
+                    "q": c.q,
+                    "r": c.r,
+                    "lineage": c.organism.lineage_id,
+                    "energy": c.organism.energy,
+                    "agent": c.organism.agent_id,
+                }
+                for c in w.cells.values()
+                if c.organism
             ],
         }
 
@@ -127,8 +133,14 @@ async def join(body: Join):
             raise HTTPException(503, "world is full, try again shortly")
         cell = G.world.rng.choice(empties)
         g = random_genome(G.world.rng, G.world.cfg.max_genes)
-        org = G.world.spawn(cell.q, cell.r, g, G.world.new_lineage(),
-                            G.world.cfg.birth_energy, agent_id=body.agent_id)
+        org = G.world.spawn(
+            cell.q,
+            cell.r,
+            g,
+            G.world.new_lineage(),
+            G.world.cfg.birth_energy,
+            agent_id=body.agent_id,
+        )
     return {"organism_id": org.id, "lineage": org.lineage_id}
 
 
@@ -137,6 +149,11 @@ async def reset():
     async with G.lock:
         G.reset()
     return {"ok": True}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "tick": G.world.tick_count}
 
 
 @app.get("/state")

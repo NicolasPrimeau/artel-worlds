@@ -18,8 +18,10 @@ def main():
     for _ in range(args.ticks):
         s = step(world)
         if s["tick"] % args.every == 0 or s["population"] == 0:
-            print(f"{s['tick']:>6} {s['population']:>5} {s['lineages']:>9} "
-                  f"{s['avg_energy']:>7} {s['avg_toxin']:>8} {s['deaths']:>7}")
+            print(
+                f"{s['tick']:>6} {s['population']:>5} {s['lineages']:>9} "
+                f"{s['avg_energy']:>7} {s['avg_toxin']:>8} {s['deaths']:>7}"
+            )
         if s["population"] == 0:
             print("extinction")
             break

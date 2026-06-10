@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import random
 
-from .config import Config
 from .genome import mutate
 from .world import Cell, Organism, World
 
@@ -16,8 +14,9 @@ def select_target(world: World, cell: Cell, target: str) -> Cell | None:
     if target == "toxin_min":
         return min(free, key=lambda c: c.toxin)
     if target == "empty_max":
-        return max(free, key=lambda c: sum(
-            1 for n in world.neighbors(c.q, c.r) if n.organism is None))
+        return max(
+            free, key=lambda c: sum(1 for n in world.neighbors(c.q, c.r) if n.organism is None)
+        )
     return world.rng.choice(free)
 
 

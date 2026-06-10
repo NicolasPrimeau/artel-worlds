@@ -1,5 +1,6 @@
 """Dev tuning harness: sweep params, report trajectory shape to find the
 oscillating edge-of-chaos regime (not extinction, not saturation)."""
+
 import dataclasses
 import statistics
 
@@ -11,11 +12,39 @@ CAP = DEFAULT.width * DEFAULT.height
 TICKS = 300
 
 CANDIDATES = {
-    "toxic_waves":   dict(toxin_emission=6, toxin_degradation=1, toxin_lethal=50, nutrient_regrowth=1),
-    "lean_growth":   dict(gain_per_nutrient=1, nutrient_regrowth=1, toxin_emission=6, toxin_degradation=2, toxin_lethal=55),
-    "lean_toxic":    dict(gain_per_nutrient=1, nutrient_regrowth=1, toxin_emission=7, toxin_degradation=1, toxin_lethal=45),
-    "expensive_div": dict(cost_division=20, gain_per_nutrient=1, nutrient_regrowth=1, toxin_emission=6, toxin_degradation=2, toxin_lethal=50),
-    "lean_consume":  dict(gain_per_nutrient=1, consumption_max=5, nutrient_regrowth=1, toxin_emission=6, toxin_degradation=1, toxin_lethal=50),
+    "toxic_waves": dict(
+        toxin_emission=6, toxin_degradation=1, toxin_lethal=50, nutrient_regrowth=1
+    ),
+    "lean_growth": dict(
+        gain_per_nutrient=1,
+        nutrient_regrowth=1,
+        toxin_emission=6,
+        toxin_degradation=2,
+        toxin_lethal=55,
+    ),
+    "lean_toxic": dict(
+        gain_per_nutrient=1,
+        nutrient_regrowth=1,
+        toxin_emission=7,
+        toxin_degradation=1,
+        toxin_lethal=45,
+    ),
+    "expensive_div": dict(
+        cost_division=20,
+        gain_per_nutrient=1,
+        nutrient_regrowth=1,
+        toxin_emission=6,
+        toxin_degradation=2,
+        toxin_lethal=50,
+    ),
+    "lean_consume": dict(
+        gain_per_nutrient=1,
+        consumption_max=5,
+        nutrient_regrowth=1,
+        toxin_emission=6,
+        toxin_degradation=1,
+        toxin_lethal=50,
+    ),
 }
 
 _BLK = " ▁▂▃▄▅▆▇█"
@@ -48,12 +77,15 @@ def summarize(name, pops):
     mx, mn, final = max(pops), min(pops[10:] or pops), pops[-1]
     sat = mx / CAP
     # direction changes in the second half = oscillation proxy
-    tail = pops[len(pops) // 2:]
-    turns = sum(1 for i in range(1, len(tail) - 1)
-                if (tail[i] - tail[i - 1]) * (tail[i + 1] - tail[i]) < 0)
+    tail = pops[len(pops) // 2 :]
+    turns = sum(
+        1 for i in range(1, len(tail) - 1) if (tail[i] - tail[i - 1]) * (tail[i + 1] - tail[i]) < 0
+    )
     sd = round(statistics.pstdev(tail))
-    print(f"{name:>14}: final={final:>4} min={mn:>4} max={mx:>4} sat={sat:>3.0%} "
-          f"sd={sd:>4}  {spark(pops)}")
+    print(
+        f"{name:>14}: final={final:>4} min={mn:>4} max={mx:>4} sat={sat:>3.0%} "
+        f"sd={sd:>4} turns={turns:>3}  {spark(pops)}"
+    )
 
 
 for name, ov in CANDIDATES.items():
