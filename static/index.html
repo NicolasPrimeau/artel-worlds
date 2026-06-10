@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Artel Worlds — World 1</title>
+<style>
+  :root { --bg:#0d0f14; --fg:#cdd3de; --dim:#5b6472; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  header { padding:10px 14px; display:flex; gap:18px; align-items:baseline;
+           border-bottom:1px solid #1b1f28; }
+  header h1 { font-size:14px; margin:0; letter-spacing:.5px; }
+  header .stat b { color:#fff; } header .stat { color:var(--dim); }
+  #wrap { display:flex; justify-content:center; padding:16px; }
+  canvas { background:#070809; border:1px solid #1b1f28; border-radius:6px; }
+  .pulse { color:#7fd17f; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ARTEL WORLDS · 1</h1>
+  <span class="stat">tick <b id="tick">—</b></span>
+  <span class="stat">pop <b id="pop">—</b></span>
+  <span class="stat">lineages <b id="lin">—</b></span>
+  <span class="stat">avg energy <b id="energy">—</b></span>
+  <span class="stat">avg toxin <b id="tox">—</b></span>
+  <span class="stat" id="conn">connecting…</span>
+</header>
+<div id="wrap"><canvas id="c" width="760" height="700"></canvas></div>
+<script>
+const SIZE = 6, OX = 14, OY = 14;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+
+function hue(lineage) { return (lineage * 47) % 360; }
+function axial(q, r) {
+  return [OX + SIZE * Math.sqrt(3) * (q + r / 2), OY + SIZE * 1.5 * r];
+}
+function draw(s) {
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  for (const o of s.organisms) {
+    const [x, y] = axial(o.q, o.r);
+    const light = Math.min(65, 25 + o.energy / 4);
+    ctx.fillStyle = `hsl(${hue(o.lineage)} 70% ${light}%)`;
+    ctx.beginPath(); ctx.arc(x % cv.width, y % cv.height, SIZE * 0.7, 0, 7); ctx.fill();
+  }
+  $('tick').textContent = s.tick;
+  $('pop').textContent = s.population;
+  $('lin').textContent = s.lineages;
+  $('energy').textContent = s.avg_energy;
+  $('tox').textContent = s.avg_toxin;
+}
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/stream`);
+  ws.onopen = () => { $('conn').textContent = 'live'; $('conn').className = 'stat pulse'; };
+  ws.onmessage = e => draw(JSON.parse(e.data));
+  ws.onclose = () => { $('conn').textContent = 'reconnecting…'; $('conn').className = 'stat'; setTimeout(connect, 1500); };
+}
+connect();
+</script>
+</body>
+</html>
