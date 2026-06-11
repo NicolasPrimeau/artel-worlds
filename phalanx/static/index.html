@@ -163,7 +163,7 @@ function resize(){
 }
 function layout(){
   const cols=snap.width, rows=snap.height, pad=26;
-  const size=Math.min((cssW-pad*2)/(SQRT3*(cols+0.5)), (cssH-pad*2)/(1.5*rows+0.5));
+  const size=Math.max(1,Math.min((cssW-pad*2)/(SQRT3*(cols+0.5)), (cssH-pad*2)/(1.5*rows+0.5)));
   const gw=SQRT3*size*(cols+0.5), gh=(1.5*rows+0.5)*size;
   L={ size, offX:(cssW-gw)/2, offY:(cssH-gh)/2 };
 }
@@ -255,7 +255,7 @@ function render(now){
     hexPath(x,y,s*0.93); ctx.lineWidth=1; ctx.strokeStyle='rgba(255,255,255,.08)'; ctx.stroke();
   }
 }
-function loop(now){ render(now); requestAnimationFrame(loop); }
+function loop(now){ try{ render(now); }catch(e){ /* never let one bad frame kill the loop */ } requestAnimationFrame(loop); }
 
 function apply(snp){
   const now=performance.now();
