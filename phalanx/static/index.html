@@ -192,9 +192,11 @@ function pix(q,r){ const c=center(q,r); return {x:c[0], y:c[1]}; }
 function hexPath(x,y,s){ ctx.beginPath(); for(let i=0;i<6;i++){ const a=(Math.PI/180)*(60*i-90); const px=x+s*Math.cos(a), py=y+s*Math.sin(a); i?ctx.lineTo(px,py):ctx.moveTo(px,py);} ctx.closePath(); }
 function curPos(a,now){ const f=ease(Math.min(1,(now-t0)/ANIM)); return { x:lerp(a.fromX,a.toX,f), y:lerp(a.fromY,a.toY,f) }; }
 
-function drawTank(x,y,heading,energy,team,coord){
+const HEXANG=[0,-Math.PI/3,-2*Math.PI/3,Math.PI,2*Math.PI/3,Math.PI/3];
+function drawTank(x,y,hullDir,aim,energy,team,coord){
   // Everything fits inside the hex inradius (~0.87*size) so neighbouring tanks — barrels
   // included — can never overlap. Hull 0.42, rings to ~0.61, barrel tip at 0.84.
+  // hullDir is the 6-way movement facing; aim is the turret angle in radians (360°).
   const c=teamRGB(team), s=L.size, rad=s*0.42;
   // shadow
   ctx.beginPath(); ctx.ellipse(x,y+rad*0.45,rad*0.95,rad*0.5,0,0,7); ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fill();
@@ -203,17 +205,23 @@ function drawTank(x,y,heading,energy,team,coord){
   bg.addColorStop(0,rgba(c,1)); bg.addColorStop(1,rgba([c[0]*0.45,c[1]*0.45,c[2]*0.45],1));
   ctx.beginPath(); ctx.arc(x,y,rad,0,7); ctx.fillStyle=bg; ctx.fill();
   ctx.lineWidth=1.5; ctx.strokeStyle='rgba(0,0,0,.35)'; ctx.stroke();
+  // hull nose: a dark wedge showing the MOVEMENT facing (fwd goes this way)
+  const hd=HEXANG[hullDir]??0;
+  ctx.beginPath(); ctx.moveTo(x,y);
+  ctx.arc(x,y,rad*0.92,hd-0.45,hd+0.45); ctx.closePath();
+  ctx.fillStyle='rgba(0,0,0,.38)'; ctx.fill();
   // energy arc (dimmer than the hull so it reads as a gauge, not armor)
   ctx.beginPath(); ctx.arc(x,y,rad*1.22,-Math.PI/2,-Math.PI/2+2*Math.PI*Math.max(0.02,Math.min(1,energy/MAXE)));
   ctx.strokeStyle=rgba(c,.55); ctx.lineWidth=Math.max(1.6,rad*0.16); ctx.lineCap='round'; ctx.stroke();
   // Artel-coordinated tanks wear a thin gold ring (the Artel mark)
   if(coord){ ctx.beginPath(); ctx.arc(x,y,rad*1.45,0,7); ctx.strokeStyle='rgba(212,175,55,.85)'; ctx.lineWidth=Math.max(1.2,rad*0.1); ctx.stroke(); }
-  // turret + gun barrel ON TOP, clearing the rings but stopping inside the hex
-  const HDIR=[[1,0],[0.5,-0.87],[-0.5,-0.87],[-1,0],[-0.5,0.87],[0.5,0.87]]; const gd=HDIR[heading]||HDIR[0];
+  // turret + barrel ON TOP at the smooth aim angle — the cannon traverses 360°,
+  // independent of the hull, and visibly tracks the tank's current target
+  const bx=Math.cos(aim), by=Math.sin(aim);
   ctx.lineCap='round';
-  ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+gd[0]*s*0.84,y+gd[1]*s*0.84);
+  ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+bx*s*0.84,y+by*s*0.84);
   ctx.strokeStyle='#0b0d12'; ctx.lineWidth=Math.max(3.5,rad*0.52); ctx.stroke();   // dark outline
-  ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+gd[0]*s*0.8,y+gd[1]*s*0.8);
+  ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+bx*s*0.8,y+by*s*0.8);
   ctx.strokeStyle=rgba([Math.min(255,c[0]+60),Math.min(255,c[1]+60),Math.min(255,c[2]+60)],1);
   ctx.lineWidth=Math.max(2,rad*0.3); ctx.stroke();                                 // bright bore
   ctx.beginPath(); ctx.arc(x,y,rad*0.45,0,7); ctx.fillStyle='#10141b'; ctx.fill(); // turret hub
@@ -292,7 +300,7 @@ function render(now){
   // the volley lands and their burst fires, so a kill reads as shot -> impact -> gone
   ghosts=ghosts.filter(g=>now<g.until);
   for(const g of ghosts){ const f=ease(Math.min(1,(now-t0)/ANIM));
-    drawTank(lerp(g.fromX,g.toX,f), lerp(g.fromY,g.toY,f), g.heading, g.energy, g.team, g.coord);
+    drawTank(lerp(g.fromX,g.toX,f), lerp(g.fromY,g.toY,f), g.heading, g.aim??(HEXANG[g.heading]??0), g.energy, g.team, g.coord);
   }
 
   // tanks (interpolated; energy display holds until this tick's impacts land)
@@ -300,7 +308,14 @@ function render(now){
   for(const t of snap.tank_list){
     const a=anim[t.id]; if(!a) continue; const {x,y}=curPos(a,now);
     const m=meta[t.id]||{};
-    drawTank(x,y,t.heading,(m.eAt&&now<m.eAt)?m.e0:t.energy,t.team,t.coord);
+    // turret traverse: aim smoothly tracks the live target (any angle), falling back to
+    // the hull facing when there's nothing to shoot — the cannon visibly swings 360°
+    let des=HEXANG[t.heading]??0;
+    if(t.target&&anim[t.target]){ const tp=curPos(anim[t.target],now); des=Math.atan2(tp.y-y,tp.x-x); }
+    let cur=(m.aim===undefined)?des:m.aim;
+    let dlt=des-cur; while(dlt>Math.PI)dlt-=2*Math.PI; while(dlt<-Math.PI)dlt+=2*Math.PI;
+    cur+=dlt*0.14; m.aim=cur; meta[t.id]=m;
+    drawTank(x,y,t.heading,cur,(m.eAt&&now<m.eAt)?m.e0:t.energy,t.team,t.coord);
     if(t.id===hoverId){ ctx.beginPath(); ctx.arc(x,y,s*0.7,0,7); ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke(); }
     hits.push({x,y,r:s*0.55,t});
   }
@@ -333,7 +348,8 @@ function apply(snp){
   for(const t of snp.tank_list){ const old=anim[t.id]; const from=old?curPos(old,now):pix(t.q,t.r); const to=pix(t.q,t.r);
     A[t.id]={fromX:from.x,fromY:from.y,toX:to.x,toY:to.y,q:t.q,r:t.r};
     const pe=meta[t.id]?meta[t.id].e1:t.energy;
-    meta[t.id]={team:t.team,coord:t.coord,heading:t.heading,e0:pe,e1:t.energy,eAt:now+IMPACT_AT}; }
+    meta[t.id]={team:t.team,coord:t.coord,heading:t.heading,e0:pe,e1:t.energy,eAt:now+IMPACT_AT,
+      aim:meta[t.id]&&meta[t.id].aim}; }
   // deaths: keep the fallen tank on the field as a ghost gliding its last move (to the cell
   // the killing shot actually hit, if one matches), then burst once the volley lands
   const ids=new Set(snp.tank_list.map(t=>t.id));
@@ -342,7 +358,7 @@ function apply(snp){
     let dx=p.x, dy=p.y, best=Infinity;
     for(const tc of orphanHits){ const c2=pix(tc.tq,tc.tr); const d=(c2.x-p.x)**2+(c2.y-p.y)**2;
       if(d<best){ best=d; dx=c2.x; dy=c2.y; } }
-    ghosts.push({fromX:p.x,fromY:p.y,toX:dx,toY:dy,team:m.team||'red',coord:m.coord,heading:m.heading||0,energy:m.e1||2,until:now+DEATH_AT});
+    ghosts.push({fromX:p.x,fromY:p.y,toX:dx,toY:dy,team:m.team||'red',coord:m.coord,heading:m.heading||0,aim:m.aim,energy:m.e1||2,until:now+DEATH_AT});
     deaths.push({x:dx,y:dy,team:m.team||'red',born:now+DEATH_AT}); } }
   prevIds=ids; anim=A; t0=now; snap=snp;
 

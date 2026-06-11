@@ -269,8 +269,7 @@ class Arena:
                 continue
             t.energy -= cfg.shot_cost
             t.cooldown = cfg.gun_cooldown
-            t.heading = dir_toward(t.q, t.r, target.q, target.r)
-            t.target = target.id
+            t.target = target.id  # the turret aims here (360°); the hull keeps its facing
             target.energy -= cfg.shot_damage
             hit_by[target.id] = t
             if target.team != t.team:

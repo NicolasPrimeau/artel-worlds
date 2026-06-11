@@ -467,7 +467,7 @@ def _perception_text(p: dict) -> str:
         + ("INSIDE the safe zone" if p.get("safe", True) else "OUTSIDE, BLEEDING energy"),
         f"- Enemies in sight: {'; '.join(foes) if foes else 'none'}",
         f"- Teammates in sight: {'; '.join(allies) if allies else 'none'}",
-        f"- Cover hexes in sight (impassable, block shots): "
+        "- Cover hexes in sight (impassable, block shots): "
         + (", ".join(f"({wq},{wr})" for wq, wr in walls) if walls else "none"),
     ]
     # urgency, where it changes the right move

@@ -91,6 +91,7 @@ class Phalanx:
                     "q": t.q,
                     "r": t.r,
                     "heading": t.heading,
+                    "target": t.target,
                     "energy": round(t.energy),
                     "team": t.team,
                     "player": self.is_player_team(t.team),
