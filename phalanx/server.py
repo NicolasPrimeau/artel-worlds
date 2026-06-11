@@ -21,9 +21,10 @@ _rng = SystemRandom()
 log = logging.getLogger("phalanx")
 
 STATIC = Path(__file__).parent / "static"
-TICK_INTERVAL = 3.5  # MINIMUM seconds per tick. Also caps LLM spend: one decision per agent
-# per tick, so a slower tick = proportionally fewer paid calls. The tick still waits for every
-# side's move before resolving, so the models get at least this long to think and coordinate.
+TICK_INTERVAL = 3.5  # MINIMUM seconds per tick — sets the visible pace and caps LLM spend
+# (one paid decision per agent per tick, so a slower tick means proportionally fewer calls).
+# It does NOT add think-time: the tick already waits for each model's answer (up to LLM_TIMEOUT),
+# so reasoning depth is governed by max_tokens / MAX_TOOL_ROUNDS, not this floor.
 # The whole demo: same arena, same guns. Artel is three real LLM agents — one per tank —
 # coordinating live over artel.run; Red is deterministic seek-and-destroy bots that can't
 # talk to each other. The only thing Artel has that Red doesn't is each other, through

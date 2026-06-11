@@ -189,6 +189,7 @@ class Arena:
             "gun_ready": me.cooldown == 0,
             "safe": hex_distance(me.q, me.r, cq, cr) <= rad,
             "zone_radius": round(rad, 2),
+            "fire_range": self.cfg.fire_range,
             "visible": visible,
             "walls": walls,
         }

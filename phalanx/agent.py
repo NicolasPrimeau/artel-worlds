@@ -48,10 +48,12 @@ SYSTEM = (
     "You command one tank on team Artel in a 3v3 hex-arena fight to the death. "
     "Win by destroying the enemy team; a draw or trading your team away is a loss. "
     "Your teammates are {mates} — both on Artel with you. Coordinate through Artel to win. "
-    "Each turn you see what your tank sees and take ONE action with the act tool: move, "
-    "turn, fire at an enemy id, or hold. Shots auto-aim and hit reliably within range with "
-    "line of sight, so the fight is decided by which enemy you commit to and where you stand. "
-    "Act every turn — sitting still loses."
+    "Each turn you take ONE action with the act tool. Your gun is TARGET-BASED: set fire to an "
+    "enemy id and it auto-hits any enemy that is IN RANGE with line of sight, no matter which way "
+    "you are facing — firing NEVER needs turning toward them. So whenever your gun is ready and "
+    "the perception lists an enemy in range, FIRE at one (you may move the same turn too). Use "
+    "move/turn only to chase enemies you cannot hit yet, hold a good position, or escape the "
+    "closing zone. A ready gun that does not fire an in-range enemy is wasted and loses."
 )
 
 TOOLS = [
@@ -219,19 +221,46 @@ def _headers(agent: dict) -> dict:
     }
 
 
+_REL = {
+    0: "dead ahead",
+    1: "ahead-right",
+    2: "behind-right",
+    3: "directly behind",
+    4: "behind-left",
+    5: "ahead-left",
+}
+
+
 def _perception_text(p: dict) -> str:
-    foes = [
-        f"enemy#{e['id']} dir{e['dir']} dist{e['dist']}"
-        + (f" energy{e['energy']}" if "energy" in e else "")
+    fr = p.get("fire_range", 6)
+    foes, can_fire = [], []
+    for e in p["visible"]:
+        if e["kind"] != "enemy":
+            continue
+        rel = _REL[(e["dir"] - p["heading"]) % 6]
+        in_range = e["dist"] <= fr
+        if in_range:
+            can_fire.append(str(e["id"]))
+        energy = f" energy{e['energy']}" if "energy" in e else ""
+        tag = "IN RANGE" if in_range else f"out of range (>{fr})"
+        foes.append(f"#{e['id']} {rel} dist{e['dist']} [{tag}]{energy}")
+    allies = [
+        f"#{e['id']} {_REL[(e['dir'] - p['heading']) % 6]} dist{e['dist']}"
         for e in p["visible"]
-        if e["kind"] == "enemy"
+        if e["kind"] == "ally"
     ]
-    allies = [f"#{e['id']}(dist{e['dist']})" for e in p["visible"] if e["kind"] == "ally"]
+    if not p["gun_ready"]:
+        fire_line = "Your gun is RELOADING this turn. "
+    elif can_fire:
+        fire_line = f"You can FIRE this turn at: {', '.join(can_fire)} (no turning needed). "
+    else:
+        fire_line = "Gun ready but no enemy in range yet. "
     return (
-        f"Your tank #{p['id']} at hex ({p['q']},{p['r']}) heading {p['heading']}, energy {p['energy']}, "
-        f"gun {'ready' if p['gun_ready'] else 'reloading'}, {'inside' if p.get('safe', True) else 'OUTSIDE'} the safe zone. "
-        f"Enemies you see: {', '.join(foes) if foes else 'none'}. "
-        f"Teammates you see: {', '.join(allies) if allies else 'none'}."
+        f"You are tank #{p['id']} at hex ({p['q']},{p['r']}), energy {p['energy']}, "
+        f"{'inside' if p.get('safe', True) else 'OUTSIDE — taking zone damage'} the safe zone. "
+        f"{fire_line}"
+        f"Enemies: {'; '.join(foes) if foes else 'none in sight'}. "
+        f"Teammates: {', '.join(allies) if allies else 'none in sight'}."
     )
 
 
