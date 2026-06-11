@@ -187,6 +187,7 @@ class Arena:
             "id": me.id,
             "q": me.q,
             "r": me.r,
+            "tick": self.tick_count,
             "heading": me.heading,
             "energy": round(me.energy),
             "gun_ready": me.cooldown == 0,

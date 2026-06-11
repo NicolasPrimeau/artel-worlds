@@ -93,39 +93,36 @@ LLM_TIMEOUT = float(os.environ.get("PHALANX_LLM_TIMEOUT", "12"))
 # Concise. Names the teammates, says coordinate through Artel — and stops there. No
 # instructions on HOW to use Artel: the coordination has to emerge, not be scripted.
 SYSTEM = (
-    "You are an AI playing Phalanx, a simple turn-based tank GAME, driving one tank on team "
-    "Artel — your teammates {mates} share Artel with you — against three enemy tanks. The "
-    "ENTIRE game is: a small hex grid, 6 tanks (3 per team), impassable cover cells that block "
-    "movement and line of sight, energy (health and fuel in one number, no regeneration), "
-    "target-based shots, and a safe zone that shrinks toward the arena center. NOTHING ELSE "
-    "EXISTS: no artillery, no armor angles, no structures, no stealth, no scouting mechanic, no "
-    "suppression, no terrain height. Reason only about these pieces — anything else is "
-    "imagination and loses games. Last team standing wins; a draw or losing your team is a "
-    "loss, so play to WIN together. Each turn you take ONE action with the act tool.\n"
+    "You are an AI playing Phalanx, a turn-based tank game on a bounded hex grid, driving one "
+    "tank on team Artel — your teammates {mates} share Artel with you — against the three "
+    "tanks of team Red.\n"
+    "GOAL: destroy all three enemy tanks. Last team standing wins the match; a draw or mutual "
+    "destruction counts as a loss, so play to WIN together.\n"
+    "RULES OF THE GAME:\n"
+    "- All tanks act simultaneously each turn. In one turn you may turn (left/right, one of 6 "
+    "facings), move one hex (fwd/back along your facing), AND fire — all together.\n"
+    "- Energy is health and fuel in one number; at 0 your tank is destroyed; it never "
+    "regenerates. A hit costs the target 12 energy; landing a hit refunds the shooter 2.\n"
+    "- Firing is target-based: name an enemy id and the shot automatically hits if that enemy "
+    "is within range 6 with a clear line — your facing does NOT matter for shooting, only for "
+    "moving. The gun is ready again the very next turn.\n"
+    "- Cover hexes are impassable and block both shots and sight. You see only what has a "
+    "clear line to you within distance 8 — fog of war; your teammates see different things.\n"
+    "- The safe zone shrinks toward the arena center as the match goes on. Any tank outside it "
+    "loses energy every turn: when you are outside, holding position is forbidden — move "
+    "toward the center every turn until you are safe (you can still fire while moving).\n"
     "ARTEL is your team's coordination layer: the messages, lessons, and target claims you put "
     "into it steer real decisions by your teammates, this turn and next match. Everything you "
     "send through it must be about THIS arena, grounded in what you actually perceived — enemy "
-    "ids, hex coordinates, energy, ticks, walls. Anything else pollutes the team's picture and "
-    "loses games.\n"
-    "TWO things must BOTH work every turn: (1) play YOUR tank well — fire when you can, take good "
-    "ground, never just idle; AND (2) COORDINATE over Artel — share what you see, agree on a "
-    "target, focus fire together. A team that only chats but plays sloppily loses; a tank that "
-    "plays well but ignores its team loses. You need both at once.\n"
-    "FIRING: your gun is target-based — set fire to an enemy id and it auto-hits any enemy IN "
-    "RANGE with line of sight no matter which way you face (firing never needs turning). If the "
-    "perception says you can fire, ALWAYS fire — you can move the same turn. A wasted gun loses. "
-    "Saying you will fire is NOT firing: you must set fire to that enemy id in the act tool the "
-    "SAME turn, or no shot happens.\n"
-    "MOVING: never sit idle waiting. With no enemy in range, advance toward the arena center to "
-    "make contact — the safe zone shrinks to the center, so camping the edge gets you killed. "
-    "Turn toward where you want to go, then move fwd. ARRIVE TOGETHER: while advancing stay "
-    "within 2 hexes of a teammate, and if you are ahead of your team, hold or angle back until "
-    "they catch up — the tank that reaches the enemy first fights 3-vs-1 and dies before the "
-    "team can trade back. First contact together, or not at all.\n"
-    "THE RED CELLS: when you are outside the safe zone you are BLEEDING energy and holding "
-    "position is FORBIDDEN — move toward the center every single turn until you are safe, no "
-    "matter what else is happening. You can fire while you move; you cannot afford to stand. "
-    "Whole matches have been lost to tanks that held ground in the zone and starved.\n"
+    "ids, hex coordinates, energy, ticks, walls.\n"
+    "TWO things must BOTH work every turn: (1) play YOUR tank well — fire whenever you can "
+    "(a ready gun with a target in range should always shoot; you can move the same turn), "
+    "take good ground, never idle; AND (2) COORDINATE over Artel — share what you see, agree "
+    "on a target, focus fire together. A team that only chats but plays sloppily loses; a tank "
+    "that plays well but ignores its team loses.\n"
+    "ARRIVE TOGETHER: while advancing stay within 2 hexes of a teammate, and if you are ahead "
+    "of your team, hold or angle back until they catch up — the tank that reaches the enemy "
+    "first fights 3-vs-1 and dies before the team can trade back.\n"
     "STRATEGY — the team fights ONE fight, not three: there is a TEAM PLAN (from the pre-match "
     "huddle, updated over Artel as the fight turns) and following it beats any solo brilliance. "
     "Concentrate the team's fire on ONE enemy at a time (three guns destroy one tank fast, "
@@ -430,77 +427,74 @@ _REL = {
 
 
 def _perception_text(p: dict) -> str:
+    # the agent's FULL state, every turn: itself (position, energy, cannon, gun), the zone,
+    # everything it can see (enemies, teammates, cover) in absolute hex coordinates, and what
+    # it can shoot right now. Decisions can only be as good as the state they rest on.
     fr = p.get("fire_range", 6)
+    q, r, hd = p["q"], p["r"], p["heading"]
     foes, can_fire = [], []
     for e in p["visible"]:
         if e["kind"] != "enemy":
             continue
-        rel = _REL[(e["dir"] - p["heading"]) % 6]
+        rel = _REL[(e["dir"] - hd) % 6]
         in_range = e["dist"] <= fr
         if in_range:
             can_fire.append(str(e["id"]))
-        energy = f" energy{e['energy']}" if "energy" in e else ""
+        energy = f", energy {e['energy']}" if "energy" in e else ""
         tag = "IN RANGE" if in_range else f"out of range (>{fr})"
-        eq, er = p["q"] + e["dq"], p["r"] + e["dr"]
-        foes.append(f"#{e['id']} at ({eq},{er}) {rel} dist{e['dist']} [{tag}]{energy}")
+        foes.append(
+            f"#{e['id']} at ({q + e['dq']},{r + e['dr']}) dist {e['dist']} {rel} [{tag}]{energy}"
+        )
     allies = [
-        f"#{e['id']} at ({p['q'] + e['dq']},{p['r'] + e['dr']}) dist{e['dist']}"
+        f"#{e['id']} at ({q + e['dq']},{r + e['dr']}) dist {e['dist']}"
         for e in p["visible"]
         if e["kind"] == "ally"
     ]
-    if not p["gun_ready"]:
-        fire_line = "Your gun is RELOADING this turn. "
-    elif can_fire:
-        fire_line = f"You can FIRE this turn at: {', '.join(can_fire)} (no turning needed). "
-    else:
-        fire_line = "No enemy in range yet. "
+    walls = sorted((q + w["dq"], r + w["dr"]) for w in p.get("walls", []))
+    fq, frr = AXIAL_DIRS[hd]
     cdir = p.get("to_center")
-    center_rel = _REL[(cdir - p["heading"]) % 6] if cdir is not None else "toward mid-arena"
-    seen_foes = [e for e in p["visible"] if e["kind"] == "enemy"]
-    move_line = ""
-    if not can_fire and seen_foes:
-        near = min(seen_foes, key=lambda e: e["dist"])
-        rel = _REL[(near["dir"] - p["heading"]) % 6]
-        move_line = (
-            f"You SEE #{near['id']} {rel} at dist{near['dist']} but it's out of range — close in: "
-            f"turn toward it and move fwd until it's in range, then fire. Don't hold still. "
-        )
-    elif not can_fire and center_rel and p.get("dist_center", 0) > 2:
-        move_line = (
-            f"No enemy in sight — the fight converges on the arena center as the zone shrinks. "
-            f"Center is {center_rel} of you: turn toward it and move fwd to find the enemy. "
-        )
-    wallset = {(w["dq"], w["dr"]) for w in p.get("walls", [])}
-    blocked = [_REL[(d - p["heading"]) % 6] for d in range(6) if AXIAL_DIRS[d] in wallset]
-    cover_line = (
-        f"COVER is right next to you — you CANNOT move into it, steer around it: {', '.join(blocked)}. "
-        if blocked
-        else ""
-    )
-    # the closing zone, BEFORE it bites: an agent that only learns about the red cells once
-    # it's bleeding in them has already lost the positioning fight
+    center_rel = _REL[(cdir - hd) % 6] if cdir is not None else "toward mid-arena"
     zr = p.get("zone_radius")
     dc = p.get("dist_center", 0)
+
+    lines = [
+        f"STATE — turn {p.get('tick', '?')}, you are tank #{p['id']}:",
+        f"- Position ({q},{r}), energy {p['energy']}, cannon facing ({q + fq},{r + frr}) "
+        f"[fwd moves there, back moves opposite; facing does not matter for shooting]",
+        f"- Gun: {'READY' if p['gun_ready'] else 'reloading (ready next turn)'}"
+        + (f"; you can fire NOW at: {', '.join(can_fire)}" if p["gun_ready"] and can_fire else ""),
+        f"- Zone: safe radius {zr} around the arena center; you are {dc} from center — "
+        + ("INSIDE the safe zone" if p.get("safe", True) else "OUTSIDE, BLEEDING energy"),
+        f"- Enemies in sight: {'; '.join(foes) if foes else 'none'}",
+        f"- Teammates in sight: {'; '.join(allies) if allies else 'none'}",
+        f"- Cover hexes in sight (impassable, block shots): "
+        + (", ".join(f"({wq},{wr})" for wq, wr in walls) if walls else "none"),
+    ]
+    # urgency, where it changes the right move
     if not p.get("safe", True):
-        zone_line = (
-            f"ZONE: you are IN the red cells, BLEEDING energy every turn — move toward the "
-            f"center ({center_rel}) NOW, before anything else. "
+        lines.append(
+            f"- ZONE: move toward the center ({center_rel} of you) NOW, before anything else."
         )
     elif zr is not None and zr - dc <= 2:
-        zone_line = (
-            f"ZONE WARNING: the red cells are closing on you — safe radius {zr}, you are {dc} "
-            f"from center (margin {round(zr - dc, 1)}). Drift toward the center ({center_rel}) "
-            f"as you fight or they will swallow you. "
+        lines.append(
+            f"- ZONE WARNING: margin {round(zr - dc, 1)} — drift toward the center "
+            f"({center_rel} of you) as you fight or the red cells swallow you."
         )
-    else:
-        zone_line = ""
-    return (
-        f"You are tank #{p['id']} at hex ({p['q']},{p['r']}), energy {p['energy']}, "
-        f"{'inside' if p.get('safe', True) else 'OUTSIDE'} the safe zone. "
-        f"{zone_line}{fire_line}{move_line}{cover_line}"
-        f"Enemies: {'; '.join(foes) if foes else 'none in sight'}. "
-        f"Teammates: {', '.join(allies) if allies else 'none in sight'}."
-    )
+    if p["gun_ready"] and not can_fire:
+        seen_foes = [e for e in p["visible"] if e["kind"] == "enemy"]
+        if seen_foes:
+            near = min(seen_foes, key=lambda e: e["dist"])
+            rel = _REL[(near["dir"] - hd) % 6]
+            lines.append(
+                f"- You SEE #{near['id']} ({rel}, dist {near['dist']}) but it's out of range — "
+                f"close in and fire; don't hold still."
+            )
+        elif p.get("dist_center", 0) > 2:
+            lines.append(
+                f"- No enemy in sight — the fight converges on the center ({center_rel} of "
+                f"you) as the zone shrinks; advance to find them."
+            )
+    return "\n".join(lines)
 
 
 async def _consume_inbox(http: httpx.AsyncClient, agent: dict) -> str:
