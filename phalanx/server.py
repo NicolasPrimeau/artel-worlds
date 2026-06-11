@@ -5,17 +5,26 @@ import contextlib
 import json
 import secrets
 from pathlib import Path
+from random import SystemRandom
+
+_rng = SystemRandom()
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
+from .agent import Squad
 from .arena import Arena
 from .config import DEFAULT
-from .control import decide
+from .control import Bot
 
 STATIC = Path(__file__).parent / "static"
-TICK_INTERVAL = 1.0
+TICK_INTERVAL = 1.0  # one tick per second — easy to follow
+# The whole demo: same arena, same guns. Artel is three real LLM agents — one per tank —
+# coordinating live over artel.run; Red is deterministic seek-and-destroy bots that can't
+# talk to each other. The only thing Artel has that Red doesn't is each other, through
+# Artel. Nothing about Artel's play is scripted: the models drive every move.
+COORDINATED = {"artel"}
 
 
 class Phalanx:
@@ -23,13 +32,30 @@ class Phalanx:
         self.lock = asyncio.Lock()
         self.viewers: set[WebSocket] = set()
         self.tokens: dict[str, str] = {}  # team -> secret
+        self.scores: dict[str, int] = {}  # wins, accumulated across matches
+        self.squad = Squad()  # the live Artel LLM agents (no-op until keys + a viewer)
+        self.intents: dict[int, dict] = {}  # tank id -> latest LLM decision, applied each tick
+        self._squad_match = -1  # which match the squad is currently driving
         self._new_match()
 
     def _new_match(self) -> None:
-        seed = self.arena.rng.randint(1, 1_000_000) if hasattr(self, "arena") else 1
+        self.match_no = getattr(self, "match_no", -1) + 1
+        seed = _rng.randint(1, 2**31 - 1)  # fresh random map layout each match
         self.arena = Arena(DEFAULT, seed=seed)
-        self.arena.seed_house()
+        self.arena.seed_house(flip=bool(self.match_no % 2))  # alternate corners, fair series
         self.tokens.clear()
+        self.intents = {}
+        self.squad.stop()
+        self._squad_match = -1
+        # one Bot per tank. Coordinated teams (Artel) share a single board across all
+        # their tanks — that shared knowledge IS the coordination edge; every other team
+        # gets a private board per tank, so it only ever knows what it personally saw.
+        boards: dict[str, dict] = {}
+        self.bots = {}
+        for t in self.arena.tanks.values():
+            coord = t.team in COORDINATED
+            board = boards.setdefault(t.team, {}) if coord else {}
+            self.bots[t.id] = Bot(t.id, t.team, board, coord)
 
     def has_players(self) -> bool:
         return any(k.startswith("player:") for k in self.arena.team_kind.values())
@@ -43,21 +69,27 @@ class Phalanx:
             **a.stats(),
             "width": a.cfg.width,
             "height": a.cfg.height,
+            "scores": self.scores,
+            "coordinated": list(COORDINATED),
+            "zone": {"q": a.cfg.width // 2, "r": a.cfg.height // 2, "radius": round(a.safe_radius(), 2)},
             "tank_list": [
                 {
                     "id": t.id,
-                    "x": t.x,
-                    "y": t.y,
+                    "q": t.q,
+                    "r": t.r,
                     "heading": t.heading,
-                    "gun": t.gun,
                     "energy": round(t.energy),
                     "team": t.team,
                     "player": self.is_player_team(t.team),
+                    "coord": t.team in COORDINATED,
                 }
                 for t in a.tanks.values()
             ],
-            "shell_list": [{"x": s.x, "y": s.y, "team": s.team} for s in a.shells],
-            "wall_list": [{"x": x, "y": y} for (x, y) in a.walls],
+            "tracer_list": [
+                {"q": s["q"], "r": s["r"], "tq": s["tq"], "tr": s["tr"], "team": s["team"]}
+                for s in a.tracers
+            ],
+            "wall_list": [{"q": q, "r": r} for (q, r) in a.walls],
         }
 
 
@@ -71,8 +103,7 @@ class Join(BaseModel):
 class Intent(BaseModel):
     turn: int = 0
     move: str = "hold"
-    aim: int | None = None
-    fire: float = 0.0
+    fire: int = 0  # enemy tank id to shoot at (0 = hold fire)
 
 
 class TeamIntent(BaseModel):
@@ -91,18 +122,51 @@ async def _broadcast(snap: dict):
         G.viewers.discard(ws)
 
 
+def _artel_alive_ids() -> list[int]:
+    return sorted(t.id for t in G.arena.tanks.values() if t.team in COORDINATED)
+
+
+def _manage_squad() -> None:
+    # the live LLM agents only run while someone's watching and the spend cap allows —
+    # no one watching, no spend. Each new match restarts them on that match's Artel tanks.
+    if not G.viewers or not G.squad.enabled:
+        if G._squad_match != -1:
+            G.squad.stop()
+            G._squad_match = -1
+        return
+    if G._squad_match != G.match_no:
+        G.squad.start(
+            _artel_alive_ids(),
+            lambda tid: G.arena.perceive(tid),
+            lambda tid, intent: G.intents.__setitem__(tid, intent),
+        )
+        G._squad_match = G.match_no
+
+
 async def _tick_loop():
     while True:
         if bool(G.viewers) or G.has_players():
             async with G.lock:
-                # any tank without a submitted order runs its default brain (instinct)
-                for t in list(G.arena.tanks.values()):
-                    if t.id not in G.arena.pending:
-                        p = G.arena.perceive(t.id)
-                        if p:
-                            G.arena.submit(t.id, decide(p, G.arena.cfg))
-                G.arena.step()
-                if G.arena.winner is not None or len(G.arena.teams_alive()) <= 1:
+                a = G.arena
+                _manage_squad()
+                live_artel = G.squad.enabled and G._squad_match == G.match_no
+                for t in list(a.tanks.values()):
+                    if t.id in a.pending or G.is_player_team(t.team):
+                        continue
+                    if t.team in COORDINATED and live_artel:
+                        a.submit(t.id, G.intents.get(t.id, {}))  # carry the LLM's last call
+                        continue
+                    p = a.perceive(t.id)
+                    if not p:
+                        continue
+                    bot = G.bots.get(t.id)
+                    if bot is None:
+                        continue
+                    a.submit(t.id, bot.decide(p, a.cfg, a.tick_count))
+                a.step()
+                if a.winner is not None or len(a.teams_alive()) <= 1:
+                    if a.winner:
+                        G.scores[a.winner] = G.scores.get(a.winner, 0) + 1
                     G._new_match()
                 snap = G.snapshot()
             await _broadcast(snap)
@@ -111,13 +175,14 @@ async def _tick_loop():
 
 @contextlib.asynccontextmanager
 async def _lifespan(app: FastAPI):
-    task = asyncio.create_task(_tick_loop())
+    tick = asyncio.create_task(_tick_loop())
     try:
         yield
     finally:
-        task.cancel()
+        G.squad.stop()
+        tick.cancel()
         with contextlib.suppress(asyncio.CancelledError):
-            await task
+            await tick
 
 
 app = FastAPI(title="Phalanx — Artel Worlds", lifespan=_lifespan)

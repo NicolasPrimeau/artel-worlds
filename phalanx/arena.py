@@ -3,14 +3,10 @@ from __future__ import annotations
 import random
 
 from .config import Config
-from .tank import DIRS, Shell, Tank, bearing, turn_toward
+from .tank import AXIAL_DIRS, Tank, dir_toward, hex_distance, hex_line
 
-_TEAM_NAMES = ("blue", "red", "green", "gold", "violet", "cyan")
+_TEAM_NAMES = ("artel", "red", "green", "gold", "violet", "cyan")
 _VALID_MOVE = ("fwd", "back", "hold")
-
-
-def _cheb(ax: int, ay: int, bx: int, by: int) -> int:
-    return max(abs(ax - bx), abs(ay - by))
 
 
 class Arena:
@@ -20,7 +16,7 @@ class Arena:
         self.tick_count = 0
         self._next_id = 0
         self.tanks: dict[int, Tank] = {}
-        self.shells: list[Shell] = []
+        self.tracers: list[dict] = []  # transient shots fired this tick, for the viz
         self.team_kind: dict[str, str] = {}  # team -> "house:<name>" | "player:<agent>"
         self.pending: dict[int, dict] = {}
         self.walls: set[tuple[int, int]] = set()
@@ -28,63 +24,101 @@ class Arena:
         self._scatter_walls()
 
     # --- setup ---
+    def _free_connected(self) -> bool:
+        free = {
+            (q, r)
+            for q in range(self.cfg.width)
+            for r in range(self.cfg.height)
+            if (q, r) not in self.walls
+        }
+        if not free:
+            return False
+        start = next(iter(free))
+        seen = {start}
+        stack = [start]
+        while stack:
+            q, r = stack.pop()
+            for dq, dr in AXIAL_DIRS:
+                n = (q + dq, r + dr)
+                if n in free and n not in seen:
+                    seen.add(n)
+                    stack.append(n)
+        return len(seen) == len(free)
+
     def _scatter_walls(self) -> None:
-        n = int(self.cfg.width * self.cfg.height * self.cfg.obstacle_density)
-        for _ in range(n):
-            x = self.rng.randint(2, self.cfg.width - 3)
-            y = self.rng.randint(2, self.cfg.height - 3)
-            self.walls.add((x, y))
+        # Place cover one block at a time, keeping only blocks that leave the open space
+        # fully connected — so a wall line can never split the arena into sealed halves.
+        target = int(self.cfg.width * self.cfg.height * self.cfg.obstacle_density)
+        attempts = 0
+        while len(self.walls) < target and attempts < target * 25:
+            attempts += 1
+            q = self.rng.randint(2, self.cfg.width - 3)
+            r = self.rng.randint(2, self.cfg.height - 3)
+            if (q, r) in self.walls:
+                continue
+            self.walls.add((q, r))
+            if not self._free_connected():
+                self.walls.discard((q, r))  # would wall off part of the map — reject
+
+    def _in_bounds(self, q: int, r: int) -> bool:
+        return 0 <= q < self.cfg.width and 0 <= r < self.cfg.height
 
     def _free_cell(self, near: tuple[int, int] | None = None) -> tuple[int, int]:
         for _ in range(200):
             if near is not None:
-                x = min(self.cfg.width - 1, max(0, near[0] + self.rng.randint(-3, 3)))
-                y = min(self.cfg.height - 1, max(0, near[1] + self.rng.randint(-3, 3)))
+                q = min(self.cfg.width - 1, max(0, near[0] + self.rng.randint(-3, 3)))
+                r = min(self.cfg.height - 1, max(0, near[1] + self.rng.randint(-3, 3)))
             else:
-                x = self.rng.randint(0, self.cfg.width - 1)
-                y = self.rng.randint(0, self.cfg.height - 1)
-            if (x, y) not in self.walls and not self._tank_at(x, y):
-                return (x, y)
+                q = self.rng.randint(0, self.cfg.width - 1)
+                r = self.rng.randint(0, self.cfg.height - 1)
+            if (q, r) not in self.walls and not self._tank_at(q, r):
+                return (q, r)
         return (self.rng.randint(0, self.cfg.width - 1), self.rng.randint(0, self.cfg.height - 1))
 
     def add_team(self, team: str, controller: str, anchor: tuple[int, int]) -> list[int]:
         self.team_kind[team] = controller
         ids = []
         for _ in range(self.cfg.team_size):
-            x, y = self._free_cell(near=anchor)
-            ids.append(self._spawn(team, controller, x, y))
+            q, r = self._free_cell(near=anchor)
+            ids.append(self._spawn(team, controller, q, r))
         return ids
 
-    def _spawn(self, team: str, controller: str, x: int, y: int) -> int:
+    def _spawn(self, team: str, controller: str, q: int, r: int) -> int:
         self._next_id += 1
-        heading = self.rng.randint(0, 7)
         self.tanks[self._next_id] = Tank(
             id=self._next_id,
             team=team,
-            x=x,
-            y=y,
-            heading=heading,
-            gun=heading,
+            q=q,
+            r=r,
+            heading=self.rng.randint(0, 5),
             energy=float(self.cfg.start_energy),
             controller=controller,
         )
         return self._next_id
 
-    def seed_house(self) -> None:
+    def seed_house(self, flip: bool = False) -> None:
+        # Spawns point-symmetric about the control center. A residual corner edge still
+        # exists (fixed turn chirality), so the caller flips corners every match — each
+        # team spends half its matches in each corner and the edge cancels, leaving
+        # Artel as the only systematic variable across the series.
+        cq, cr = self.cfg.width // 2, self.cfg.height // 2
         corners = [
-            (3, 3),
-            (self.cfg.width - 4, self.cfg.height - 4),
-            (self.cfg.width - 4, 3),
-            (3, self.cfg.height - 4),
+            (cq - 5, cr - 3),
+            (cq + 5, cr + 3),
+            (cq + 5, cr - 3),
+            (cq - 5, cr + 3),
         ]
+        if flip:
+            corners[0], corners[1] = corners[1], corners[0]
+            corners[2], corners[3] = corners[3], corners[2]
         for i in range(self.cfg.house_teams):
             name = _TEAM_NAMES[i % len(_TEAM_NAMES)]
             self.add_team(name, f"house:{name}", corners[i % len(corners)])
 
     # --- queries ---
-    def _tank_at(self, x: int, y: int) -> Tank | None:
+    def _tank_at(self, q: int, r: int) -> Tank | None:
         for t in self.tanks.values():
-            if t.x == x and t.y == y:
+            if t.q == q and t.r == r:
                 return t
         return None
 
@@ -94,46 +128,65 @@ class Arena:
     def team_tanks(self, team: str) -> list[Tank]:
         return [t for t in self.tanks.values() if t.team == team]
 
+    def safe_radius(self) -> float:
+        cfg = self.cfg
+        full = float(cfg.width)
+        t = self.tick_count
+        if t <= cfg.zone_start:
+            return full
+        if t >= cfg.zone_close:
+            return float(cfg.zone_min)
+        f = (t - cfg.zone_start) / (cfg.zone_close - cfg.zone_start)
+        return full - (full - cfg.zone_min) * f
+
+    def _blocked(self, aq: int, ar: int, bq: int, br: int) -> bool:
+        for q, r in hex_line(aq, ar, bq, br)[1:-1]:
+            if (q, r) in self.walls:
+                return True
+        return False
+
     # --- contract ---
     def perceive(self, tank_id: int) -> dict | None:
         me = self.tanks.get(tank_id)
         if me is None:
             return None
-        r = self.cfg.sensor_range
+        rng = self.cfg.sensor_range
         visible = []
         for o in self.tanks.values():
             if o.id == me.id:
                 continue
-            d = _cheb(me.x, me.y, o.x, o.y)
-            if d > r:
+            d = hex_distance(me.q, me.r, o.q, o.r)
+            if d > rng:
                 continue
-            dx, dy = o.x - me.x, o.y - me.y
+            if self._blocked(me.q, me.r, o.q, o.r):
+                continue  # an obstacle breaks line of sight — no seeing through walls
             ally = o.team == me.team
             entry = {
                 "id": o.id,
                 "kind": "ally" if ally else "enemy",
                 "team": o.team,
-                "dx": dx,
-                "dy": dy,
+                "dq": o.q - me.q,
+                "dr": o.r - me.r,
                 "dist": d,
-                "dir": bearing(dx, dy),
+                "dir": dir_toward(me.q, me.r, o.q, o.r),
             }
-            if ally or d <= r // 2:  # enemy energy only revealed up close
+            if ally or d <= rng // 2:
                 entry["energy"] = round(o.energy)
             visible.append(entry)
         walls = [
-            {"dx": wx - me.x, "dy": wy - me.y}
-            for (wx, wy) in self.walls
-            if _cheb(me.x, me.y, wx, wy) <= r
+            {"dq": wq - me.q, "dr": wr - me.r}
+            for (wq, wr) in self.walls
+            if hex_distance(me.q, me.r, wq, wr) <= rng
         ]
+        cq, cr = self.cfg.width // 2, self.cfg.height // 2
         return {
             "id": me.id,
-            "x": me.x,
-            "y": me.y,
+            "q": me.q,
+            "r": me.r,
             "heading": me.heading,
-            "gun_heading": me.gun,
             "energy": round(me.energy),
             "gun_ready": me.cooldown == 0,
+            "safe": hex_distance(me.q, me.r, cq, cr) <= self.safe_radius(),
             "visible": visible,
             "walls": walls,
         }
@@ -147,14 +200,20 @@ class Arena:
     # --- referee ---
     def step(self) -> dict:
         cfg = self.cfg
+        self.tracers = []
         living = list(self.tanks.values())
         self.rng.shuffle(living)
+        # team standing going into this step — used to break a mutual wipeout so a
+        # match never ends in a draw: whoever was ahead when both fell takes it.
+        pre_energy: dict[str, float] = {}
+        for t in living:
+            pre_energy[t.team] = pre_energy.get(t.team, 0.0) + t.energy
 
         # 1. turns
         for t in living:
             turn = self.pending.get(t.id, {}).get("turn", 0)
             if turn in (-1, 1):
-                t.heading = (t.heading + turn) % 8
+                t.heading = (t.heading + turn) % 6
 
         # 2. moves (resolve dest conflicts; one winner per cell)
         wants: dict[tuple[int, int], list[Tank]] = {}
@@ -162,75 +221,64 @@ class Arena:
             mv = self.pending.get(t.id, {}).get("move", "hold")
             if mv not in _VALID_MOVE or mv == "hold":
                 continue
-            dx, dy = DIRS[t.heading]
+            dq, dr = AXIAL_DIRS[t.heading]
             if mv == "back":
-                dx, dy = -dx, -dy
-            nx, ny = t.x + dx, t.y + dy
-            if not (0 <= nx < cfg.width and 0 <= ny < cfg.height) or (nx, ny) in self.walls:
+                dq, dr = -dq, -dr
+            nq, nr = t.q + dq, t.r + dr
+            if not self._in_bounds(nq, nr) or (nq, nr) in self.walls:
                 continue
-            wants.setdefault((nx, ny), []).append(t)
-        occupied = {(t.x, t.y) for t in living}
-        for (nx, ny), claimants in wants.items():
-            if (nx, ny) in occupied:
-                continue  # a stationary tank holds the cell
+            wants.setdefault((nq, nr), []).append(t)
+        occupied = {(t.q, t.r) for t in living}
+        for (nq, nr), claimants in wants.items():
+            if (nq, nr) in occupied:
+                continue
             winner = self.rng.choice(claimants)
-            occupied.discard((winner.x, winner.y))
-            winner.x, winner.y = nx, ny
-            occupied.add((nx, ny))
+            occupied.discard((winner.q, winner.r))
+            winner.q, winner.r = nq, nr
+            occupied.add((nq, nr))
             winner.energy -= cfg.cost_move
 
-        # 3. aim
+        # 3. fire — each tank shoots AT a chosen enemy; a shot lands if the target
+        # is in range and there's line of sight. No ray to line up: reliable hits.
         for t in living:
-            aim = self.pending.get(t.id, {}).get("aim")
-            if isinstance(aim, int) and 0 <= aim <= 7:
-                t.gun = turn_toward(t.gun, aim)
-
-        # 4. fire
-        for t in living:
-            power = self.pending.get(t.id, {}).get("fire", 0) or 0
+            tgt_id = self.pending.get(t.id, {}).get("fire", 0) or 0
             try:
-                power = float(power)
+                tgt_id = int(tgt_id)
             except (TypeError, ValueError):
-                power = 0
-            if power < cfg.fire_min or t.cooldown > 0 or t.energy <= power:
+                tgt_id = 0
+            if not tgt_id or t.cooldown > 0 or t.energy <= cfg.shot_cost:
                 continue
-            power = min(power, cfg.fire_max)
-            t.energy -= power
+            target = self.tanks.get(tgt_id)
+            if target is None or target.id == t.id:
+                continue
+            if target.team == t.team and not cfg.friendly_fire:
+                continue
+            if hex_distance(t.q, t.r, target.q, target.r) > cfg.fire_range:
+                continue
+            if self._blocked(t.q, t.r, target.q, target.r):
+                continue
+            t.energy -= cfg.shot_cost
             t.cooldown = cfg.gun_cooldown
-            dx, dy = DIRS[t.gun]
-            self.shells.append(Shell(t.x, t.y, dx, dy, power, t.team, t.id))
+            t.heading = dir_toward(t.q, t.r, target.q, target.r)
+            t.target = target.id
+            target.energy -= cfg.shot_damage
+            if target.team != t.team:
+                t.energy = min(cfg.max_energy, t.energy + cfg.hit_reward)
+            self.tracers.append(
+                {"q": t.q, "r": t.r, "tq": target.q, "tr": target.r, "team": t.team}
+            )
 
-        # 5. advance shells, one cell at a time (no tunneling)
-        survivors = []
-        for s in self.shells:
-            alive = True
-            for _ in range(cfg.shell_speed):
-                s.x += s.dx
-                s.y += s.dy
-                if not (0 <= s.x < cfg.width and 0 <= s.y < cfg.height) or (s.x, s.y) in self.walls:
-                    alive = False
-                    break
-                hit = self._tank_at(s.x, s.y)
-                if hit and (cfg.friendly_fire or hit.team != s.team) and hit.id != s.shooter:
-                    hit.energy -= cfg.damage_per_power * s.power
-                    shooter = self.tanks.get(s.shooter)
-                    if shooter and shooter.team != hit.team:
-                        shooter.energy = min(
-                            cfg.max_energy, shooter.energy + cfg.reward_per_power * s.power
-                        )
-                    alive = False
-                    break
-            if alive:
-                survivors.append(s)
-        self.shells = survivors
-
-        # 6. regen + cooldown
+        # 4. cooldown + the closing zone (outside the safe radius = bleed energy)
+        cq, cr = cfg.width // 2, cfg.height // 2
+        rad = self.safe_radius()
         for t in self.tanks.values():
             t.energy = min(cfg.max_energy, t.energy + cfg.regen)
             if t.cooldown > 0:
                 t.cooldown -= 1
+            if hex_distance(t.q, t.r, cq, cr) > rad:
+                t.energy -= cfg.zone_damage
 
-        # 7. deaths
+        # 5. deaths
         dead = [t.id for t in self.tanks.values() if t.energy <= 0]
         for tid in dead:
             del self.tanks[tid]
@@ -238,8 +286,11 @@ class Arena:
         self.pending.clear()
         self.tick_count += 1
         alive_teams = self.teams_alive()
-        if len(alive_teams) <= 1:
-            self.winner = next(iter(alive_teams), None)
+        if len(alive_teams) == 1:
+            self.winner = next(iter(alive_teams))
+        elif len(alive_teams) == 0 and pre_energy:
+            # mutual wipeout this step — no draw: the team that was ahead wins
+            self.winner = max(pre_energy, key=lambda k: pre_energy[k])
         return self.stats()
 
     def stats(self) -> dict:
@@ -248,7 +299,7 @@ class Arena:
             "tick": self.tick_count,
             "teams": len(alive),
             "tanks": len(self.tanks),
-            "shells": len(self.shells),
+            "shots": len(self.tracers),
             "winner": self.winner,
             "team_counts": {team: len(self.team_tanks(team)) for team in alive},
         }

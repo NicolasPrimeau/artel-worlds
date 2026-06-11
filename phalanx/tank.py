@@ -2,46 +2,59 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-# 8 compass directions, clockwise from North.
-DIRS = ((0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1))
-DIR_NAMES = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
+# 6 axial hex directions (pointy-top), same convention as Automata.
+AXIAL_DIRS = ((1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))
 
 
-def turn_toward(cur: int, target: int) -> int:
-    """Rotate one step (of 8) from cur toward target; returns the new heading."""
-    if cur == target:
-        return cur
-    diff = (target - cur) % 8
-    return (cur + (1 if diff <= 4 else -1)) % 8
+def hex_distance(aq: int, ar: int, bq: int, br: int) -> int:
+    dq, dr = aq - bq, ar - br
+    return (abs(dq) + abs(dq + dr) + abs(dr)) // 2
 
 
-def bearing(dx: int, dy: int) -> int:
-    """Nearest of the 8 directions pointing along (dx, dy)."""
-    import math
+def dir_toward(q: int, r: int, tq: int, tr: int) -> int:
+    """The hex direction (0-5) that most reduces distance toward (tq, tr)."""
+    d0 = hex_distance(q, r, tq, tr)
+    best, bi = -99, 0
+    for i, (dq, dr) in enumerate(AXIAL_DIRS):
+        prog = d0 - hex_distance(q + dq, r + dr, tq, tr)
+        if prog > best:
+            best, bi = prog, i
+    return bi
 
-    ang = math.atan2(dx, -dy)  # 0 = North, clockwise
-    return round(ang / (math.pi / 4)) % 8
+
+def hex_line(aq: int, ar: int, bq: int, br: int) -> list[tuple[int, int]]:
+    """Cells along the hex line a->b (inclusive), for line-of-sight."""
+    n = hex_distance(aq, ar, bq, br)
+    if n == 0:
+        return [(aq, ar)]
+    ax, az = aq, ar
+    ay = -ax - az
+    bx, bz = bq, br
+    by = -bx - bz
+    out = []
+    for i in range(n + 1):
+        t = i / n
+        x, y, z = ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t
+        rx, ry, rz = round(x), round(y), round(z)
+        dx, dy, dz = abs(rx - x), abs(ry - y), abs(rz - z)
+        if dx > dy and dx > dz:
+            rx = -ry - rz
+        elif dy > dz:
+            ry = -rx - rz
+        else:
+            rz = -rx - ry
+        out.append((rx, rz))
+    return out
 
 
 @dataclass
 class Tank:
     id: int
     team: str
-    x: int
-    y: int
+    q: int
+    r: int
     heading: int = 0
-    gun: int = 0
     energy: float = 100.0
     cooldown: int = 0
-    controller: str = ""  # who owns this tank (player agent_id or "house:<name>")
-
-
-@dataclass
-class Shell:
-    x: int
-    y: int
-    dx: int
-    dy: int
-    power: float
-    team: str
-    shooter: int
+    target: int = 0  # last enemy fired at (for the viz tracer/aim)
+    controller: str = ""

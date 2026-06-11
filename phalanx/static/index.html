@@ -4,162 +4,306 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0b0f">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 400'%3E%3Crect width='400' height='400' fill='%230a0b0f'/%3E%3Cpolygon points='200,60 340,200 200,340 60,200' fill='none' stroke='%23D4AF37' stroke-width='34' stroke-linejoin='round'/%3E%3Ccircle cx='200' cy='200' r='42' fill='%23D4AF37'/%3E%3C/svg%3E">
 <title>Phalanx — Artel Worlds</title>
 <style>
-  :root { --bg:#0a0b0f; --panel:rgba(16,18,24,.85); --fg:#d7dce5; --dim:#717b8c; --accent:#7fd1a8; }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; }
-  body { background: var(--bg); color: var(--fg); overflow: hidden; position: relative;
-    font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    display: flex; flex-direction: column; height: 100dvh; }
-  header { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px;
-    padding: 10px 14px; border-bottom: 1px solid #1c2129; padding-top: max(10px, env(safe-area-inset-top)); }
-  header h1 { font-size: 13px; margin: 0 4px 0 0; letter-spacing: 2px; font-weight: 700; color: #fff; }
-  header h1 span { color: var(--dim); font-weight: 400; letter-spacing: 1px; }
-  .stat { color: var(--dim); white-space: nowrap; } .stat b { color: #fff; font-weight: 600; font-variant-numeric: tabular-nums; }
-  #conn { margin-left: auto; } #conn.live { color: var(--accent); } #conn.live::before { content: "● "; }
-  #wrap { position: relative; flex: 1 1 auto; min-height: 0; }
-  canvas#c { display: block; width: 100%; height: 100%; touch-action: none; }
-  #winner { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
-    font-size: 22px; font-weight: 700; letter-spacing: 2px; pointer-events: none; text-shadow: 0 2px 20px #000; }
-  #winner.show { display: flex; }
-  #tip { position: fixed; z-index: 10; pointer-events: none; opacity: 0; transition: opacity .08s;
-    background: var(--panel); border: 1px solid #2b323d; border-radius: 8px; padding: 7px 9px;
-    backdrop-filter: blur(8px); font-size: 12px; box-shadow: 0 6px 22px rgba(0,0,0,.5); }
-  #tip.show { opacity: 1; } #tip .hd { font-weight: 700; color: #fff; display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
-  #tip .dot { width: 9px; height: 9px; border-radius: 50%; }
-  #tip table td { color: var(--dim); padding: 0 0; } #tip td.v { color: var(--fg); text-align: right; padding-left: 12px; }
-  #legend { position: absolute; left: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); color: var(--dim);
-    font-size: 11px; background: var(--panel); border: 1px solid #1c2129; border-radius: 8px; padding: 6px 9px; pointer-events: none; }
+  :root {
+    --bg:#090a0e; --panel:rgba(18,20,27,.72); --line:#1b212b; --fg:#e6eaf1; --dim:#79839a;
+    --gold:#d4af37; --artel:#3d8bff; --artel-soft:#7fb0ff; --red:#ff4d4d; --red-soft:#ff8a8a;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; }
+  body {
+    background:var(--bg); color:var(--fg); overflow:hidden; position:relative;
+    font:13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    display:flex; flex-direction:column; height:100dvh;
+  }
+  header {
+    flex:0 0 auto; display:flex; flex-wrap:wrap; align-items:center; gap:6px 18px;
+    padding:11px 16px; border-bottom:1px solid var(--line); position:relative; z-index:3;
+    padding-top:max(11px, env(safe-area-inset-top));
+    background:linear-gradient(180deg, rgba(14,16,22,.9), rgba(14,16,22,.45));
+  }
+  .brand { display:flex; align-items:center; gap:8px; }
+  .brand svg { display:block; }
+  .brand h1 { font-size:14px; margin:0; letter-spacing:3px; font-weight:800; color:#fff; }
+  .brand span { color:var(--dim); font-weight:400; letter-spacing:1px; font-size:12px; }
+  .tagline { color:var(--dim); font-size:12px; }
+  .tagline b { color:var(--artel-soft); font-weight:600; }
+  .spacer { margin-left:auto; }
+  .tick { color:var(--dim); font-variant-numeric:tabular-nums; } .tick b { color:#fff; }
+  #conn { color:var(--dim); display:inline-flex; align-items:center; gap:5px; }
+  #conn::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--dim); }
+  #conn.live { color:#6ee7a8; } #conn.live::before { background:#6ee7a8; box-shadow:0 0 8px #6ee7a8; }
+  #wrap { position:relative; flex:1 1 auto; min-height:0; }
+  canvas#c { display:block; width:100%; height:100%; touch-action:none; }
+  /* scoreboard */
+  #score {
+    position:absolute; right:14px; top:14px; z-index:2; min-width:236px;
+    background:var(--panel); border:1px solid var(--line); border-radius:13px;
+    padding:12px 14px; backdrop-filter:blur(12px); box-shadow:0 10px 34px rgba(0,0,0,.45);
+  }
+  #score .ttl { color:var(--dim); font-size:10px; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:9px; }
+  .team { margin:7px 0; }
+  .team .top { display:flex; align-items:center; gap:8px; }
+  .team .dot { width:10px; height:10px; border-radius:50%; flex:0 0 auto; }
+  .team .nm { color:#fff; font-weight:700; } .team .nm small { color:var(--dim); font-weight:400; letter-spacing:.2px; }
+  .team .n { margin-left:auto; font-weight:800; font-size:17px; color:#fff; font-variant-numeric:tabular-nums; }
+  .team .bar { height:4px; border-radius:3px; background:#222833; margin-top:6px; overflow:hidden; }
+  .team .bar i { display:block; height:100%; width:0; border-radius:3px; transition:width .5s ease; }
+  /* legend + cta */
+  #hud {
+    position:absolute; left:14px; bottom:calc(14px + env(safe-area-inset-bottom)); z-index:2;
+    background:var(--panel); border:1px solid var(--line); border-radius:13px;
+    padding:11px 13px; backdrop-filter:blur(12px); box-shadow:0 10px 34px rgba(0,0,0,.45); max-width:300px;
+  }
+  #hud .leg { display:flex; flex-wrap:wrap; gap:6px 14px; color:var(--dim); font-size:11px; margin-bottom:9px; }
+  #hud .leg span { display:inline-flex; align-items:center; gap:5px; }
+  #hud .sw { width:11px; height:11px; border-radius:3px; flex:0 0 auto; }
+  #hud .sw.ring { border-radius:50%; border:2px solid var(--artel); background:transparent; }
+  #hud .sw.beam { background:linear-gradient(90deg, transparent, var(--artel-soft)); height:3px; border-radius:2px; width:16px; }
+  #hud .sw.zone { background:transparent; border:1.5px dashed var(--red); border-radius:50%; }
+  #hud .cta { display:flex; gap:8px; }
+  #hud .cta a {
+    flex:1; text-align:center; text-decoration:none; font-weight:600; font-size:11px;
+    color:var(--fg); background:#1a2230; border:1px solid var(--line); border-radius:8px; padding:6px 8px;
+  }
+  #hud .cta a:hover { border-color:#2f3a4c; color:#fff; }
+  #hud .cta a.primary { background:linear-gradient(180deg, #1d3a66, #142a4d); border-color:#2b4d80; color:#cfe2ff; }
+  #hud .cta a b { color:var(--gold); }
+  #winner {
+    position:absolute; top:18px; left:50%; transform:translateX(-50%); z-index:2;
+    display:none; align-items:center; gap:9px; padding:8px 16px; border-radius:11px;
+    background:var(--panel); border:1px solid var(--line); backdrop-filter:blur(10px);
+    font-size:16px; font-weight:800; letter-spacing:1.5px; box-shadow:0 8px 30px rgba(0,0,0,.5);
+  }
+  #winner.show { display:flex; animation:pop .35s ease; }
+  #winner .dot { width:11px; height:11px; border-radius:50%; }
+  @keyframes pop { from { transform:translateX(-50%) scale(.85); opacity:0; } }
+  #tip {
+    position:fixed; z-index:10; pointer-events:none; opacity:0; transition:opacity .08s;
+    background:var(--panel); border:1px solid #2b323d; border-radius:9px; padding:8px 10px;
+    backdrop-filter:blur(10px); font-size:12px; box-shadow:0 8px 26px rgba(0,0,0,.55);
+  }
+  #tip.show { opacity:1; }
+  #tip .hd { font-weight:700; color:#fff; display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+  #tip .dot { width:9px; height:9px; border-radius:50%; }
+  #tip table td { color:var(--dim); padding:0; } #tip td.v { color:var(--fg); text-align:right; padding-left:14px; }
 </style>
 </head>
 <body>
 <header>
-  <h1>PHALANX <span>· Artel Worlds</span></h1>
-  <span class="stat">tick <b id="s_tick">—</b></span>
-  <span class="stat">teams <b id="s_teams">—</b></span>
-  <span class="stat">tanks <b id="s_tanks">—</b></span>
-  <span class="stat" id="conn">connecting…</span>
+  <div class="brand">
+    <svg viewBox="0 0 400 400" width="18" height="18" aria-hidden="true"><polygon points="200,60 340,200 200,340 60,200" fill="none" stroke="#d4af37" stroke-width="34" stroke-linejoin="round"/><circle cx="200" cy="200" r="42" fill="#d4af37"/></svg>
+    <h1>PHALANX</h1><span>· Artel Worlds</span>
+  </div>
+  <span class="tagline">One team coordinates through <b>Artel</b>. One fights solo.</span>
+  <span class="spacer"></span>
+  <span class="tick">tick <b id="s_tick">—</b></span>
+  <span id="conn">connecting…</span>
 </header>
 <div id="wrap">
   <canvas id="c"></canvas>
-  <div id="winner"></div>
-  <div id="legend">hover a tank · color = team · ring = energy · barrel = gun</div>
+  <div id="winner"><span class="dot"></span><span id="winner_txt"></span></div>
+  <div id="score">
+    <div class="ttl">match wins</div>
+    <div class="team" id="t_artel">
+      <div class="top"><span class="dot" style="background:var(--artel)"></span>
+        <span class="nm">Artel <small>· coordinates as a team</small></span><span class="n" id="sc_artel">0</span></div>
+      <div class="bar"><i style="background:var(--artel)"></i></div>
+    </div>
+    <div class="team" id="t_red">
+      <div class="top"><span class="dot" style="background:var(--red)"></span>
+        <span class="nm">Red <small>· fights solo</small></span><span class="n" id="sc_red">0</span></div>
+      <div class="bar"><i style="background:var(--red)"></i></div>
+    </div>
+  </div>
+  <div id="hud">
+    <div class="leg">
+      <span><i class="sw ring"></i> energy</span>
+      <span><i class="sw beam"></i> shot</span>
+      <span><i class="sw" style="background:#27303b"></i> cover</span>
+      <span><i class="sw zone"></i> closing zone</span>
+    </div>
+    <div class="cta">
+      <a class="primary" href="https://artel.run" target="_blank" rel="noopener">Coordinate your agents → <b>artel.run</b></a>
+      <a href="https://github.com/nprimeau/artel" target="_blank" rel="noopener">source</a>
+    </div>
+  </div>
 </div>
 <div id="tip"></div>
 <script>
 const $ = id => document.getElementById(id);
 const cv = $('c'), ctx = cv.getContext('2d'), tip = $('tip');
-const DIRS = [[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1]];
-const TEAM_HUE = { blue:210, red:2, green:135, gold:45, violet:280, cyan:185 };
-let snap = null, dpr = 1, cssW = 0, cssH = 0, L = null, hits = [], hoverId = null;
-const MAXE = 120;
-
-const hashStr = s => { let h = 0; for (let i=0;i<s.length;i++) h = (h*31 + s.charCodeAt(i))|0; return Math.abs(h); };
-const teamHue = name => TEAM_HUE[name] ?? (hashStr(name) % 360);
-const teamColor = (name, l=55) => `hsl(${teamHue(name)} 70% ${l}%)`;
-
-function resize() {
-  dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const w = $('wrap'); cssW = w.clientWidth; cssH = w.clientHeight;
-  cv.width = Math.round(cssW*dpr); cv.height = Math.round(cssH*dpr);
-  cv.style.width = cssW+'px'; cv.style.height = cssH+'px';
-  if (snap) { layout(); render(); }
-}
-function layout() {
-  const cell = Math.min(cssW/snap.width, cssH/snap.height);
-  L = { cell, w: cell*snap.width, h: cell*snap.height };
-  L.offX = (cssW - L.w)/2; L.offY = (cssH - L.h)/2;
-}
-const cx = x => L.offX + (x+0.5)*L.cell;
-const cy = y => L.offY + (y+0.5)*L.cell;
-
-function render() {
-  if (!snap || !L) return;
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.fillStyle = '#07080b'; ctx.fillRect(0,0,cssW,cssH);
-  // arena floor
-  ctx.fillStyle = '#0d1016'; ctx.fillRect(L.offX, L.offY, L.w, L.h);
-  // walls
-  ctx.fillStyle = '#2a313c';
-  for (const w of snap.wall_list) ctx.fillRect(L.offX+w.x*L.cell+1, L.offY+w.y*L.cell+1, L.cell-2, L.cell-2);
-  // shells
-  for (const s of snap.shell_list) {
-    ctx.beginPath(); ctx.arc(cx(s.x), cy(s.y), Math.max(1.5, L.cell*0.16), 0, 7);
-    ctx.fillStyle = teamColor(s.team, 75); ctx.fill();
-  }
-  // tanks
-  hits = [];
-  const r = L.cell*0.38;
-  for (const t of snap.tank_list) {
-    const x = cx(t.x), y = cy(t.y);
-    // energy ring
-    ctx.beginPath(); ctx.arc(x, y, r+2.5, -Math.PI/2, -Math.PI/2 + 2*Math.PI*Math.min(1,t.energy/MAXE));
-    ctx.strokeStyle = teamColor(t.team, 60); ctx.lineWidth = 2; ctx.stroke();
-    // body
-    ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = teamColor(t.team, 50); ctx.fill();
-    if (t.player) { ctx.lineWidth = Math.max(1.2, r*0.3); ctx.strokeStyle = '#fff'; ctx.stroke(); }
-    // gun barrel
-    const g = DIRS[t.gun];
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + g[0]*r*1.7, y + g[1]*r*1.7);
-    ctx.strokeStyle = '#e8edf2'; ctx.lineWidth = Math.max(1.3, r*0.28); ctx.stroke();
-    hits.push({ x, y, r: r+2, t });
-  }
-  if (hoverId != null) {
-    const h = hits.find(h => h.t.id === hoverId);
-    if (h) { ctx.beginPath(); ctx.arc(h.x, h.y, h.r+3, 0, 7); ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke(); }
-  }
-}
-
-function apply(s) {
-  const first = !snap || snap.width !== s.width;
-  snap = s; if (!L || first) layout(); render();
-  $('s_tick').textContent = s.tick; $('s_teams').textContent = s.teams; $('s_tanks').textContent = s.tanks;
-  const wEl = $('winner');
-  if (s.winner) { wEl.textContent = `${s.winner.toUpperCase()} TEAM WINS`; wEl.style.color = teamColor(s.winner, 65); wEl.classList.add('show'); }
-  else wEl.classList.remove('show');
-}
-
-function pick(px, py) {
-  let best = null, bd = Infinity;
-  for (const h of hits) { const dx=px-h.x, dy=py-h.y, d=dx*dx+dy*dy, reach=Math.max(h.r+5,13);
-    if (d < reach*reach && d < bd) { bd = d; best = h; } }
-  return best;
-}
-function showTip(h, X, Y) {
-  const t = h.t;
-  tip.innerHTML = `<div class="hd"><span class="dot" style="background:${teamColor(t.team,60)}"></span>tank #${t.id} · ${esc(t.team)}${t.player?' · PLAYER':''}</div>`
-    + `<table><tr><td>energy</td><td class="v">${t.energy}</td></tr>`
-    + `<tr><td>cell</td><td class="v">${t.x}, ${t.y}</td></tr>`
-    + `<tr><td>heading / gun</td><td class="v">${t.heading} / ${t.gun}</td></tr></table>`;
-  tip.classList.add('show');
-  const r = tip.getBoundingClientRect();
-  let tx = X+15, ty = Y+15;
-  if (tx + r.width > innerWidth-8) tx = X - r.width - 15;
-  if (ty + r.height > innerHeight-8) ty = Y - r.height - 15;
-  tip.style.left = Math.max(8,tx)+'px'; tip.style.top = Math.max(8,ty)+'px';
-}
+const SQRT3 = Math.sqrt(3);
+const TEAM = {
+  artel: { h:[61,139,255], soft:'#7fb0ff', solid:'#3d8bff' },
+  red:   { h:[255,77,77],  soft:'#ff8a8a', solid:'#ff4d4d' },
+};
+const teamRGB = t => (TEAM[t] || TEAM.red).h;
+const rgba = (c,a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 const esc = s => String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
-function onMove(e) {
-  const rect = cv.getBoundingClientRect();
-  const h = pick(e.clientX-rect.left, e.clientY-rect.top);
-  if (h) { if (h.t.id !== hoverId) { hoverId = h.t.id; render(); } showTip(h, e.clientX, e.clientY); }
-  else if (hoverId != null) { hoverId = null; tip.classList.remove('show'); render(); }
-}
-cv.addEventListener('pointermove', onMove);
-cv.addEventListener('pointerdown', e => { e.preventDefault(); onMove(e); });
-cv.addEventListener('pointerleave', () => { hoverId = null; tip.classList.remove('show'); render(); });
+const MAXE = 90, ANIM = 900, BEAM_MS = 520, DEATH_MS = 620;
 
-function connect() {
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = new WebSocket(`${proto}://${location.host}/stream`);
-  ws.onopen = () => { $('conn').textContent = 'live'; $('conn').className = 'stat live'; };
-  ws.onmessage = e => apply(JSON.parse(e.data));
-  ws.onclose = () => { $('conn').textContent = 'reconnecting…'; $('conn').className = 'stat'; setTimeout(connect, 1500); };
-  ws.onerror = () => ws.close();
+let snap=null, dpr=1, cssW=0, cssH=0, L=null, hits=[], hoverId=null;
+let anim={}, t0=0, meta={};               // smooth interpolation + per-tank team/coord
+let beams=[], deaths=[], flashes=[];      // transient effects
+let prevIds=new Set();
+
+const hexDist=(aq,ar,bq,br)=>{const dq=aq-bq,dr=ar-br;return (Math.abs(dq)+Math.abs(dq+dr)+Math.abs(dr))/2;};
+const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+const lerp=(a,b,t)=>a+(b-a)*t;
+
+function resize(){
+  dpr=Math.min(window.devicePixelRatio||1,2);
+  const w=$('wrap'); cssW=w.clientWidth; cssH=w.clientHeight;
+  cv.width=Math.round(cssW*dpr); cv.height=Math.round(cssH*dpr);
+  cv.style.width=cssW+'px'; cv.style.height=cssH+'px';
+  if(snap){ layout(); for(const id in anim){ const a=anim[id]; const p=pix(a.q,a.r); a.fromX=a.toX=p.x; a.fromY=a.toY=p.y; } }
+}
+function layout(){
+  const cols=snap.width, rows=snap.height, pad=26;
+  const size=Math.min((cssW-pad*2)/(SQRT3*(cols+0.5)), (cssH-pad*2)/(1.5*rows+0.5));
+  const gw=SQRT3*size*(cols+0.5), gh=(1.5*rows+0.5)*size;
+  L={ size, offX:(cssW-gw)/2, offY:(cssH-gh)/2 };
+}
+function center(q,r){ return [L.offX+SQRT3*L.size*(q+0.5*(r&1)+0.5), L.offY+L.size*(1.5*r+1)]; }
+function pix(q,r){ const c=center(q,r); return {x:c[0], y:c[1]}; }
+function hexPath(x,y,s){ ctx.beginPath(); for(let i=0;i<6;i++){ const a=(Math.PI/180)*(60*i-90); const px=x+s*Math.cos(a), py=y+s*Math.sin(a); i?ctx.lineTo(px,py):ctx.moveTo(px,py);} ctx.closePath(); }
+function curPos(a,now){ const f=ease(Math.min(1,(now-t0)/ANIM)); return { x:lerp(a.fromX,a.toX,f), y:lerp(a.fromY,a.toY,f) }; }
+
+function render(now){
+  if(!snap||!L) return;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  // backdrop with a soft vignette
+  ctx.fillStyle='#070809'; ctx.fillRect(0,0,cssW,cssH);
+  const g=ctx.createRadialGradient(cssW/2,cssH/2,Math.min(cssW,cssH)*0.2,cssW/2,cssH/2,Math.max(cssW,cssH)*0.7);
+  g.addColorStop(0,'#0d1016'); g.addColorStop(1,'#070809'); ctx.fillStyle=g; ctx.fillRect(0,0,cssW,cssH);
+  const s=L.size, z=snap.zone||{q:snap.width/2,r:snap.height/2,radius:snap.width};
+
+  // grid + closing zone (cells outside the safe radius glow danger-red)
+  for(let r=0;r<snap.height;r++) for(let q=0;q<snap.width;q++){
+    const [x,y]=center(q,r); const outside=hexDist(q,r,z.q,z.r)>z.radius;
+    hexPath(x,y,s*0.93);
+    ctx.fillStyle = outside ? 'rgba(70,18,22,.5)' : '#0e1218';
+    ctx.fill();
+    ctx.lineWidth=1; ctx.strokeStyle = outside ? 'rgba(255,77,77,.16)' : '#161c25'; ctx.stroke();
+  }
+  // zone boundary ring (cells right at the edge)
+  for(let r=0;r<snap.height;r++) for(let q=0;q<snap.width;q++){
+    if(Math.abs(hexDist(q,r,z.q,z.r)-z.radius)<0.6 && z.radius<snap.width-0.5){
+      const [x,y]=center(q,r); hexPath(x,y,s*0.93);
+      ctx.lineWidth=2; ctx.strokeStyle='rgba(255,90,90,.5)'; ctx.stroke();
+    }
+  }
+  // cover (walls) — solid with a subtle top bevel
+  for(const w of snap.wall_list){ const [x,y]=center(w.q,w.r);
+    hexPath(x,y,s*0.93); ctx.fillStyle='#27303b'; ctx.fill();
+    hexPath(x,y,s*0.93); ctx.lineWidth=1; ctx.strokeStyle='rgba(255,255,255,.05)'; ctx.stroke();
+  }
+
+  // beams (glowing tracer + impact flash)
+  beams=beams.filter(b=>now-b.born<BEAM_MS);
+  ctx.save(); ctx.lineCap='round';
+  for(const b of beams){ const a=1-(now-b.born)/BEAM_MS; const c=teamRGB(b.team);
+    ctx.shadowColor=rgba(c,.9); ctx.shadowBlur=10;
+    ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.tx,b.ty);
+    ctx.strokeStyle=rgba(c,a*.9); ctx.lineWidth=1.5+2.5*a; ctx.stroke();
+  }
+  ctx.restore();
+  flashes=flashes.filter(f=>now-f.born<BEAM_MS*0.7);
+  for(const f of flashes){ const t=(now-f.born)/(BEAM_MS*0.7), a=1-t, c=teamRGB(f.team);
+    ctx.beginPath(); ctx.arc(f.x,f.y,2+t*s*0.7,0,7); ctx.strokeStyle=rgba(c,a); ctx.lineWidth=2; ctx.stroke();
+  }
+
+  // death bursts
+  deaths=deaths.filter(d=>now-d.born<DEATH_MS);
+  for(const d of deaths){ const t=(now-d.born)/DEATH_MS, a=1-t, c=teamRGB(d.team);
+    ctx.beginPath(); ctx.arc(d.x,d.y,t*s*1.3,0,7); ctx.strokeStyle=rgba(c,a*.8); ctx.lineWidth=2.5; ctx.stroke();
+    for(let i=0;i<6;i++){ const ang=i*Math.PI/3; const rr=t*s*1.5;
+      ctx.beginPath(); ctx.arc(d.x+Math.cos(ang)*rr, d.y+Math.sin(ang)*rr, Math.max(.5,(1-t)*2.5),0,7);
+      ctx.fillStyle=rgba(c,a); ctx.fill(); }
+  }
+
+  // tanks (interpolated)
+  hits=[];
+  const rad=s*0.6;
+  for(const t of snap.tank_list){
+    const a=anim[t.id]; if(!a) continue; const {x,y}=curPos(a,now); const c=teamRGB(t.team);
+    // shadow
+    ctx.beginPath(); ctx.ellipse(x,y+rad*0.5,rad*0.95,rad*0.5,0,0,7); ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fill();
+    // gun barrel
+    const HDIR=[[1,0],[0.5,-0.87],[-0.5,-0.87],[-1,0],[-0.5,0.87],[0.5,0.87]]; const gd=HDIR[t.heading]||HDIR[0];
+    ctx.lineCap='round'; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+gd[0]*rad*1.55,y+gd[1]*rad*1.55);
+    ctx.strokeStyle=rgba(c,.95); ctx.lineWidth=Math.max(2.5,rad*0.4); ctx.stroke();
+    ctx.strokeStyle='#0b0d12'; ctx.lineWidth=Math.max(1,rad*0.16); ctx.stroke();
+    // body with radial shading
+    const bg=ctx.createRadialGradient(x-rad*0.35,y-rad*0.4,rad*0.2,x,y,rad);
+    bg.addColorStop(0,rgba(c,1)); bg.addColorStop(1,rgba([c[0]*0.45,c[1]*0.45,c[2]*0.45],1));
+    ctx.beginPath(); ctx.arc(x,y,rad,0,7); ctx.fillStyle=bg; ctx.fill();
+    ctx.lineWidth=1.5; ctx.strokeStyle='rgba(0,0,0,.35)'; ctx.stroke();
+    // energy arc
+    ctx.beginPath(); ctx.arc(x,y,rad+3,-Math.PI/2,-Math.PI/2+2*Math.PI*Math.max(0.02,Math.min(1,t.energy/MAXE)));
+    ctx.strokeStyle=rgba(c,.95); ctx.lineWidth=2.6; ctx.lineCap='round'; ctx.stroke();
+    // Artel-coordinated tanks wear a thin gold ring (the Artel mark)
+    if(t.coord){ ctx.beginPath(); ctx.arc(x,y,rad+6,0,7); ctx.strokeStyle='rgba(212,175,55,.85)'; ctx.lineWidth=1.5; ctx.stroke(); }
+    if(t.id===hoverId){ ctx.beginPath(); ctx.arc(x,y,rad+9,0,7); ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke(); }
+    hits.push({x,y,r:rad+4,t});
+  }
+}
+function loop(now){ render(now); requestAnimationFrame(loop); }
+
+function apply(snp){
+  const now=performance.now();
+  const first=!snap||snap.width!==snp.width;
+  if(!L||first){ snap=snp; layout(); }
+  // beams from this tick's shots (use static hex centers)
+  if(L) for(const tc of (snp.tracer_list||[])){ const a=pix(tc.q,tc.r), b=pix(tc.tq,tc.tr);
+    beams.push({x:a.x,y:a.y,tx:b.x,ty:b.y,team:tc.team,born:now});
+    flashes.push({x:b.x,y:b.y,team:tc.team,born:now}); }
+  // retarget interpolation: glide from current rendered pos to the new hex
+  const A={};
+  for(const t of snp.tank_list){ const old=anim[t.id]; const from=old?curPos(old,now):pix(t.q,t.r); const to=pix(t.q,t.r);
+    A[t.id]={fromX:from.x,fromY:from.y,toX:to.x,toY:to.y,q:t.q,r:t.r}; meta[t.id]={team:t.team}; }
+  // deaths: anyone gone since last snapshot bursts at their last spot
+  const ids=new Set(snp.tank_list.map(t=>t.id));
+  for(const id of prevIds){ if(!ids.has(id) && anim[id]){ const p=curPos(anim[id],now);
+    deaths.push({x:p.x,y:p.y,team:(meta[id]||{}).team||'red',born:now}); } }
+  prevIds=ids; anim=A; t0=now; snap=snp;
+
+  $('s_tick').textContent=snp.tick;
+  const a=(snp.scores&&snp.scores.artel)||0, rd=(snp.scores&&snp.scores.red)||0, tot=a+rd||1;
+  $('sc_artel').textContent=a; $('sc_red').textContent=rd;
+  $('t_artel').querySelector('.bar i').style.width=(100*a/tot)+'%';
+  $('t_red').querySelector('.bar i').style.width=(100*rd/tot)+'%';
+  const w=$('winner');
+  if(snp.winner){ const c=TEAM[snp.winner]||TEAM.red; $('winner_txt').textContent=snp.winner.toUpperCase()+' WINS';
+    w.querySelector('.dot').style.background=c.solid; w.querySelector('#winner_txt').style.color=c.soft; w.classList.add('show'); }
+  else w.classList.remove('show');
+}
+
+function pick(px,py){ let best=null,bd=Infinity; for(const h of hits){ const dx=px-h.x,dy=py-h.y,d=dx*dx+dy*dy,reach=Math.max(h.r+5,14);
+  if(d<reach*reach&&d<bd){bd=d;best=h;} } return best; }
+function showTip(h,X,Y){ const t=h.t; const c=TEAM[t.team]||TEAM.red;
+  tip.innerHTML=`<div class="hd"><span class="dot" style="background:${c.solid}"></span>tank #${t.id} · ${esc(t.team)}${t.coord?' · ⬡ Artel':''}</div>`
+    +`<table><tr><td>energy</td><td class="v">${t.energy}</td></tr><tr><td>hex</td><td class="v">${t.q}, ${t.r}</td></tr></table>`;
+  tip.classList.add('show'); const rc=tip.getBoundingClientRect();
+  let tx=X+15,ty=Y+15; if(tx+rc.width>innerWidth-8)tx=X-rc.width-15; if(ty+rc.height>innerHeight-8)ty=Y-rc.height-15;
+  tip.style.left=Math.max(8,tx)+'px'; tip.style.top=Math.max(8,ty)+'px';
+}
+function onMove(e){ const rect=cv.getBoundingClientRect(); const h=pick(e.clientX-rect.left,e.clientY-rect.top);
+  if(h){ hoverId=h.t.id; showTip(h,e.clientX,e.clientY); } else if(hoverId!=null){ hoverId=null; tip.classList.remove('show'); } }
+cv.addEventListener('pointermove',onMove);
+cv.addEventListener('pointerleave',()=>{ hoverId=null; tip.classList.remove('show'); });
+
+function connect(){ const proto=location.protocol==='https:'?'wss':'ws'; const ws=new WebSocket(`${proto}://${location.host}/stream`);
+  ws.onopen=()=>{ $('conn').textContent='live'; $('conn').className='live'; };
+  ws.onmessage=e=>apply(JSON.parse(e.data));
+  ws.onclose=()=>{ $('conn').textContent='reconnecting…'; $('conn').className=''; setTimeout(connect,1500); };
+  ws.onerror=()=>ws.close();
 }
 new ResizeObserver(resize).observe($('wrap'));
-resize(); connect();
+resize(); connect(); requestAnimationFrame(loop);
 </script>
 </body>
 </html>
