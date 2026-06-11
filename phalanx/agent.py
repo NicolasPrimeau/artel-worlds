@@ -298,13 +298,20 @@ def _perception_text(p: dict) -> str:
         fire_line = "No enemy in range yet. "
     cdir = p.get("to_center")
     center_rel = _REL[(cdir - p["heading"]) % 6] if cdir is not None else None
-    if not can_fire and center_rel and p.get("dist_center", 0) > 2:
+    seen_foes = [e for e in p["visible"] if e["kind"] == "enemy"]
+    move_line = ""
+    if not can_fire and seen_foes:
+        near = min(seen_foes, key=lambda e: e["dist"])
+        rel = _REL[(near["dir"] - p["heading"]) % 6]
         move_line = (
-            f"Don't wait around — the fight converges on the arena center as the zone shrinks. "
+            f"You SEE #{near['id']} {rel} at dist{near['dist']} but it's out of range — close in: "
+            f"turn toward it and move fwd until it's in range, then fire. Don't hold still. "
+        )
+    elif not can_fire and center_rel and p.get("dist_center", 0) > 2:
+        move_line = (
+            f"No enemy in sight — the fight converges on the arena center as the zone shrinks. "
             f"Center is {center_rel} of you: turn toward it and move fwd to find the enemy. "
         )
-    else:
-        move_line = ""
     return (
         f"You are tank #{p['id']} at hex ({p['q']},{p['r']}), energy {p['energy']}, "
         f"{'inside' if p.get('safe', True) else 'OUTSIDE — taking zone damage'} the safe zone. "
