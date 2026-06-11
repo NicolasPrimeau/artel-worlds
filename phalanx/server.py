@@ -21,9 +21,9 @@ _rng = SystemRandom()
 log = logging.getLogger("phalanx")
 
 STATIC = Path(__file__).parent / "static"
-TICK_INTERVAL = 2.0  # MINIMUM seconds per tick (keeps deterministic play watchable). The tick
-# also waits for every side's move before it resolves, so live LLM ticks take as long as the
-# slowest agent answers — the models get the whole tick to think and coordinate over Artel.
+TICK_INTERVAL = 3.5  # MINIMUM seconds per tick. Also caps LLM spend: one decision per agent
+# per tick, so a slower tick = proportionally fewer paid calls. The tick still waits for every
+# side's move before resolving, so the models get at least this long to think and coordinate.
 # The whole demo: same arena, same guns. Artel is three real LLM agents — one per tank —
 # coordinating live over artel.run; Red is deterministic seek-and-destroy bots that can't
 # talk to each other. The only thing Artel has that Red doesn't is each other, through

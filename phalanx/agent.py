@@ -318,6 +318,7 @@ class Squad:
         self.last_error: str | None = None  # most recent agent failure, for /debug + logs
         self._http: httpx.AsyncClient | None = None
         self._assign: dict[int, dict] = {}  # tank id -> agent, fixed for the current match
+        self._joined: set[str] = set()  # agents that have joined the project this process
 
     @staticmethod
     def _load_agents() -> list[dict]:
@@ -343,6 +344,9 @@ class Squad:
             return None
         if self._http is None:
             self._http = httpx.AsyncClient(timeout=httpx.Timeout(LLM_TIMEOUT))
+        if agent["id"] not in self._joined:
+            await self._ensure_member(agent)
+            self._joined.add(agent["id"])
         mate_ids = [a["id"] for a in self.agents if a["id"] != agent["id"]]
         try:
             intent, cost = await decide(self._http, agent, p, mate_ids)
@@ -353,6 +357,18 @@ class Squad:
         self.spent += cost
         self.last_error = None
         return intent
+
+    async def _ensure_member(self, agent: dict) -> None:
+        # an agent must belong to the project to broadcast to teammates and receive their
+        # broadcasts — join once on first use (create-or-join; makes the project if it's new).
+        try:
+            r = await self._http.post(
+                f"{ARTEL_URL}/projects/{PHALANX_PROJECT}/join", headers=_headers(agent)
+            )
+            if r.status_code >= 300:
+                log.warning("project join %s -> %s: %s", agent["id"], r.status_code, r.text[:120])
+        except Exception as e:
+            log.warning("project join failed for %s: %s", agent["id"], e)
 
     def status(self) -> dict:
         """A snapshot of squad health for the /debug endpoint and logs."""
