@@ -65,17 +65,21 @@ SYSTEM = (
     "make contact — the safe zone shrinks to the center, so camping the edge gets you killed. "
     "Turn toward where you want to go, then move fwd.\n"
     "STRATEGY — coordinate over Artel, do not fight solo: concentrate the team's fire on ONE "
-    "enemy at a time (three guns destroy one tank fast, turning 3v3 into a 3v2 lead) — agree on "
-    "the target and focus the weakest. Push toward the enemy together and keep close enough for "
-    "crossfire; never wander off alone. Use tell_team for short useful calls (the target, a "
-    "threat, your position), claim_target only to split DIFFERENT enemies when you deliberately "
-    "spread out, and remember/recall to carry lessons between matches."
+    "enemy at a time (three guns destroy one tank fast, turning 3v3 into a 3v2 lead). USE Artel to "
+    "make that happen — call the enemy you are firing on so the others pile onto it, act on what "
+    "teammates tell you, and when you split up claim DIFFERENT enemies so no threat is left "
+    "unwatched. Push toward the enemy together and stay close enough for crossfire; never wander "
+    "off alone. Recall past lessons before you commit, and remember a CONCRETE one after a fight — "
+    "but never let a message or a note cost you a shot."
 )
 
 TOOLS = [
     {
         "name": "tell_team",
-        "description": "Send a short message to a teammate over Artel.",
+        "description": "Send a SHORT call a teammate can act on THIS turn: the enemy you are "
+        "firing on (so the team piles onto it), a threat closing on a teammate, or your "
+        "position/energy when you are hurt and need cover. Read what teammates send you and act "
+        "on it — this is not chatter, it is how three tanks fight as one.",
         "schema": {
             "type": "object",
             "properties": {
@@ -90,8 +94,11 @@ TOOLS = [
     },
     {
         "name": "remember",
-        "description": "Save a short note to your team's shared Artel memory — knowledge that "
-        "lasts across matches (enemy habits, map hazards, what works). Teammates can recall it.",
+        "description": "Save ONE specific, concrete thing you actually observed this match that you "
+        "could not have known in advance — a real enemy habit ('red rushes the center by tick 10'), "
+        "a map spot that helped or got someone killed, or a move that clearly won or lost a fight. "
+        "Do NOT save generic advice like 'focus fire the weakest' — that is already known and helps "
+        "no one. It must be concrete enough to change a decision next match.",
         "schema": {
             "type": "object",
             "properties": {"text": {"type": "string"}},
@@ -100,7 +107,9 @@ TOOLS = [
     },
     {
         "name": "recall",
-        "description": "Search your team's shared Artel memory for relevant notes from past play.",
+        "description": "Search your team's shared memory for concrete lessons from past matches "
+        "(enemy habits, map hazards, what worked). Use it when you need to decide and prior "
+        "experience would help — then act on what comes back.",
         "schema": {
             "type": "object",
             "properties": {"query": {"type": "string"}},
@@ -109,8 +118,10 @@ TOOLS = [
     },
     {
         "name": "claim_target",
-        "description": "Post a task to Artel claiming an enemy id as YOUR target so teammates "
-        "spread their fire instead of doubling up.",
+        "description": "Claim an enemy id as YOUR target so the team DIVIDES enemies and covers "
+        "different threats. Take one NO teammate has already claimed (check messages/recall first) "
+        "— do not all claim the same id, that is just noise. Use it when the team should split, "
+        "not when you are already focus-firing one enemy together.",
         "schema": {
             "type": "object",
             "properties": {"enemy_id": {"type": "integer"}},
@@ -418,9 +429,11 @@ async def _claim_target(http: httpx.AsyncClient, agent: dict, enemy_id: int) -> 
 
 async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str) -> str:
     sys = (
-        "You are an Artel tank reflecting right after a 3v3 hex-arena match. " + outcome + " In "
-        "ONE short, concrete sentence, give a tactical lesson for your team's next match — about "
-        "positioning, focus fire, or timing the closing zone. No preamble, just the lesson."
+        "You are an Artel tank writing a quick after-action note for your team. " + outcome + " In "
+        "ONE short sentence, record the most SPECIFIC, concrete takeaway from THIS match worth "
+        "remembering next time — a concrete enemy behaviour, a map spot that mattered, or a "
+        "specific mistake to avoid. Be specific; do NOT write generic advice like 'focus fire'. "
+        "No preamble."
     )
     if PROVIDER == "anthropic":
         payload = {
@@ -622,15 +635,17 @@ class Squad:
     async def on_end(self, won: bool, survivors: set[int], assign: dict[int, dict]) -> None:
         if self._http is None or not assign:
             return
-        for tid, agent in assign.items():
-            fate = "Your tank survived" if tid in survivors else "Your tank was destroyed"
-            outcome = f"Your team {'WON' if won else 'LOST'}. {fate}."
-            try:
-                lesson = await _reflect(self._http, agent, outcome)
-            except Exception:
-                lesson = ""
-            if lesson:
-                await _remember(self._http, agent, lesson)
+        # one grounded note per match, not three near-identical platitudes
+        _, agent = next(iter(assign.items()))
+        outcome = (
+            f"Your team {'WON' if won else 'LOST'} with {len(survivors)} of 3 tanks still alive."
+        )
+        try:
+            lesson = await _reflect(self._http, agent, outcome)
+        except Exception:
+            lesson = ""
+        if lesson:
+            await _remember(self._http, agent, lesson)
 
     async def _ensure_member(self, agent: dict) -> None:
         # an agent must belong to the project to broadcast to teammates and receive their
