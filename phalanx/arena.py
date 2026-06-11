@@ -141,7 +141,9 @@ class Arena:
         return full - (full - cfg.zone_min) * f
 
     def _blocked(self, aq: int, ar: int, bq: int, br: int) -> bool:
-        for q, r in hex_line(aq, ar, bq, br)[1:-1]:
+        for q, r in hex_line(aq, ar, bq, br):
+            if (q, r) == (aq, ar) or (q, r) == (bq, br):
+                continue
             if (q, r) in self.walls:
                 return True
         return False
