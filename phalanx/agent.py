@@ -424,7 +424,7 @@ def _perception_text(p: dict) -> str:
     else:
         fire_line = "No enemy in range yet. "
     cdir = p.get("to_center")
-    center_rel = _REL[(cdir - p["heading"]) % 6] if cdir is not None else None
+    center_rel = _REL[(cdir - p["heading"]) % 6] if cdir is not None else "toward mid-arena"
     seen_foes = [e for e in p["visible"] if e["kind"] == "enemy"]
     move_line = ""
     if not can_fire and seen_foes:
@@ -446,10 +446,27 @@ def _perception_text(p: dict) -> str:
         if blocked
         else ""
     )
+    # the closing zone, BEFORE it bites: an agent that only learns about the red cells once
+    # it's bleeding in them has already lost the positioning fight
+    zr = p.get("zone_radius")
+    dc = p.get("dist_center", 0)
+    if not p.get("safe", True):
+        zone_line = (
+            f"ZONE: you are IN the red cells, BLEEDING energy every turn — move toward the "
+            f"center ({center_rel}) NOW, before anything else. "
+        )
+    elif zr is not None and zr - dc <= 2:
+        zone_line = (
+            f"ZONE WARNING: the red cells are closing on you — safe radius {zr}, you are {dc} "
+            f"from center (margin {round(zr - dc, 1)}). Drift toward the center ({center_rel}) "
+            f"as you fight or they will swallow you. "
+        )
+    else:
+        zone_line = ""
     return (
         f"You are tank #{p['id']} at hex ({p['q']},{p['r']}), energy {p['energy']}, "
-        f"{'inside' if p.get('safe', True) else 'OUTSIDE — taking zone damage'} the safe zone. "
-        f"{fire_line}{move_line}{cover_line}"
+        f"{'inside' if p.get('safe', True) else 'OUTSIDE'} the safe zone. "
+        f"{zone_line}{fire_line}{move_line}{cover_line}"
         f"Enemies: {'; '.join(foes) if foes else 'none in sight'}. "
         f"Teammates: {', '.join(allies) if allies else 'none in sight'}."
     )
