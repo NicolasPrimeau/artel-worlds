@@ -22,16 +22,18 @@ log = logging.getLogger("phalanx")
 
 ARTEL_URL = os.environ.get("ARTEL_URL", "https://artel.run").rstrip("/")
 PHALANX_PROJECT = os.environ.get("PHALANX_PROJECT", "phalanx")
-# Default is gpt-4o-mini over OpenAI's chat endpoint — cheap and reliable at tool-calling, which
-# matters for actually firing. Set PHALANX_LLM_PROVIDER=anthropic (+ ANTHROPIC_API_KEY) for Claude,
-# or point PHALANX_LLM_URL / PHALANX_MODEL / PHALANX_LLM_KEY at any other OpenAI-compatible provider.
+# Default is Gemini 2.5 Flash over Google's OpenAI-compatible endpoint. OpenAI is out: its
+# 10k requests/day quota dies mid-stream under continuous play. The reflex floors in decide()
+# cover Gemini's occasional tool-calling misses. Set PHALANX_LLM_PROVIDER=anthropic
+# (+ ANTHROPIC_API_KEY) for Claude, or point PHALANX_LLM_URL / PHALANX_MODEL / PHALANX_LLM_KEY
+# at any other OpenAI-compatible provider.
 PROVIDER = os.environ.get("PHALANX_LLM_PROVIDER", "openai")
-MODEL = os.environ.get("PHALANX_MODEL", "gpt-4o-mini")
+MODEL = os.environ.get("PHALANX_MODEL", "gemini-2.5-flash")
 LLM_KEY = os.environ.get("PHALANX_LLM_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")
 _DEFAULT_URL = (
     "https://api.anthropic.com/v1/messages"
     if PROVIDER == "anthropic"
-    else "https://api.openai.com/v1/chat/completions"
+    else "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 )
 LLM_URL = os.environ.get("PHALANX_LLM_URL", _DEFAULT_URL)
 LLM_VERSION = os.environ.get("PHALANX_LLM_VERSION", "2023-06-01")
@@ -61,8 +63,8 @@ PRIMARY = _make_ep(
     LLM_URL,
     LLM_KEY,
     LLM_VERSION,
-    os.environ.get("PHALANX_COST_IN", "0.15"),
-    os.environ.get("PHALANX_COST_OUT", "0.60"),
+    os.environ.get("PHALANX_COST_IN", "0.30"),
+    os.environ.get("PHALANX_COST_OUT", "2.50"),
 )
 _LLM2_KEY = os.environ.get("PHALANX_LLM2_KEY", "")
 FALLBACK = (
