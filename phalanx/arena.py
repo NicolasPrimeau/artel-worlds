@@ -273,7 +273,15 @@ class Arena:
             if target.team != t.team:
                 t.energy = min(cfg.max_energy, t.energy + cfg.hit_reward)
             self.tracers.append(
-                {"q": t.q, "r": t.r, "tq": target.q, "tr": target.r, "team": t.team}
+                {
+                    "q": t.q,
+                    "r": t.r,
+                    "tq": target.q,
+                    "tr": target.r,
+                    "team": t.team,
+                    "path": hex_line(t.q, t.r, target.q, target.r),
+                    "dmg": cfg.shot_damage,
+                }
             )
 
         # 4. cooldown + the closing zone (outside the safe radius = bleed energy)

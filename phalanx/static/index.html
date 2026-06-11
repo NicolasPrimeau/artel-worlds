@@ -159,11 +159,11 @@ const TEAM = {
 const teamRGB = t => (TEAM[t] || TEAM.red).h;
 const rgba = (c,a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 const esc = s => String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
-const MAXE = 90, ANIM = 900, BEAM_MS = 520, DEATH_MS = 620;
+const MAXE = 90, ANIM = 900, BEAM_MS = 1000, TRAVEL_MS = 250, FLASH_MS = 900, DEATH_MS = 620;
 // The engine resolves each tick in phases — everyone turns, everyone moves, THEN everyone
 // fires (from post-move cells), then deaths. Replay it in that order: glide first, the
 // volley fires once tanks settle, impacts land on beam arrival, deaths burst last.
-const FIRE_AT = ANIM, IMPACT_AT = ANIM + 150, DEATH_AT = ANIM + 320;
+const FIRE_AT = ANIM, IMPACT_AT = ANIM + TRAVEL_MS, DEATH_AT = ANIM + TRAVEL_MS + 200;
 
 let snap=null, dpr=1, cssW=0, cssH=0, L=null, hits=[], hoverId=null;
 let anim={}, t0=0, meta={}, prevTick=null; // smooth interpolation + per-tank team/coord
@@ -244,23 +244,38 @@ function render(now){
       ctx.lineWidth=2; ctx.strokeStyle='rgba(255,90,90,.5)'; ctx.stroke();
     }
   }
-  // beams (glowing tracer + impact flash) — born in the future until the glide settles
+  // beams — a pulse that TRAVELS the hex-grid path the engine actually checked for line of
+  // sight, so what blocked or cleared a shot is visible on the grid, not an arbitrary ray
   beams=beams.filter(b=>now-b.born<BEAM_MS);
-  ctx.save(); ctx.lineCap='round';
+  ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
   for(const b of beams){ if(now<b.born) continue;
-    const a=1-(now-b.born)/BEAM_MS; const c=teamRGB(b.team);
-    const o=(b.sh&&anim[b.sh])?curPos(anim[b.sh],now):{x:b.x,y:b.y};
-    const e=(b.tg&&anim[b.tg])?curPos(anim[b.tg],now):{x:b.tx,y:b.ty};
-    ctx.shadowColor=rgba(c,.9); ctx.shadowBlur=10;
-    ctx.beginPath(); ctx.moveTo(o.x,o.y); ctx.lineTo(e.x,e.y);
-    ctx.strokeStyle=rgba(c,a*.9); ctx.lineWidth=1.5+2.5*a; ctx.stroke();
+    const age=now-b.born, fade=1-age/BEAM_MS, c=teamRGB(b.team);
+    const pts=b.pts; if(!pts||pts.length<2) continue;
+    const head=Math.min(1,age/TRAVEL_MS)*(pts.length-1);
+    const hi=Math.floor(head), hf=head-hi;
+    ctx.shadowColor=rgba(c,.9); ctx.shadowBlur=12;
+    ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+    for(let i=1;i<=hi;i++) ctx.lineTo(pts[i][0],pts[i][1]);
+    if(hi<pts.length-1) ctx.lineTo(lerp(pts[hi][0],pts[hi+1][0],hf), lerp(pts[hi][1],pts[hi+1][1],hf));
+    ctx.strokeStyle=rgba(c,fade*.85); ctx.lineWidth=1.5+3*fade; ctx.stroke();
+    // bright head while travelling
+    if(age<TRAVEL_MS){ const hx=hi<pts.length-1?lerp(pts[hi][0],pts[hi+1][0],hf):pts[pts.length-1][0];
+      const hy=hi<pts.length-1?lerp(pts[hi][1],pts[hi+1][1],hf):pts[pts.length-1][1];
+      ctx.beginPath(); ctx.arc(hx,hy,3.2,0,7); ctx.fillStyle='#fff'; ctx.fill(); }
   }
   ctx.restore();
-  flashes=flashes.filter(f=>now-f.born<BEAM_MS*0.7);
+  // impact: a ring + the damage number rising off the tank that was hit
+  flashes=flashes.filter(f=>now-f.born<FLASH_MS);
   for(const f of flashes){ if(now<f.born) continue;
-    const t=(now-f.born)/(BEAM_MS*0.7), a=1-t, c=teamRGB(f.team);
+    const t=(now-f.born)/FLASH_MS, a=1-t, c=teamRGB(f.team);
     const e=(f.tg&&anim[f.tg])?curPos(anim[f.tg],now):{x:f.x,y:f.y};
-    ctx.beginPath(); ctx.arc(e.x,e.y,2+t*s*0.7,0,7); ctx.strokeStyle=rgba(c,a); ctx.lineWidth=2; ctx.stroke();
+    ctx.beginPath(); ctx.arc(e.x,e.y,3+ease(Math.min(1,t*2.5))*s*0.75,0,7);
+    ctx.strokeStyle=rgba(c,a); ctx.lineWidth=2.5; ctx.stroke();
+    if(f.dmg){ ctx.font=`bold ${Math.max(11,Math.round(s*0.5))}px ui-monospace,monospace`;
+      ctx.textAlign='center'; ctx.fillStyle=`rgba(255,235,235,${a})`;
+      ctx.strokeStyle=`rgba(0,0,0,${a*.8})`; ctx.lineWidth=3;
+      const ty=e.y-s*0.8-t*s*0.9;
+      ctx.strokeText(`-${f.dmg}`,e.x,ty); ctx.fillText(`-${f.dmg}`,e.x,ty); }
   }
 
   // death bursts (scheduled after the killing impact lands)
@@ -308,11 +323,11 @@ function apply(snp){
   prevTick=snp.tick;
   // this tick's volley — scheduled to fire only after the glide settles, because the engine
   // fires AFTER moves (tracer cells are post-move). Beams track the live tanks regardless.
-  if(L) for(const tc of (snp.tracer_list||[])){ const a=pix(tc.q,tc.r), b=pix(tc.tq,tc.tr);
-    const sh=snp.tank_list.find(t=>t.q===tc.q&&t.r===tc.r);
+  if(L) for(const tc of (snp.tracer_list||[])){ const b=pix(tc.tq,tc.tr);
     const tg=snp.tank_list.find(t=>t.q===tc.tq&&t.r===tc.tr);
-    beams.push({x:a.x,y:a.y,tx:b.x,ty:b.y,team:tc.team,born:now+FIRE_AT,sh:sh&&sh.id,tg:tg&&tg.id});
-    flashes.push({x:b.x,y:b.y,team:tc.team,born:now+IMPACT_AT,tg:tg&&tg.id}); }
+    const cells=(tc.path&&tc.path.length>1)?tc.path:[[tc.q,tc.r],[tc.tq,tc.tr]];
+    beams.push({pts:cells.map(([q,r])=>{const p=pix(q,r);return [p.x,p.y];}),team:tc.team,born:now+FIRE_AT});
+    flashes.push({x:b.x,y:b.y,team:tc.team,born:now+IMPACT_AT,tg:tg&&tg.id,dmg:Math.round(tc.dmg||0)}); }
   // retarget interpolation: glide from current rendered pos to the new hex. Hold the energy
   // display at its pre-volley value until this tick's impacts land.
   const A={};

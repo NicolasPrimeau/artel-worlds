@@ -110,22 +110,24 @@ SYSTEM = (
     "MOVING: never sit idle waiting. With no enemy in range, advance toward the arena center to "
     "make contact — the safe zone shrinks to the center, so camping the edge gets you killed. "
     "Turn toward where you want to go, then move fwd.\n"
-    "STRATEGY — coordinate over Artel, do not fight solo: concentrate the team's fire on ONE "
-    "enemy at a time (three guns destroy one tank fast, turning 3v3 into a 3v2 lead). USE Artel to "
-    "make that happen — call the enemy you are firing on so the others pile onto it, act on what "
-    "teammates tell you, and when you split up claim DIFFERENT enemies so no threat is left "
-    "unwatched. Push toward the enemy together and stay close enough for crossfire; never wander "
-    "off alone. Recall past lessons before you commit, and remember a CONCRETE one after a fight — "
-    "but never let a message or a note cost you a shot."
+    "STRATEGY — the team fights ONE fight, not three: there is a TEAM PLAN (from the pre-match "
+    "huddle, updated over Artel as the fight turns) and following it beats any solo brilliance. "
+    "Concentrate the team's fire on ONE enemy at a time (three guns destroy one tank fast, "
+    "turning 3v3 into a 3v2 lead). USE Artel to make that happen — call the enemy you are firing "
+    "on so the others pile onto it, act on what teammates tell you, and if the plan stops "
+    "working say so and call the adjustment. Push toward the enemy together and stay close "
+    "enough for crossfire; never wander off alone. Recall past lessons before you commit, and "
+    "remember a CONCRETE one after a fight — but never let a message or a note cost you a shot."
 )
 
 TOOLS = [
     {
         "name": "tell_team",
-        "description": "Send a SHORT call a teammate can act on THIS turn: the enemy you are "
-        "firing on (so the team piles onto it), a threat closing on a teammate, or your "
-        "position/energy when you are hurt and need cover. Read what teammates send you and act "
-        "on it — this is not chatter, it is how three tanks fight as one.",
+        "description": "Send REAL INTEL a teammate can act on: enemy id + hex coordinates + "
+        "energy ('enemy #5 at (8,4) energy 23 — firing on it, pile on'), a threat's position, or "
+        "your own position/energy when hurt. Teammates CANNOT see what you see — fog of war — so "
+        "a sighting you don't share with its coordinates is intel the team doesn't have. Vague "
+        "chatter ('be careful', 'let's win') is noise; coordinates are coordination.",
         "schema": {
             "type": "object",
             "properties": {
@@ -165,12 +167,17 @@ TOOLS = [
     {
         "name": "claim_target",
         "description": "Claim an enemy id as YOUR target so the team DIVIDES enemies and covers "
-        "different threats. Take one NO teammate has already claimed (check messages/recall first) "
-        "— do not all claim the same id, that is just noise. Use it when the team should split, "
-        "not when you are already focus-firing one enemy together.",
+        "different threats. Include where you last saw it so teammates know which sector is "
+        "covered. Take one NO teammate has already claimed (check messages/recall first) — do "
+        "not all claim the same id, that is just noise. Use it when the team should split, not "
+        "when you are already focus-firing one enemy together.",
         "schema": {
             "type": "object",
-            "properties": {"enemy_id": {"type": "integer"}},
+            "properties": {
+                "enemy_id": {"type": "integer"},
+                "q": {"type": "integer", "description": "hex q where you last saw it"},
+                "r": {"type": "integer", "description": "hex r where you last saw it"},
+            },
             "required": ["enemy_id"],
         },
     },
@@ -403,9 +410,10 @@ def _perception_text(p: dict) -> str:
             can_fire.append(str(e["id"]))
         energy = f" energy{e['energy']}" if "energy" in e else ""
         tag = "IN RANGE" if in_range else f"out of range (>{fr})"
-        foes.append(f"#{e['id']} {rel} dist{e['dist']} [{tag}]{energy}")
+        eq, er = p["q"] + e["dq"], p["r"] + e["dr"]
+        foes.append(f"#{e['id']} at ({eq},{er}) {rel} dist{e['dist']} [{tag}]{energy}")
     allies = [
-        f"#{e['id']} {_REL[(e['dir'] - p['heading']) % 6]} dist{e['dist']}"
+        f"#{e['id']} at ({p['q'] + e['dq']},{p['r'] + e['dr']}) dist{e['dist']}"
         for e in p["visible"]
         if e["kind"] == "ally"
     ]
@@ -502,20 +510,24 @@ async def _recall(http: httpx.AsyncClient, agent: dict, query: str) -> str:
 
 
 async def _claim_target(
-    http: httpx.AsyncClient, agent: dict, enemy_id: int, mate_ids: list[str]
+    http: httpx.AsyncClient, agent: dict, enemy_id: int, mate_ids: list[str], at: str = ""
 ) -> str:
     # A claim only coordinates if teammates SEE it — broadcast it to the project (it lands in
-    # their inbox next turn). The Artel task makes the claim visible/auditable in the UI and is
+    # their inbox next turn) WITH the target's last-seen position, so the team knows which
+    # sector is covered. The Artel task makes the claim visible/auditable in the UI and is
     # claimed properly so the squad can complete it at match end instead of leaving it open.
     if not enemy_id:
         return ""
-    await _send(http, agent, "team", f"claiming enemy #{enemy_id} — it's mine to cover", mate_ids)
+    where = f" last seen at {at}" if at else ""
+    await _send(
+        http, agent, "team", f"claiming enemy #{enemy_id}{where} — it's mine to cover", mate_ids
+    )
     try:
         r = await http.post(
             f"{ARTEL_URL}/tasks",
             headers=_headers(agent),
             json={
-                "title": f"destroy enemy {enemy_id}",
+                "title": f"destroy enemy {enemy_id}{where}",
                 "project": PHALANX_PROJECT,
                 "tags": ["phalanx", "target"],
             },
@@ -528,24 +540,14 @@ async def _claim_target(
         return ""
 
 
-async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str, events: str) -> str:
-    # The lesson must rest on the match's REAL kill log — given no facts, a model invents
-    # plausible-sounding fiction, which poisons the team's memory instead of teaching it.
-    sys = (
-        "You are an Artel tank writing a quick after-action note for your team. " + outcome + " In "
-        "ONE short sentence, record the most SPECIFIC, concrete takeaway from THIS match worth "
-        "remembering next time — who fell to what, in what order, and what that says about how "
-        "to fight the next match. Use ONLY the facts in the match log; never invent details. "
-        "Do NOT write generic advice like 'focus fire'. No preamble."
-    )
-    user = f"Match log: {events or 'no kills were recorded'}\nLesson:"
+async def _oneshot(http: httpx.AsyncClient, sys: str, user: str, max_tokens: int = 60) -> str:
     for ep in _ENDPOINTS:
         if not ep["key"]:
             continue
         if ep["provider"] == "anthropic":
             payload = {
                 "model": ep["model"],
-                "max_tokens": 60,
+                "max_tokens": max_tokens,
                 "system": sys,
                 "messages": [{"role": "user", "content": user}],
             }
@@ -557,7 +559,7 @@ async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str, events: s
         else:
             payload = {
                 "model": ep["model"],
-                "max_tokens": 60,
+                "max_tokens": max_tokens,
                 "messages": [
                     {"role": "system", "content": sys},
                     {"role": "user", "content": user},
@@ -575,6 +577,34 @@ async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str, events: s
             (data.get("choices") or [{}])[0].get("message", {}).get("content", "") or ""
         ).strip()
     return ""
+
+
+async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str, events: str) -> str:
+    # The lesson must rest on the match's REAL kill log — given no facts, a model invents
+    # plausible-sounding fiction, which poisons the team's memory instead of teaching it.
+    sys = (
+        "You are an Artel tank writing a quick after-action note for your team. " + outcome + " In "
+        "ONE short sentence, record the most SPECIFIC, concrete takeaway from THIS match worth "
+        "remembering next time — who fell to what, in what order, and what that says about how "
+        "to fight the next match. Use ONLY the facts in the match log; never invent details. "
+        "Do NOT write generic advice like 'focus fire'. No preamble."
+    )
+    return await _oneshot(http, sys, f"Match log: {events or 'no kills were recorded'}\nLesson:")
+
+
+async def _huddle(http: httpx.AsyncClient, mates: str, memory: str) -> str:
+    # Pre-match huddle: the lead turns team memory into ONE concrete opening plan and
+    # broadcasts it, so all three tanks enter tick 1 already fighting the same fight.
+    sys = (
+        "You lead team Artel into a 3v3 hex-arena tank match. The arena center is where the "
+        "shrinking zone forces everyone; enemies start in the opposite corner. In at most two "
+        "short sentences give your team ONE concrete opening plan: where you three push together, "
+        "the rule for choosing the first focus-fire target, and who covers which side. Make it "
+        "actionable this match — no platitudes, no preamble."
+    )
+    return await _oneshot(
+        http, sys, f"Teammates: {mates}. Team memory: {memory or 'none yet'}\nPlan:", 90
+    )
 
 
 def _reflex(p: dict) -> dict:
@@ -657,8 +687,14 @@ async def decide(
                 found = await _recall(http, agent, str(c["input"].get("query", "")))
                 results.append({"id": c["id"], "output": found or "nothing relevant"})
             elif c["name"] == "claim_target":
+                inp = c["input"]
+                at = (
+                    f"({inp.get('q')},{inp.get('r')})"
+                    if inp.get("q") is not None and inp.get("r") is not None
+                    else ""
+                )
                 tid = await _claim_target(
-                    http, agent, int(c["input"].get("enemy_id", 0) or 0), mate_ids
+                    http, agent, int(inp.get("enemy_id", 0) or 0), mate_ids, at
                 )
                 if tid and claims is not None:
                     claims.append((agent, tid))
@@ -779,6 +815,21 @@ class Squad:
                 agent,
                 "phalanx tactics: positioning, focus fire, the closing zone, beating the enemy team",
             )
+        # pre-match huddle: the lead agent sets one concrete team plan from memory and
+        # broadcasts it over Artel — every tank starts the match already coordinated
+        if self._assign:
+            lead_tid, lead = next(iter(self._assign.items()))
+            mates = ", ".join(a["id"] for a in self.agents)
+            try:
+                plan = await _huddle(self._http, mates, self._context.get(lead_tid, ""))
+            except Exception:
+                plan = ""
+            if plan:
+                await _send(self._http, lead, "team", f"TEAM PLAN: {plan}"[:280], [])
+                for tid in self._assign:
+                    self._context[tid] = (
+                        f"{self._context.get(tid, '')} Team plan: {plan}".strip()
+                    )
 
     async def on_end(
         self, won: bool, survivors: set[int], assign: dict[int, dict], events: str = ""

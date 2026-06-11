@@ -93,7 +93,15 @@ class Phalanx:
                 for t in a.tanks.values()
             ],
             "tracer_list": [
-                {"q": s["q"], "r": s["r"], "tq": s["tq"], "tr": s["tr"], "team": s["team"]}
+                {
+                    "q": s["q"],
+                    "r": s["r"],
+                    "tq": s["tq"],
+                    "tr": s["tr"],
+                    "team": s["team"],
+                    "path": s.get("path", []),
+                    "dmg": s.get("dmg", 0),
+                }
                 for s in a.tracers
             ],
             "wall_list": [{"q": q, "r": r} for (q, r) in a.walls],

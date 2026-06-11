@@ -53,7 +53,7 @@ def test_firing_hits_target_in_range_with_los():
     a.submit(shooter.id, {"fire": victim.id})
     a.step()
     assert a.tanks[victim.id].energy <= v0 - DEFAULT.shot_damage + 1  # target took the hit
-    assert shooter.cooldown > 0  # gun went on cooldown
+    assert shooter.cooldown == max(0, DEFAULT.gun_cooldown - 1)  # reload started, then ticked once
 
 
 def test_walls_block_vision():

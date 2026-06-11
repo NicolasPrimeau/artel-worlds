@@ -27,7 +27,7 @@ class Config:
     shot_cost: float = 2.0  # energy spent per shot
     shot_damage: float = 12.0
     hit_reward: float = 2.0  # small sustain for landing hits (rewards focused fire)
-    gun_cooldown: int = 2  # ticks between shots
+    gun_cooldown: int = 1  # a ready gun fires every tick — anything slower reads as idle at 2.5s/tick
     sensor_range: int = 8  # how far a tank sees (hex distance)
     friendly_fire: bool = False
 
