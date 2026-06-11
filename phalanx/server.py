@@ -363,6 +363,11 @@ async def favicon():
     return FileResponse(STATIC / "favicon.ico")
 
 
+@app.get("/og.png", include_in_schema=False)
+async def og_image():
+    return FileResponse(STATIC / "og.png")
+
+
 @app.get("/")
 async def root():
     index = STATIC / "index.html"
