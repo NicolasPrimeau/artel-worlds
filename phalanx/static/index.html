@@ -196,12 +196,6 @@ function render(now){
       ctx.lineWidth=2; ctx.strokeStyle='rgba(255,90,90,.5)'; ctx.stroke();
     }
   }
-  // cover (walls) — solid with a subtle top bevel
-  for(const w of snap.wall_list){ const [x,y]=center(w.q,w.r);
-    hexPath(x,y,s*0.93); ctx.fillStyle='#27303b'; ctx.fill();
-    hexPath(x,y,s*0.93); ctx.lineWidth=1; ctx.strokeStyle='rgba(255,255,255,.05)'; ctx.stroke();
-  }
-
   // beams (glowing tracer + impact flash)
   beams=beams.filter(b=>now-b.born<BEAM_MS);
   ctx.save(); ctx.lineCap='round';
@@ -252,6 +246,13 @@ function render(now){
     if(t.coord){ ctx.beginPath(); ctx.arc(x,y,rad+6,0,7); ctx.strokeStyle='rgba(212,175,55,.85)'; ctx.lineWidth=1.5; ctx.stroke(); }
     if(t.id===hoverId){ ctx.beginPath(); ctx.arc(x,y,rad+9,0,7); ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke(); }
     hits.push({x,y,r:rad+4,t});
+  }
+
+  // cover (walls) drawn LAST so it occludes tanks behind it — obstacles read as cover,
+  // never as something a tank is sitting on top of
+  for(const w of snap.wall_list){ const [x,y]=center(w.q,w.r);
+    hexPath(x,y,s*0.93); ctx.fillStyle='#27303b'; ctx.fill();
+    hexPath(x,y,s*0.93); ctx.lineWidth=1; ctx.strokeStyle='rgba(255,255,255,.08)'; ctx.stroke();
   }
 }
 function loop(now){ render(now); requestAnimationFrame(loop); }
