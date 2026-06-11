@@ -165,7 +165,7 @@ const MAXE = 90, ANIM = 900, BEAM_MS = 1000, TRAVEL_MS = 250, FLASH_MS = 900, DE
 // volley fires once tanks settle, impacts land on beam arrival, deaths burst last.
 const FIRE_AT = ANIM, IMPACT_AT = ANIM + TRAVEL_MS, DEATH_AT = ANIM + TRAVEL_MS + 200;
 
-let snap=null, dpr=1, cssW=0, cssH=0, L=null, hits=[], hoverId=null;
+let snap=null, dpr=1, cssW=0, cssH=0, L=null, hits=[], hoverId=null, winnerTimer=0;
 let anim={}, t0=0, meta={}, prevTick=null; // smooth interpolation + per-tank team/coord
 let beams=[], deaths=[], flashes=[], ghosts=[]; // transient effects (born may be in the future)
 let prevIds=new Set();
@@ -352,9 +352,16 @@ function apply(snp){
   $('t_artel').querySelector('.bar i').style.width=(100*a/tot)+'%';
   $('t_red').querySelector('.bar i').style.width=(100*rd/tot)+'%';
   const w=$('winner');
-  if(snp.winner){ const c=TEAM[snp.winner]||TEAM.red; $('winner_txt').textContent=snp.winner.toUpperCase()+' WINS';
-    w.querySelector('.dot').style.background=c.solid; w.querySelector('#winner_txt').style.color=c.soft; w.classList.add('show'); }
-  else w.classList.remove('show');
+  clearTimeout(winnerTimer);
+  if(snp.winner){
+    // hold the announcement until the final volley, impact, and death burst have played
+    // out — calling it while the losing tank is still standing spoils the kill
+    winnerTimer=setTimeout(()=>{ const c=TEAM[snp.winner]||TEAM.red;
+      $('winner_txt').textContent=snp.winner.toUpperCase()+' WINS';
+      w.querySelector('.dot').style.background=c.solid;
+      w.querySelector('#winner_txt').style.color=c.soft;
+      w.classList.add('show'); }, DEATH_AT+DEATH_MS*0.6);
+  } else w.classList.remove('show');
 }
 
 function pick(px,py){ let best=null,bd=Infinity; for(const h of hits){ const dx=px-h.x,dy=py-h.y,d=dx*dx+dy*dy,reach=Math.max(h.r+5,14);
