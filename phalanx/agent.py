@@ -821,6 +821,14 @@ class Squad:
         # broadcasts it over Artel — every tank starts the match already coordinated
         if self._assign:
             lead_tid, lead = next(iter(self._assign.items()))
+            # fresh board: wipe the previous match's tasks (project-owner-gated server-side;
+            # a 403 just means this agent doesn't own the project — harmless, skip)
+            try:
+                await self._http.post(
+                    f"{ARTEL_URL}/projects/{PHALANX_PROJECT}/tasks/clear", headers=_headers(lead)
+                )
+            except Exception:
+                pass
             mates = ", ".join(a["id"] for a in self.agents)
             try:
                 plan = await _huddle(self._http, mates, self._context.get(lead_tid, ""))
