@@ -136,6 +136,18 @@ TOOLS = [
 ]
 
 _TURN = {"left": -1, "right": 1, "none": 0}
+# Pointy-top hex axial directions, index == heading 0..5 (same convention as the arena).
+AXIAL_DIRS = ((1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))
+
+
+def _open_dir(wallset: set, want: int) -> int:
+    # deflect a desired step to the nearest direction not blocked by cover, so a tank routes
+    # around an obstacle instead of nosing into it and getting stuck
+    for off in (0, 1, -1, 2, -2, 3):
+        d = (want + off) % 6
+        if AXIAL_DIRS[d] not in wallset:
+            return d
+    return want
 
 
 # --- provider adapters: a neutral transcript in/out, provider wire format hidden here ---
@@ -316,10 +328,17 @@ def _perception_text(p: dict) -> str:
             f"No enemy in sight — the fight converges on the arena center as the zone shrinks. "
             f"Center is {center_rel} of you: turn toward it and move fwd to find the enemy. "
         )
+    wallset = {(w["dq"], w["dr"]) for w in p.get("walls", [])}
+    blocked = [_REL[(d - p["heading"]) % 6] for d in range(6) if AXIAL_DIRS[d] in wallset]
+    cover_line = (
+        f"COVER is right next to you — you CANNOT move into it, steer around it: {', '.join(blocked)}. "
+        if blocked
+        else ""
+    )
     return (
         f"You are tank #{p['id']} at hex ({p['q']},{p['r']}), energy {p['energy']}, "
         f"{'inside' if p.get('safe', True) else 'OUTSIDE — taking zone damage'} the safe zone. "
-        f"{fire_line}{move_line}"
+        f"{fire_line}{move_line}{cover_line}"
         f"Enemies: {'; '.join(foes) if foes else 'none in sight'}. "
         f"Teammates: {', '.join(allies) if allies else 'none in sight'}."
     )
@@ -450,8 +469,10 @@ def _reflex(p: dict) -> dict:
         tdir = p.get("to_center")
     if tdir is None:
         return {"turn": 0, "move": "hold", "fire": fire}
+    wallset = {(w["dq"], w["dr"]) for w in p.get("walls", [])}
+    d = _open_dir(wallset, tdir)
     h = p["heading"]
-    turn = 0 if h == tdir else (1 if (tdir - h) % 6 <= 3 else -1)
+    turn = 0 if h == d else (1 if (d - h) % 6 <= 3 else -1)
     return {"turn": turn, "move": "fwd", "fire": fire}
 
 
