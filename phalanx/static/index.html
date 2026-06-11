@@ -244,8 +244,8 @@ function render(now){
       ctx.lineWidth=2; ctx.strokeStyle='rgba(255,90,90,.5)'; ctx.stroke();
     }
   }
-  // beams — a pulse that TRAVELS the hex-grid path the engine actually checked for line of
-  // sight, so what blocked or cleared a shot is visible on the grid, not an arbitrary ray
+  // beams — a straight shot from shooter to target with a travelling pulse head (the
+  // engine's hex-line LOS check approximates exactly this segment, so straight is honest)
   beams=beams.filter(b=>now-b.born<BEAM_MS);
   ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
   for(const b of beams){ if(now<b.born) continue;
@@ -323,10 +323,9 @@ function apply(snp){
   prevTick=snp.tick;
   // this tick's volley — scheduled to fire only after the glide settles, because the engine
   // fires AFTER moves (tracer cells are post-move). Beams track the live tanks regardless.
-  if(L) for(const tc of (snp.tracer_list||[])){ const b=pix(tc.tq,tc.tr);
+  if(L) for(const tc of (snp.tracer_list||[])){ const a=pix(tc.q,tc.r), b=pix(tc.tq,tc.tr);
     const tg=snp.tank_list.find(t=>t.q===tc.tq&&t.r===tc.tr);
-    const cells=(tc.path&&tc.path.length>1)?tc.path:[[tc.q,tc.r],[tc.tq,tc.tr]];
-    beams.push({pts:cells.map(([q,r])=>{const p=pix(q,r);return [p.x,p.y];}),team:tc.team,born:now+FIRE_AT});
+    beams.push({pts:[[a.x,a.y],[b.x,b.y]],team:tc.team,born:now+FIRE_AT});
     flashes.push({x:b.x,y:b.y,team:tc.team,born:now+IMPACT_AT,tg:tg&&tg.id,dmg:Math.round(tc.dmg||0)}); }
   // retarget interpolation: glide from current rendered pos to the new hex. Hold the energy
   // display at its pre-volley value until this tick's impacts land.
