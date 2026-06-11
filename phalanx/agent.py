@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -21,26 +22,29 @@ log = logging.getLogger("phalanx")
 
 ARTEL_URL = os.environ.get("ARTEL_URL", "https://artel.run").rstrip("/")
 PHALANX_PROJECT = os.environ.get("PHALANX_PROJECT", "phalanx")
-# Default is Gemini Flash over its OpenAI-compatible endpoint — ~10x cheaper than Haiku.
-# Set PHALANX_LLM_PROVIDER=anthropic (+ ANTHROPIC_API_KEY) to swap to Claude, or point
-# PHALANX_LLM_URL / PHALANX_MODEL at any other OpenAI-compatible provider.
+# Default is gpt-4o-mini over OpenAI's chat endpoint — cheap and reliable at tool-calling, which
+# matters for actually firing. Set PHALANX_LLM_PROVIDER=anthropic (+ ANTHROPIC_API_KEY) for Claude,
+# or point PHALANX_LLM_URL / PHALANX_MODEL / PHALANX_LLM_KEY at any other OpenAI-compatible provider.
 PROVIDER = os.environ.get("PHALANX_LLM_PROVIDER", "openai")
-MODEL = os.environ.get("PHALANX_MODEL", "gemini-2.5-flash-lite")
+MODEL = os.environ.get("PHALANX_MODEL", "gpt-4o-mini")
 LLM_KEY = os.environ.get("PHALANX_LLM_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")
 _DEFAULT_URL = (
     "https://api.anthropic.com/v1/messages"
     if PROVIDER == "anthropic"
-    else "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    else "https://api.openai.com/v1/chat/completions"
 )
 LLM_URL = os.environ.get("PHALANX_LLM_URL", _DEFAULT_URL)
 LLM_VERSION = os.environ.get("PHALANX_LLM_VERSION", "2023-06-01")
 SPEND_CAP_USD = float(os.environ.get("PHALANX_SPEND_CAP_USD", "20"))
-COST_IN = float(os.environ.get("PHALANX_COST_IN", "0.10")) / 1_000_000  # $/input token (flash-lite)
-COST_OUT = float(os.environ.get("PHALANX_COST_OUT", "0.40")) / 1_000_000  # $/output (flash-lite)
-MAX_TOOL_ROUNDS = 4
-# Per-tick decision deadline. The synchronous tick waits for every agent's move before it
-# resolves, so this caps how long one model may take; past it that tank holds for the tick.
-LLM_TIMEOUT = float(os.environ.get("PHALANX_LLM_TIMEOUT", "15"))
+COST_IN = (
+    float(os.environ.get("PHALANX_COST_IN", "0.15")) / 1_000_000
+)  # $/input token (gpt-4o-mini)
+COST_OUT = float(os.environ.get("PHALANX_COST_OUT", "0.60")) / 1_000_000  # $/output (gpt-4o-mini)
+MAX_TOOL_ROUNDS = 3
+# Hard ceiling on a tank's WHOLE decision (all tool rounds together) so a slow model can never
+# stall the synchronous tick — past it the tank falls back to a reflex move instead of freezing.
+DECIDE_DEADLINE = float(os.environ.get("PHALANX_DECIDE_DEADLINE", "8"))
+LLM_TIMEOUT = float(os.environ.get("PHALANX_LLM_TIMEOUT", "12"))
 
 # Concise. Names the teammates, says coordinate through Artel — and stops there. No
 # instructions on HOW to use Artel: the coordination has to emerge, not be scripted.
@@ -431,6 +435,26 @@ async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str) -> str:
     return ((data.get("choices") or [{}])[0].get("message", {}).get("content", "") or "").strip()
 
 
+def _reflex(p: dict) -> dict:
+    # a competent never-idle move computed from perception alone — used to fill gaps the model
+    # leaves and as the fallback when a decision errors or runs past the deadline. Fire the
+    # nearest in-range enemy; otherwise advance on the nearest enemy seen, else toward center.
+    fr = p.get("fire_range", 6)
+    seen = [v for v in p["visible"] if v["kind"] == "enemy"]
+    in_range = [v for v in seen if v["dist"] <= fr]
+    fire = min(in_range, key=lambda v: v["dist"])["id"] if (p.get("gun_ready") and in_range) else 0
+    tdir = None
+    if seen:
+        tdir = min(seen, key=lambda v: v["dist"])["dir"]
+    elif p.get("dist_center", 0) > 1:
+        tdir = p.get("to_center")
+    if tdir is None:
+        return {"turn": 0, "move": "hold", "fire": fire}
+    h = p["heading"]
+    turn = 0 if h == tdir else (1 if (tdir - h) % 6 <= 3 else -1)
+    return {"turn": turn, "move": "fwd", "fire": fire}
+
+
 async def decide(
     http: httpx.AsyncClient, agent: dict, p: dict, mate_ids: list[str], memory: str = ""
 ) -> tuple[dict, float]:
@@ -487,14 +511,14 @@ async def decide(
         if acted:
             break
         transcript.append({"role": "tool", "results": results})
-    # competence floor: never waste a ready gun. If the model didn't fire but an enemy is in
-    # range with line of sight, fire the nearest one anyway. The model still drives targeting
-    # whenever it does pick one; this only covers the turns it forgets to shoot.
-    if not intent.get("fire") and p.get("gun_ready"):
-        fr = p.get("fire_range", 6)
-        in_range = [v for v in p["visible"] if v["kind"] == "enemy" and v["dist"] <= fr]
-        if in_range:
-            intent["fire"] = min(in_range, key=lambda v: v["dist"])["id"]
+    # floors so a tank never under-acts: fire an in-range target the model ignored, and if it's
+    # left holding with nothing to shoot, advance (on the nearest enemy, else toward center). The
+    # model still drives whenever it makes a real choice; this only covers the turns it idles.
+    rx = _reflex(p)
+    if not intent.get("fire"):
+        intent["fire"] = rx["fire"]
+    if intent.get("move", "hold") == "hold" and not intent.get("fire"):
+        intent["turn"], intent["move"] = rx["turn"], rx["move"]
     return intent, cost
 
 
@@ -543,13 +567,14 @@ class Squad:
             self._joined.add(agent["id"])
         mate_ids = [a["id"] for a in self.agents if a["id"] != agent["id"]]
         try:
-            intent, cost = await decide(
-                self._http, agent, p, mate_ids, self._context.get(tank_id, "")
+            intent, cost = await asyncio.wait_for(
+                decide(self._http, agent, p, mate_ids, self._context.get(tank_id, "")),
+                timeout=DECIDE_DEADLINE,
             )
         except Exception as e:
             self.last_error = f"{type(e).__name__}: {e}"
-            log.warning("phalanx agent %s failed: %s", agent["id"], self.last_error)
-            return None
+            log.warning("phalanx agent %s fell back to reflex: %s", agent["id"], self.last_error)
+            return _reflex(p)
         self.spent += cost
         self.last_error = None
         return intent
