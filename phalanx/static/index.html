@@ -206,14 +206,17 @@ function render(now){
   beams=beams.filter(b=>now-b.born<BEAM_MS);
   ctx.save(); ctx.lineCap='round';
   for(const b of beams){ const a=1-(now-b.born)/BEAM_MS; const c=teamRGB(b.team);
+    const o=(b.sh&&anim[b.sh])?curPos(anim[b.sh],now):{x:b.x,y:b.y};
+    const e=(b.tg&&anim[b.tg])?curPos(anim[b.tg],now):{x:b.tx,y:b.ty};
     ctx.shadowColor=rgba(c,.9); ctx.shadowBlur=10;
-    ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.tx,b.ty);
+    ctx.beginPath(); ctx.moveTo(o.x,o.y); ctx.lineTo(e.x,e.y);
     ctx.strokeStyle=rgba(c,a*.9); ctx.lineWidth=1.5+2.5*a; ctx.stroke();
   }
   ctx.restore();
   flashes=flashes.filter(f=>now-f.born<BEAM_MS*0.7);
   for(const f of flashes){ const t=(now-f.born)/(BEAM_MS*0.7), a=1-t, c=teamRGB(f.team);
-    ctx.beginPath(); ctx.arc(f.x,f.y,2+t*s*0.7,0,7); ctx.strokeStyle=rgba(c,a); ctx.lineWidth=2; ctx.stroke();
+    const e=(f.tg&&anim[f.tg])?curPos(anim[f.tg],now):{x:f.x,y:f.y};
+    ctx.beginPath(); ctx.arc(e.x,e.y,2+t*s*0.7,0,7); ctx.strokeStyle=rgba(c,a); ctx.lineWidth=2; ctx.stroke();
   }
 
   // death bursts
@@ -257,10 +260,13 @@ function apply(snp){
   const now=performance.now();
   const first=!snap||snap.width!==snp.width;
   if(!L||first){ snap=snp; layout(); }
-  // beams from this tick's shots (use static hex centers)
+  // beams from this tick's shots — track the live (interpolated) shooter/target so the beam
+  // stays glued to the tank as it glides, instead of floating at the destination hex
   if(L) for(const tc of (snp.tracer_list||[])){ const a=pix(tc.q,tc.r), b=pix(tc.tq,tc.tr);
-    beams.push({x:a.x,y:a.y,tx:b.x,ty:b.y,team:tc.team,born:now});
-    flashes.push({x:b.x,y:b.y,team:tc.team,born:now}); }
+    const sh=snp.tank_list.find(t=>t.q===tc.q&&t.r===tc.r);
+    const tg=snp.tank_list.find(t=>t.q===tc.tq&&t.r===tc.tr);
+    beams.push({x:a.x,y:a.y,tx:b.x,ty:b.y,team:tc.team,born:now,sh:sh&&sh.id,tg:tg&&tg.id});
+    flashes.push({x:b.x,y:b.y,team:tc.team,born:now,tg:tg&&tg.id}); }
   // retarget interpolation: glide from current rendered pos to the new hex
   const A={};
   for(const t of snp.tank_list){ const old=anim[t.id]; const from=old?curPos(old,now):pix(t.q,t.r); const to=pix(t.q,t.r);

@@ -21,6 +21,7 @@ _rng = SystemRandom()
 log = logging.getLogger("phalanx")
 
 STATIC = Path(__file__).parent / "static"
+MATCH_END_LINGER = 4.0  # seconds to hold on the final positions before starting the next match
 TICK_INTERVAL = 2.5  # MINIMUM seconds per tick — sets the visible pace and caps LLM spend
 # (one paid decision per agent per tick, so a slower tick means proportionally fewer calls).
 # It does NOT add think-time: the tick already waits for each model's answer (up to LLM_TIMEOUT),
@@ -177,7 +178,8 @@ async def _tick_loop():
                     if isinstance(intent, dict):
                         a.submit(tid, intent)
                 a.step()
-                if a.winner is not None or len(a.teams_alive()) <= 1:
+                ended = a.winner is not None or len(a.teams_alive()) <= 1
+                if ended:
                     if a.winner:
                         G.scores[a.winner] = G.scores.get(a.winner, 0) + 1
                     if live_artel:
@@ -187,9 +189,13 @@ async def _tick_loop():
                                 a.winner == "artel", survivors, G.squad.current_assignment()
                             )
                         )
-                    G._new_match()
                 snap = G.snapshot()
             await _broadcast(snap)
+            if ended:
+                # hold on the final positions so viewers see who won before the next match
+                await asyncio.sleep(MATCH_END_LINGER)
+                async with G.lock:
+                    G._new_match()
         await asyncio.sleep(max(0.0, TICK_INTERVAL - (loop.time() - start)))
 
 
