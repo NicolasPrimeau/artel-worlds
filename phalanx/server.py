@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from .agent import Squad
 from .arena import Arena
 from .config import DEFAULT
-from .control import Bot
+from .control import STRATEGIES, Bot
 
 _rng = SystemRandom()
 log = logging.getLogger("phalanx")
@@ -54,11 +54,17 @@ class Phalanx:
         self.tokens.clear()
         self.squad.stop()
         self._squad_match = -1
-        # one solo Bot per tank — each keeps its own private memory and never shares it. The
-        # only coordination in Phalanx is the Artel LLM squad talking over artel.run; the
-        # deterministic side is pure individual seek-and-destroy. Artel falls back to these
-        # solo bots only when the squad is off (no keys / over the spend cap).
-        self.bots = {t.id: Bot(t.id, t.team) for t in self.arena.tanks.values()}
+        # one solo Bot per tank — each keeps its own private memory and never shares it, and
+        # each team fields one of every temperament (brawler / ranger / opportunist), so the
+        # solo side is three different hunters rather than one policy times three. The only
+        # coordination in Phalanx is the Artel LLM squad talking over artel.run; Artel falls
+        # back to these solo bots only when the squad is off (no keys / over the spend cap).
+        nth: dict[str, int] = {}
+        self.bots = {}
+        for t in self.arena.tanks.values():
+            i = nth.get(t.team, 0)
+            nth[t.team] = i + 1
+            self.bots[t.id] = Bot(t.id, t.team, STRATEGIES[i % len(STRATEGIES)])
 
     def has_players(self) -> bool:
         return any(k.startswith("player:") for k in self.arena.team_kind.values())

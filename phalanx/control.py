@@ -5,8 +5,21 @@ from .tank import AXIAL_DIRS, dir_toward, hex_distance
 
 KNOWLEDGE_TTL = 16  # ticks an enemy sighting stays trusted before it goes stale
 LOW_ENERGY = 30.0  # below this, fall back and keep firing instead of pressing in
-ENGAGE_RANGE = 4  # close to here, then HOLD and fire — inside fire_range with a margin for LOS
 ZONE_MARGIN = 1  # stay this many hexes inside the safe radius, off the bleeding edge
+
+# Three solo temperaments — different comfort range, target pick, and hunting lane. A team of
+# deterministic bots fields one of each, so "the solo side" is three DIFFERENT hunters, not one
+# policy times three (identical policies marched as an accidental phalanx and collected
+# focus-fire nobody coordinated).
+#   brawler     — charges to point blank, shoots whoever is closest, takes the middle lane
+#   ranger      — holds at max range and kites anything that closes, sweeps the right lane
+#   opportunist — mid-range, singles out the WEAKEST enemy it knows of, sweeps the left lane
+STRATEGIES = ("brawler", "ranger", "opportunist")
+_TRAITS = {
+    "brawler": {"min_d": 1, "max_d": 2, "pick": "near", "lane": 0},
+    "ranger": {"min_d": 5, "max_d": 6, "pick": "near", "lane": 3},
+    "opportunist": {"min_d": 3, "max_d": 4, "pick": "weak", "lane": -3},
+}
 
 
 def _step_toward(cur: int, target: int) -> int:
@@ -17,16 +30,18 @@ def _step_toward(cur: int, target: int) -> int:
 
 
 class Bot:
-    """One tank's deterministic controller — solo seek-and-destroy with private memory. It
-    remembers where it last saw each enemy, drives to a firing position, holds and shoots the
-    nearest target it can hit, and retreats from the closing zone. Every tank runs its own Bot
-    with its OWN board: deterministic tanks NEVER share what they see. The only coordination in
-    Phalanx happens through Artel, among the LLM-driven team — it is never hardcoded here. That
-    keeps the demo honest and keeps deterministic-vs-deterministic a fair, unbiased baseline."""
+    """One tank's deterministic controller — solo seek-and-destroy with private memory and its
+    own temperament. It remembers where it last saw each enemy, drives to its preferred firing
+    distance, shoots what its temperament points at, and retreats from the closing zone. Every
+    tank runs its own Bot with its OWN board: deterministic tanks NEVER share what they see.
+    The only coordination in Phalanx happens through Artel, among the LLM-driven team — it is
+    never hardcoded here."""
 
-    def __init__(self, tank_id: int, team: str):
+    def __init__(self, tank_id: int, team: str, strategy: str | None = None):
         self.id = tank_id
         self.team = team
+        self.strategy = strategy or STRATEGIES[tank_id % len(STRATEGIES)]
+        self.traits = _TRAITS[self.strategy]
         self.board: dict[int, dict] = {}  # eid -> {q, r, energy, seen}; private to this tank
 
     def _toward(self, p: dict, wallset: set, tq: int, tr: int) -> dict:
@@ -57,12 +72,18 @@ class Bot:
         for eid in [e for e, rec in self.board.items() if tick - rec["seen"] > KNOWLEDGE_TTL]:
             del self.board[eid]
 
-        # 3. FIRE, decided independently of movement so a loaded gun is never wasted: shoot
-        #    the nearest enemy in range with line of sight.
+        # 3. FIRE, decided independently of movement so a loaded gun is never wasted — at the
+        #    enemy this temperament points at: weakest in range for an opportunist, nearest
+        #    for everyone else.
         intent: dict = {}
         in_range = [e for e in visible if visible[e]["dist"] <= cfg.fire_range]
         if p["gun_ready"] and in_range:
-            intent["fire"] = min(in_range, key=lambda e: visible[e]["dist"])
+            if self.traits["pick"] == "weak":
+                intent["fire"] = min(
+                    in_range, key=lambda e: (self.board[e]["energy"], visible[e]["dist"])
+                )
+            else:
+                intent["fire"] = min(in_range, key=lambda e: visible[e]["dist"])
 
         # 4. the closing zone bleeds energy outside the safe radius — get back inside it,
         #    keeping a margin so we don't loiter on the bleeding edge. No trade is worth
@@ -71,20 +92,28 @@ class Bot:
         if hex_distance(p["q"], p["r"], cq, cr) > zr - ZONE_MARGIN:
             return {**intent, **self._toward(p, wallset, cq, cr)}
 
-        # 5. nobody known: sweep toward the enemy half ALONE. Each bot fans out along its own
-        #    lane (per-id offset) — solo hunters spread; they don't get to march as an
-        #    accidental phalanx and collect free focus-fire that no one coordinated.
+        # 5. nobody known: sweep toward the enemy half ALONE, each temperament down its own
+        #    lane — solo hunters spread; they don't get to march as an accidental phalanx.
         if not self.board:
-            lane = ((self.id % 3) - 1) * 3  # -3 / 0 / +3 hexes of lateral offset
+            lane = self.traits["lane"]
             tq = max(0, min(cfg.width - 1, cfg.width - 1 - p["q"] + lane))
             tr = max(0, min(cfg.height - 1, cfg.height - 1 - p["r"] - lane))
             return {**intent, **self._toward(p, wallset, tq, tr)}
 
-        # 6. press the nearest known enemy
-        focus = min(
-            self.board,
-            key=lambda e: hex_distance(p["q"], p["r"], self.board[e]["q"], self.board[e]["r"]),
-        )
+        # 6. work the enemy this temperament points at
+        if self.traits["pick"] == "weak":
+            focus = min(
+                self.board,
+                key=lambda e: (
+                    self.board[e]["energy"],
+                    hex_distance(p["q"], p["r"], self.board[e]["q"], self.board[e]["r"]),
+                ),
+            )
+        else:
+            focus = min(
+                self.board,
+                key=lambda e: hex_distance(p["q"], p["r"], self.board[e]["q"], self.board[e]["r"]),
+            )
         rec = self.board[focus]
         seen = focus in visible
 
@@ -95,14 +124,22 @@ class Bot:
                 **self._toward(p, wallset, 2 * p["q"] - rec["q"], 2 * p["r"] - rec["r"]),
             }
 
-        # in range with line of sight: face it and HOLD — a parked tank that can see its
-        # target shoots it every cooldown, which is how fights actually resolve.
-        if seen and visible[focus]["dist"] <= ENGAGE_RANGE:
-            return {
-                **intent,
-                "turn": _step_toward(p["heading"], visible[focus]["dir"]),
-                "move": "hold",
-            }
+        if seen:
+            d = visible[focus]["dist"]
+            if d < self.traits["min_d"]:
+                # closer than this temperament likes: open the gap while the gun keeps working
+                return {
+                    **intent,
+                    **self._toward(p, wallset, 2 * p["q"] - rec["q"], 2 * p["r"] - rec["r"]),
+                }
+            if d <= self.traits["max_d"]:
+                # in the comfort band: face it and HOLD — a parked tank that can see its
+                # target shoots it every cooldown, which is how fights actually resolve
+                return {
+                    **intent,
+                    "turn": _step_toward(p["heading"], visible[focus]["dir"]),
+                    "move": "hold",
+                }
 
         # otherwise close on its last-known cell to gain range and line of sight
         step = self._toward(p, wallset, rec["q"], rec["r"])
