@@ -604,6 +604,10 @@ async def _oneshot(http: httpx.AsyncClient, sys: str, user: str, max_tokens: int
                     {"role": "user", "content": user},
                 ],
             }
+            if REASONING and "gemini" in ep["model"]:
+                # without this, hidden thinking eats the whole max_tokens budget and the
+                # visible lesson/plan arrives truncated to two words
+                payload["reasoning_effort"] = REASONING
             headers = {"authorization": f"Bearer {ep['key']}", "content-type": "application/json"}
         r = await _post_llm(http, ep["url"], headers, payload)
         if r.status_code >= 300:
