@@ -42,11 +42,13 @@ class Phalanx:
         self.squad = Squad()  # the live Artel LLM agents (no-op until keys + a viewer)
         self._squad_match = -1  # which match the squad is currently driving
         self._squad_started = -1  # which match the squad has already run on_start for
+        self.history: list[dict] = []  # last matches' outcomes + kill logs, for /debug
         self._new_match()
 
     def _new_match(self) -> None:
         self.match_no = getattr(self, "match_no", -1) + 1
-        seed = _rng.randint(1, 2**31 - 1)  # fresh random map layout each match
+        self.seed = _rng.randint(1, 2**31 - 1)  # fresh random map layout each match
+        seed = self.seed
         self.arena = Arena(DEFAULT, seed=seed)
         self.arena.seed_house(flip=bool(self.match_no % 2))  # alternate corners, fair series
         self.tokens.clear()
@@ -182,6 +184,22 @@ async def _tick_loop():
                 if ended:
                     if a.winner:
                         G.scores[a.winner] = G.scores.get(a.winner, 0) + 1
+                    # match record for /debug: outcome + the real kill log + how much the
+                    # squad actually used Artel — enough to diagnose a losing streak after
+                    # the fact without ssh, logs, or having watched the match live
+                    G.history.append(
+                        {
+                            "match": G.match_no,
+                            "seed": G.seed,
+                            "winner": a.winner,
+                            "ticks": a.tick_count,
+                            "live_artel": live_artel,
+                            "kills": list(a.events),
+                            "artel_tools": dict(G.squad.tool_counts) if live_artel else {},
+                            "squad_spent_usd": round(G.squad.spent, 4) if live_artel else None,
+                        }
+                    )
+                    del G.history[:-10]
                     if live_artel:
                         survivors = {t.id for t in a.tanks.values() if t.team in COORDINATED}
                         asyncio.create_task(
@@ -228,6 +246,8 @@ async def debug():
         "live_artel": G.squad.enabled and G._squad_match == G.match_no,
         "squad": G.squad.status(),
         "team_counts": a.stats()["team_counts"],
+        "current_kills": list(a.events),
+        "history": G.history[::-1],  # most recent match first
     }
 
 

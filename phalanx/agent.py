@@ -607,6 +607,7 @@ async def decide(
     memory: str = "",
     notes: str = "",
     claims: list | None = None,
+    counts: dict | None = None,
 ) -> tuple[dict, float, str]:
     inbox = await _consume_inbox(http, agent)
     user = _perception_text(p)
@@ -628,6 +629,8 @@ async def decide(
         transcript.append({"role": "assistant", "text": text, "calls": calls})
         results, acted = [], False
         for c in calls:
+            if counts is not None:
+                counts[c["name"]] = counts.get(c["name"], 0) + 1
             if c["name"] == "act":
                 inp = c["input"]
                 intent = {
@@ -692,6 +695,7 @@ class Squad:
         self._last: dict[int, str] = {}  # per-tank last action, carried into the next turn
         self._plans: dict[int, str] = {}  # per-tank standing plan (the agent's own words)
         self._claims: list[tuple[dict, str]] = []  # (agent, task id) opened this match
+        self.tool_counts: dict[str, int] = {}  # Artel tool usage this match, for /debug
 
     @staticmethod
     def _load_agents() -> list[dict]:
@@ -737,6 +741,7 @@ class Squad:
                     self._context.get(tank_id, ""),
                     notes.strip(),
                     self._claims,
+                    self.tool_counts,
                 ),
                 timeout=DECIDE_DEADLINE,
             )
@@ -764,6 +769,7 @@ class Squad:
         self._last = {}
         self._plans = {}
         self._claims = []
+        self.tool_counts = {}
         for tid, agent in self._assign.items():
             if agent["id"] not in self._joined:
                 await self._ensure_member(agent)
