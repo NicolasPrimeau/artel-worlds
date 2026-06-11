@@ -36,11 +36,52 @@ _DEFAULT_URL = (
 LLM_URL = os.environ.get("PHALANX_LLM_URL", _DEFAULT_URL)
 LLM_VERSION = os.environ.get("PHALANX_LLM_VERSION", "2023-06-01")
 SPEND_CAP_USD = float(os.environ.get("PHALANX_SPEND_CAP_USD", "20"))
-COST_IN = (
-    float(os.environ.get("PHALANX_COST_IN", "0.15")) / 1_000_000
-)  # $/input token (gpt-4o-mini)
-COST_OUT = float(os.environ.get("PHALANX_COST_OUT", "0.60")) / 1_000_000  # $/output (gpt-4o-mini)
 MAX_TOOL_ROUNDS = 3
+
+
+def _make_ep(provider: str, model: str, url: str, key: str, version: str, cin: str, cout: str):
+    return {
+        "provider": provider,
+        "model": model,
+        "url": url,
+        "key": key,
+        "version": version,
+        "cin": float(cin) / 1_000_000,  # $/input token
+        "cout": float(cout) / 1_000_000,  # $/output token
+    }
+
+
+# Primary driver, plus a SECOND provider used only when the primary rate-limits or errors — so a
+# 429 on one provider fails the decision over to another LLM instead of dropping the tank to a
+# scripted move. Blue stays model-driven end to end. Default fallback is Gemini Flash-Lite
+# (cheapest) over Google's OpenAI-compatible endpoint; set PHALANX_LLM2_KEY to arm it.
+PRIMARY = _make_ep(
+    PROVIDER,
+    MODEL,
+    LLM_URL,
+    LLM_KEY,
+    LLM_VERSION,
+    os.environ.get("PHALANX_COST_IN", "0.15"),
+    os.environ.get("PHALANX_COST_OUT", "0.60"),
+)
+_LLM2_KEY = os.environ.get("PHALANX_LLM2_KEY", "")
+FALLBACK = (
+    _make_ep(
+        os.environ.get("PHALANX_LLM2_PROVIDER", "openai"),
+        os.environ.get("PHALANX_LLM2_MODEL", "gemini-2.5-flash-lite"),
+        os.environ.get(
+            "PHALANX_LLM2_URL",
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        ),
+        _LLM2_KEY,
+        os.environ.get("PHALANX_LLM2_VERSION", "2023-06-01"),
+        os.environ.get("PHALANX_LLM2_COST_IN", "0.10"),
+        os.environ.get("PHALANX_LLM2_COST_OUT", "0.40"),
+    )
+    if _LLM2_KEY
+    else None
+)
+_ENDPOINTS = [PRIMARY] + ([FALLBACK] if FALLBACK else [])
 # Hard ceiling on a tank's WHOLE decision (all tool rounds together) so a slow model can never
 # stall the synchronous tick — past it the tank falls back to a reflex move instead of freezing.
 DECIDE_DEADLINE = float(os.environ.get("PHALANX_DECIDE_DEADLINE", "8"))
@@ -162,8 +203,8 @@ def _open_dir(wallset: set, want: int) -> int:
 
 
 # --- provider adapters: a neutral transcript in/out, provider wire format hidden here ---
-def _build_payload(system: str, transcript: list[dict]) -> tuple[str, dict, dict]:
-    if PROVIDER == "anthropic":
+def _build_payload(ep: dict, system: str, transcript: list[dict]) -> tuple[str, dict, dict]:
+    if ep["provider"] == "anthropic":
         messages = []
         for e in transcript:
             if e["role"] == "user":
@@ -186,7 +227,7 @@ def _build_payload(system: str, transcript: list[dict]) -> tuple[str, dict, dict
                     }
                 )
         payload = {
-            "model": MODEL,
+            "model": ep["model"],
             "max_tokens": 320,
             "system": system,
             "tools": [
@@ -197,11 +238,11 @@ def _build_payload(system: str, transcript: list[dict]) -> tuple[str, dict, dict
             "messages": messages,
         }
         headers = {
-            "x-api-key": LLM_KEY,
-            "anthropic-version": LLM_VERSION,
+            "x-api-key": ep["key"],
+            "anthropic-version": ep["version"],
             "content-type": "application/json",
         }
-        return LLM_URL, payload, headers
+        return ep["url"], payload, headers
 
     messages = [{"role": "system", "content": system}]
     for e in transcript:
@@ -226,7 +267,7 @@ def _build_payload(system: str, transcript: list[dict]) -> tuple[str, dict, dict
             for r in e["results"]:
                 messages.append({"role": "tool", "tool_call_id": r["id"], "content": r["output"]})
     payload = {
-        "model": MODEL,
+        "model": ep["model"],
         "max_tokens": 320,
         "tools": [
             {
@@ -242,12 +283,12 @@ def _build_payload(system: str, transcript: list[dict]) -> tuple[str, dict, dict
         "tool_choice": "required",
         "messages": messages,
     }
-    headers = {"authorization": f"Bearer {LLM_KEY}", "content-type": "application/json"}
-    return LLM_URL, payload, headers
+    headers = {"authorization": f"Bearer {ep['key']}", "content-type": "application/json"}
+    return ep["url"], payload, headers
 
 
-def _parse(data: dict) -> tuple[str, list[dict], int, int]:
-    if PROVIDER == "anthropic":
+def _parse(ep: dict, data: dict) -> tuple[str, list[dict], int, int]:
+    if ep["provider"] == "anthropic":
         usage = data.get("usage", {})
         text, calls = "", []
         for block in data.get("content", []):
@@ -279,6 +320,46 @@ def _parse(data: dict) -> tuple[str, list[dict], int, int]:
         usage.get("prompt_tokens", 0),
         usage.get("completion_tokens", 0),
     )
+
+
+async def _chat(
+    http: httpx.AsyncClient, system: str, transcript: list[dict]
+) -> tuple[str, list[dict], int, int, dict]:
+    # ask the primary provider; on a rate-limit/error fail the SAME turn over to the fallback
+    # provider so the model still drives. Raises only if every provider is exhausted.
+    last: tuple[dict, httpx.Response] | None = None
+    for ep in _ENDPOINTS:
+        if not ep["key"]:
+            continue
+        url, payload, headers = _build_payload(ep, system, transcript)
+        r = await _post_llm(http, url, headers, payload)
+        if r.status_code < 300:
+            text, calls, tin, tout = _parse(ep, r.json())
+            return text, calls, tin, tout, ep
+        log.warning("LLM %s HTTP %s: %s", ep["model"], r.status_code, r.text[:200])
+        last = (ep, r)
+    if last is None:
+        raise RuntimeError("no llm endpoint configured")
+    raise RuntimeError(f"llm http {last[1].status_code}")
+
+
+async def _post_llm(
+    http: httpx.AsyncClient, url: str, headers: dict, payload: dict
+) -> httpx.Response:
+    # OpenAI's lower tiers 429 under the burst of three agents calling at once each tick; a
+    # short backoff (honoring Retry-After when given) usually clears it within the same tick,
+    # which keeps the LLM driving instead of dropping to the deterministic fallback.
+    r = None
+    for attempt in range(3):
+        r = await http.post(url, headers=headers, json=payload)
+        if r.status_code != 429 and r.status_code < 500:
+            return r
+        if attempt == 2:
+            return r
+        ra = r.headers.get("retry-after", "")
+        delay = float(ra) if ra.replace(".", "", 1).isdigit() else 0.6 * (attempt + 1)
+        await asyncio.sleep(min(delay, 2.0))
+    return r
 
 
 def _headers(agent: dict) -> dict:
@@ -435,36 +516,42 @@ async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str) -> str:
         "specific mistake to avoid. Be specific; do NOT write generic advice like 'focus fire'. "
         "No preamble."
     )
-    if PROVIDER == "anthropic":
-        payload = {
-            "model": MODEL,
-            "max_tokens": 60,
-            "system": sys,
-            "messages": [{"role": "user", "content": "Lesson:"}],
-        }
-        headers = {
-            "x-api-key": LLM_KEY,
-            "anthropic-version": LLM_VERSION,
-            "content-type": "application/json",
-        }
-    else:
-        payload = {
-            "model": MODEL,
-            "max_tokens": 60,
-            "messages": [
-                {"role": "system", "content": sys},
-                {"role": "user", "content": "Lesson:"},
-            ],
-        }
-        headers = {"authorization": f"Bearer {LLM_KEY}", "content-type": "application/json"}
-    r = await http.post(LLM_URL, headers=headers, json=payload)
-    if r.status_code >= 300:
-        return ""
-    data = r.json()
-    if PROVIDER == "anthropic":
-        blocks = data.get("content", [])
-        return "".join(b.get("text", "") for b in blocks if b.get("type") == "text").strip()
-    return ((data.get("choices") or [{}])[0].get("message", {}).get("content", "") or "").strip()
+    for ep in _ENDPOINTS:
+        if not ep["key"]:
+            continue
+        if ep["provider"] == "anthropic":
+            payload = {
+                "model": ep["model"],
+                "max_tokens": 60,
+                "system": sys,
+                "messages": [{"role": "user", "content": "Lesson:"}],
+            }
+            headers = {
+                "x-api-key": ep["key"],
+                "anthropic-version": ep["version"],
+                "content-type": "application/json",
+            }
+        else:
+            payload = {
+                "model": ep["model"],
+                "max_tokens": 60,
+                "messages": [
+                    {"role": "system", "content": sys},
+                    {"role": "user", "content": "Lesson:"},
+                ],
+            }
+            headers = {"authorization": f"Bearer {ep['key']}", "content-type": "application/json"}
+        r = await _post_llm(http, ep["url"], headers, payload)
+        if r.status_code >= 300:
+            continue
+        data = r.json()
+        if ep["provider"] == "anthropic":
+            blocks = data.get("content", [])
+            return "".join(b.get("text", "") for b in blocks if b.get("type") == "text").strip()
+        return (
+            (data.get("choices") or [{}])[0].get("message", {}).get("content", "") or ""
+        ).strip()
+    return ""
 
 
 def _reflex(p: dict) -> dict:
@@ -503,13 +590,8 @@ async def decide(
     intent = {"turn": 0, "move": "hold", "fire": 0}
     cost = 0.0
     for _ in range(MAX_TOOL_ROUNDS):
-        url, payload, headers = _build_payload(system, transcript)
-        r = await http.post(url, headers=headers, json=payload)
-        if r.status_code >= 300:
-            log.warning("LLM %s HTTP %s: %s", MODEL, r.status_code, r.text[:200])
-            raise RuntimeError(f"llm http {r.status_code}")
-        text, calls, tin, tout = _parse(r.json())
-        cost += tin * COST_IN + tout * COST_OUT
+        text, calls, tin, tout, ep = await _chat(http, system, transcript)
+        cost += tin * ep["cin"] + tout * ep["cout"]
         if not calls:
             break
         transcript.append({"role": "assistant", "text": text, "calls": calls})
@@ -580,7 +662,8 @@ class Squad:
 
     @property
     def enabled(self) -> bool:
-        return bool(self.agents) and bool(LLM_KEY) and self.spent < SPEND_CAP_USD
+        has_llm = bool(LLM_KEY) or bool(FALLBACK and FALLBACK["key"])
+        return bool(self.agents) and has_llm and self.spent < SPEND_CAP_USD
 
     def assign(self, tank_ids: list[int]) -> None:
         """Bind this match's Artel tanks to agents, one agent per tank."""
@@ -669,6 +752,8 @@ class Squad:
             "model": MODEL,
             "llm_url": LLM_URL,
             "llm_key_set": bool(LLM_KEY),
+            "fallback_model": FALLBACK["model"] if FALLBACK else None,
+            "fallback_key_set": bool(FALLBACK and FALLBACK["key"]),
             "spent_usd": round(self.spent, 4),
             "cap_usd": SPEND_CAP_USD,
             "last_error": self.last_error,
