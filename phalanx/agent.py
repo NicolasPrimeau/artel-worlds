@@ -141,10 +141,12 @@ TOOLS = [
     {
         "name": "tell_team",
         "description": "Send REAL INTEL a teammate can act on: enemy id + hex coordinates + "
-        "energy ('enemy #5 at (8,4) energy 23 — firing on it, pile on'), a threat's position, or "
-        "your own position/energy when hurt. Teammates CANNOT see what you see — fog of war — so "
-        "a sighting you don't share with its coordinates is intel the team doesn't have. Vague "
-        "chatter ('be careful', 'let's win') is noise; coordinates are coordination.",
+        "energy, a threat's position, your own position/energy when hurt, or a change of plan. "
+        "Teammates CANNOT see what you see — fog of war — so an unshared sighting is intel the "
+        "team doesn't have. ONLY send what is NEW: if a teammate already called this enemy or "
+        "this fact this turn, do not echo it — acknowledge by acting, not by repeating. Vague "
+        "chatter is noise; new coordinates, target switches, and warnings are coordination. No "
+        "message at all is better than a duplicate.",
         "schema": {
             "type": "object",
             "properties": {
