@@ -25,7 +25,7 @@ PHALANX_PROJECT = os.environ.get("PHALANX_PROJECT", "phalanx")
 # Set PHALANX_LLM_PROVIDER=anthropic (+ ANTHROPIC_API_KEY) to swap to Claude, or point
 # PHALANX_LLM_URL / PHALANX_MODEL at any other OpenAI-compatible provider.
 PROVIDER = os.environ.get("PHALANX_LLM_PROVIDER", "openai")
-MODEL = os.environ.get("PHALANX_MODEL", "gemini-2.5-flash-lite")
+MODEL = os.environ.get("PHALANX_MODEL", "gemini-2.5-flash")
 LLM_KEY = os.environ.get("PHALANX_LLM_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")
 _DEFAULT_URL = (
     "https://api.anthropic.com/v1/messages"
@@ -35,8 +35,10 @@ _DEFAULT_URL = (
 LLM_URL = os.environ.get("PHALANX_LLM_URL", _DEFAULT_URL)
 LLM_VERSION = os.environ.get("PHALANX_LLM_VERSION", "2023-06-01")
 SPEND_CAP_USD = float(os.environ.get("PHALANX_SPEND_CAP_USD", "20"))
-COST_IN = float(os.environ.get("PHALANX_COST_IN", "0.10")) / 1_000_000  # $/input token (Flash)
-COST_OUT = float(os.environ.get("PHALANX_COST_OUT", "0.40")) / 1_000_000  # $/output token (Flash)
+COST_IN = float(os.environ.get("PHALANX_COST_IN", "0.30")) / 1_000_000  # $/input token (2.5-flash)
+COST_OUT = (
+    float(os.environ.get("PHALANX_COST_OUT", "2.50")) / 1_000_000
+)  # $/output token (2.5-flash)
 MAX_TOOL_ROUNDS = 4
 # Per-tick decision deadline. The synchronous tick waits for every agent's move before it
 # resolves, so this caps how long one model may take; past it that tank holds for the tick.
@@ -472,8 +474,16 @@ async def decide(
                 await _claim_target(http, agent, int(c["input"].get("enemy_id", 0) or 0))
                 results.append({"id": c["id"], "output": "claimed"})
         if acted:
-            return intent, cost
+            break
         transcript.append({"role": "tool", "results": results})
+    # competence floor: never waste a ready gun. If the model didn't fire but an enemy is in
+    # range with line of sight, fire the nearest one anyway. The model still drives targeting
+    # whenever it does pick one; this only covers the turns it forgets to shoot.
+    if not intent.get("fire") and p.get("gun_ready"):
+        fr = p.get("fire_range", 6)
+        in_range = [v for v in p["visible"] if v["kind"] == "enemy" and v["dist"] <= fr]
+        if in_range:
+            intent["fire"] = min(in_range, key=lambda v: v["dist"])["id"]
     return intent, cost
 
 
