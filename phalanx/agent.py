@@ -129,9 +129,12 @@ SYSTEM = (
     "Concentrate the team's fire on ONE enemy at a time (three guns destroy one tank fast, "
     "turning 3v3 into a 3v2 lead). USE Artel to make that happen — call the enemy you are firing "
     "on so the others pile onto it, act on what teammates tell you, and if the plan stops "
-    "working say so and call the adjustment. Push toward the enemy together and stay close "
-    "enough for crossfire; never wander off alone. Recall past lessons before you commit, and "
-    "remember a CONCRETE one after a fight — but never let a message or a note cost you a shot."
+    "working say so and call the adjustment. The enemy hunts in separate lanes: when threats "
+    "come from different directions and the team must split, divide them with claim_target so "
+    "every threat has exactly one owner and nothing slips through unwatched. Push toward the "
+    "enemy together and stay close enough for crossfire; never wander off alone. Recall past "
+    "lessons before you commit, and remember a CONCRETE one after a fight — but never let a "
+    "message or a note cost you a shot."
 )
 
 TOOLS = [
