@@ -186,7 +186,10 @@ async def _tick_loop():
                         survivors = {t.id for t in a.tanks.values() if t.team in COORDINATED}
                         asyncio.create_task(
                             G.squad.on_end(
-                                a.winner == "artel", survivors, G.squad.current_assignment()
+                                a.winner == "artel",
+                                survivors,
+                                G.squad.current_assignment(),
+                                "; ".join(a.events[-12:]),
                             )
                         )
                 snap = G.snapshot()

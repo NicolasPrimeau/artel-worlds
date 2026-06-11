@@ -17,6 +17,7 @@ class Arena:
         self._next_id = 0
         self.tanks: dict[int, Tank] = {}
         self.tracers: list[dict] = []  # transient shots fired this tick, for the viz
+        self.events: list[str] = []  # kill log — real match facts for after-action lessons
         self.team_kind: dict[str, str] = {}  # team -> "house:<name>" | "player:<agent>"
         self.pending: dict[int, dict] = {}
         self.walls: set[tuple[int, int]] = set()
@@ -245,6 +246,7 @@ class Arena:
 
         # 3. fire — each tank shoots AT a chosen enemy; a shot lands if the target
         # is in range and there's line of sight. No ray to line up: reliable hits.
+        hit_by: dict[int, Tank] = {}  # who landed the (last) hit, for kill attribution
         for t in living:
             tgt_id = self.pending.get(t.id, {}).get("fire", 0) or 0
             try:
@@ -267,6 +269,7 @@ class Arena:
             t.heading = dir_toward(t.q, t.r, target.q, target.r)
             t.target = target.id
             target.energy -= cfg.shot_damage
+            hit_by[target.id] = t
             if target.team != t.team:
                 t.energy = min(cfg.max_energy, t.energy + cfg.hit_reward)
             self.tracers.append(
@@ -283,10 +286,17 @@ class Arena:
             if hex_distance(t.q, t.r, cq, cr) > rad:
                 t.energy -= cfg.zone_damage
 
-        # 5. deaths
+        # 5. deaths — logged with attribution so after-action lessons rest on real facts
         dead = [t.id for t in self.tanks.values() if t.energy <= 0]
         for tid in dead:
+            t = self.tanks[tid]
+            k = hit_by.get(tid)
+            cause = f"by #{k.id} ({k.team})" if k is not None else "by the closing zone"
+            self.events.append(
+                f"tick {self.tick_count}: tank #{tid} ({t.team}) destroyed {cause} at ({t.q},{t.r})"
+            )
             del self.tanks[tid]
+        del self.events[:-40]
 
         self.pending.clear()
         self.tick_count += 1

@@ -193,27 +193,29 @@ function hexPath(x,y,s){ ctx.beginPath(); for(let i=0;i<6;i++){ const a=(Math.PI
 function curPos(a,now){ const f=ease(Math.min(1,(now-t0)/ANIM)); return { x:lerp(a.fromX,a.toX,f), y:lerp(a.fromY,a.toY,f) }; }
 
 function drawTank(x,y,heading,energy,team,coord){
-  const c=teamRGB(team), rad=L.size*0.6;
+  // Everything fits inside the hex inradius (~0.87*size) so neighbouring tanks — barrels
+  // included — can never overlap. Hull 0.42, rings to ~0.61, barrel tip at 0.84.
+  const c=teamRGB(team), s=L.size, rad=s*0.42;
   // shadow
-  ctx.beginPath(); ctx.ellipse(x,y+rad*0.5,rad*0.95,rad*0.5,0,0,7); ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x,y+rad*0.45,rad*0.95,rad*0.5,0,0,7); ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fill();
   // body with radial shading
   const bg=ctx.createRadialGradient(x-rad*0.35,y-rad*0.4,rad*0.2,x,y,rad);
   bg.addColorStop(0,rgba(c,1)); bg.addColorStop(1,rgba([c[0]*0.45,c[1]*0.45,c[2]*0.45],1));
   ctx.beginPath(); ctx.arc(x,y,rad,0,7); ctx.fillStyle=bg; ctx.fill();
   ctx.lineWidth=1.5; ctx.strokeStyle='rgba(0,0,0,.35)'; ctx.stroke();
   // energy arc (dimmer than the hull so it reads as a gauge, not armor)
-  ctx.beginPath(); ctx.arc(x,y,rad+3,-Math.PI/2,-Math.PI/2+2*Math.PI*Math.max(0.02,Math.min(1,energy/MAXE)));
-  ctx.strokeStyle=rgba(c,.55); ctx.lineWidth=2.2; ctx.lineCap='round'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(x,y,rad*1.22,-Math.PI/2,-Math.PI/2+2*Math.PI*Math.max(0.02,Math.min(1,energy/MAXE)));
+  ctx.strokeStyle=rgba(c,.55); ctx.lineWidth=Math.max(1.6,rad*0.16); ctx.lineCap='round'; ctx.stroke();
   // Artel-coordinated tanks wear a thin gold ring (the Artel mark)
-  if(coord){ ctx.beginPath(); ctx.arc(x,y,rad+6,0,7); ctx.strokeStyle='rgba(212,175,55,.85)'; ctx.lineWidth=1.5; ctx.stroke(); }
-  // turret + gun barrel ON TOP, long enough to clear every ring — heading must read at a glance
+  if(coord){ ctx.beginPath(); ctx.arc(x,y,rad*1.45,0,7); ctx.strokeStyle='rgba(212,175,55,.85)'; ctx.lineWidth=Math.max(1.2,rad*0.1); ctx.stroke(); }
+  // turret + gun barrel ON TOP, clearing the rings but stopping inside the hex
   const HDIR=[[1,0],[0.5,-0.87],[-0.5,-0.87],[-1,0],[-0.5,0.87],[0.5,0.87]]; const gd=HDIR[heading]||HDIR[0];
   ctx.lineCap='round';
-  ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+gd[0]*rad*2.05,y+gd[1]*rad*2.05);
-  ctx.strokeStyle='#0b0d12'; ctx.lineWidth=Math.max(4,rad*0.52); ctx.stroke();   // dark outline
-  ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+gd[0]*rad*2.0,y+gd[1]*rad*2.0);
+  ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+gd[0]*s*0.84,y+gd[1]*s*0.84);
+  ctx.strokeStyle='#0b0d12'; ctx.lineWidth=Math.max(3.5,rad*0.52); ctx.stroke();   // dark outline
+  ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+gd[0]*s*0.8,y+gd[1]*s*0.8);
   ctx.strokeStyle=rgba([Math.min(255,c[0]+60),Math.min(255,c[1]+60),Math.min(255,c[2]+60)],1);
-  ctx.lineWidth=Math.max(2.5,rad*0.3); ctx.stroke();                              // bright bore
+  ctx.lineWidth=Math.max(2,rad*0.3); ctx.stroke();                                 // bright bore
   ctx.beginPath(); ctx.arc(x,y,rad*0.45,0,7); ctx.fillStyle='#10141b'; ctx.fill(); // turret hub
   ctx.beginPath(); ctx.arc(x,y,rad*0.45,0,7); ctx.strokeStyle=rgba(c,.9); ctx.lineWidth=1.5; ctx.stroke();
 }
@@ -284,8 +286,8 @@ function render(now){
     const a=anim[t.id]; if(!a) continue; const {x,y}=curPos(a,now);
     const m=meta[t.id]||{};
     drawTank(x,y,t.heading,(m.eAt&&now<m.eAt)?m.e0:t.energy,t.team,t.coord);
-    if(t.id===hoverId){ ctx.beginPath(); ctx.arc(x,y,s*0.6+9,0,7); ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke(); }
-    hits.push({x,y,r:s*0.6+4,t});
+    if(t.id===hoverId){ ctx.beginPath(); ctx.arc(x,y,s*0.7,0,7); ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke(); }
+    hits.push({x,y,r:s*0.55,t});
   }
 
   // cover (walls) drawn LAST so it occludes tanks behind it — obstacles read as cover,

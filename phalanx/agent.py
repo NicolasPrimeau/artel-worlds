@@ -186,6 +186,12 @@ TOOLS = [
                     "type": "integer",
                     "description": "enemy tank id to shoot at, or 0 to hold fire",
                 },
+                "plan": {
+                    "type": "string",
+                    "description": "optional: one short line on what you intend over the next "
+                    "few turns (e.g. 'flanking right around the wall to reach #5') — shown back "
+                    "to you next turn so you can follow through instead of starting over",
+                },
             },
             "required": ["move", "turn", "fire"],
         },
@@ -495,32 +501,44 @@ async def _recall(http: httpx.AsyncClient, agent: dict, query: str) -> str:
     return " | ".join(m.get("content", "")[:140] for m in rows if m.get("content"))
 
 
-async def _claim_target(http: httpx.AsyncClient, agent: dict, enemy_id: int) -> None:
+async def _claim_target(
+    http: httpx.AsyncClient, agent: dict, enemy_id: int, mate_ids: list[str]
+) -> str:
+    # A claim only coordinates if teammates SEE it — broadcast it to the project (it lands in
+    # their inbox next turn). The Artel task makes the claim visible/auditable in the UI and is
+    # claimed properly so the squad can complete it at match end instead of leaving it open.
     if not enemy_id:
-        return
+        return ""
+    await _send(http, agent, "team", f"claiming enemy #{enemy_id} — it's mine to cover", mate_ids)
     try:
-        await http.post(
+        r = await http.post(
             f"{ARTEL_URL}/tasks",
             headers=_headers(agent),
             json={
                 "title": f"destroy enemy {enemy_id}",
                 "project": PHALANX_PROJECT,
-                "assigned_to": agent["id"],
                 "tags": ["phalanx", "target"],
             },
         )
+        task_id = r.json().get("id", "") if r.status_code < 300 else ""
+        if task_id:
+            await http.post(f"{ARTEL_URL}/tasks/{task_id}/claim", headers=_headers(agent), json={})
+        return task_id
     except Exception:
-        pass
+        return ""
 
 
-async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str) -> str:
+async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str, events: str) -> str:
+    # The lesson must rest on the match's REAL kill log — given no facts, a model invents
+    # plausible-sounding fiction, which poisons the team's memory instead of teaching it.
     sys = (
         "You are an Artel tank writing a quick after-action note for your team. " + outcome + " In "
         "ONE short sentence, record the most SPECIFIC, concrete takeaway from THIS match worth "
-        "remembering next time — a concrete enemy behaviour, a map spot that mattered, or a "
-        "specific mistake to avoid. Be specific; do NOT write generic advice like 'focus fire'. "
-        "No preamble."
+        "remembering next time — who fell to what, in what order, and what that says about how "
+        "to fight the next match. Use ONLY the facts in the match log; never invent details. "
+        "Do NOT write generic advice like 'focus fire'. No preamble."
     )
+    user = f"Match log: {events or 'no kills were recorded'}\nLesson:"
     for ep in _ENDPOINTS:
         if not ep["key"]:
             continue
@@ -529,7 +547,7 @@ async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str) -> str:
                 "model": ep["model"],
                 "max_tokens": 60,
                 "system": sys,
-                "messages": [{"role": "user", "content": "Lesson:"}],
+                "messages": [{"role": "user", "content": user}],
             }
             headers = {
                 "x-api-key": ep["key"],
@@ -542,7 +560,7 @@ async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str) -> str:
                 "max_tokens": 60,
                 "messages": [
                     {"role": "system", "content": sys},
-                    {"role": "user", "content": "Lesson:"},
+                    {"role": "user", "content": user},
                 ],
             }
             headers = {"authorization": f"Bearer {ep['key']}", "content-type": "application/json"}
@@ -582,10 +600,18 @@ def _reflex(p: dict) -> dict:
 
 
 async def decide(
-    http: httpx.AsyncClient, agent: dict, p: dict, mate_ids: list[str], memory: str = ""
-) -> tuple[dict, float]:
+    http: httpx.AsyncClient,
+    agent: dict,
+    p: dict,
+    mate_ids: list[str],
+    memory: str = "",
+    notes: str = "",
+    claims: list | None = None,
+) -> tuple[dict, float, str]:
     inbox = await _consume_inbox(http, agent)
     user = _perception_text(p)
+    if notes:
+        user += f"\n{notes}"
     if memory:
         user += f"\nTeam memory from past matches: {memory}"
     if inbox:
@@ -593,7 +619,7 @@ async def decide(
     system = SYSTEM.format(mates=" and ".join(mate_ids) or "your team")
     transcript: list[dict] = [{"role": "user", "text": user}]
     intent = {"turn": 0, "move": "hold", "fire": 0}
-    cost = 0.0
+    cost, plan = 0.0, ""
     for _ in range(MAX_TOOL_ROUNDS):
         text, calls, tin, tout, ep = await _chat(http, system, transcript)
         cost += tin * ep["cin"] + tout * ep["cout"]
@@ -609,6 +635,7 @@ async def decide(
                     "move": inp.get("move", "hold"),
                     "fire": int(inp.get("fire", 0) or 0),
                 }
+                plan = str(inp.get("plan", "") or "")[:140]
                 acted = True
                 results.append({"id": c["id"], "output": "ok"})
             elif c["name"] == "tell_team":
@@ -627,8 +654,12 @@ async def decide(
                 found = await _recall(http, agent, str(c["input"].get("query", "")))
                 results.append({"id": c["id"], "output": found or "nothing relevant"})
             elif c["name"] == "claim_target":
-                await _claim_target(http, agent, int(c["input"].get("enemy_id", 0) or 0))
-                results.append({"id": c["id"], "output": "claimed"})
+                tid = await _claim_target(
+                    http, agent, int(c["input"].get("enemy_id", 0) or 0), mate_ids
+                )
+                if tid and claims is not None:
+                    claims.append((agent, tid))
+                results.append({"id": c["id"], "output": "claimed and announced to the team"})
         if acted:
             break
         transcript.append({"role": "tool", "results": results})
@@ -640,7 +671,7 @@ async def decide(
         intent["fire"] = rx["fire"]
     if intent.get("move", "hold") == "hold" and not intent.get("fire"):
         intent["turn"], intent["move"] = rx["turn"], rx["move"]
-    return intent, cost
+    return intent, cost, plan
 
 
 class Squad:
@@ -658,6 +689,9 @@ class Squad:
         self._assign: dict[int, dict] = {}  # tank id -> agent, fixed for the current match
         self._joined: set[str] = set()  # agents that have joined the project this process
         self._context: dict[int, str] = {}  # per-tank memory recalled at match start
+        self._last: dict[int, str] = {}  # per-tank last action, carried into the next turn
+        self._plans: dict[int, str] = {}  # per-tank standing plan (the agent's own words)
+        self._claims: list[tuple[dict, str]] = []  # (agent, task id) opened this match
 
     @staticmethod
     def _load_agents() -> list[dict]:
@@ -688,9 +722,22 @@ class Squad:
             await self._ensure_member(agent)
             self._joined.add(agent["id"])
         mate_ids = [a["id"] for a in self.agents if a["id"] != agent["id"]]
+        # continuity: the agent sees what it just did and the plan it set, so it can follow
+        # through across turns instead of rediscovering the situation from scratch every 2.5s
+        notes = self._last.get(tank_id, "")
+        if self._plans.get(tank_id):
+            notes += f" Your standing plan: {self._plans[tank_id]}"
         try:
-            intent, cost = await asyncio.wait_for(
-                decide(self._http, agent, p, mate_ids, self._context.get(tank_id, "")),
+            intent, cost, plan = await asyncio.wait_for(
+                decide(
+                    self._http,
+                    agent,
+                    p,
+                    mate_ids,
+                    self._context.get(tank_id, ""),
+                    notes.strip(),
+                    self._claims,
+                ),
                 timeout=DECIDE_DEADLINE,
             )
         except Exception as e:
@@ -699,6 +746,10 @@ class Squad:
             return _reflex(p)
         self.spent += cost
         self.last_error = None
+        if plan:
+            self._plans[tank_id] = plan
+        fired = f"fired at #{intent['fire']}" if intent.get("fire") else "held fire"
+        self._last[tank_id] = f"Last turn you {fired} and moved {intent.get('move', 'hold')}."
         return intent
 
     def current_assignment(self) -> dict[int, dict]:
@@ -710,6 +761,9 @@ class Squad:
         if self._http is None:
             self._http = httpx.AsyncClient(timeout=httpx.Timeout(LLM_TIMEOUT))
         self._context = {}
+        self._last = {}
+        self._plans = {}
+        self._claims = []
         for tid, agent in self._assign.items():
             if agent["id"] not in self._joined:
                 await self._ensure_member(agent)
@@ -720,16 +774,29 @@ class Squad:
                 "phalanx tactics: positioning, focus fire, the closing zone, beating the enemy team",
             )
 
-    async def on_end(self, won: bool, survivors: set[int], assign: dict[int, dict]) -> None:
+    async def on_end(
+        self, won: bool, survivors: set[int], assign: dict[int, dict], events: str = ""
+    ) -> None:
         if self._http is None or not assign:
             return
+        # close out this match's target claims — Artel tasks never get left in limbo
+        for agent, task_id in self._claims:
+            try:
+                await self._http.post(
+                    f"{ARTEL_URL}/tasks/{task_id}/complete",
+                    headers=_headers(agent),
+                    json={"body": "match over"},
+                )
+            except Exception:
+                pass
+        self._claims = []
         # one grounded note per match, not three near-identical platitudes
         _, agent = next(iter(assign.items()))
         outcome = (
             f"Your team {'WON' if won else 'LOST'} with {len(survivors)} of 3 tanks still alive."
         )
         try:
-            lesson = await _reflect(self._http, agent, outcome)
+            lesson = await _reflect(self._http, agent, outcome, events)
         except Exception:
             lesson = ""
         if lesson:
