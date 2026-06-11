@@ -821,12 +821,14 @@ class Squad:
         # broadcasts it over Artel — every tank starts the match already coordinated
         if self._assign:
             lead_tid, lead = next(iter(self._assign.items()))
-            # fresh round: reset the previous match's tasks and messages — memory is NOT
-            # touched, lessons transcend rounds (owner-gated server-side; a 403 just means
+            # fresh round: clear the previous match's tasks and messages — explicitly NOT
+            # memory, lessons transcend rounds (owner-gated server-side; a 403 just means
             # this agent doesn't own the project — harmless, skip)
             try:
                 await self._http.post(
-                    f"{ARTEL_URL}/projects/{PHALANX_PROJECT}/reset", headers=_headers(lead)
+                    f"{ARTEL_URL}/projects/{PHALANX_PROJECT}/clear",
+                    headers=_headers(lead),
+                    json={"memory": False, "tasks": True, "messages": True},
                 )
             except Exception:
                 pass
