@@ -56,7 +56,10 @@ TOOLS = [
         "schema": {
             "type": "object",
             "properties": {
-                "to": {"type": "string", "description": "a teammate's agent id, or 'team' for both"},
+                "to": {
+                    "type": "string",
+                    "description": "a teammate's agent id, or 'team' for both",
+                },
                 "text": {"type": "string"},
             },
             "required": ["to", "text"],
@@ -70,7 +73,10 @@ TOOLS = [
             "properties": {
                 "move": {"type": "string", "enum": ["fwd", "back", "hold"]},
                 "turn": {"type": "string", "enum": ["left", "right", "none"]},
-                "fire": {"type": "integer", "description": "enemy tank id to shoot at, or 0 to hold fire"},
+                "fire": {
+                    "type": "integer",
+                    "description": "enemy tank id to shoot at, or 0 to hold fire",
+                },
             },
             "required": ["move", "turn", "fire"],
         },
@@ -89,19 +95,37 @@ def _build_payload(system: str, transcript: list[dict]) -> tuple[str, dict, dict
                 messages.append({"role": "user", "content": e["text"]})
             elif e["role"] == "assistant":
                 blocks = [{"type": "text", "text": e["text"]}] if e.get("text") else []
-                blocks += [{"type": "tool_use", "id": c["id"], "name": c["name"], "input": c["input"]} for c in e["calls"]]
+                blocks += [
+                    {"type": "tool_use", "id": c["id"], "name": c["name"], "input": c["input"]}
+                    for c in e["calls"]
+                ]
                 messages.append({"role": "assistant", "content": blocks})
             else:
-                messages.append({
-                    "role": "user",
-                    "content": [{"type": "tool_result", "tool_use_id": r["id"], "content": r["output"]} for r in e["results"]],
-                })
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "tool_result", "tool_use_id": r["id"], "content": r["output"]}
+                            for r in e["results"]
+                        ],
+                    }
+                )
         payload = {
-            "model": MODEL, "max_tokens": 320, "system": system,
-            "tools": [{"name": t["name"], "description": t["description"], "input_schema": t["schema"]} for t in TOOLS],
-            "tool_choice": {"type": "any"}, "messages": messages,
+            "model": MODEL,
+            "max_tokens": 320,
+            "system": system,
+            "tools": [
+                {"name": t["name"], "description": t["description"], "input_schema": t["schema"]}
+                for t in TOOLS
+            ],
+            "tool_choice": {"type": "any"},
+            "messages": messages,
         }
-        headers = {"x-api-key": LLM_KEY, "anthropic-version": LLM_VERSION, "content-type": "application/json"}
+        headers = {
+            "x-api-key": LLM_KEY,
+            "anthropic-version": LLM_VERSION,
+            "content-type": "application/json",
+        }
         return LLM_URL, payload, headers
 
     messages = [{"role": "system", "content": system}]
@@ -109,20 +133,39 @@ def _build_payload(system: str, transcript: list[dict]) -> tuple[str, dict, dict
         if e["role"] == "user":
             messages.append({"role": "user", "content": e["text"]})
         elif e["role"] == "assistant":
-            messages.append({
-                "role": "assistant", "content": e.get("text") or None,
-                "tool_calls": [
-                    {"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": json.dumps(c["input"])}}
-                    for c in e["calls"]
-                ],
-            })
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": e.get("text") or None,
+                    "tool_calls": [
+                        {
+                            "id": c["id"],
+                            "type": "function",
+                            "function": {"name": c["name"], "arguments": json.dumps(c["input"])},
+                        }
+                        for c in e["calls"]
+                    ],
+                }
+            )
         else:
             for r in e["results"]:
                 messages.append({"role": "tool", "tool_call_id": r["id"], "content": r["output"]})
     payload = {
-        "model": MODEL, "max_tokens": 320,
-        "tools": [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["schema"]}} for t in TOOLS],
-        "tool_choice": "required", "messages": messages,
+        "model": MODEL,
+        "max_tokens": 320,
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": t["name"],
+                    "description": t["description"],
+                    "parameters": t["schema"],
+                },
+            }
+            for t in TOOLS
+        ],
+        "tool_choice": "required",
+        "messages": messages,
     }
     headers = {"authorization": f"Bearer {LLM_KEY}", "content-type": "application/json"}
     return LLM_URL, payload, headers
@@ -136,7 +179,13 @@ def _parse(data: dict) -> tuple[str, list[dict], int, int]:
             if block.get("type") == "text":
                 text += block.get("text", "")
             elif block.get("type") == "tool_use":
-                calls.append({"id": block.get("id"), "name": block.get("name"), "input": block.get("input", {})})
+                calls.append(
+                    {
+                        "id": block.get("id"),
+                        "name": block.get("name"),
+                        "input": block.get("input", {}),
+                    }
+                )
         return text, calls, usage.get("input_tokens", 0), usage.get("output_tokens", 0)
 
     usage = data.get("usage", {})
@@ -149,17 +198,28 @@ def _parse(data: dict) -> tuple[str, list[dict], int, int]:
         except Exception:
             inp = {}
         calls.append({"id": c.get("id"), "name": fn.get("name"), "input": inp})
-    return msg.get("content") or "", calls, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)
+    return (
+        msg.get("content") or "",
+        calls,
+        usage.get("prompt_tokens", 0),
+        usage.get("completion_tokens", 0),
+    )
 
 
 def _headers(agent: dict) -> dict:
-    return {"X-Agent-Id": agent["id"], "X-Api-Key": agent["key"], "content-type": "application/json"}
+    return {
+        "X-Agent-Id": agent["id"],
+        "X-Api-Key": agent["key"],
+        "content-type": "application/json",
+    }
 
 
 def _perception_text(p: dict) -> str:
     foes = [
-        f"enemy#{e['id']} dir{e['dir']} dist{e['dist']}" + (f" energy{e['energy']}" if "energy" in e else "")
-        for e in p["visible"] if e["kind"] == "enemy"
+        f"enemy#{e['id']} dir{e['dir']} dist{e['dist']}"
+        + (f" energy{e['energy']}" if "energy" in e else "")
+        for e in p["visible"]
+        if e["kind"] == "enemy"
     ]
     allies = [f"#{e['id']}(dist{e['dist']})" for e in p["visible"] if e["kind"] == "ally"]
     return (
@@ -180,18 +240,23 @@ async def _consume_inbox(http: httpx.AsyncClient, agent: dict) -> str:
     return " | ".join(lines)
 
 
-async def _send(http: httpx.AsyncClient, agent: dict, to: str, text: str, mate_ids: list[str]) -> None:
+async def _send(
+    http: httpx.AsyncClient, agent: dict, to: str, text: str, mate_ids: list[str]
+) -> None:
     target = to if to in mate_ids else f"project:{PHALANX_PROJECT}"
     try:
         await http.post(
-            f"{ARTEL_URL}/messages", headers=_headers(agent),
+            f"{ARTEL_URL}/messages",
+            headers=_headers(agent),
             json={"to": target, "subject": "phalanx", "body": text[:280]},
         )
     except Exception:
         pass
 
 
-async def decide(http: httpx.AsyncClient, agent: dict, p: dict, mate_ids: list[str]) -> tuple[dict, float]:
+async def decide(
+    http: httpx.AsyncClient, agent: dict, p: dict, mate_ids: list[str]
+) -> tuple[dict, float]:
     inbox = await _consume_inbox(http, agent)
     user = _perception_text(p) + (f"\nFrom Artel: {inbox}" if inbox else "")
     system = SYSTEM.format(mates=" and ".join(mate_ids) or "your team")
@@ -210,11 +275,21 @@ async def decide(http: httpx.AsyncClient, agent: dict, p: dict, mate_ids: list[s
         for c in calls:
             if c["name"] == "act":
                 inp = c["input"]
-                intent = {"turn": _TURN.get(inp.get("turn", "none"), 0), "move": inp.get("move", "hold"), "fire": int(inp.get("fire", 0) or 0)}
+                intent = {
+                    "turn": _TURN.get(inp.get("turn", "none"), 0),
+                    "move": inp.get("move", "hold"),
+                    "fire": int(inp.get("fire", 0) or 0),
+                }
                 acted = True
                 results.append({"id": c["id"], "output": "ok"})
             elif c["name"] == "tell_team":
-                await _send(http, agent, str(c["input"].get("to", "team")), str(c["input"].get("text", "")), mate_ids)
+                await _send(
+                    http,
+                    agent,
+                    str(c["input"].get("to", "team")),
+                    str(c["input"].get("text", "")),
+                    mate_ids,
+                )
                 results.append({"id": c["id"], "output": "sent"})
         if acted:
             return intent, cost

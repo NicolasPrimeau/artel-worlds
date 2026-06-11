@@ -7,8 +7,6 @@ import secrets
 from pathlib import Path
 from random import SystemRandom
 
-_rng = SystemRandom()
-
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
@@ -17,6 +15,8 @@ from .agent import Squad
 from .arena import Arena
 from .config import DEFAULT
 from .control import Bot
+
+_rng = SystemRandom()
 
 STATIC = Path(__file__).parent / "static"
 TICK_INTERVAL = 1.0  # one tick per second — easy to follow
@@ -71,7 +71,11 @@ class Phalanx:
             "height": a.cfg.height,
             "scores": self.scores,
             "coordinated": list(COORDINATED),
-            "zone": {"q": a.cfg.width // 2, "r": a.cfg.height // 2, "radius": round(a.safe_radius(), 2)},
+            "zone": {
+                "q": a.cfg.width // 2,
+                "r": a.cfg.height // 2,
+                "radius": round(a.safe_radius(), 2),
+            },
             "tank_list": [
                 {
                     "id": t.id,

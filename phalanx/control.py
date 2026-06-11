@@ -80,9 +80,11 @@ class Bot:
         if p["gun_ready"] and in_range:
             shot = min(
                 in_range,
-                key=lambda e: (self.board[e]["energy"], visible[e]["dist"])
-                if self.coord
-                else (visible[e]["dist"], self.board[e]["energy"]),
+                key=lambda e: (
+                    (self.board[e]["energy"], visible[e]["dist"])
+                    if self.coord
+                    else (visible[e]["dist"], self.board[e]["energy"])
+                ),
             )
             intent["fire"] = shot
 
