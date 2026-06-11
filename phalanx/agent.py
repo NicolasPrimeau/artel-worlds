@@ -109,7 +109,10 @@ SYSTEM = (
     "SAME turn, or no shot happens.\n"
     "MOVING: never sit idle waiting. With no enemy in range, advance toward the arena center to "
     "make contact — the safe zone shrinks to the center, so camping the edge gets you killed. "
-    "Turn toward where you want to go, then move fwd.\n"
+    "Turn toward where you want to go, then move fwd. ARRIVE TOGETHER: while advancing stay "
+    "within 2 hexes of a teammate, and if you are ahead of your team, hold or angle back until "
+    "they catch up — the tank that reaches the enemy first fights 3-vs-1 and dies before the "
+    "team can trade back. First contact together, or not at all.\n"
     "STRATEGY — the team fights ONE fight, not three: there is a TEAM PLAN (from the pre-match "
     "huddle, updated over Artel as the fight turns) and following it beats any solo brilliance. "
     "Concentrate the team's fire on ONE enemy at a time (three guns destroy one tank fast, "
@@ -340,20 +343,42 @@ def _parse(ep: dict, data: dict) -> tuple[str, list[dict], int, int]:
     )
 
 
+# rate-limit memory: when an endpoint 429s, remember it and stop paying a wasted request
+# (plus latency) per decision against a dead quota. A daily-quota 429 sidelines the endpoint
+# for 15 minutes; a per-minute one for 20 seconds. Counters are surfaced in /debug.
+THROTTLED: dict[str, int] = {}
+_down_until: dict[str, float] = {}
+_DOWN_DAILY = 900.0
+_DOWN_BURST = 20.0
+
+
+def _mark_throttled(ep: dict, body: str) -> None:
+    THROTTLED[ep["model"]] = THROTTLED.get(ep["model"], 0) + 1
+    cooldown = _DOWN_DAILY if ("per day" in body or "RPD" in body) else _DOWN_BURST
+    _down_until[ep["model"]] = asyncio.get_event_loop().time() + cooldown
+
+
+def _live_endpoints() -> list[dict]:
+    now = asyncio.get_event_loop().time()
+    eps = [ep for ep in _ENDPOINTS if ep["key"] and _down_until.get(ep["model"], 0) <= now]
+    # everything sidelined: try them all anyway rather than instantly giving up to reflex
+    return eps or [ep for ep in _ENDPOINTS if ep["key"]]
+
+
 async def _chat(
     http: httpx.AsyncClient, system: str, transcript: list[dict]
 ) -> tuple[str, list[dict], int, int, dict]:
-    # ask the primary provider; on a rate-limit/error fail the SAME turn over to the fallback
-    # provider so the model still drives. Raises only if every provider is exhausted.
+    # ask the first live provider; on a rate-limit/error fail the SAME turn over to the next
+    # IMMEDIATELY — no retry-backoff against a dead quota. Raises only when all are exhausted.
     last: tuple[dict, httpx.Response] | None = None
-    for ep in _ENDPOINTS:
-        if not ep["key"]:
-            continue
+    for ep in _live_endpoints():
         url, payload, headers = _build_payload(ep, system, transcript)
-        r = await _post_llm(http, url, headers, payload)
+        r = await http.post(url, headers=headers, json=payload)
         if r.status_code < 300:
             text, calls, tin, tout = _parse(ep, r.json())
             return text, calls, tin, tout, ep
+        if r.status_code == 429:
+            _mark_throttled(ep, r.text[:300])
         log.warning("LLM %s HTTP %s: %s", ep["model"], r.status_code, r.text[:200])
         last = (ep, r)
     if last is None:
@@ -364,20 +389,7 @@ async def _chat(
 async def _post_llm(
     http: httpx.AsyncClient, url: str, headers: dict, payload: dict
 ) -> httpx.Response:
-    # OpenAI's lower tiers 429 under the burst of three agents calling at once each tick; a
-    # short backoff (honoring Retry-After when given) usually clears it within the same tick,
-    # which keeps the LLM driving instead of dropping to the deterministic fallback.
-    r = None
-    for attempt in range(3):
-        r = await http.post(url, headers=headers, json=payload)
-        if r.status_code != 429 and r.status_code < 500:
-            return r
-        if attempt == 2:
-            return r
-        ra = r.headers.get("retry-after", "")
-        delay = float(ra) if ra.replace(".", "", 1).isdigit() else 0.6 * (attempt + 1)
-        await asyncio.sleep(min(delay, 2.0))
-    return r
+    return await http.post(url, headers=headers, json=payload)
 
 
 def _headers(agent: dict) -> dict:
@@ -558,9 +570,7 @@ async def _claim_target(
 
 
 async def _oneshot(http: httpx.AsyncClient, sys: str, user: str, max_tokens: int = 60) -> str:
-    for ep in _ENDPOINTS:
-        if not ep["key"]:
-            continue
+    for ep in _live_endpoints():
         if ep["provider"] == "anthropic":
             payload = {
                 "model": ep["model"],
@@ -585,6 +595,8 @@ async def _oneshot(http: httpx.AsyncClient, sys: str, user: str, max_tokens: int
             headers = {"authorization": f"Bearer {ep['key']}", "content-type": "application/json"}
         r = await _post_llm(http, ep["url"], headers, payload)
         if r.status_code >= 300:
+            if r.status_code == 429:
+                _mark_throttled(ep, r.text[:300])
             continue
         data = r.json()
         if ep["provider"] == "anthropic":
@@ -914,6 +926,12 @@ class Squad:
             "spent_usd": round(self.spent, 4),
             "cap_usd": SPEND_CAP_USD,
             "last_error": self.last_error,
+            "throttled_429s": dict(THROTTLED),
+            "endpoints_down": {
+                m: round(t - asyncio.get_event_loop().time(), 1)
+                for m, t in _down_until.items()
+                if t > asyncio.get_event_loop().time()
+            },
         }
 
     def stop(self) -> None:
