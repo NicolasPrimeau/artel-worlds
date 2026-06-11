@@ -583,13 +583,15 @@ async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str, events: s
     # The lesson must rest on the match's REAL kill log — given no facts, a model invents
     # plausible-sounding fiction, which poisons the team's memory instead of teaching it.
     sys = (
-        "You are an Artel tank writing a quick after-action note for your team. " + outcome + " In "
-        "ONE short sentence, record the most SPECIFIC, concrete takeaway from THIS match worth "
-        "remembering next time — who fell to what, in what order, and what that says about how "
-        "to fight the next match. Use ONLY the facts in the match log; never invent details. "
-        "Do NOT write generic advice like 'focus fire'. No preamble."
+        "You are an Artel tank writing a quick after-action note for your team. " + outcome + " "
+        "From the match log, extract ONE reusable tactical rule the team can apply in ANY future "
+        "match — 'when X happens, do Y' — that this match's events actually justify. Tank ids, "
+        "coordinates, and kill order change every match: do not retell them, generalize from "
+        "them (e.g. losses to the closing zone -> a rule about when to rotate in; first kill won "
+        "the fight -> a rule about forcing an early pick). Use ONLY the log; never invent. Do "
+        "NOT write platitudes like 'focus fire more'. ONE short sentence, no preamble."
     )
-    return await _oneshot(http, sys, f"Match log: {events or 'no kills were recorded'}\nLesson:")
+    return await _oneshot(http, sys, f"Match log: {events or 'no kills were recorded'}\nRule:")
 
 
 async def _huddle(http: httpx.AsyncClient, mates: str, memory: str) -> str:
@@ -827,9 +829,7 @@ class Squad:
             if plan:
                 await _send(self._http, lead, "team", f"TEAM PLAN: {plan}"[:280], [])
                 for tid in self._assign:
-                    self._context[tid] = (
-                        f"{self._context.get(tid, '')} Team plan: {plan}".strip()
-                    )
+                    self._context[tid] = f"{self._context.get(tid, '')} Team plan: {plan}".strip()
 
     async def on_end(
         self, won: bool, survivors: set[int], assign: dict[int, dict], events: str = ""
