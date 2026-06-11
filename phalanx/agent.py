@@ -45,17 +45,21 @@ LLM_TIMEOUT = float(os.environ.get("PHALANX_LLM_TIMEOUT", "15"))
 # Concise. Names the teammates, says coordinate through Artel — and stops there. No
 # instructions on HOW to use Artel: the coordination has to emerge, not be scripted.
 SYSTEM = (
-    "You command one tank on team Artel in a 3v3 hex-arena fight to the death. "
-    "Win by destroying the enemy team; a draw or trading your team away is a loss. "
-    "Your teammates are {mates} — both on Artel with you. Coordinate through Artel to win. "
-    "Each turn you take ONE action with the act tool. Your gun is TARGET-BASED: set fire to an "
-    "enemy id and it auto-hits any enemy that is IN RANGE with line of sight, no matter which way "
-    "you are facing — firing NEVER needs turning toward them. So whenever your gun is ready and "
-    "the perception lists an enemy in range, FIRE at one (you may move the same turn too). Use "
-    "move/turn only to chase enemies you cannot hit yet, hold a good position, or escape the "
-    "closing zone. A ready gun that does not fire an in-range enemy is wasted and loses. "
-    "Artel also lets you remember/recall shared knowledge across matches and claim_target an "
-    "enemy so the team spreads its fire — use them when they help, but never skip firing to do so."
+    "You command one tank on team Artel — your teammates {mates} share Artel with you — against "
+    "three enemy tanks in a hex arena. Last team standing wins; a draw or losing your team is a "
+    "loss, so play to WIN together. Each turn you take ONE action with the act tool.\n"
+    "FIRING: your gun is target-based — set fire to an enemy id and it auto-hits any enemy IN "
+    "RANGE with line of sight no matter which way you face (firing never needs turning). If the "
+    "perception says you can fire, ALWAYS fire — you can move the same turn. A wasted gun loses.\n"
+    "MOVING: never sit idle waiting. With no enemy in range, advance toward the arena center to "
+    "make contact — the safe zone shrinks to the center, so camping the edge gets you killed. "
+    "Turn toward where you want to go, then move fwd.\n"
+    "STRATEGY — coordinate over Artel, do not fight solo: concentrate the team's fire on ONE "
+    "enemy at a time (three guns destroy one tank fast, turning 3v3 into a 3v2 lead) — agree on "
+    "the target and focus the weakest. Push toward the enemy together and keep close enough for "
+    "crossfire; never wander off alone. Use tell_team for short useful calls (the target, a "
+    "threat, your position), claim_target only to split DIFFERENT enemies when you deliberately "
+    "spread out, and remember/recall to carry lessons between matches."
 )
 
 TOOLS = [
@@ -285,11 +289,20 @@ def _perception_text(p: dict) -> str:
     elif can_fire:
         fire_line = f"You can FIRE this turn at: {', '.join(can_fire)} (no turning needed). "
     else:
-        fire_line = "Gun ready but no enemy in range yet. "
+        fire_line = "No enemy in range yet. "
+    cdir = p.get("to_center")
+    center_rel = _REL[(cdir - p["heading"]) % 6] if cdir is not None else None
+    if not can_fire and center_rel and p.get("dist_center", 0) > 2:
+        move_line = (
+            f"Don't wait around — the fight converges on the arena center as the zone shrinks. "
+            f"Center is {center_rel} of you: turn toward it and move fwd to find the enemy. "
+        )
+    else:
+        move_line = ""
     return (
         f"You are tank #{p['id']} at hex ({p['q']},{p['r']}), energy {p['energy']}, "
         f"{'inside' if p.get('safe', True) else 'OUTSIDE — taking zone damage'} the safe zone. "
-        f"{fire_line}"
+        f"{fire_line}{move_line}"
         f"Enemies: {'; '.join(foes) if foes else 'none in sight'}. "
         f"Teammates: {', '.join(allies) if allies else 'none in sight'}."
     )
@@ -367,11 +380,53 @@ async def _claim_target(http: httpx.AsyncClient, agent: dict, enemy_id: int) -> 
         pass
 
 
+async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str) -> str:
+    sys = (
+        "You are an Artel tank reflecting right after a 3v3 hex-arena match. " + outcome + " In "
+        "ONE short, concrete sentence, give a tactical lesson for your team's next match — about "
+        "positioning, focus fire, or timing the closing zone. No preamble, just the lesson."
+    )
+    if PROVIDER == "anthropic":
+        payload = {
+            "model": MODEL,
+            "max_tokens": 60,
+            "system": sys,
+            "messages": [{"role": "user", "content": "Lesson:"}],
+        }
+        headers = {
+            "x-api-key": LLM_KEY,
+            "anthropic-version": LLM_VERSION,
+            "content-type": "application/json",
+        }
+    else:
+        payload = {
+            "model": MODEL,
+            "max_tokens": 60,
+            "messages": [
+                {"role": "system", "content": sys},
+                {"role": "user", "content": "Lesson:"},
+            ],
+        }
+        headers = {"authorization": f"Bearer {LLM_KEY}", "content-type": "application/json"}
+    r = await http.post(LLM_URL, headers=headers, json=payload)
+    if r.status_code >= 300:
+        return ""
+    data = r.json()
+    if PROVIDER == "anthropic":
+        blocks = data.get("content", [])
+        return "".join(b.get("text", "") for b in blocks if b.get("type") == "text").strip()
+    return ((data.get("choices") or [{}])[0].get("message", {}).get("content", "") or "").strip()
+
+
 async def decide(
-    http: httpx.AsyncClient, agent: dict, p: dict, mate_ids: list[str]
+    http: httpx.AsyncClient, agent: dict, p: dict, mate_ids: list[str], memory: str = ""
 ) -> tuple[dict, float]:
     inbox = await _consume_inbox(http, agent)
-    user = _perception_text(p) + (f"\nFrom Artel: {inbox}" if inbox else "")
+    user = _perception_text(p)
+    if memory:
+        user += f"\nTeam memory from past matches: {memory}"
+    if inbox:
+        user += f"\nFrom Artel teammates: {inbox}"
     system = SYSTEM.format(mates=" and ".join(mate_ids) or "your team")
     transcript: list[dict] = [{"role": "user", "text": user}]
     intent = {"turn": 0, "move": "hold", "fire": 0}
@@ -436,6 +491,7 @@ class Squad:
         self._http: httpx.AsyncClient | None = None
         self._assign: dict[int, dict] = {}  # tank id -> agent, fixed for the current match
         self._joined: set[str] = set()  # agents that have joined the project this process
+        self._context: dict[int, str] = {}  # per-tank memory recalled at match start
 
     @staticmethod
     def _load_agents() -> list[dict]:
@@ -466,7 +522,9 @@ class Squad:
             self._joined.add(agent["id"])
         mate_ids = [a["id"] for a in self.agents if a["id"] != agent["id"]]
         try:
-            intent, cost = await decide(self._http, agent, p, mate_ids)
+            intent, cost = await decide(
+                self._http, agent, p, mate_ids, self._context.get(tank_id, "")
+            )
         except Exception as e:
             self.last_error = f"{type(e).__name__}: {e}"
             log.warning("phalanx agent %s failed: %s", agent["id"], self.last_error)
@@ -474,6 +532,38 @@ class Squad:
         self.spent += cost
         self.last_error = None
         return intent
+
+    def current_assignment(self) -> dict[int, dict]:
+        return dict(self._assign)
+
+    async def on_start(self) -> None:
+        if not self.enabled:
+            return
+        if self._http is None:
+            self._http = httpx.AsyncClient(timeout=httpx.Timeout(LLM_TIMEOUT))
+        self._context = {}
+        for tid, agent in self._assign.items():
+            if agent["id"] not in self._joined:
+                await self._ensure_member(agent)
+                self._joined.add(agent["id"])
+            self._context[tid] = await _recall(
+                self._http,
+                agent,
+                "phalanx tactics: positioning, focus fire, the closing zone, beating the enemy team",
+            )
+
+    async def on_end(self, won: bool, survivors: set[int], assign: dict[int, dict]) -> None:
+        if self._http is None or not assign:
+            return
+        for tid, agent in assign.items():
+            fate = "Your tank survived" if tid in survivors else "Your tank was destroyed"
+            outcome = f"Your team {'WON' if won else 'LOST'}. {fate}."
+            try:
+                lesson = await _reflect(self._http, agent, outcome)
+            except Exception:
+                lesson = ""
+            if lesson:
+                await _remember(self._http, agent, lesson)
 
     async def _ensure_member(self, agent: dict) -> None:
         # an agent must belong to the project to broadcast to teammates and receive their

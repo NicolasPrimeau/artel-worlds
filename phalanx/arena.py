@@ -190,6 +190,8 @@ class Arena:
             "safe": hex_distance(me.q, me.r, cq, cr) <= rad,
             "zone_radius": round(rad, 2),
             "fire_range": self.cfg.fire_range,
+            "to_center": dir_toward(me.q, me.r, cq, cr),
+            "dist_center": hex_distance(me.q, me.r, cq, cr),
             "visible": visible,
             "walls": walls,
         }
@@ -294,6 +296,14 @@ class Arena:
         elif len(alive_teams) == 0 and pre_energy:
             # mutual wipeout this step — no draw: the team that was ahead wins
             self.winner = max(pre_energy, key=lambda k: pre_energy[k])
+        if self.winner is None and self.tick_count >= cfg.match_max_ticks:
+            # hard cap: never let a match stall — the team with the most tanks (then energy) wins
+            standing: dict[str, tuple[int, float]] = {}
+            for t in self.tanks.values():
+                cnt, en = standing.get(t.team, (0, 0.0))
+                standing[t.team] = (cnt + 1, en + t.energy)
+            if standing:
+                self.winner = max(standing, key=lambda k: standing[k])
         return self.stats()
 
     def stats(self) -> dict:

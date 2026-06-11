@@ -21,7 +21,7 @@ _rng = SystemRandom()
 log = logging.getLogger("phalanx")
 
 STATIC = Path(__file__).parent / "static"
-TICK_INTERVAL = 3.5  # MINIMUM seconds per tick — sets the visible pace and caps LLM spend
+TICK_INTERVAL = 2.5  # MINIMUM seconds per tick — sets the visible pace and caps LLM spend
 # (one paid decision per agent per tick, so a slower tick means proportionally fewer calls).
 # It does NOT add think-time: the tick already waits for each model's answer (up to LLM_TIMEOUT),
 # so reasoning depth is governed by max_tokens / MAX_TOOL_ROUNDS, not this floor.
@@ -40,6 +40,7 @@ class Phalanx:
         self.scores: dict[str, int] = {}  # wins, accumulated across matches
         self.squad = Squad()  # the live Artel LLM agents (no-op until keys + a viewer)
         self._squad_match = -1  # which match the squad is currently driving
+        self._squad_started = -1  # which match the squad has already run on_start for
         self._new_match()
 
     def _new_match(self) -> None:
@@ -153,6 +154,9 @@ async def _tick_loop():
                 a = G.arena
                 _manage_squad()
                 live_artel = G.squad.enabled and G._squad_match == G.match_no
+                if live_artel and G._squad_started != G.match_no:
+                    await G.squad.on_start()
+                    G._squad_started = G.match_no
                 # collect every side's move for this tick: deterministic bots answer instantly;
                 # each live Artel tank's LLM agent is asked now and awaited below.
                 pending_llm: dict[int, asyncio.Task] = {}
@@ -176,6 +180,13 @@ async def _tick_loop():
                 if a.winner is not None or len(a.teams_alive()) <= 1:
                     if a.winner:
                         G.scores[a.winner] = G.scores.get(a.winner, 0) + 1
+                    if live_artel:
+                        survivors = {t.id for t in a.tanks.values() if t.team in COORDINATED}
+                        asyncio.create_task(
+                            G.squad.on_end(
+                                a.winner == "artel", survivors, G.squad.current_assignment()
+                            )
+                        )
                     G._new_match()
                 snap = G.snapshot()
             await _broadcast(snap)
