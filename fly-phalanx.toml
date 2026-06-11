@@ -1,0 +1,33 @@
+app = "artel-phalanx"
+primary_region = "yyz"
+
+[build]
+  dockerfile = "Dockerfile.phalanx"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # auto-stop when idle so the world costs ~$0 when nobody's watching;
+  # the match is in-memory and resets anyway, so a cold start is harmless.
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 200
+    soft_limit = 150
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+[checks]
+  [checks.health]
+    grace_period = "15s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    port = 8000
+    timeout = "5s"
+    type = "http"
