@@ -72,14 +72,30 @@
   #hud .cta a.primary { background:linear-gradient(180deg, #1d3a66, #142a4d); border-color:#2b4d80; color:#cfe2ff; }
   #hud .cta a b { color:var(--gold); }
   #winner {
-    position:absolute; top:18px; left:50%; transform:translateX(-50%); z-index:2;
-    display:none; align-items:center; gap:9px; padding:8px 16px; border-radius:11px;
-    background:var(--panel); border:1px solid var(--line); backdrop-filter:blur(10px);
-    font-size:16px; font-weight:800; letter-spacing:1.5px; box-shadow:0 8px 30px rgba(0,0,0,.5);
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:4;
+    display:none; align-items:center; gap:11px; padding:13px 24px; border-radius:13px;
+    background:var(--panel); border:1px solid var(--line); backdrop-filter:blur(12px);
+    font-size:20px; font-weight:800; letter-spacing:2px; white-space:nowrap;
+    box-shadow:0 14px 44px rgba(0,0,0,.6);
   }
   #winner.show { display:flex; animation:pop .35s ease; }
-  #winner .dot { width:11px; height:11px; border-radius:50%; }
-  @keyframes pop { from { transform:translateX(-50%) scale(.85); opacity:0; } }
+  #winner .dot { width:13px; height:13px; border-radius:50%; }
+  @keyframes pop { from { transform:translate(-50%,-50%) scale(.8); opacity:0; } }
+  /* mobile: slim full-width panels, winner overlay stays mid-arena and unobstructed */
+  @media (max-width:640px) {
+    header { gap:4px 10px; padding:9px 12px; padding-top:max(9px, env(safe-area-inset-top)); }
+    .tagline { font-size:11px; }
+    #score {
+      left:10px; right:10px; top:10px; min-width:0;
+      display:flex; gap:14px; padding:9px 12px;
+    }
+    #score .ttl { display:none; }
+    #score .team { flex:1; margin:0; }
+    #score .nm small { display:none; }
+    #hud { left:10px; right:10px; bottom:calc(10px + env(safe-area-inset-bottom)); max-width:none; }
+    #hud .leg { display:none; }
+    #winner { font-size:17px; padding:11px 18px; }
+  }
   #tip {
     position:fixed; z-index:10; pointer-events:none; opacity:0; transition:opacity .08s;
     background:var(--panel); border:1px solid #2b323d; border-radius:9px; padding:8px 10px;
