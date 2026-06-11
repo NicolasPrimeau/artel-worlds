@@ -38,6 +38,7 @@ _DEFAULT_URL = (
 LLM_URL = os.environ.get("PHALANX_LLM_URL", _DEFAULT_URL)
 LLM_VERSION = os.environ.get("PHALANX_LLM_VERSION", "2023-06-01")
 SPEND_CAP_USD = float(os.environ.get("PHALANX_SPEND_CAP_USD", "20"))
+REASONING = os.environ.get("PHALANX_REASONING", "none")  # gemini thinking effort; none = off
 MAX_TOOL_ROUNDS = 3
 
 
@@ -306,6 +307,11 @@ def _build_payload(ep: dict, system: str, transcript: list[dict]) -> tuple[str, 
         "tool_choice": "required",
         "messages": messages,
     }
+    if REASONING and "gemini" in ep["model"]:
+        # Gemini 2.5 models think by default and bill the hidden reasoning tokens as
+        # output — at $2.50/M that burns the monthly budget in hours. An arena turn does
+        # not need chain-of-thought; the reflex floors catch any sloppy miss.
+        payload["reasoning_effort"] = REASONING
     headers = {"authorization": f"Bearer {ep['key']}", "content-type": "application/json"}
     return ep["url"], payload, headers
 
