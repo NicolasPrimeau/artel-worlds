@@ -25,7 +25,7 @@ PHALANX_PROJECT = os.environ.get("PHALANX_PROJECT", "phalanx")
 # Set PHALANX_LLM_PROVIDER=anthropic (+ ANTHROPIC_API_KEY) to swap to Claude, or point
 # PHALANX_LLM_URL / PHALANX_MODEL at any other OpenAI-compatible provider.
 PROVIDER = os.environ.get("PHALANX_LLM_PROVIDER", "openai")
-MODEL = os.environ.get("PHALANX_MODEL", "gemini-2.5-flash")
+MODEL = os.environ.get("PHALANX_MODEL", "gemini-2.5-flash-lite")
 LLM_KEY = os.environ.get("PHALANX_LLM_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")
 _DEFAULT_URL = (
     "https://api.anthropic.com/v1/messages"
@@ -35,10 +35,8 @@ _DEFAULT_URL = (
 LLM_URL = os.environ.get("PHALANX_LLM_URL", _DEFAULT_URL)
 LLM_VERSION = os.environ.get("PHALANX_LLM_VERSION", "2023-06-01")
 SPEND_CAP_USD = float(os.environ.get("PHALANX_SPEND_CAP_USD", "20"))
-COST_IN = float(os.environ.get("PHALANX_COST_IN", "0.30")) / 1_000_000  # $/input token (2.5-flash)
-COST_OUT = (
-    float(os.environ.get("PHALANX_COST_OUT", "2.50")) / 1_000_000
-)  # $/output token (2.5-flash)
+COST_IN = float(os.environ.get("PHALANX_COST_IN", "0.10")) / 1_000_000  # $/input token (flash-lite)
+COST_OUT = float(os.environ.get("PHALANX_COST_OUT", "0.40")) / 1_000_000  # $/output (flash-lite)
 MAX_TOOL_ROUNDS = 4
 # Per-tick decision deadline. The synchronous tick waits for every agent's move before it
 # resolves, so this caps how long one model may take; past it that tank holds for the tick.
@@ -50,9 +48,15 @@ SYSTEM = (
     "You command one tank on team Artel — your teammates {mates} share Artel with you — against "
     "three enemy tanks in a hex arena. Last team standing wins; a draw or losing your team is a "
     "loss, so play to WIN together. Each turn you take ONE action with the act tool.\n"
+    "TWO things must BOTH work every turn: (1) play YOUR tank well — fire when you can, take good "
+    "ground, never just idle; AND (2) COORDINATE over Artel — share what you see, agree on a "
+    "target, focus fire together. A team that only chats but plays sloppily loses; a tank that "
+    "plays well but ignores its team loses. You need both at once.\n"
     "FIRING: your gun is target-based — set fire to an enemy id and it auto-hits any enemy IN "
     "RANGE with line of sight no matter which way you face (firing never needs turning). If the "
-    "perception says you can fire, ALWAYS fire — you can move the same turn. A wasted gun loses.\n"
+    "perception says you can fire, ALWAYS fire — you can move the same turn. A wasted gun loses. "
+    "Saying you will fire is NOT firing: you must set fire to that enemy id in the act tool the "
+    "SAME turn, or no shot happens.\n"
     "MOVING: never sit idle waiting. With no enemy in range, advance toward the arena center to "
     "make contact — the safe zone shrinks to the center, so camping the edge gets you killed. "
     "Turn toward where you want to go, then move fwd.\n"
