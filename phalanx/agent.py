@@ -93,8 +93,14 @@ LLM_TIMEOUT = float(os.environ.get("PHALANX_LLM_TIMEOUT", "12"))
 # Concise. Names the teammates, says coordinate through Artel — and stops there. No
 # instructions on HOW to use Artel: the coordination has to emerge, not be scripted.
 SYSTEM = (
-    "You command one tank on team Artel — your teammates {mates} share Artel with you — against "
-    "three enemy tanks in a hex arena. Last team standing wins; a draw or losing your team is a "
+    "You are an AI playing Phalanx, a simple turn-based tank GAME, driving one tank on team "
+    "Artel — your teammates {mates} share Artel with you — against three enemy tanks. The "
+    "ENTIRE game is: a small hex grid, 6 tanks (3 per team), impassable cover cells that block "
+    "movement and line of sight, energy (health and fuel in one number, no regeneration), "
+    "target-based shots, and a safe zone that shrinks toward the arena center. NOTHING ELSE "
+    "EXISTS: no artillery, no armor angles, no structures, no stealth, no scouting mechanic, no "
+    "suppression, no terrain height. Reason only about these pieces — anything else is "
+    "imagination and loses games. Last team standing wins; a draw or losing your team is a "
     "loss, so play to WIN together. Each turn you take ONE action with the act tool.\n"
     "ARTEL is your team's coordination layer: the messages, lessons, and target claims you put "
     "into it steer real decisions by your teammates, this turn and next match. Everything you "
@@ -152,11 +158,12 @@ TOOLS = [
     },
     {
         "name": "remember",
-        "description": "Save ONE specific, concrete thing you actually observed this match that you "
-        "could not have known in advance — a real enemy habit ('red rushes the center by tick 10'), "
-        "a map spot that helped or got someone killed, or a move that clearly won or lost a fight. "
-        "Do NOT save generic advice like 'focus fire the weakest' — that is already known and helps "
-        "no one. It must be concrete enough to change a decision next match.",
+        "description": "Save ONE lesson that will still be true NEXT match, stated only in terms "
+        "of the game's actual pieces (tanks, hexes, cover, energy, range, the zone) — a real "
+        "enemy habit ('red rushes the center by tick 10'), or a move that clearly won or lost a "
+        "fight. NOT current positions or energies (those die with this turn), NOT the team plan "
+        "(that is a message), NOT generic advice like 'focus fire' (already known), and NOT "
+        "anything involving mechanics this game does not have. If in doubt, don't save it.",
         "schema": {
             "type": "object",
             "properties": {"text": {"type": "string"}},
@@ -628,13 +635,16 @@ async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str, events: s
     # The lesson must rest on the match's REAL kill log — given no facts, a model invents
     # plausible-sounding fiction, which poisons the team's memory instead of teaching it.
     sys = (
-        "You are an Artel tank writing a quick after-action note for your team. " + outcome + " "
-        "From the match log, extract ONE reusable tactical rule the team can apply in ANY future "
-        "match — 'when X happens, do Y' — that this match's events actually justify. Tank ids, "
-        "coordinates, and kill order change every match: do not retell them, generalize from "
-        "them (e.g. losses to the closing zone -> a rule about when to rotate in; first kill won "
-        "the fight -> a rule about forcing an early pick). Use ONLY the log; never invent. Do "
-        "NOT write platitudes like 'focus fire more'. ONE short sentence, no preamble."
+        "You are an AI that just played a match of Phalanx, a simple turn-based tank game (hex "
+        "grid, 3v3 tanks, cover cells, energy, ranged auto-hit shots, a zone shrinking to "
+        "center — nothing else exists in this game). " + outcome + " From the match log, "
+        "extract ONE reusable tactical rule the team can apply in ANY future match — 'when X "
+        "happens, do Y' — that this match's events actually justify, stated only in terms of "
+        "the game's real pieces. Tank ids, coordinates, and kill order change every match: do "
+        "not retell them, generalize from them (e.g. losses to the closing zone -> a rule about "
+        "when to rotate in; first kill won the fight -> a rule about forcing an early pick). "
+        "Use ONLY the log; never invent. Do NOT write platitudes like 'focus fire more'. ONE "
+        "short sentence, no preamble."
     )
     return await _oneshot(http, sys, f"Match log: {events or 'no kills were recorded'}\nRule:")
 
