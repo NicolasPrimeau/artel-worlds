@@ -71,13 +71,14 @@ class Bot:
         if hex_distance(p["q"], p["r"], cq, cr) > zr - ZONE_MARGIN:
             return {**intent, **self._toward(p, wallset, cq, cr)}
 
-        # 5. nobody known: push through the center to the mirror cell so the teams cross and
-        #    make contact instead of milling about on their own half.
+        # 5. nobody known: sweep toward the enemy half ALONE. Each bot fans out along its own
+        #    lane (per-id offset) — solo hunters spread; they don't get to march as an
+        #    accidental phalanx and collect free focus-fire that no one coordinated.
         if not self.board:
-            return {
-                **intent,
-                **self._toward(p, wallset, cfg.width - 1 - p["q"], cfg.height - 1 - p["r"]),
-            }
+            lane = ((self.id % 3) - 1) * 3  # -3 / 0 / +3 hexes of lateral offset
+            tq = max(0, min(cfg.width - 1, cfg.width - 1 - p["q"] + lane))
+            tr = max(0, min(cfg.height - 1, cfg.height - 1 - p["r"] - lane))
+            return {**intent, **self._toward(p, wallset, tq, tr)}
 
         # 6. press the nearest known enemy
         focus = min(

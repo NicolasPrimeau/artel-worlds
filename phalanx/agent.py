@@ -749,6 +749,15 @@ async def decide(
         intent["fire"] = rx["fire"]
     if intent.get("move", "hold") == "hold" and not intent.get("fire"):
         intent["turn"], intent["move"] = rx["turn"], rx["move"]
+    # zone floor: bleeding in the red cells while standing still is never a valid play — keep
+    # the model's shot, but the tank WILL step toward the center (whole matches have been lost
+    # to three tanks starving in the zone)
+    if not p.get("safe", True) and intent.get("move", "hold") == "hold":
+        wallset = {(w["dq"], w["dr"]) for w in p.get("walls", [])}
+        d = _open_dir(wallset, p.get("to_center", 0))
+        h = p["heading"]
+        intent["turn"] = 0 if h == d else (1 if (d - h) % 6 <= 3 else -1)
+        intent["move"] = "fwd"
     return intent, cost, plan
 
 
