@@ -351,6 +351,11 @@ async def stream(ws: WebSocket):
         G.viewers.discard(ws)
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(STATIC / "favicon.ico")
+
+
 @app.get("/")
 async def root():
     index = STATIC / "index.html"

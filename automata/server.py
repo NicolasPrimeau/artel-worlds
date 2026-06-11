@@ -619,6 +619,11 @@ async def llms_txt(request: Request):
     return _llms_txt(_base_url(request))
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(STATIC / "favicon.ico")
+
+
 @app.get("/")
 async def root():
     index = STATIC / "index.html"
