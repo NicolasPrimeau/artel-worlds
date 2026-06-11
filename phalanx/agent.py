@@ -53,7 +53,9 @@ SYSTEM = (
     "you are facing — firing NEVER needs turning toward them. So whenever your gun is ready and "
     "the perception lists an enemy in range, FIRE at one (you may move the same turn too). Use "
     "move/turn only to chase enemies you cannot hit yet, hold a good position, or escape the "
-    "closing zone. A ready gun that does not fire an in-range enemy is wasted and loses."
+    "closing zone. A ready gun that does not fire an in-range enemy is wasted and loses. "
+    "Artel also lets you remember/recall shared knowledge across matches and claim_target an "
+    "enemy so the team spreads its fire — use them when they help, but never skip firing to do so."
 )
 
 TOOLS = [
@@ -70,6 +72,35 @@ TOOLS = [
                 "text": {"type": "string"},
             },
             "required": ["to", "text"],
+        },
+    },
+    {
+        "name": "remember",
+        "description": "Save a short note to your team's shared Artel memory — knowledge that "
+        "lasts across matches (enemy habits, map hazards, what works). Teammates can recall it.",
+        "schema": {
+            "type": "object",
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
+        },
+    },
+    {
+        "name": "recall",
+        "description": "Search your team's shared Artel memory for relevant notes from past play.",
+        "schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "claim_target",
+        "description": "Post a task to Artel claiming an enemy id as YOUR target so teammates "
+        "spread their fire instead of doubling up.",
+        "schema": {
+            "type": "object",
+            "properties": {"enemy_id": {"type": "integer"}},
+            "required": ["enemy_id"],
         },
     },
     {
@@ -288,6 +319,54 @@ async def _send(
         pass
 
 
+async def _remember(http: httpx.AsyncClient, agent: dict, text: str) -> None:
+    if not text:
+        return
+    try:
+        await http.post(
+            f"{ARTEL_URL}/memory",
+            headers=_headers(agent),
+            json={"content": text[:400], "project": PHALANX_PROJECT, "tags": ["phalanx"]},
+        )
+    except Exception:
+        pass
+
+
+async def _recall(http: httpx.AsyncClient, agent: dict, query: str) -> str:
+    if not query:
+        return ""
+    try:
+        r = await http.get(
+            f"{ARTEL_URL}/memory/search",
+            headers=_headers(agent),
+            params={"q": query, "project": PHALANX_PROJECT, "limit": 3},
+        )
+        rows = r.json() if r.status_code < 300 else []
+    except Exception:
+        return ""
+    if not isinstance(rows, list):
+        return ""
+    return " | ".join(m.get("content", "")[:140] for m in rows if m.get("content"))
+
+
+async def _claim_target(http: httpx.AsyncClient, agent: dict, enemy_id: int) -> None:
+    if not enemy_id:
+        return
+    try:
+        await http.post(
+            f"{ARTEL_URL}/tasks",
+            headers=_headers(agent),
+            json={
+                "title": f"destroy enemy {enemy_id}",
+                "project": PHALANX_PROJECT,
+                "assigned_to": agent["id"],
+                "tags": ["phalanx", "target"],
+            },
+        )
+    except Exception:
+        pass
+
+
 async def decide(
     http: httpx.AsyncClient, agent: dict, p: dict, mate_ids: list[str]
 ) -> tuple[dict, float]:
@@ -328,6 +407,15 @@ async def decide(
                     mate_ids,
                 )
                 results.append({"id": c["id"], "output": "sent"})
+            elif c["name"] == "remember":
+                await _remember(http, agent, str(c["input"].get("text", "")))
+                results.append({"id": c["id"], "output": "saved"})
+            elif c["name"] == "recall":
+                found = await _recall(http, agent, str(c["input"].get("query", "")))
+                results.append({"id": c["id"], "output": found or "nothing relevant"})
+            elif c["name"] == "claim_target":
+                await _claim_target(http, agent, int(c["input"].get("enemy_id", 0) or 0))
+                results.append({"id": c["id"], "output": "claimed"})
         if acted:
             return intent, cost
         transcript.append({"role": "tool", "results": results})
