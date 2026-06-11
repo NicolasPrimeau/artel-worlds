@@ -7,7 +7,7 @@ class Config:
     # forced into contact — no running off to a corner to heal in peace.
     width: int = 16  # q extent
     height: int = 12  # r extent
-    obstacle_density: float = 0.08  # fraction of cells that are cover/walls
+    obstacle_density: float = 0.05  # fraction of cells that are cover/walls
 
     # Teams
     house_teams: int = 2

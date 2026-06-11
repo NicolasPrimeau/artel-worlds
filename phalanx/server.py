@@ -19,7 +19,9 @@ from .control import Bot
 _rng = SystemRandom()
 
 STATIC = Path(__file__).parent / "static"
-TICK_INTERVAL = 1.0  # one tick per second — easy to follow
+TICK_INTERVAL = 2.0  # MINIMUM seconds per tick (keeps deterministic play watchable). The tick
+# also waits for every side's move before it resolves, so live LLM ticks take as long as the
+# slowest agent answers — the models get the whole tick to think and coordinate over Artel.
 # The whole demo: same arena, same guns. Artel is three real LLM agents — one per tank —
 # coordinating live over artel.run; Red is deterministic seek-and-destroy bots that can't
 # talk to each other. The only thing Artel has that Red doesn't is each other, through
@@ -34,7 +36,6 @@ class Phalanx:
         self.tokens: dict[str, str] = {}  # team -> secret
         self.scores: dict[str, int] = {}  # wins, accumulated across matches
         self.squad = Squad()  # the live Artel LLM agents (no-op until keys + a viewer)
-        self.intents: dict[int, dict] = {}  # tank id -> latest LLM decision, applied each tick
         self._squad_match = -1  # which match the squad is currently driving
         self._new_match()
 
@@ -44,18 +45,13 @@ class Phalanx:
         self.arena = Arena(DEFAULT, seed=seed)
         self.arena.seed_house(flip=bool(self.match_no % 2))  # alternate corners, fair series
         self.tokens.clear()
-        self.intents = {}
         self.squad.stop()
         self._squad_match = -1
-        # one Bot per tank. Coordinated teams (Artel) share a single board across all
-        # their tanks — that shared knowledge IS the coordination edge; every other team
-        # gets a private board per tank, so it only ever knows what it personally saw.
-        boards: dict[str, dict] = {}
-        self.bots = {}
-        for t in self.arena.tanks.values():
-            coord = t.team in COORDINATED
-            board = boards.setdefault(t.team, {}) if coord else {}
-            self.bots[t.id] = Bot(t.id, t.team, board, coord)
+        # one solo Bot per tank — each keeps its own private memory and never shares it. The
+        # only coordination in Phalanx is the Artel LLM squad talking over artel.run; the
+        # deterministic side is pure individual seek-and-destroy. Artel falls back to these
+        # solo bots only when the squad is off (no keys / over the spend cap).
+        self.bots = {t.id: Bot(t.id, t.team) for t in self.arena.tanks.values()}
 
     def has_players(self) -> bool:
         return any(k.startswith("player:") for k in self.arena.team_kind.values())
@@ -131,42 +127,46 @@ def _artel_alive_ids() -> list[int]:
 
 
 def _manage_squad() -> None:
-    # the live LLM agents only run while someone's watching and the spend cap allows —
-    # no one watching, no spend. Each new match restarts them on that match's Artel tanks.
+    # the live LLM agents only drive while someone's watching and the spend cap allows — no
+    # one watching, no spend. Each new match binds them to that match's Artel tanks.
     if not G.viewers or not G.squad.enabled:
         if G._squad_match != -1:
             G.squad.stop()
             G._squad_match = -1
         return
     if G._squad_match != G.match_no:
-        G.squad.start(
-            _artel_alive_ids(),
-            lambda tid: G.arena.perceive(tid),
-            lambda tid, intent: G.intents.__setitem__(tid, intent),
-        )
+        G.squad.assign(_artel_alive_ids())
         G._squad_match = G.match_no
 
 
 async def _tick_loop():
+    loop = asyncio.get_running_loop()
     while True:
+        start = loop.time()
         if bool(G.viewers) or G.has_players():
             async with G.lock:
                 a = G.arena
                 _manage_squad()
                 live_artel = G.squad.enabled and G._squad_match == G.match_no
+                # collect every side's move for this tick: deterministic bots answer instantly;
+                # each live Artel tank's LLM agent is asked now and awaited below.
+                pending_llm: dict[int, asyncio.Task] = {}
                 for t in list(a.tanks.values()):
                     if t.id in a.pending or G.is_player_team(t.team):
                         continue
                     if t.team in COORDINATED and live_artel:
-                        a.submit(t.id, G.intents.get(t.id, {}))  # carry the LLM's last call
+                        pending_llm[t.id] = asyncio.create_task(G.squad.act(t.id, a.perceive))
                         continue
                     p = a.perceive(t.id)
-                    if not p:
-                        continue
                     bot = G.bots.get(t.id)
-                    if bot is None:
-                        continue
-                    a.submit(t.id, bot.decide(p, a.cfg, a.tick_count))
+                    if p and bot:
+                        a.submit(t.id, bot.decide(p, a.cfg, a.tick_count))
+                # the tick waits for all sides before resolving — a slow or failed agent just
+                # leaves its tank on the arena's default (hold) for this tick.
+                for tid, task in pending_llm.items():
+                    intent = await task
+                    if isinstance(intent, dict):
+                        a.submit(tid, intent)
                 a.step()
                 if a.winner is not None or len(a.teams_alive()) <= 1:
                     if a.winner:
@@ -174,7 +174,7 @@ async def _tick_loop():
                     G._new_match()
                 snap = G.snapshot()
             await _broadcast(snap)
-        await asyncio.sleep(TICK_INTERVAL)
+        await asyncio.sleep(max(0.0, TICK_INTERVAL - (loop.time() - start)))
 
 
 @contextlib.asynccontextmanager
@@ -183,10 +183,10 @@ async def _lifespan(app: FastAPI):
     try:
         yield
     finally:
-        G.squad.stop()
         tick.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await tick
+        await G.squad.aclose()
 
 
 app = FastAPI(title="Phalanx — Artel Worlds", lifespan=_lifespan)

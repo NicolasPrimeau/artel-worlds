@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 
@@ -36,6 +35,9 @@ SPEND_CAP_USD = float(os.environ.get("PHALANX_SPEND_CAP_USD", "20"))
 COST_IN = float(os.environ.get("PHALANX_COST_IN", "0.10")) / 1_000_000  # $/input token (Flash)
 COST_OUT = float(os.environ.get("PHALANX_COST_OUT", "0.40")) / 1_000_000  # $/output token (Flash)
 MAX_TOOL_ROUNDS = 4
+# Per-tick decision deadline. The synchronous tick waits for every agent's move before it
+# resolves, so this caps how long one model may take; past it that tank holds for the tick.
+LLM_TIMEOUT = float(os.environ.get("PHALANX_LLM_TIMEOUT", "15"))
 
 # Concise. Names the teammates, says coordinate through Artel — and stops there. No
 # instructions on HOW to use Artel: the coordination has to emerge, not be scripted.
@@ -298,16 +300,17 @@ async def decide(
 
 
 class Squad:
-    """Runs the Artel team as live LLM agents — one async loop per tank. Each loop perceives,
-    lets the model coordinate over Artel and pick an action, and publishes that action; the
-    arena's 1 Hz referee applies whatever each tank last published. The model is the driver:
-    nothing here chooses moves. Disabled (no keys / over the spend cap) it does nothing, and
-    the server falls back to the deterministic Bot so the arena never stalls."""
+    """Drives the Artel team as live LLM agents — one agent per tank. Each tick the server asks
+    every agent for a move and waits for all of them before resolving (a synchronous turn), so
+    the models get the whole tick to perceive, message each other over Artel, and decide. The
+    model is the driver: nothing here chooses moves. Disabled (no keys / over the spend cap) it
+    does nothing and the server falls back to the deterministic Bot so the arena never stalls."""
 
     def __init__(self):
         self.agents = self._load_agents()
         self.spent = 0.0
-        self._tasks: list[asyncio.Task] = []
+        self._http: httpx.AsyncClient | None = None
+        self._assign: dict[int, dict] = {}  # tank id -> agent, fixed for the current match
 
     @staticmethod
     def _load_agents() -> list[dict]:
@@ -319,26 +322,33 @@ class Squad:
     def enabled(self) -> bool:
         return bool(self.agents) and bool(LLM_KEY) and self.spent < SPEND_CAP_USD
 
-    async def _drive(self, agent: dict, tank_id: int, perceive, submit) -> None:
-        mate_ids = [a["id"] for a in self.agents if a["id"] != agent["id"]]
-        async with httpx.AsyncClient(timeout=httpx.Timeout(40.0)) as http:
-            while self.spent < SPEND_CAP_USD:
-                p = perceive(tank_id)
-                if p is None:
-                    return
-                try:
-                    intent, cost = await decide(http, agent, p, mate_ids)
-                except Exception:
-                    intent, cost = {"turn": 0, "move": "hold", "fire": 0}, 0.0
-                self.spent += cost
-                submit(tank_id, intent)
+    def assign(self, tank_ids: list[int]) -> None:
+        """Bind this match's Artel tanks to agents, one agent per tank."""
+        self._assign = {tid: ag for tid, ag in zip(tank_ids, self.agents)}
 
-    def start(self, tank_ids: list[int], perceive, submit) -> None:
-        self.stop()
-        for agent, tank_id in zip(self.agents, tank_ids):
-            self._tasks.append(asyncio.create_task(self._drive(agent, tank_id, perceive, submit)))
+    async def act(self, tank_id: int, perceive) -> dict | None:
+        """One LLM move for this tank this tick, or None to leave it on the arena default."""
+        agent = self._assign.get(tank_id)
+        if agent is None or not self.enabled:
+            return None
+        p = perceive(tank_id)
+        if p is None:
+            return None
+        if self._http is None:
+            self._http = httpx.AsyncClient(timeout=httpx.Timeout(LLM_TIMEOUT))
+        mate_ids = [a["id"] for a in self.agents if a["id"] != agent["id"]]
+        try:
+            intent, cost = await decide(self._http, agent, p, mate_ids)
+        except Exception:
+            return None
+        self.spent += cost
+        return intent
 
     def stop(self) -> None:
-        for t in self._tasks:
-            t.cancel()
-        self._tasks = []
+        """Drop the match's tank assignment — the tick model keeps no background loops."""
+        self._assign = {}
+
+    async def aclose(self) -> None:
+        if self._http is not None:
+            await self._http.aclose()
+            self._http = None

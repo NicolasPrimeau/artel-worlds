@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from .config import Config
-from .tank import dir_toward, hex_distance
+from .tank import AXIAL_DIRS, dir_toward, hex_distance
+
+KNOWLEDGE_TTL = 16  # ticks an enemy sighting stays trusted before it goes stale
+LOW_ENERGY = 30.0  # below this, fall back and keep firing instead of pressing in
+ENGAGE_RANGE = 4  # close to here, then HOLD and fire — inside fire_range with a margin for LOS
+ZONE_MARGIN = 1  # stay this many hexes inside the safe radius, off the bleeding edge
 
 
 def _step_toward(cur: int, target: int) -> int:
@@ -11,29 +16,35 @@ def _step_toward(cur: int, target: int) -> int:
     return 1 if (target - cur) % 6 <= 3 else -1
 
 
-KNOWLEDGE_TTL = 16  # ticks an enemy sighting stays trusted before it goes stale
-LOW_ENERGY = 30.0  # below this a tank kites at max range instead of pressing in
-
-
 class Bot:
-    """A stateful tank controller with memory. Every bot remembers where it last saw
-    each enemy and commits to finishing the weakest one it knows of — it never idles,
-    never camps. The ONLY difference between the two sides is the board it reads from:
-    every Artel tank shares one team board AND concentrates on the single weakest enemy
-    the team knows of — focus fire: three guns finish one tank, then the next, so Artel
-    snowballs a numbers lead. A Red tank reads only its own board and hunts the NEAREST
-    enemy it personally sees — individual seek-and-destroy, fire spread across whoever's
-    closest, trades taken one for one. Same engine, same aim; the win comes entirely
-    from coordinating the target, which is exactly the Artel edge the demo is selling."""
+    """One tank's deterministic controller — solo seek-and-destroy with private memory. It
+    remembers where it last saw each enemy, drives to a firing position, holds and shoots the
+    nearest target it can hit, and retreats from the closing zone. Every tank runs its own Bot
+    with its OWN board: deterministic tanks NEVER share what they see. The only coordination in
+    Phalanx happens through Artel, among the LLM-driven team — it is never hardcoded here. That
+    keeps the demo honest and keeps deterministic-vs-deterministic a fair, unbiased baseline."""
 
-    def __init__(self, tank_id: int, team: str, board: dict, coord: bool):
+    def __init__(self, tank_id: int, team: str):
         self.id = tank_id
         self.team = team
-        self.board = board  # eid -> {q, r, energy, seen}; shared for Artel, private for Red
-        self.coord = coord  # True: focus the weakest team-wide. False: chase the nearest.
+        self.board: dict[int, dict] = {}  # eid -> {q, r, energy, seen}; private to this tank
+
+    def _toward(self, p: dict, wallset: set, tq: int, tr: int) -> dict:
+        """A wall-smoothed step toward (tq, tr): aim at it, but if the cell ahead is cover,
+        deflect to the nearest open direction so we slide along walls instead of nosing in."""
+        want = dir_toward(p["q"], p["r"], tq, tr)
+        for off in (0, 1, -1, 2, -2, 3):
+            d = (want + off) % 6
+            dq, dr = AXIAL_DIRS[d]
+            if (p["q"] + dq, p["r"] + dr) not in wallset:
+                return {"turn": _step_toward(p["heading"], d), "move": "fwd"}
+        return {"turn": _step_toward(p["heading"], want), "move": "fwd"}
 
     def decide(self, p: dict, cfg: Config, tick: int) -> dict:
-        # 1. fold everything I see this tick into the board (shared knowledge for Artel)
+        cq, cr = cfg.width // 2, cfg.height // 2
+        wallset = {(p["q"] + w["dq"], p["r"] + w["dr"]) for w in p.get("walls", [])}
+
+        # 1. fold what I personally see this tick into my private board
         visible: dict[int, dict] = {}
         for v in p["visible"]:
             if v["kind"] != "enemy":
@@ -46,75 +57,54 @@ class Bot:
         for eid in [e for e, rec in self.board.items() if tick - rec["seen"] > KNOWLEDGE_TTL]:
             del self.board[eid]
 
-        # 3. outside the closing zone: get back to center before it bleeds you out
-        cq, cr = cfg.width // 2, cfg.height // 2
-        if not p.get("safe", True):
-            cdir = dir_toward(p["q"], p["r"], cq, cr)
-            return {"turn": _step_toward(p["heading"], cdir), "move": "fwd"}
-
-        # 4. no enemy known at all: drive to the middle and sweep — never sit still
-        if not self.board:
-            if hex_distance(p["q"], p["r"], cq, cr) > 2:
-                cdir = dir_toward(p["q"], p["r"], cq, cr)
-                return {"turn": _step_toward(p["heading"], cdir), "move": "fwd"}
-            return {"turn": 1, "move": "fwd"}
-
-        # 5. pick the MOVE target. Artel shares one board and orders by ENERGY first, so
-        #    every Artel tank drives toward the same weakest enemy — the team collapses on
-        #    one tank at a time. Red reads only its own board and orders by DISTANCE first —
-        #    each chases the nearest threat, so the team disperses. That is the whole edge.
-        def _key(e: int) -> tuple:
-            d = hex_distance(p["q"], p["r"], self.board[e]["q"], self.board[e]["r"])
-            energy = self.board[e]["energy"]
-            return (energy, d) if self.coord else (d, energy)
-
-        focus = min(self.board, key=_key)
-        rec = self.board[focus]
-
-        # FIRE is decided separately from movement so a loaded gun is never wasted: shoot
-        # the best enemy in range RIGHT NOW (weakest for Artel, nearest for Red). Every
-        # Artel tank that can see the team's weakest target shoots it — focus fire — and
-        # any that can't still spend their shot on whatever they can hit.
+        # 3. FIRE, decided independently of movement so a loaded gun is never wasted: shoot
+        #    the nearest enemy in range with line of sight.
         intent: dict = {}
         in_range = [e for e in visible if visible[e]["dist"] <= cfg.fire_range]
         if p["gun_ready"] and in_range:
-            shot = min(
-                in_range,
-                key=lambda e: (
-                    (self.board[e]["energy"], visible[e]["dist"])
-                    if self.coord
-                    else (visible[e]["dist"], self.board[e]["energy"])
-                ),
-            )
-            intent["fire"] = shot
+            intent["fire"] = min(in_range, key=lambda e: visible[e]["dist"])
 
-        if focus in visible:
-            tdir, d, seen = visible[focus]["dir"], visible[focus]["dist"], True
-        else:
-            tdir = dir_toward(p["q"], p["r"], rec["q"], rec["r"])
-            d = hex_distance(p["q"], p["r"], rec["q"], rec["r"])
-            seen = False
+        # 4. the closing zone bleeds energy outside the safe radius — get back inside it,
+        #    keeping a margin so we don't loiter on the bleeding edge. No trade is worth
+        #    dying to the map.
+        zr = p.get("zone_radius", float(cfg.width))
+        if hex_distance(p["q"], p["r"], cq, cr) > zr - ZONE_MARGIN:
+            return {**intent, **self._toward(p, wallset, cq, cr)}
 
-        if not seen:
-            # can't see the team's target: drive to its last-known spot (Artel converges
-            # there together); if it's empty on arrival, drop the stale sighting
-            intent["turn"] = _step_toward(p["heading"], tdir)
-            intent["move"] = "fwd"
-            if d <= 1:
-                self.board.pop(focus, None)
-            return intent
+        # 5. nobody known: push through the center to the mirror cell so the teams cross and
+        #    make contact instead of milling about on their own half.
+        if not self.board:
+            return {
+                **intent,
+                **self._toward(p, wallset, cfg.width - 1 - p["q"], cfg.height - 1 - p["r"]),
+            }
 
-        band = cfg.fire_range - 1 if p["energy"] <= LOW_ENERGY else 2
-        if d > band + 1:
-            intent["turn"] = _step_toward(p["heading"], tdir)
-            intent["move"] = "fwd"  # close the distance
-        elif d < band:
-            intent["turn"] = _step_toward(p["heading"], tdir)
-            intent["move"] = "back"  # too close, ease off (still facing the enemy)
-        else:
-            # at range: orbit rather than park — keeps moving and swings the angle to
-            # break line-of-sight deadlocks behind walls. Firing auto-aims, so heading
-            # is free to circle.
-            intent["turn"] = _step_toward(p["heading"], (tdir + 1) % 6)
-            intent["move"] = "fwd"
-        return intent
+        # 6. press the nearest known enemy
+        focus = min(
+            self.board,
+            key=lambda e: hex_distance(p["q"], p["r"], self.board[e]["q"], self.board[e]["r"]),
+        )
+        rec = self.board[focus]
+        seen = focus in visible
+
+        # hurt: fall back directly away from it while the gun keeps working
+        if seen and p["energy"] <= LOW_ENERGY:
+            return {
+                **intent,
+                **self._toward(p, wallset, 2 * p["q"] - rec["q"], 2 * p["r"] - rec["r"]),
+            }
+
+        # in range with line of sight: face it and HOLD — a parked tank that can see its
+        # target shoots it every cooldown, which is how fights actually resolve.
+        if seen and visible[focus]["dist"] <= ENGAGE_RANGE:
+            return {
+                **intent,
+                "turn": _step_toward(p["heading"], visible[focus]["dir"]),
+                "move": "hold",
+            }
+
+        # otherwise close on its last-known cell to gain range and line of sight
+        step = self._toward(p, wallset, rec["q"], rec["r"])
+        if not seen and hex_distance(p["q"], p["r"], rec["q"], rec["r"]) <= 1:
+            self.board.pop(focus, None)  # arrived at an empty spot — drop the stale sighting
+        return {**intent, **step}

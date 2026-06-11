@@ -179,6 +179,7 @@ class Arena:
             if hex_distance(me.q, me.r, wq, wr) <= rng
         ]
         cq, cr = self.cfg.width // 2, self.cfg.height // 2
+        rad = self.safe_radius()
         return {
             "id": me.id,
             "q": me.q,
@@ -186,7 +187,8 @@ class Arena:
             "heading": me.heading,
             "energy": round(me.energy),
             "gun_ready": me.cooldown == 0,
-            "safe": hex_distance(me.q, me.r, cq, cr) <= self.safe_radius(),
+            "safe": hex_distance(me.q, me.r, cq, cr) <= rad,
+            "zone_radius": round(rad, 2),
             "visible": visible,
             "walls": walls,
         }

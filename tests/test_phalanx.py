@@ -3,17 +3,12 @@ from phalanx.config import DEFAULT
 from phalanx.control import Bot
 
 
-def _bots(arena, coordinated=()):
-    boards, bots = {}, {}
-    for t in arena.tanks.values():
-        coord = t.team in coordinated
-        board = boards.setdefault(t.team, {}) if coord else {}
-        bots[t.id] = Bot(t.id, t.team, board, coord)
-    return bots
+def _bots(arena):
+    return {t.id: Bot(t.id, t.team) for t in arena.tanks.values()}
 
 
-def _run(arena, ticks, coordinated=()):
-    bots = _bots(arena, coordinated)
+def _run(arena, ticks):
+    bots = _bots(arena)
     for _ in range(ticks):
         for t in list(arena.tanks.values()):
             p = arena.perceive(t.id)
@@ -90,28 +85,14 @@ def test_wall_blocks_line_of_sight():
     assert a.tanks[victim.id].energy >= v0  # shot blocked: no damage, only regen
 
 
-def test_shared_board_spreads_one_tanks_sighting_to_the_team():
+def test_each_tank_board_is_private():
+    # deterministic tanks NEVER share what they see — only the tank that personally spots an
+    # enemy records it; a teammate that didn't see it knows nothing. The sole coordination in
+    # Phalanx is the live Artel LLM squad, never the deterministic bots.
     a = Arena(DEFAULT, seed=4)
     a.add_team("artel", "house:artel", (5, 5))
     a.add_team("red", "house:red", (12, 9))
-    bots = _bots(a, coordinated=("artel",))
-    artel = a.team_tanks("artel")
-    red = a.team_tanks("red")
-    # drop one scout right next to one red so exactly one teammate sees it
-    scout, far = artel[0], artel[1]
-    scout.q, scout.r = red[0].q - 1, red[0].r
-    far.q, far.r = 2, 2
-    a.walls.clear()
-    for t in artel:
-        bots[t.id].decide(a.perceive(t.id), a.cfg, a.tick_count)
-    assert red[0].id in bots[far.id].board  # the scout's sighting reached the whole team
-
-
-def test_red_boards_stay_private():
-    a = Arena(DEFAULT, seed=4)
-    a.add_team("artel", "house:artel", (5, 5))
-    a.add_team("red", "house:red", (12, 9))
-    bots = _bots(a)  # nobody coordinated: every board private
+    bots = _bots(a)
     artel = a.team_tanks("artel")
     target = a.team_tanks("red")[0]
     scout, far = artel[0], artel[1]
@@ -120,5 +101,16 @@ def test_red_boards_stay_private():
     a.walls.clear()
     for t in artel:
         bots[t.id].decide(a.perceive(t.id), a.cfg, a.tick_count)
-    assert target.id in bots[scout.id].board
-    assert target.id not in bots[far.id].board  # no sharing without coordination
+    assert target.id in bots[scout.id].board  # the scout that saw it remembers it
+    assert target.id not in bots[far.id].board  # the teammate that didn't see it has nothing
+
+
+def test_server_starts_and_ticks_without_squad():
+    # the synchronous tick loop and lifespan come up cleanly with the LLM squad off
+    # (no agent keys) — Artel falls back to solo bots and the arena never stalls.
+    from fastapi.testclient import TestClient
+
+    from phalanx import server
+
+    with TestClient(server.app) as client:
+        assert client.get("/health").json()["status"] == "ok"
