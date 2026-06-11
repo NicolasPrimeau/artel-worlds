@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 
 import httpx
+
+log = logging.getLogger("phalanx")
 
 # The Artel team is three real LLM agents — one per tank — each running its own loop
 # against live artel.run. Nothing here decides strategy: every turn the model perceives
@@ -22,7 +25,7 @@ PHALANX_PROJECT = os.environ.get("PHALANX_PROJECT", "phalanx")
 # Set PHALANX_LLM_PROVIDER=anthropic (+ ANTHROPIC_API_KEY) to swap to Claude, or point
 # PHALANX_LLM_URL / PHALANX_MODEL at any other OpenAI-compatible provider.
 PROVIDER = os.environ.get("PHALANX_LLM_PROVIDER", "openai")
-MODEL = os.environ.get("PHALANX_MODEL", "gemini-2.0-flash")
+MODEL = os.environ.get("PHALANX_MODEL", "gemini-2.5-flash-lite")
 LLM_KEY = os.environ.get("PHALANX_LLM_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")
 _DEFAULT_URL = (
     "https://api.anthropic.com/v1/messages"
@@ -268,6 +271,9 @@ async def decide(
     for _ in range(MAX_TOOL_ROUNDS):
         url, payload, headers = _build_payload(system, transcript)
         r = await http.post(url, headers=headers, json=payload)
+        if r.status_code >= 300:
+            log.warning("LLM %s HTTP %s: %s", MODEL, r.status_code, r.text[:200])
+            raise RuntimeError(f"llm http {r.status_code}")
         text, calls, tin, tout = _parse(r.json())
         cost += tin * COST_IN + tout * COST_OUT
         if not calls:
@@ -309,6 +315,7 @@ class Squad:
     def __init__(self):
         self.agents = self._load_agents()
         self.spent = 0.0
+        self.last_error: str | None = None  # most recent agent failure, for /debug + logs
         self._http: httpx.AsyncClient | None = None
         self._assign: dict[int, dict] = {}  # tank id -> agent, fixed for the current match
 
@@ -339,10 +346,28 @@ class Squad:
         mate_ids = [a["id"] for a in self.agents if a["id"] != agent["id"]]
         try:
             intent, cost = await decide(self._http, agent, p, mate_ids)
-        except Exception:
+        except Exception as e:
+            self.last_error = f"{type(e).__name__}: {e}"
+            log.warning("phalanx agent %s failed: %s", agent["id"], self.last_error)
             return None
         self.spent += cost
+        self.last_error = None
         return intent
+
+    def status(self) -> dict:
+        """A snapshot of squad health for the /debug endpoint and logs."""
+        return {
+            "enabled": self.enabled,
+            "agents": [a["id"] for a in self.agents],
+            "assigned_tanks": list(self._assign),
+            "provider": PROVIDER,
+            "model": MODEL,
+            "llm_url": LLM_URL,
+            "llm_key_set": bool(LLM_KEY),
+            "spent_usd": round(self.spent, 4),
+            "cap_usd": SPEND_CAP_USD,
+            "last_error": self.last_error,
+        }
 
     def stop(self) -> None:
         """Drop the match's tank assignment — the tick model keeps no background loops."""

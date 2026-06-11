@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import secrets
 from pathlib import Path
 from random import SystemRandom
@@ -17,6 +18,7 @@ from .config import DEFAULT
 from .control import Bot
 
 _rng = SystemRandom()
+log = logging.getLogger("phalanx")
 
 STATIC = Path(__file__).parent / "static"
 TICK_INTERVAL = 2.0  # MINIMUM seconds per tick (keeps deterministic play watchable). The tick
@@ -135,8 +137,10 @@ def _manage_squad() -> None:
             G._squad_match = -1
         return
     if G._squad_match != G.match_no:
-        G.squad.assign(_artel_alive_ids())
+        ids = _artel_alive_ids()
+        G.squad.assign(ids)
         G._squad_match = G.match_no
+        log.info("phalanx squad driving artel tanks %s with %s", ids, G.squad.status()["model"])
 
 
 async def _tick_loop():
@@ -190,6 +194,20 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Phalanx — Artel Worlds", lifespan=_lifespan)
+
+
+@app.get("/debug")
+async def debug():
+    # squad + match health, so a failing LLM is visible without ssh or reading logs
+    a = G.arena
+    return {
+        "tick": a.tick_count,
+        "match": G.match_no,
+        "viewers": len(G.viewers),
+        "live_artel": G.squad.enabled and G._squad_match == G.match_no,
+        "squad": G.squad.status(),
+        "team_counts": a.stats()["team_counts"],
+    }
 
 
 def _token(request: Request) -> str:
