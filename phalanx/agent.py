@@ -529,8 +529,14 @@ def _perception_text(p: dict) -> str:
             if in_range
             else ("a tank blocks the shot" if not clear else f"out of range (>{fr})")
         )
+        step = e.get("step") or [0, 0]
+        if step[0] or step[1]:
+            lead = (q + e["dq"] + step[0], r + e["dr"] + step[1])
+            mv = f" MOVING — to hit it, fire_at its next hex ({lead[0]},{lead[1]})"
+        else:
+            mv = " stationary (a fire at its id will land)"
         foes.append(
-            f"#{e['id']} at ({q + e['dq']},{r + e['dr']}) dist {e['dist']} {rel} [{tag}]{energy}"
+            f"#{e['id']} at ({q + e['dq']},{r + e['dr']}) dist {e['dist']} {rel} [{tag}]{energy}{mv}"
         )
     allies = [
         f"#{e['id']} at ({q + e['dq']},{r + e['dr']}) dist {e['dist']}"
@@ -1143,6 +1149,58 @@ def _sanitize_intent(intent: dict, p: dict, beacons: dict | None, self_id: str, 
             else:
                 intent["fire"] = 0
                 intent.pop("fire_at", None)
+    # AUTO-LEAD: an id-shot at a tank that moved last turn aims at a hex it is leaving —
+    # convert it to a predictive shot at its next hex (same line family, real chance to land).
+    # The model can always lead differently with its own fire_at.
+    if intent.get("fire") and intent["fire"] in dist_of and not intent.get("fire_at"):
+        tgt = next(v for v in p["visible"] if v["kind"] == "enemy" and v["id"] == intent["fire"])
+        step = tgt.get("step") or [0, 0]
+        if step[0] or step[1]:
+            lead = (p["q"] + tgt["dq"] + step[0], p["r"] + tgt["dr"] + step[1])
+            d_lead = _hexdist(p["q"], p["r"], lead[0], lead[1])
+            if 1 <= d_lead <= powers[-1] and _on_map(p, lead[0], lead[1]):
+                need = next(i + 1 for i, rng_ in enumerate(powers) if d_lead <= rng_)
+                need = max(int(intent.get("power", 0) or 0), need)
+                costs = p.get("power_cost", [0, 2, 4])
+                if p.get("energy", 0) - costs[need - 1] > 0:  # never lead yourself to death
+                    intent["fire_at"] = lead
+                    intent["fire"] = 0
+                    intent["power"] = need
+    # AUTO-SCOOT: firing while standing on an enemy's clear line is how blue gets traded
+    # down — if the tank shoots and ends its turn stationary while exposed, step it off the
+    # line (shoot-and-scoot is doctrine, not a suggestion).
+    if (
+        (intent.get("fire") or intent.get("fire_at"))
+        and intent.get("move", "hold") == "hold"
+        and not intent.get("move_to")
+    ):
+        threats = [
+            v
+            for v in p["visible"]
+            if v["kind"] == "enemy"
+            and v.get("clear_shot", True)
+            and v["dist"] <= p.get("fire_range", 7)
+        ]
+        if threats:
+            wallset = {(w_["dq"], w_["dr"]) for w_ in p.get("walls", [])}
+            occ_rel = {(v["dq"], v["dr"]) for v in p.get("visible", [])}
+            t_cells = [(p["q"] + t["dq"], p["r"] + t["dr"]) for t in threats]
+            best_cell, best_lines = None, None
+            for d in range(6):
+                dq, dr = AXIAL_DIRS[d]
+                if (dq, dr) in wallset or (dq, dr) in occ_rel:
+                    continue
+                nq, nr = p["q"] + dq, p["r"] + dr
+                if not _on_map(p, nq, nr):
+                    continue
+                on_lines = sum(
+                    1 for tc in t_cells if (nq, nr) in hex_line(tc[0], tc[1], p["q"], p["r"])
+                )
+                if best_lines is None or on_lines < best_lines:
+                    best_cell, best_lines = (nq, nr), on_lines
+            if best_cell:
+                intent["move_to"] = best_cell
+
     # STANDING ORDER: when a teammate is under fire and this tank is unengaged (no enemy on
     # its lines, not under fire itself) and the model gave no explicit destination, the unit
     # converges on the fight. Assists are doctrine, not a suggestion — the model still

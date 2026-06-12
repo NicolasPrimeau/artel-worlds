@@ -542,3 +542,94 @@ def test_repair_only_when_idle_untouched_and_inside():
     a.step()
     # fired: cost 4, hit refund +2, and NO +2 repair on top
     assert a.tanks[shooter.id].energy == 48.0
+
+
+def test_auto_lead_converts_id_shot_on_a_mover():
+    from phalanx.agent import _sanitize_intent
+
+    p = {
+        "id": 1,
+        "q": 5,
+        "r": 5,
+        "heading": 0,
+        "energy": 70,
+        "gun_ready": True,
+        "power_range": [3, 5, 7],
+        "power_cost": [0, 2, 4],
+        "fire_range": 7,
+        "visible": [
+            {
+                "id": 5,
+                "kind": "enemy",
+                "dq": 3,
+                "dr": 0,
+                "dist": 3,
+                "dir": 0,
+                "clear_shot": True,
+                "energy": 50,
+                "step": [1, 0],
+            }
+        ],
+        "walls": [],
+        "safe": True,
+        "dist_center": 2,
+        "to_center": 0,
+        "hit_taken": 0,
+        "map_radius": 7,
+        "width": 15,
+        "height": 15,
+    }
+    out = _sanitize_intent(
+        {"turn": 0, "move": "hold", "fire": 5, "power": 1}, dict(p), {}, "me", True
+    )
+    assert out.get("fire_at") == (9, 5)  # aimed where the mover is GOING
+    assert not out.get("fire")
+    assert out.get("power") >= 2  # bumped to reach the lead cell at dist 4
+
+    p["visible"][0]["step"] = [0, 0]
+    out = _sanitize_intent(
+        {"turn": 0, "move": "hold", "fire": 5, "power": 1}, dict(p), {}, "me", True
+    )
+    assert out.get("fire") == 5  # stationary target: the id shot stands
+
+
+def test_auto_scoot_steps_off_the_line_after_firing():
+    from phalanx.agent import _sanitize_intent
+
+    p = {
+        "id": 1,
+        "q": 5,
+        "r": 5,
+        "heading": 0,
+        "energy": 70,
+        "gun_ready": True,
+        "power_range": [3, 5, 7],
+        "power_cost": [0, 2, 4],
+        "fire_range": 7,
+        "visible": [
+            {
+                "id": 5,
+                "kind": "enemy",
+                "dq": 3,
+                "dr": 0,
+                "dist": 3,
+                "dir": 0,
+                "clear_shot": True,
+                "energy": 50,
+                "step": [0, 0],
+            }
+        ],
+        "walls": [],
+        "safe": True,
+        "dist_center": 2,
+        "to_center": 0,
+        "hit_taken": 0,
+        "map_radius": 7,
+        "width": 15,
+        "height": 15,
+    }
+    out = _sanitize_intent(
+        {"turn": 0, "move": "hold", "fire": 5, "power": 1}, dict(p), {}, "me", True
+    )
+    assert out.get("move_to")  # fired while exposed: doctrine steps it off the line
+    assert out["move_to"] != (5, 5)

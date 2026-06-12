@@ -205,6 +205,7 @@ class Arena:
                 "dist": d,
                 "dir": dir_toward(me.q, me.r, o.q, o.r),
                 "clear_shot": not self._blocked(me.q, me.r, o.q, o.r, tanks_block=True),
+                "step": [o.step_dq, o.step_dr],
             }
             if ally or d <= rng // 2:
                 entry["energy"] = round(o.energy)
@@ -407,6 +408,9 @@ class Arena:
         cq, cr = cfg.width // 2, cfg.height // 2
         rad = self.safe_radius()
         moved_ids = {t.id for t in living if origins.get(t.id) != (t.q, t.r)}
+        for t in living:
+            oq_, or_ = origins.get(t.id, (t.q, t.r))
+            t.step_dq, t.step_dr = t.q - oq_, t.r - or_  # its last move, visible to others
         fired_ids = {t.id for t in living if t.last_fire}
         for t in self.tanks.values():
             if t.cooldown > 0:
