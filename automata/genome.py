@@ -73,46 +73,40 @@ def to_dict(g: Genome) -> dict:
     }
 
 
-def _rand_condition(rng: random.Random) -> Condition:
-    var = rng.choice(VARIABLES)
-    return Condition(var, rng.choice(OPS), rng.randint(0, VAR_MAX[var]))
-
-
-def _rand_gene(rng: random.Random) -> Gene:
-    cond2 = _rand_condition(rng) if rng.random() < 0.4 else None
-    return Gene(_rand_condition(rng), cond2, rng.choice(VERBS), rng.choice(TARGETS))
-
-
 def random_genome(rng: random.Random, max_genes: int = 8) -> Genome:
+    # A full strand: one gene per sensory dimension (VARIABLE), each with a randomized comparison
+    # and action. Every cell therefore starts with COMPLETE DNA — and a tribe is seeded from a
+    # single shared roll of this strand (see World.seed), so its founders are genetically identical
+    # until mutation and selection pull them apart. The dimension set fixes the length; max_genes
+    # is accepted for signature compatibility but the strand is always one gene per VARIABLE.
     regs = {r: rng.randint(0, 100) for r in REGULATORS}
-    n = rng.randint(1, max(1, max_genes // 2))
-    return Genome(regs, dedupe(_rand_gene(rng) for _ in range(n)))
+    genes = tuple(
+        Gene(
+            Condition(var, rng.choice(OPS), rng.randint(0, VAR_MAX[var])),
+            None,
+            rng.choice(VERBS),
+            rng.choice(TARGETS),
+        )
+        for var in VARIABLES
+    )
+    return Genome(regs, genes)
 
 
 def mutate(genome: Genome, rng: random.Random, cfg) -> Genome:
+    # Dimension-preserving: the strand always keeps exactly one gene per VARIABLE, so a cell can
+    # never lose DNA. Mutation tunes regulators and rewrites genes IN PLACE (threshold, comparison,
+    # verb, target); it never adds, drops, or re-senses a gene — that would break the
+    # one-gene-per-dimension invariant and could leave a lineage with empty DNA over generations.
     regs = dict(genome.regulators)
     for r in regs:
         if rng.random() < cfg.p_point:
             delta = rng.randint(1, cfg.point_delta) * rng.choice((-1, 1))
             regs[r] = max(0, min(100, regs[r] + delta))
-
-    behaviors = list(genome.behaviors)
-    if behaviors and rng.random() < cfg.p_point:
-        i = rng.randrange(len(behaviors))
-        behaviors[i] = _point_mutate_gene(behaviors[i], rng, cfg)
-    if rng.random() < cfg.p_add and len(behaviors) < cfg.max_genes:
-        behaviors.insert(rng.randint(0, len(behaviors)), _rand_gene(rng))
-    if rng.random() < cfg.p_del and len(behaviors) > 1:
-        behaviors.pop(rng.randrange(len(behaviors)))
-    if rng.random() < cfg.p_dup and len(behaviors) < cfg.max_genes:
-        # duplicate-and-diverge: a copy that's immediately point-mutated, so it's a
-        # new related gene rather than dead-code identical to the original
-        behaviors.append(_point_mutate_gene(behaviors[rng.randrange(len(behaviors))], rng, cfg))
-    if rng.random() < cfg.p_swap and len(behaviors) > 1:
-        i, j = rng.sample(range(len(behaviors)), 2)
-        behaviors[i], behaviors[j] = behaviors[j], behaviors[i]
-
-    return Genome(regs, dedupe(behaviors))
+    genes = tuple(
+        _point_mutate_gene(g, rng, cfg) if rng.random() < cfg.p_point else g
+        for g in genome.behaviors
+    )
+    return Genome(regs, genes)
 
 
 def dedupe(behaviors) -> tuple[Gene, ...]:
@@ -132,39 +126,29 @@ def _tune_threshold(c: Condition, rng: random.Random, cfg) -> Condition:
 
 
 def _point_mutate_gene(gene: Gene, rng: random.Random, cfg) -> Gene:
-    # Morph a random facet of the gene, not just one threshold — so a gene can
-    # gradually change what it senses and what it does, not only fine-tune.
+    # Rewrite one facet of the gene while KEEPING the dimension it senses (cond1.variable) fixed —
+    # tune the threshold, flip the comparison, or change the action / its target. The variable is
+    # never reassigned, so the gene stays bound to its dimension for the life of the strand.
     roll = rng.random()
-    if roll < 0.42:  # tune a threshold (cond1 or cond2)
-        if gene.cond2 is not None and rng.random() < 0.5:
-            return replace(gene, cond2=_tune_threshold(gene.cond2, rng, cfg))
+    if roll < 0.45:  # tune the threshold on this gene's dimension
         return replace(gene, cond1=_tune_threshold(gene.cond1, rng, cfg))
-    if roll < 0.56:  # flip comparison direction
+    if roll < 0.62:  # flip the comparison direction
         return replace(gene, cond1=replace(gene.cond1, op="<" if gene.cond1.op == ">" else ">"))
-    if roll < 0.70:  # re-sense: change which variable cond1 reads
-        var = rng.choice(VARIABLES)
-        return replace(gene, cond1=Condition(var, gene.cond1.op, rng.randint(0, VAR_MAX[var])))
-    if roll < 0.83:  # change action
+    if roll < 0.81:  # change the action this dimension triggers
         return replace(gene, verb=rng.choice(VERBS))
-    if roll < 0.93:  # change action target
-        return replace(gene, target=rng.choice(TARGETS))
-    if gene.cond2 is None:  # grow a second condition
-        return replace(gene, cond2=_rand_condition(rng))
-    return replace(gene, cond2=None)  # drop the second condition
+    return replace(gene, target=rng.choice(TARGETS))  # change the action's target
 
 
 def crossover(g1: Genome, g2: Genome, rng: random.Random, max_genes: int) -> Genome:
-    """Single-point recombination of two genomes' rule lists, regulators picked
-    per-gene from either parent. Used for horizontal gene transfer on division."""
-    b1, b2 = list(g1.behaviors), list(g2.behaviors)
-    if b1 and b2:
-        behaviors = b1[: rng.randint(0, len(b1))] + b2[rng.randint(0, len(b2)) :]
-    else:
-        behaviors = b1 or b2
-    if not behaviors:
-        behaviors = [rng.choice(b1 or b2)]
+    """Per-dimension recombination: both parents are dimension-aligned strands (one gene per
+    VARIABLE, same order), so each gene of the child is inherited from one parent or the other at
+    the SAME dimension. Regulators are picked per key. The child keeps the full strand."""
+    n = min(len(g1.behaviors), len(g2.behaviors))
+    genes = tuple(g1.behaviors[i] if rng.random() < 0.5 else g2.behaviors[i] for i in range(n))
+    if len(g1.behaviors) > n:  # parents should be equal-length; keep any extra g1 dimensions
+        genes = genes + tuple(g1.behaviors[n:])
     regs = {
         r: (g1.regulators[r] if rng.random() < 0.5 else g2.regulators.get(r, g1.regulators[r]))
         for r in g1.regulators
     }
-    return Genome(regs, dedupe(behaviors)[:max_genes])
+    return Genome(regs, genes)

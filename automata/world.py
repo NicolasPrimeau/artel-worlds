@@ -151,11 +151,13 @@ class World:
         for t in range(tribes):
             lineage = self.new_lineage()
             self.register_tribe(lineage, f"house:{HOUSE_NAMES[t % len(HOUSE_NAMES)]}")
+            # one shared randomized strand per tribe: every founder cell starts with the SAME
+            # complete DNA, so a tribe is genetically uniform until mutation and selection diverge it
+            g = random_genome(self.rng, self.cfg.max_genes)
             for _ in range(per[t]):
                 cell = next(it, None)
                 if cell is None:
                     return
-                g = random_genome(self.rng, self.cfg.max_genes)
                 self.spawn(cell.q, cell.r, g, lineage, self.cfg.birth_energy)
 
     def stats(self) -> dict:
