@@ -49,6 +49,18 @@ class Bot:
         #   regroup: (q,r) move there now     post: (q,r) hold there when nothing is known
         self.orders: dict = {}
 
+    def _inside_zone(self, p: dict, tq: int, tr: int, cq: int, cr: int) -> tuple[int, int]:
+        """Pull a destination back inside the safe radius (with margin) — temperament moves
+        (kiting, falling back, lane sweeps) must never walk a tank into the storm."""
+        zr = p.get("zone_radius")
+        if zr is None:
+            return tq, tr
+        limit = max(1, int(zr) - ZONE_MARGIN)
+        while hex_distance(tq, tr, cq, cr) > limit:
+            tq += 1 if tq < cq else -1 if tq > cq else 0
+            tr += 1 if tr < cr else -1 if tr > cr else 0
+        return tq, tr
+
     def _toward(self, p: dict, walls: set, occ: set, tq: int, tr: int, R: int) -> dict:
         """One step of a BFS path toward (tq, tr) around known walls (tanks veto only the
         immediate step — they move). Falls back to a wall-sliding greedy step when no route
@@ -170,6 +182,7 @@ class Bot:
             while hex_distance(tq, tr, cq, cr) > R:
                 tq += 1 if tq < cq else -1 if tq > cq else 0
                 tr += 1 if tr < cr else -1 if tr > cr else 0
+            tq, tr = self._inside_zone(p, tq, tr, cq, cr)
             return {**intent, **self._toward(p, wallset, occ, tq, tr, R)}
 
         # 6. work the enemy this temperament points at — unless the commander called one
@@ -191,23 +204,19 @@ class Bot:
         rec = self.board[focus]
         seen = focus in visible
 
-        # hurt: fall back directly away from it while the gun keeps working
+        # hurt: fall back directly away from it while the gun keeps working — but never
+        # into the storm; the zone kills faster than the enemy does
         if seen and p["energy"] <= LOW_ENERGY:
-            return {
-                **intent,
-                **self._toward(p, wallset, occ, 2 * p["q"] - rec["q"], 2 * p["r"] - rec["r"], R),
-            }
+            fq, frr = self._inside_zone(p, 2 * p["q"] - rec["q"], 2 * p["r"] - rec["r"], cq, cr)
+            return {**intent, **self._toward(p, wallset, occ, fq, frr, R)}
 
         if seen:
             d = visible[focus]["dist"]
             if d < self.traits["min_d"]:
-                # closer than this temperament likes: open the gap while the gun keeps working
-                return {
-                    **intent,
-                    **self._toward(
-                        p, wallset, occ, 2 * p["q"] - rec["q"], 2 * p["r"] - rec["r"], R
-                    ),
-                }
+                # closer than this temperament likes: open the gap while the gun keeps
+                # working — clamped inside the zone, kiting into the storm is suicide
+                kq, krr = self._inside_zone(p, 2 * p["q"] - rec["q"], 2 * p["r"] - rec["r"], cq, cr)
+                return {**intent, **self._toward(p, wallset, occ, kq, krr, R)}
             if d <= self.traits["max_d"]:
                 # in the comfort band: face it and HOLD — a parked tank that can see its
                 # target shoots it every cooldown, which is how fights actually resolve
