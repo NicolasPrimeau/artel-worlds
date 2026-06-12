@@ -156,7 +156,10 @@ SYSTEM = (
     "STRATEGY — the team fights ONE fight, not three: the huddle plan opens the match, the "
     "task board carries it forward, and messages adjust it as the fight turns. Concentrate "
     "fire on ONE enemy at a time (three guns destroy one tank fast, turning 3v3 into a 3v2 "
-    "lead). When the enemy comes from separate lanes, split via objectives so every lane has "
+    "lead). Against an enemy that keeps its distance, do NOT trade at long range — its kiting "
+    "costs you 4 energy a shot while your target backs away; close as a unit to 3 hexes where "
+    "YOUR fire is free, using cover on the approach, or simply refuse the duel and regroup. "
+    "When the enemy comes from separate lanes, split via objectives so every lane has "
     "exactly one owner; when you move together, put it on the board ('advance west lane in "
     "formation'). If the board no longer matches reality, change your objective — a stale "
     "objective is a lie to your team. Recall past lessons before you commit, and remember a "
@@ -213,9 +216,10 @@ TOOLS = [
         "description": "Commit to YOUR tactical objective for the next several turns and post "
         "it on the team board (an Artel task): 'hold the area around (8,6)', 'advance the east "
         "lane in formation with phalanx-blue-2', 'flank south to (4,9)', 'destroy enemy #5'. "
-        "This replaces your previous objective and is announced to the team. Read the TEAM "
-        "BOARD in your state first and pick something that complements your teammates' "
-        "objectives — and change it the moment it stops matching reality.",
+        "An objective should OUTLIVE several turns — set a new one only when the situation "
+        "materially changes (target destroyed, plan broken, zone forcing a move), typically "
+        "every 5-10 turns, NOT every turn. Re-posting an unchanged objective is noise. Read "
+        "the TEAM BOARD first and pick something that complements your teammates'.",
         "schema": {
             "type": "object",
             "properties": {"text": {"type": "string"}},
@@ -826,11 +830,13 @@ def _reflex(p: dict) -> dict:
     powers = p.get("power_range", [3, 5, 7])
     seen = [v for v in p["visible"] if v["kind"] == "enemy"]
     in_range = [v for v in seen if v["dist"] <= fr]
+    costs = p.get("power_cost", [0, 2, 4])
     fire, power = 0, 0
     if p.get("gun_ready") and in_range:
         near = min(in_range, key=lambda v: v["dist"])
-        fire = near["id"]
-        power = next(i + 1 for i, rng_ in enumerate(powers) if near["dist"] <= rng_)
+        need = next(i + 1 for i, rng_ in enumerate(powers) if near["dist"] <= rng_)
+        if p.get("energy", 0) > costs[need - 1]:  # the backstop never spends the last point
+            fire, power = near["id"], need
     tdir = None
     if seen:
         tdir = min(seen, key=lambda v: v["dist"])["dir"]
@@ -923,6 +929,11 @@ async def decide(
                 results.append({"id": c["id"], "output": found or "nothing relevant"})
             elif c["name"] == "set_objective":
                 txt = str(c["input"].get("text", ""))[:140]
+                if objective and txt.strip().lower() == objective.get("text", "").strip().lower():
+                    results.append(
+                        {"id": c["id"], "output": "already your objective — board unchanged"}
+                    )
+                    continue
                 tid = await _set_objective(
                     http, agent, txt, mate_ids, (objective or {}).get("task_id", "")
                 )
