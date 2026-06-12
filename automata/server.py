@@ -110,9 +110,14 @@ TARGET_DESC = {
 TICK_INTERVAL = 1.0
 
 
+def _rand_seed() -> int:
+    # a fresh, unpredictable world every boot and every reset — never the same run twice
+    return secrets.randbelow(2**31 - 1) + 1
+
+
 class Automata:
     def __init__(self):
-        self.world = World(DEFAULT, seed=1)
+        self.world = World(DEFAULT, seed=_rand_seed())
         self.world.seed(DEFAULT.initial_population)
         self.agent = HeuristicAgent()
         self.lock = asyncio.Lock()
@@ -122,7 +127,7 @@ class Automata:
         self._assign_llm_tribes()
 
     def reset(self):
-        self.world = World(DEFAULT, seed=self.world.rng.randint(1, 1_000_000))
+        self.world = World(DEFAULT, seed=_rand_seed())
         self.world.seed(DEFAULT.initial_population)
         self.tokens.clear()
         self._assign_llm_tribes()

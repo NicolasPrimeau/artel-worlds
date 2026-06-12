@@ -7,7 +7,24 @@ from .config import Config
 from .genome import Genome, random_genome
 
 AXIAL_DIRS = ((1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))
-HOUSE_NAMES = ("alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta")
+HOUSE_NAMES = (
+    "alpha",
+    "beta",
+    "gamma",
+    "delta",
+    "epsilon",
+    "zeta",
+    "eta",
+    "theta",
+    "iota",
+    "kappa",
+    "lambda",
+    "mu",
+    "nu",
+    "xi",
+    "omicron",
+    "pi",
+)
 
 
 @dataclass

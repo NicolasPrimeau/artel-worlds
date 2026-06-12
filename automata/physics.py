@@ -9,6 +9,10 @@ def select_target(world: World, cell: Cell, target: str) -> Cell | None:
     free = [n for n in world.neighbors(cell.q, cell.r) if n.organism is None]
     if not free:
         return None
+    # neighbors() returns a fixed compass order (east first), so max()/min() on a flat field would
+    # always tie-break to the same direction — that's why migration drifted uniformly east. Shuffle
+    # first so ties break randomly and "random" is genuinely all-directions.
+    world.rng.shuffle(free)
     if target == "nutrient_max":
         return max(free, key=lambda c: c.nutrient)
     if target == "toxin_min":

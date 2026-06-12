@@ -4,13 +4,13 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Config:
     # Grid
-    width: int = 60
-    height: int = 60
+    width: int = 100
+    height: int = 100
     toric: bool = True
 
     # Seed population, organized into house tribes (one lineage each, LLM/CA-driven).
-    initial_population: int = 80
-    house_tribes: int = 5
+    initial_population: int = 400
+    house_tribes: int = 12
     founder_count: int = 3  # cells a joining player's tribe starts with
 
     # Energy economy (tuned 'lean_consume': leaner energy keeps density off the

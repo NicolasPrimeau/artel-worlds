@@ -402,7 +402,7 @@ function tipHTML(o, pinned, dead) {
     + `<tr><td>cell</td><td class="v">${o.q}, ${o.r}</td></tr>`
     + `<tr><td>nutrient here</td><td class="v">${nut}</td></tr>`
     + `<tr><td>toxin here</td><td class="v">${tox}${tox >= snap.toxin_lethal ? ' ☠' : ''}</td></tr></table>`
-    + (pinned || dead ? dnaSection(o.id) : '');
+    + dnaSection(o.id);
 }
 function dnaSection(id) {
   const g = genomeCache[id];
@@ -447,7 +447,7 @@ function onMove(e) {
   const rect = cv.getBoundingClientRect();
   const h = pick(e.clientX - rect.left, e.clientY - rect.top);
   const id = h ? h.o.id : null;
-  if (id !== hoverId) { hoverId = id; blit(); }
+  if (id !== hoverId) { hoverId = id; if (id != null) fetchGenome(id); blit(); }
   updateDisplay();
 }
 function unpin() { pinnedId = null; pinnedLast = null; pinnedDead = false; }

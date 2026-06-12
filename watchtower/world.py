@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import secrets
 from datetime import datetime, timezone
 
 import httpx
@@ -42,6 +43,9 @@ class World:
         self.artel: list[Responder] = []
         self.solo: list[Responder] = []
         self.cursor = self.metrics.total()  # resume the deterministic stream where it left off
+        self.seed = (
+            SEED  # stream seed; stable across restarts (resume), re-rolled on operator reset
+        )
         self.spent_today = 0.0
         self._day = self._utc_day()
         self.live: dict | None = None  # the incident in flight, for the race clocks
@@ -93,7 +97,7 @@ class World:
     async def fire(self) -> None:
         await self._ensure()
         seq = self.cursor
-        spec = spec_for(SEED, seq)
+        spec = spec_for(self.seed, seq)
         n = len(self.artel)
         a_resp, s_resp = self.artel[seq % n], self.solo[seq % n]
         a_inc = Incident(spec, seq, self.artel_infra, "artel")
@@ -140,6 +144,7 @@ class World:
         await self._ensure()
         self.metrics.reset_all()
         self.cursor = 0
+        self.seed = secrets.randbelow(2**31 - 1) + 1  # a fresh incident stream on each reset
         self.spent_today = 0.0
         self.artel_infra.reset()
         self.solo_infra.reset()
