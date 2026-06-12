@@ -23,6 +23,10 @@ CREATE TABLE IF NOT EXISTS incidents (
 );
 CREATE INDEX IF NOT EXISTS idx_incidents_seq ON incidents(seq);
 CREATE INDEX IF NOT EXISTS idx_incidents_fleet ON incidents(fleet);
+CREATE TABLE IF NOT EXISTS kv (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 
@@ -163,6 +167,25 @@ class Metrics:
                 }
             )
         return out
+
+    def kv_get(self, key: str) -> str | None:
+        with self._lock:
+            row = self._db.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
+            return row["value"] if row else None
+
+    def kv_set(self, key: str, value: str) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO kv (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, value),
+            )
+            self._db.commit()
+
+    def kv_delete(self, key: str) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM kv WHERE key=?", (key,))
+            self._db.commit()
 
     def reset_all(self) -> None:
         # wipe the whole curve — used by the operator reset to restart the A/B from zero

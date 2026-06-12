@@ -351,3 +351,50 @@ def test_action_times_are_noisy_bounded_and_reproducible():
         again.act("inspect", "db")
         assert again.elapsed == inc.elapsed  # seeded: same incident + fleet replays identically
     assert len(times) == 2  # but the two fleets draw independently
+
+
+def test_kv_roundtrip_survives_reopen():
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "t.db")
+        m = Metrics(path)
+        m.kv_set("spend", '{"total": 1.5}')
+        m.kv_set("spend", '{"total": 2.5}')
+        m.close()
+        m2 = Metrics(path)
+        assert m2.kv_get("spend") == '{"total": 2.5}'
+        m2.kv_delete("spend")
+        assert m2.kv_get("spend") is None
+        m2.close()
+
+
+def test_world_state_survives_a_restart(monkeypatch):
+    # a deploy must not wipe the solo fleet's notebooks or the spend counters — that biases
+    # the A/B (Artel's memory lives on artel.run and already survives)
+    import asyncio
+
+    from watchtower import agent as A
+    from watchtower.world import Responder, World
+
+    with tempfile.TemporaryDirectory() as d:
+        monkeypatch.setenv("WATCHTOWER_DB", os.path.join(d, "w.db"))
+
+        async def run():
+            w = World()
+            s = A.SoloStore("solo-1")
+            await s.remember("runbook stale_reads: check replica lag first")
+            await s.save_handoff("incident #2: resolved")
+            w.solo = [Responder("solo-1", s)]
+            w.spent_total, w.spent_today = 1.23, 0.04
+            w._persist_state()
+            await w.aclose()
+
+            w2 = World()
+            s2 = A.SoloStore("solo-1")
+            w2.solo = [Responder("solo-1", s2)]
+            w2._restore_state()
+            assert s2.notes and "replica lag" in s2.notes[0]["text"]
+            assert s2.shift == 1 and "incident #2" in s2.last_shift
+            assert w2.spent_total == 1.23
+            await w2.aclose()
+
+        asyncio.run(run())

@@ -119,3 +119,22 @@ def test_server_starts_and_ticks_without_squad():
 
     with TestClient(server.app) as client:
         assert client.get("/health").json()["status"] == "ok"
+
+
+def test_scoreboard_survives_a_restart(tmp_path, monkeypatch):
+    # deploys must not zero the series: scores, match counter, history, and spend reload
+    # from the state file; only the in-flight match and agent working state are ephemeral
+    monkeypatch.setenv("PHALANX_STATE", str(tmp_path / "state.json"))
+    from phalanx.server import Phalanx
+
+    g = Phalanx()
+    g.scores = {"artel": 7, "red": 4}
+    g.history.append({"match": g.match_no, "winner": "artel"})
+    g.squad.spent = 0.42
+    g.persist_state()
+
+    g2 = Phalanx()
+    assert g2.scores == {"artel": 7, "red": 4}
+    assert g2.history[-1]["winner"] == "artel"
+    assert g2.squad.spent == 0.42
+    assert g2.match_no == g.match_no + 1  # the wiped in-flight match restarts as the next one

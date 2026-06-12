@@ -22,6 +22,17 @@ from .control import STRATEGIES, Bot
 _rng = SystemRandom()
 log = logging.getLogger("phalanx")
 
+
+def _state_path() -> Path:
+    # the running tally lives on a Fly volume so a DEPLOY no longer zeroes the series; the
+    # in-flight match and all agent working state stay ephemeral — only the lasting record
+    # (scoreboard, match counter, history, spend) survives. Wiping is an intentional act now.
+    p = Path(os.environ.get("PHALANX_STATE", "/data/phalanx_state.json"))
+    if not p.parent.exists():
+        return Path(p.name)
+    return p
+
+
 STATIC = Path(__file__).parent / "static"
 MATCH_END_LINGER = 4.0  # seconds to hold on the final positions before starting the next match
 TICK_INTERVAL = 2.5  # MINIMUM seconds per tick — sets the visible pace and caps LLM spend
@@ -49,7 +60,39 @@ class Phalanx:
         self._squad_match = -1  # which match the squad is currently driving
         self._squad_started = -1  # which match the squad has already run on_start for
         self.history: list[dict] = []  # last matches' outcomes + kill logs, for /debug
+        self._restore_state()
         self._new_match()
+
+    def _restore_state(self) -> None:
+        try:
+            raw = json.loads(_state_path().read_text())
+        except Exception:
+            return
+        self.scores = {k: int(v) for k, v in (raw.get("scores") or {}).items()}
+        self.history = list(raw.get("history") or [])[-10:]
+        self.match_no = int(raw.get("match_no", -1))
+        self.squad.spent = float(raw.get("squad_spent", 0.0))
+        if self.red_squad is not None:
+            self.red_squad.spent = float(raw.get("red_spent", 0.0))
+
+    def persist_state(self) -> None:
+        try:
+            path = _state_path()
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(
+                json.dumps(
+                    {
+                        "scores": self.scores,
+                        "history": self.history,
+                        "match_no": self.match_no,
+                        "squad_spent": round(self.squad.spent, 6),
+                        "red_spent": round(self.red_squad.spent, 6) if self.red_squad else 0.0,
+                    }
+                )
+            )
+            tmp.replace(path)
+        except Exception as e:
+            log.warning("phalanx state persist failed: %s", e)
 
     def _new_match(self) -> None:
         self.match_no = getattr(self, "match_no", -1) + 1
@@ -242,6 +285,7 @@ async def _tick_loop():
                         }
                     )
                     del G.history[:-10]
+                    G.persist_state()
                     if live_artel:
                         survivors = {t.id for t in a.tanks.values() if t.team in COORDINATED}
                         asyncio.create_task(
@@ -271,6 +315,7 @@ async def _lifespan(app: FastAPI):
         tick.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await tick
+        G.persist_state()
         await G.squad.aclose()
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import secrets
@@ -47,6 +48,7 @@ class World:
             SEED  # stream seed; stable across restarts (resume), re-rolled on operator reset
         )
         self.spent_today = 0.0
+        self.spent_total = 0.0
         self._day = self._utc_day()
         self.live: dict | None = None  # the incident in flight, for the race clocks
         self.viewers: set = set()
@@ -89,10 +91,65 @@ class World:
                 Responder(f"solo-{i + 1}", A.SoloStore(f"solo-{i + 1}"))
                 for i in range(len(self.artel))
             ]
+            self._restore_state()
         if not self._joined:
             for r in self.artel:
                 await r.store.join()
             self._joined = True
+
+    def _restore_state(self) -> None:
+        # deploys must not wipe the experiment: the solo fleet's private notebooks live only in
+        # this process (Artel's live on artel.run and already survive), and the spend counters
+        # are the cost story. Both restore from the metrics volume; only /reset wipes them.
+        try:
+            raw = self.metrics.kv_get("solo_stores")
+            if raw:
+                saved = {s["agent_id"]: s for s in json.loads(raw)}
+                for r in self.solo:
+                    st = saved.get(r.store.agent_id)
+                    if st:
+                        r.store.notes = st.get("notes", [])
+                        r.store.tasks = st.get("tasks", [])
+                        r.store.last_shift = st.get("last_shift", "")
+                        r.store.shift = int(st.get("shift", 0))
+            raw = self.metrics.kv_get("spend")
+            if raw:
+                sp = json.loads(raw)
+                self.spent_total = float(sp.get("total", 0.0))
+                if sp.get("day") == self._utc_day():
+                    self.spent_today = float(sp.get("today", 0.0))
+        except Exception as e:
+            log.warning("watchtower state restore failed: %s", e)
+
+    def _persist_state(self) -> None:
+        try:
+            self.metrics.kv_set(
+                "solo_stores",
+                json.dumps(
+                    [
+                        {
+                            "agent_id": r.store.agent_id,
+                            "notes": r.store.notes,
+                            "tasks": r.store.tasks,
+                            "last_shift": r.store.last_shift,
+                            "shift": r.store.shift,
+                        }
+                        for r in self.solo
+                    ]
+                ),
+            )
+            self.metrics.kv_set(
+                "spend",
+                json.dumps(
+                    {
+                        "total": round(self.spent_total, 6),
+                        "today": round(self.spent_today, 6),
+                        "day": self._day,
+                    }
+                ),
+            )
+        except Exception as e:
+            log.warning("watchtower state persist failed: %s", e)
 
     async def fire(self) -> None:
         await self._ensure()
@@ -123,6 +180,7 @@ class World:
                 A.respond(self._http, s_inc, s_resp.store, on_step=step),
             )
             self.spent_today += ca + cs
+            self.spent_total += ca + cs
             self.last_error = None
         except Exception as e:
             self.last_error = f"{type(e).__name__}: {e}"
@@ -156,6 +214,7 @@ class World:
         await s_resp.store.save_handoff(_shift_note(s_inc))
         self.cursor += 1
         self.live = None
+        self._persist_state()
         await self._broadcast()
 
     async def reset(self) -> None:
@@ -172,7 +231,11 @@ class World:
         self.live = None
         for r in self.solo:
             r.store.notes.clear()
+            r.store.tasks.clear()
             r.store.feed.clear()
+            r.store.last_shift = ""
+            r.store.shift = 0
+        self.metrics.kv_delete("solo_stores")
         for r in self.artel:
             r.store.feed.clear()
         if self._http is not None and self.artel:
@@ -237,6 +300,7 @@ class World:
             "fleet_size": len(self.artel),
             "cursor": self.cursor,
             "spent_today": round(self.spent_today, 4),
+            "spent_total": round(self.spent_total, 4),
             "cap_daily": A.SPEND_CAP_DAILY_USD,
             "artel_wall": self.artel_infra.status_wall(),
             "solo_wall": self.solo_infra.status_wall(),
@@ -267,6 +331,8 @@ class World:
         }
 
     async def aclose(self) -> None:
+        if self.solo:
+            self._persist_state()
         if self._http is not None:
             await self._http.aclose()
             self._http = None

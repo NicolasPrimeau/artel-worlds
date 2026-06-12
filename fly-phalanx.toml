@@ -31,3 +31,7 @@ primary_region = "yyz"
     port = 8000
     timeout = "5s"
     type = "http"
+
+[mounts]
+  source = "phalanx_data"
+  destination = "/data"
