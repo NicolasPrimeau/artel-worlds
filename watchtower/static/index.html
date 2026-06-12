@@ -166,6 +166,7 @@
       <div class="stat" data-tip="Average fix time for the Artel fleet's recent incidents. Falls as the shared runbook library grows."><div class="v a" id="h-artel">—</div><div class="k">Artel fleet</div></div>
       <div class="stat" data-tip="Average fix time for the solo fleet on the SAME incidents. Stays roughly flat — lessons die with the agent that learned them."><div class="v s" id="h-solo">—</div><div class="k">solo fleet</div></div>
       <div class="stat" data-tip="Share of head-to-head incidents the Artel fleet resolved first. Above 50% = sharing is winning."><div class="v" id="h-win">—</div><div class="k">Artel wins</div></div>
+      <div class="stat" data-tip="Incidents each fleet failed to resolve inside the action budget — booked at the 15-minute cap. Misses are the expensive tail; runbooks exist to prevent them."><div class="v" id="h-miss">—</div><div class="k">gave up (A·S)</div></div>
     </div>
     <div id="verdict"></div>
     <div class="chartbox"><canvas id="trend"></canvas>
@@ -186,7 +187,8 @@
     <div class="legend">
       <span data-tip="The Artel fleet fixed this incident faster."><i style="background:var(--artel)"></i>Artel faster</span>
       <span data-tip="The solo fleet fixed this one faster."><i style="background:var(--solo)"></i>Solo faster</span>
-      <span data-tip="Bar bottom = winner's fix time. Bar top = loser's. Tap a bar for the fault type and exact times.">bar = the gap between the two fleets</span>
+      <span data-tip="Bar bottom = winner's fix time. Bar top = loser's. Tap a bar for the fault type and exact times. The time axis is logarithmic so 1-minute fixes stay readable next to 15-minute misses.">bar = the gap between the two fleets</span>
+      <span data-tip="A red-edged faded bar means a fleet gave up: the incident went unresolved and is booked at the 15-minute cap — roughly the cost of burning the whole action budget and escalating.">red edge = gave up (15m cap)</span>
     </div>
   </section>
 
@@ -324,20 +326,28 @@ function renderCharts(s){
 
   const hist = (s.history||[]).slice(-40);
   if (box("duel", hist.length >= 1)){
+    const missed = h => h.artel_resolved === false || h.solo_resolved === false;
     upsert("duel", { type:"bar",
       data:{ labels: hist.map(h=>h.seq), datasets:[{
         data: hist.map(h=>[Math.min(h.artel,h.solo), Math.max(h.artel,h.solo)]),
-        backgroundColor: hist.map(h=>h.artel<h.solo?PAL.artelA:h.solo<h.artel?PAL.soloA:PAL.tie),
+        backgroundColor: hist.map(h=>{
+          const c = h.artel<h.solo?PAL.artelA:h.solo<h.artel?PAL.soloA:PAL.tie;
+          return missed(h) ? c.replace(".8", ".35") : c;
+        }),
+        borderColor: hist.map(h=>missed(h) ? "rgba(255,93,93,.9)" : "transparent"),
+        borderWidth: hist.map(h=>missed(h) ? 1.5 : 0),
         borderRadius:3, barPercentage:.72, minBarLength:4, borderSkipped:false,
       }]},
       options:{ maintainAspectRatio:false,
         scales:{ x:{ grid:{display:false}, ticks:{ maxTicksLimit:10, maxRotation:0 }, title:{display:true, text:"incident #"} },
-                 y:{ beginAtZero:true, ticks:{ callback:secTick } } },
+                 y:{ type:"logarithmic", min:20,
+                     ticks:{ callback:v=>[20,60,120,300,900].includes(v)?secTick(v):null } } },
         plugins:{ tooltip:{ callbacks:{
           title: i => { const h=hist[i[0].dataIndex]; return `#${h.seq} \u00b7 ${String(h.family).replace(/_/g," ")}`; },
           label: i => { const h=hist[i.dataIndex];
+            const side = f => fmt(h[f]) + (h[f+"_resolved"]===false ? " (gave up — booked at the 15m cap)" : "");
             const w = h.artel<h.solo ? "Artel" : h.solo<h.artel ? "Solo" : "tie";
-            const lines = [` Artel ${fmt(h.artel)} \u00b7 Solo ${fmt(h.solo)}`];
+            const lines = [` Artel ${side("artel")}`, ` Solo ${side("solo")}`];
             lines.push(w==="tie" ? " dead heat" : ` ${w} faster by ${fmt(Math.abs(h.artel-h.solo))}`);
             return lines; },
         }}}}});
@@ -376,6 +386,7 @@ function render(s){
   $("h-artel").textContent = fmt(sum.artel_mttr_recent);
   $("h-solo").textContent = fmt(sum.solo_mttr_recent);
   $("h-win").textContent = sum.artel_win_rate==null?"—":Math.round(sum.artel_win_rate*100)+"%";
+  $("h-miss").textContent = sum.artel_misses==null?"—":`${sum.artel_misses}\u00b7${sum.solo_misses}`;
 
   const a = sum.artel_mttr_recent, so = sum.solo_mttr_recent, n = sum.incidents||0;
   const v = $("verdict");
@@ -409,10 +420,11 @@ function render(s){
     : `<div class="empty">Quiet — activity appears when an incident fires.</div>`;
 
   const rec = s.recent||[];
+  const cell = (v, ok) => ok===false ? `${fmt(v)} \u2715` : fmt(v);
   $("recent").innerHTML = rec.length ? rec.slice(0,8).map(r=>{
     const ra=r.artel, rs=r.solo; let w="—",c="";
     if (ra!=null && rs!=null){ if(ra<rs){w="Artel";c="win-a";} else if(rs<ra){w="Solo";c="win-s";} else w="tie"; }
-    return `<tr><td>${r.seq}</td><td>${esc(String(r.family).replace(/_/g," "))}</td><td class="a">${fmt(ra)}</td><td class="s">${fmt(rs)}</td><td class="${c}">${w}</td></tr>`;
+    return `<tr><td>${r.seq}</td><td>${esc(String(r.family).replace(/_/g," "))}</td><td class="a">${cell(ra, r.artel_resolved)}</td><td class="s">${cell(rs, r.solo_resolved)}</td><td class="${c}">${w}</td></tr>`;
   }).join("") : `<tr><td colspan="5" class="empty">No incidents yet — the first fires automatically.</td></tr>`;
 }
 

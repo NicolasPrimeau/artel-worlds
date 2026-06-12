@@ -113,8 +113,11 @@ class Metrics:
             xs = xs[-last:] if last else xs
             return round(sum(xs) / len(xs), 1) if xs else None
 
+        misses = {f: sum(1 for r in by.get(f, []) if not r["resolved"]) for f in ("artel", "solo")}
         return {
             "incidents": len(complete),
+            "artel_misses": misses["artel"],
+            "solo_misses": misses["solo"],
             "artel_mttr_all": avg("artel"),
             "solo_mttr_all": avg("solo"),
             "artel_mttr_recent": avg("artel", 20),
@@ -129,6 +132,7 @@ class Metrics:
         for r in rows:
             p = paired.setdefault(r["seq"], {"seq": r["seq"], "family": r["family"]})
             p[r["fleet"]] = round(r["mttr"], 1)
+            p[f"{r['fleet']}_resolved"] = bool(r["resolved"])
         return sorted(paired.values(), key=lambda p: p["seq"], reverse=True)[:n]
 
     def history(self, n: int = 120) -> list[dict]:
@@ -138,6 +142,7 @@ class Metrics:
         for r in rows:
             p = paired.setdefault(r["seq"], {"seq": r["seq"], "family": r["family"]})
             p[r["fleet"]] = round(r["mttr"], 1)
+            p[f"{r['fleet']}_resolved"] = bool(r["resolved"])
         out = [p for p in paired.values() if "artel" in p and "solo" in p]
         return sorted(out, key=lambda p: p["seq"])
 
