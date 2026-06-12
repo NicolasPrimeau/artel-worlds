@@ -197,14 +197,14 @@ const TEAM = {
 const teamRGB = t => (TEAM[t] || TEAM.red).h;
 const rgba = (c,a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 const esc = s => String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
-const MAXE = 90, ANIM = 900, BEAM_MS = 900, TRAVEL_MS = 320, FLASH_MS = 900, DEATH_MS = 620;
+const MAXE = 90, ANIM = 900, BEAM_MS = 700, TRAVEL_MS = 260, FLASH_MS = 750, DEATH_MS = 540;
 // The engine models one CONTINUOUS turn: every shot is released from the hex a tank
 // started on while everyone displaces simultaneously; a shot lands wherever its target
 // actually is when the pulse catches it (a target that breaks line of sight was never
 // hit — no tracer exists). Replay exactly that: glide begins at once, beams anchor to
 // the LIVE shooter and target as they slide, the impact fires when the pulse arrives,
 // and a killed tank bursts at the spot where the pulse caught it.
-const FIRE_AT = 60, IMPACT_AT = FIRE_AT + TRAVEL_MS, MOVE_AT = 0, MOVE_MS = 800;
+const FIRE_AT = 50, IMPACT_AT = FIRE_AT + TRAVEL_MS, MOVE_AT = 0, MOVE_MS = 620;
 const DEATH_AT = IMPACT_AT + 200;
 
 let snap=null, dpr=1, cssW=0, cssH=0, L=null, hits=[], hoverId=null, winnerTimer=0;
