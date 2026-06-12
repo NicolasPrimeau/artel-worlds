@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import random
 from dataclasses import dataclass
 
@@ -157,25 +159,39 @@ class World:
         return self._oc
 
     def seed(self, n: int):
-        # Seed n organisms split across house_tribes lineages (the house tribes).
+        # Seed n organisms split across house_tribes lineages — each tribe CLUSTERED around
+        # its own settlement, settlements spread across the map. Tribes start as villages,
+        # not as a uniform sprinkle: territory, migration, and contact emerge from geography.
         tribes = max(1, self.cfg.house_tribes)
         per = [n // tribes] * tribes
         for i in range(n % tribes):
             per[i] += 1
-        empties = [c for c in self.cells.values() if c.organism is None]
-        self.rng.shuffle(empties)
-        it = iter(empties)
+        cols = max(1, round(math.sqrt(tribes * self.cfg.width / self.cfg.height)))
+        rows = math.ceil(tribes / cols)
+        order = list(range(tribes))
+        self.rng.shuffle(order)
         for t in range(tribes):
             lineage = self.new_lineage()
             self.register_tribe(lineage, f"house:{HOUSE_NAMES[t % len(HOUSE_NAMES)]}")
             # one shared randomized strand per tribe: every founder cell starts with the SAME
             # complete DNA, so a tribe is genetically uniform until mutation and selection diverge it
             g = random_genome(self.rng, self.cfg.max_genes)
-            for _ in range(per[t]):
-                cell = next(it, None)
-                if cell is None:
-                    return
-                self.spawn(cell.q, cell.r, g, lineage, self.cfg.birth_energy)
+            gi = order[t]
+            jx, jy = self.cfg.width // (cols * 4), self.cfg.height // (rows * 4)
+            cx = int((gi % cols + 0.5) * self.cfg.width / cols + self.rng.randint(-jx, jx))
+            cy = int((gi // cols + 0.5) * self.cfg.height / rows + self.rng.randint(-jy, jy))
+            cx %= self.cfg.width
+            cy %= self.cfg.height
+            rad = max(3, int(math.sqrt(per[t]) * 1.6))
+            placed, attempts = 0, 0
+            while placed < per[t] and attempts < per[t] * 80:
+                attempts += 1
+                q = (cx + self.rng.randint(-rad, rad)) % self.cfg.width
+                r = (cy + self.rng.randint(-rad, rad)) % self.cfg.height
+                cell = self.cells.get((q, r))
+                if cell is not None and cell.organism is None:
+                    self.spawn(q, r, g, lineage, self.cfg.birth_energy)
+                    placed += 1
 
     def stats(self) -> dict:
         orgs = list(self.organisms.values())
