@@ -179,3 +179,57 @@ def test_bfs_still_reaches_target_through_remembered_walls():
     walls = {(8, 6), (8, 7), (8, 8)}
     d = bfs_step(7, 7, 10, 7, walls, R)
     assert d is not None
+
+
+def _duel(seed):
+    a = Arena(DEFAULT, seed=seed)
+    a.add_team("blue", "house:blue", (5, 5))
+    a.add_team("red", "house:red", (5, 5))
+    shooter = next(t for t in a.tanks.values() if t.team == "blue")
+    victim = next(t for t in a.tanks.values() if t.team == "red")
+    a.walls.clear()
+    for i, o in enumerate(t for t in a.tanks.values() if t not in (shooter, victim)):
+        o.q, o.r = 1 + i, 12  # bystanders off the firing line
+    shooter.q, shooter.r, shooter.cooldown = 5, 5, 0
+    return a, shooter, victim
+
+
+def test_shot_fires_from_turn_start_position_while_scooting():
+    from phalanx.tank import AXIAL_DIRS
+
+    a, shooter, victim = _duel(21)
+    victim.q, victim.r = 8, 5
+    shooter.heading = AXIAL_DIRS.index((0, -1))  # displace off the line after firing
+    v0 = victim.energy
+    a.submit(shooter.id, {"fire": victim.id, "power": 2, "move": "fwd"})
+    a.step()
+    assert (shooter.q, shooter.r) == (5, 4)  # the hull moved...
+    assert a.tanks[victim.id].energy <= v0 - DEFAULT.shot_damage + 1  # ...the muzzle did not
+
+
+def test_breaking_range_with_a_move_dodges_the_shot():
+    from phalanx.tank import AXIAL_DIRS
+
+    a, shooter, victim = _duel(22)
+    victim.q, victim.r = 10, 5  # distance 5 — the edge of power-2 range
+    victim.heading = AXIAL_DIRS.index((1, 0))
+    v0, s0 = victim.energy, shooter.energy
+    a.submit(shooter.id, {"fire": victim.id, "power": 2})
+    a.submit(victim.id, {"move": "fwd"})  # steps to (11,5): distance 6, out of range
+    a.step()
+    assert a.tanks[victim.id].energy >= v0 - 1  # dodged: no damage (only move cost applies)
+    assert shooter.energy <= s0 - DEFAULT.power_cost[1]  # the trigger pull still cost power-2
+    assert shooter.cooldown == max(0, DEFAULT.gun_cooldown - 1)  # reload started, ticked once
+
+
+def test_own_post_move_hull_does_not_block_own_shot():
+    from phalanx.tank import AXIAL_DIRS
+
+    a, shooter, victim = _duel(23)
+    victim.q, victim.r = 8, 5
+    shooter.heading = AXIAL_DIRS.index((1, 0))  # advance ALONG the firing line
+    v0 = victim.energy
+    a.submit(shooter.id, {"fire": victim.id, "power": 2, "move": "fwd"})
+    a.step()
+    assert (shooter.q, shooter.r) == (6, 5)  # now standing on the old firing line
+    assert a.tanks[victim.id].energy <= v0 - DEFAULT.shot_damage + 1  # shot was not self-blocked

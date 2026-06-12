@@ -147,8 +147,16 @@ class Arena:
         f = (t - cfg.zone_start) / (cfg.zone_close - cfg.zone_start)
         return full - (full - cfg.zone_min) * f
 
-    def _blocked(self, aq: int, ar: int, bq: int, br: int, tanks_block: bool = False) -> bool:
-        occ = {(t.q, t.r) for t in self.tanks.values()} if tanks_block else None
+    def _blocked(
+        self,
+        aq: int,
+        ar: int,
+        bq: int,
+        br: int,
+        tanks_block: bool = False,
+        ignore: frozenset | set = frozenset(),
+    ) -> bool:
+        occ = {(t.q, t.r) for t in self.tanks.values()} - set(ignore) if tanks_block else None
         for q, r in hex_line(aq, ar, bq, br):
             if (q, r) == (aq, ar) or (q, r) == (bq, br):
                 continue
@@ -245,6 +253,11 @@ class Arena:
             if turn in (-1, 1):
                 t.heading = (t.heading + turn) % 6
 
+        # muzzle snapshot: shots are squeezed off from where a tank STARTS the turn, then it
+        # displaces — shoot-and-scoot. Targets resolve where they END: breaking line of sight
+        # or range with your move voids the incoming shot (the shooter still pays).
+        origins = {t.id: (t.q, t.r) for t in living}
+
         # 2. moves (resolve dest conflicts; one winner per cell)
         wants: dict[tuple[int, int], list[Tank]] = {}
         for t in living:
@@ -296,9 +309,10 @@ class Arena:
                 continue
             if target.team == t.team and not cfg.friendly_fire:
                 continue
-            if hex_distance(t.q, t.r, target.q, target.r) > cfg.power_range[power - 1]:
+            oq, orr = origins.get(t.id, (t.q, t.r))
+            if hex_distance(oq, orr, target.q, target.r) > cfg.power_range[power - 1]:
                 continue
-            if self._blocked(t.q, t.r, target.q, target.r, tanks_block=True):
+            if self._blocked(oq, orr, target.q, target.r, tanks_block=True, ignore={(t.q, t.r)}):
                 continue
             t.target = target.id  # the turret aims here (360°); the hull keeps its facing
             target.energy -= cfg.shot_damage
@@ -309,12 +323,12 @@ class Arena:
                 t.energy = min(cfg.max_energy, t.energy + cfg.hit_reward)
             self.tracers.append(
                 {
-                    "q": t.q,
-                    "r": t.r,
+                    "q": oq,
+                    "r": orr,
                     "tq": target.q,
                     "tr": target.r,
                     "team": t.team,
-                    "path": hex_line(t.q, t.r, target.q, target.r),
+                    "path": hex_line(oq, orr, target.q, target.r),
                     "dmg": cfg.shot_damage,
                     "reward": cfg.hit_reward,
                     "power": power,
