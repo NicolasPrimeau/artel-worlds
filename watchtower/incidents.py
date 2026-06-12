@@ -15,12 +15,18 @@ from .faults import FAMILIES, IncidentSpec
 from .infra import Infra
 
 
+EPOCH_INCIDENTS = 40
+
+
 def spec_for(seed: int, seq: int) -> IncidentSpec:
     # Each incident is its OWN seeded draw on (seed, seq) — deterministic, O(1), and identical for
     # both fleets. No fast-forward after a restart: the world just resumes at the next seq and the
     # same incident comes up that always would have. The cursor is simply how many have been done.
+    # The epoch is the world's evolution clock: every EPOCH_INCIDENTS, new roots open and priors
+    # drift — the environment stays ahead of any single responder's exposure rate, so the frontier
+    # is mappable by a fleet that pools exploration but never by one agent alone.
     rng = Random(f"{seed}:{seq}")
-    return rng.choice(FAMILIES).spawn(rng)
+    return rng.choice(FAMILIES).spawn(rng, seq // EPOCH_INCIDENTS)
 
 
 def make_stream(seed: int, length: int) -> list[IncidentSpec]:

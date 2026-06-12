@@ -30,7 +30,7 @@ class Fault:
     key: str
     title: str
     root: str
-    spawn: Callable[[Random], IncidentSpec]
+    spawn: Callable[[Random, int], IncidentSpec]
 
 
 def _spike(
@@ -51,7 +51,7 @@ def _spike(
     # remediation on that node. Variety lives in WHICH metric and WHICH remediation — and in the
     # traps, where the loud node is a dependent and the cure is elsewhere. `aux` returns extra
     # preset values (e.g. a deploy bump) so apply() stays pure.
-    def spawn(rng: Random) -> IncidentSpec:
+    def spawn(rng: Random, epoch: int = 0) -> IncidentSpec:
         node = rng.choice(nodes)
         val = round(rng.uniform(lo, hi), 1)
         extra = aux(rng) if aux else {}
@@ -76,7 +76,7 @@ def _spike(
     return Fault(key, title, root, spawn)
 
 
-def _queue_backlog(rng: Random) -> IncidentSpec:
+def _queue_backlog(rng: Random, epoch: int = 0) -> IncidentSpec:
     # Two steps, order-critical: a consumer wedged and the queue piled up behind it. Drain first and
     # the fresh backlog just re-wedges the same dead consumer — you must restart the CONSUMER, then
     # clear the queue. The alert points at the queue and the api (both loud); the wedged worker is
@@ -111,7 +111,7 @@ def _queue_backlog(rng: Random) -> IncidentSpec:
     )
 
 
-def _db_primary_stuck(rng: Random) -> IncidentSpec:
+def _db_primary_stuck(rng: Random, epoch: int = 0) -> IncidentSpec:
     # Two steps on the data tier: the primary wedged on long locks, connections backing up. Promote
     # the replica to take writes, THEN recycle the stuck primary. Restarting the primary first drops
     # every in-flight write; the failover has to come first. api/auth/workers all scream — red
@@ -141,7 +141,7 @@ def _db_primary_stuck(rng: Random) -> IncidentSpec:
     )
 
 
-def _deploy_regression(rng: Random) -> IncidentSpec:
+def _deploy_regression(rng: Random, epoch: int = 0) -> IncidentSpec:
     # One PAGE, two possible truths. Error rate jumps minutes after a deploy on a service node.
     # Usually it IS the deploy (roll back). But sometimes the deploy is innocent: its restart rush
     # surfaced a connection-pool leak, and a rollback changes nothing — the pool needs draining.
@@ -151,7 +151,10 @@ def _deploy_regression(rng: Random) -> IncidentSpec:
     err = round(rng.uniform(15.0, 60.0), 1)
     lat = round(rng.uniform(300, 900), 1)
     pool = round(rng.uniform(95.0, 100.0), 1)
-    is_regression = rng.random() < 0.6
+    roots = [("regression", max(0.35, 0.6 - 0.05 * epoch)), ("pool", 0.4)]
+    if epoch >= 2:
+        roots.append(("migration", 0.3))
+    root_key = rng.choices([r[0] for r in roots], weights=[r[1] for r in roots])[0]
 
     def apply(infra: Infra) -> None:
         s = infra.nodes[node]
@@ -159,29 +162,46 @@ def _deploy_regression(rng: Random) -> IncidentSpec:
         s.metrics["error_rate"] = err
         s.metrics["latency_ms"] = lat
         s.deploy_version += 1
-        if is_regression:
+        if root_key == "regression":
             s.logs = [
                 f"5xx rate {err}% since version bump",
                 f"NullPointer in NEW request handler path (v{s.deploy_version})",
             ]
-        else:
+        elif root_key == "pool":
             s.metrics["conns"] = pool
             s.logs = [
                 f"5xx rate {err}% since restart storm",
                 f"pool {pool}% checked-out, 0 idle — waiters timing out acquiring a connection",
                 "no errors attributable to new code paths",
             ]
+        else:
+            s.logs = [
+                f"5xx rate {err}% — queries timing out against db",
+                "no errors attributable to new code paths",
+            ]
+            db = infra.nodes["db"]
+            db.status, db.incident = "degraded", "deploy_regression"
+            db.logs = [
+                "ALTER TABLE holding an exclusive lock since the deploy's migration started",
+                "lock wait queue growing; writers blocked",
+            ]
         infra.propagate()
 
-    if is_regression:
+    if root_key == "regression":
         root = "The deploy shipped a regression (new-code stack traces in the logs); roll it back."
         fix = [("rollback", node)]
-    else:
+    elif root_key == "pool":
         root = (
             "The deploy was innocent: its restart rush surfaced a leaked connection pool — "
             "rollback does nothing; restart the node to drain the pool."
         )
         fix = [("restart", node)]
+    else:
+        root = (
+            "The deploy's schema migration wedged holding an exclusive lock on the db — neither "
+            "rollback nor a node restart helps; restart the DB to release the lock."
+        )
+        fix = [("restart", "db")]
     return IncidentSpec(
         "deploy_regression",
         "Errors spiking after a deploy",
@@ -192,20 +212,24 @@ def _deploy_regression(rng: Random) -> IncidentSpec:
     )
 
 
-def _stale_reads(rng: Random) -> IncidentSpec:
+def _stale_reads(rng: Random, epoch: int = 0) -> IncidentSpec:
     # Users see stale data. The page never names a node — the root is either the read replica
     # lagging (failover) or the cache serving expired keys because invalidation wedged (restart
     # cache). Checking db-replica's replication lag settles it in one inspect.
-    is_lag = rng.random() < 0.55
     lag = round(rng.uniform(45.0, 400.0), 1)
+    worker = rng.choice(("worker-1", "worker-2"))
+    roots = [("lag", max(0.3, 0.55 - 0.04 * epoch)), ("cache", 0.45)]
+    if epoch >= 3:
+        roots.append(("inval_worker", 0.3))
+    root_key = rng.choices([r[0] for r in roots], weights=[r[1] for r in roots])[0]
 
     def apply(infra: Infra) -> None:
-        if is_lag:
+        if root_key == "lag":
             r = infra.nodes["db-replica"]
             r.status, r.incident = "degraded", "stale_reads"
             r.metrics["replica_lag_s"] = lag
             r.logs = [f"replication lag {lag}s and climbing", f"serving reads {lag}s stale"]
-        else:
+        elif root_key == "cache":
             c = infra.nodes["cache"]
             c.status, c.incident = "degraded", "stale_reads"
             c.metrics["stale_keys_pct"] = round(40 + lag / 10, 1)
@@ -213,17 +237,31 @@ def _stale_reads(rng: Random) -> IncidentSpec:
                 "invalidation queue stalled — consumers see expired keys as fresh",
                 "replica lag normal; staleness originates here",
             ]
+        else:
+            w = infra.nodes[worker]
+            w.status, w.incident = "degraded", "stale_reads"
+            w.metrics["cpu_pct"] = 2.0
+            w.logs = [
+                "cache-invalidation job crashed on startup; nothing is purging expired keys",
+                "replica lag normal; cache process healthy — the PURGER is what died",
+            ]
         infra.propagate()
 
-    if is_lag:
+    if root_key == "lag":
         root = "The read replica fell behind the primary; failover/resync it."
         fix = [("failover", "db-replica")]
-    else:
+    elif root_key == "cache":
         root = (
             "Cache invalidation wedged and the cache is serving expired keys — the replica is "
             "healthy; restart the cache."
         )
         fix = [("restart", "cache")]
+    else:
+        root = (
+            "The invalidation JOB on a worker died — replica and cache are both healthy; restart "
+            "the worker running the purger."
+        )
+        fix = [("restart", worker)]
     return IncidentSpec(
         "stale_reads",
         "Users seeing stale data",
@@ -234,36 +272,54 @@ def _stale_reads(rng: Random) -> IncidentSpec:
     )
 
 
-def _latency_surge(rng: Random) -> IncidentSpec:
+def _latency_surge(rng: Random, epoch: int = 0) -> IncidentSpec:
     # p99 collapses on a front-tier node. Half the time it is a genuine traffic surge (scale out);
     # half the time the node is thrashing GC on a leaked heap and scaling just spreads sick
     # replicas (restart). RPS vs memory dials disambiguate in one inspect.
     node = rng.choice(("web", "api"))
     p99 = round(rng.uniform(900.0, 3000.0), 1)
     mem = round(rng.uniform(93.0, 99.0), 1)
-    is_surge = rng.random() < 0.5
+    roots = [("surge", 0.5), ("gc", 0.5)]
+    if epoch >= 2:
+        roots.append(("keepalive", 0.3))
+    root_key = rng.choices([r[0] for r in roots], weights=[r[1] for r in roots])[0]
 
     def apply(infra: Infra) -> None:
         s = infra.nodes[node]
         s.status, s.incident = "degraded", "latency_surge"
         s.metrics["latency_ms"] = p99
-        if is_surge:
+        if root_key == "surge":
             s.metrics["rps_x_baseline"] = 2.4
             s.logs = ["RPS 2.4x baseline, connection queue saturating", "memory and GC normal"]
-        else:
+        elif root_key == "gc":
             s.metrics["mem_pct"] = mem
             s.logs = ["GC pause 900ms+, heap near limit", "RPS at baseline — load is NOT elevated"]
+        else:
+            s.logs = ["RPS at baseline, memory normal — stalls correlate with lb connections"]
+            lb = infra.nodes["lb"]
+            lb.status, lb.incident = "degraded", "latency_surge"
+            lb.metrics["conn_table_pct"] = 99.0
+            lb.logs = [
+                "connection table 99% full — keepalives opened but never closed",
+                "new connections queueing behind leaked ones",
+            ]
         infra.propagate()
 
-    if is_surge:
+    if root_key == "surge":
         root = "A real traffic surge overwhelmed the front tier; scale it out — nothing is broken."
         fix = [("scale", node)]
-    else:
+    elif root_key == "gc":
         root = (
             "Not load: a leaked heap has the node thrashing GC; scaling spreads sick replicas — "
             "restart the node to reclaim memory."
         )
         fix = [("restart", node)]
+    else:
+        root = (
+            "A keepalive leak filled the LB's connection table — scaling the backend does "
+            "nothing; restart the lb to flush the table."
+        )
+        fix = [("restart", "lb")]
     return IncidentSpec(
         "latency_surge",
         "p99 collapsing on the front tier",

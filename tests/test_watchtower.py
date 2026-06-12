@@ -168,9 +168,9 @@ def test_resolved_incident_always_records_a_runbook():
     finally:
         A._chat = orig
     assert len(store.notes) == 1
-    assert spec.family in store.notes[0]
+    assert spec.family in store.notes[0]["text"]
     fix_step = f"{spec.fix[0][0]} {spec.fix[0][1]}"
-    assert fix_step in store.notes[0]
+    assert fix_step in store.notes[0]["text"]
 
 
 def test_solo_board_is_private_and_tracks_incident_lifecycle():
@@ -295,3 +295,45 @@ def test_branched_apply_is_pure_across_fleets():
             assert ia.nodes[name].status == ib.nodes[name].status
             assert ia.nodes[name].metrics == ib.nodes[name].metrics
             assert ia.nodes[name].logs == ib.nodes[name].logs
+
+
+def test_epochs_open_new_roots_over_time():
+    # the world is non-stationary: a migration-wedge root exists at epoch 2+ but NEVER at epoch 0
+    from random import Random
+
+    fault = next(f for f in FAMILIES if f.key == "deploy_regression")
+    early_fixes = {fault.spawn(Random(i), 0).fix[0] for i in range(300)}
+    late_fixes = {fault.spawn(Random(i), 4).fix[0] for i in range(300)}
+    assert ("restart", "db") not in early_fixes
+    assert ("restart", "db") in late_fixes
+    # and the original branches still occur late — new paths open, old ones don't vanish
+    assert any(a == "rollback" for a, _ in late_fixes)
+
+
+def test_epoch_stream_stays_paired():
+    a = make_stream(77, 100)
+    b = make_stream(77, 100)
+    assert [s.fix for s in a] == [s.fix for s in b]
+
+
+def test_solo_retention_fades_cold_paths_and_keeps_hot_ones():
+    import asyncio
+
+    from watchtower import agent as A
+
+    async def run():
+        s = A.SoloStore("solo-1")
+        await s.remember("runbook stale_reads: replica lag high -> failover db-replica")
+        await s.remember("runbook cert_expiry: handshake failures -> rotate lb")
+
+        for _ in range(8):  # the cert runbook stays hot through repeated use
+            assert "rotate lb" in await s.recall("certificate handshake failing")
+            for _ in range(5):
+                await s.save_handoff("shift")
+
+        # 40 shifts later the unused replica runbook has faded past recall...
+        assert "failover" not in await s.recall("stale data replica lag")
+        # ...while the hot path is still there
+        assert "rotate lb" in await s.recall("certificate handshake failing")
+
+    asyncio.run(run())

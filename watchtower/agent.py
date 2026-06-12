@@ -562,37 +562,59 @@ def _tokens(s: str) -> set[str]:
     return {w for w in "".join(c if c.isalnum() else " " for c in s.lower()).split() if len(w) > 2}
 
 
+SOLO_RETENTION_HALF_LIFE = 12.0
+SOLO_RETENTION_FLOOR = 0.15
+
+
 class SoloStore:
     """A single responder's private notebook — never shared, never pooled. Same recall/remember
     interface as the Artel store, but a runbook one solo responder writes is invisible to the other
-    two: each must rediscover every fault family on its own. The control arm of the experiment."""
+    two: each must rediscover every fault family on its own. And like any personal memory it keeps
+    only its HOT PATHS: retention decays with shifts since a note was last used and is reinforced
+    on every hit. The same recency-and-usage rule the shared store's ranking applies — the
+    difference is the medium: a written library is refreshed by the whole fleet's reads, a private
+    memory by one agent's. The control arm of the experiment."""
 
     def __init__(self, agent_id: str):
         self.agent_id = agent_id
         self.shared = False
-        self.notes: list[str] = []
+        self.notes: list[dict] = []
         self.feed: list[dict] = []
         self.tasks: list[dict] = []
         self.last_shift: str = ""
+        self.shift: int = 0
 
     async def join(self) -> None:
         return None
+
+    def _retention(self, note: dict) -> float:
+        idle = max(0.0, self.shift - note["last_used"])
+        return (0.5 ** (idle / SOLO_RETENTION_HALF_LIFE)) * (1.0 + 0.3 * note["used"]) ** 0.5
 
     async def recall(self, query: str) -> str:
         if not query or not self.notes:
             return ""
         q = _tokens(query)
-        scored = sorted(self.notes, key=lambda n: len(q & _tokens(n)), reverse=True)
-        top = [n for n in scored if q & _tokens(n)][:3]
-        return " | ".join(n[:240] for n in top)
+        alive = [n for n in self.notes if self._retention(n) >= SOLO_RETENTION_FLOOR]
+        scored = sorted(
+            (n for n in alive if q & _tokens(n["text"])),
+            key=lambda n: len(q & _tokens(n["text"])) * self._retention(n),
+            reverse=True,
+        )
+        top = scored[:3]
+        for n in top:
+            n["used"] += 1
+            n["last_used"] = self.shift
+        return " | ".join(n["text"][:240] for n in top)
 
     async def remember(self, text: str) -> None:
         if text:
-            self.notes.append(text[:400])
+            self.notes.append({"text": text[:400], "used": 0, "last_used": self.shift})
             del self.notes[:-200]
 
     async def save_handoff(self, summary: str) -> None:
         self.last_shift = summary[:300]
+        self.shift += 1
 
     async def handoff(self) -> str:
         return f"your last shift: {self.last_shift}" if self.last_shift else ""
