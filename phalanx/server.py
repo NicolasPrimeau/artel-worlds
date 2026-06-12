@@ -12,6 +12,8 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
+import os
+
 from .agent import Squad
 from .arena import Arena
 from .config import DEFAULT
@@ -31,6 +33,9 @@ TICK_INTERVAL = 2.5  # MINIMUM seconds per tick — sets the visible pace and ca
 # talk to each other. The only thing Artel has that Red doesn't is each other, through
 # Artel. Nothing about Artel's play is scripted: the models drive every move.
 COORDINATED = {"artel"}
+# PHALANX_RED=llm turns the match into the REAL ablation demo: red is driven by the same
+# LLM mind as blue with every Artel channel removed — Artel becomes the only variable.
+RED_LLM = os.environ.get("PHALANX_RED", "bots").lower() == "llm"
 
 
 class Phalanx:
@@ -40,6 +45,7 @@ class Phalanx:
         self.tokens: dict[str, str] = {}  # team -> secret
         self.scores: dict[str, int] = {}  # wins, accumulated across matches
         self.squad = Squad()  # the live Artel LLM agents (no-op until keys + a viewer)
+        self.red_squad = Squad(solo=True, label="red") if RED_LLM else None
         self._squad_match = -1  # which match the squad is currently driving
         self._squad_started = -1  # which match the squad has already run on_start for
         self.history: list[dict] = []  # last matches' outcomes + kill logs, for /debug
@@ -152,6 +158,10 @@ def _artel_alive_ids() -> list[int]:
     return sorted(t.id for t in G.arena.tanks.values() if t.team in COORDINATED)
 
 
+def _red_alive_ids() -> list[int]:
+    return sorted(t.id for t in G.arena.tanks.values() if t.team not in COORDINATED)
+
+
 def _manage_squad() -> None:
     # the live LLM agents only drive while someone's watching and the spend cap allows — no
     # one watching, no spend. Each new match binds them to that match's Artel tanks.
@@ -163,6 +173,8 @@ def _manage_squad() -> None:
     if G._squad_match != G.match_no:
         ids = _artel_alive_ids()
         G.squad.assign(ids)
+        if G.red_squad is not None:
+            G.red_squad.assign(_red_alive_ids())
         G._squad_match = G.match_no
         log.info("phalanx squad driving artel tanks %s with %s", ids, G.squad.status()["model"])
 
@@ -178,6 +190,8 @@ async def _tick_loop():
                 live_artel = G.squad.enabled and G._squad_match == G.match_no
                 if live_artel and G._squad_started != G.match_no:
                     await G.squad.on_start()
+                    if G.red_squad is not None:
+                        await G.red_squad.on_start()
                     G._squad_started = G.match_no
                 # collect every side's move for this tick: deterministic bots answer instantly;
                 # each live Artel tank's LLM agent is asked now and awaited below.
@@ -187,6 +201,9 @@ async def _tick_loop():
                         continue
                     if t.team in COORDINATED and live_artel:
                         pending_llm[t.id] = asyncio.create_task(G.squad.act(t.id, a.perceive))
+                        continue
+                    if G.red_squad is not None and live_artel and G.red_squad.enabled:
+                        pending_llm[t.id] = asyncio.create_task(G.red_squad.act(t.id, a.perceive))
                         continue
                     p = a.perceive(t.id)
                     bot = G.bots.get(t.id)
@@ -269,7 +286,9 @@ async def debug():
         "match": G.match_no,
         "viewers": len(G.viewers),
         "live_artel": G.squad.enabled and G._squad_match == G.match_no,
+        "red_mode": "llm-solo" if G.red_squad is not None else "bots",
         "squad": G.squad.status(),
+        "red_squad": G.red_squad.status() if G.red_squad is not None else None,
         "team_counts": a.stats()["team_counts"],
         "current_kills": list(a.events),
         "history": G.history[::-1],  # most recent match first

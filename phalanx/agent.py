@@ -94,18 +94,15 @@ LLM_TIMEOUT = float(os.environ.get("PHALANX_LLM_TIMEOUT", "12"))
 
 # Concise. Names the teammates, says coordinate through Artel — and stops there. No
 # instructions on HOW to use Artel: the coordination has to emerge, not be scripted.
-SYSTEM = (
-    "You are an AI playing Phalanx, a turn-based tank game on a hexagonal arena, driving one "
-    "tank on team Artel against the three tanks of team Red. Your teammates are {mates}; the "
-    "three of you share Artel and fight as a phalanx: one body, never three individuals.\n"
+_GOAL_RULES = (
     "GOAL: destroy all three enemy tanks. Last team standing wins; a draw or mutual "
     "destruction is a loss.\n"
     "RULES:\n"
     "- Each turn all tanks act at once: one step of movement AND a shot, together.\n"
     "- MOVE BY DESTINATION: in act, set move_to [q,r] — any hex on the map. Your drivetrain "
-    "takes the best single step toward it this turn (turning as needed, sliding around "
-    "cover, queueing behind teammates). Think in destinations: the enemy you are closing "
-    "on, the rally point, the center. Use move 'hold' only to deliberately stand still.\n"
+    "takes the best path step toward it this turn (turning, routing around cover, queueing "
+    "behind teammates). Think in destinations. Use move 'hold' only to deliberately stand "
+    "still.\n"
     "- Energy is health and fuel; 0 = destroyed; no regeneration. A hit deals 12 and refunds "
     "the shooter 2.\n"
     "- Fire = enemy id + power. Power 1: range 3, FREE. Power 2: range 5, costs 2. Power 3: "
@@ -113,12 +110,21 @@ SYSTEM = (
     "guaranteed hit; anything else is a wasted trigger pull at full cost. The gun draws from "
     "YOUR energy — a shot that leaves you at 0 destroys you. Ready again next turn. Facing "
     "never matters for shooting.\n"
+    "- A tank standing in the line of fire blocks the shot — friend or foe. Never fire "
+    "through a teammate; against a stacked enemy, kill the front one first.\n"
     "- Cover blocks movement, shots, and sight. Tanks are solid: formation means adjacent "
     "hexes, never the same hex. Fog of war: you see distance 8 with a clear line; teammates "
     "see different things.\n"
     "- The safe zone shrinks toward the arena center; outside it you bleed energy every "
     "turn.\n"
-    "PRIORITIES, in order — when they conflict, the higher one wins:\n"
+)
+
+SYSTEM = (
+    "You are an AI playing Phalanx, a turn-based tank game on a hexagonal arena, driving one "
+    "tank on team Artel against the three tanks of team Red. Your teammates are {mates}; the "
+    "three of you share Artel and fight as a phalanx: one body, never three individuals.\n"
+    + _GOAL_RULES
+    + "PRIORITIES, in order — when they conflict, the higher one wins:\n"
     "1. ZONE: outside the safe zone, move toward the center every turn. Never hold there.\n"
     "2. FORMATION: stay within 2 hexes of a teammate. Their beacon positions are in your "
     "state every turn — out of formation means move_to a hex beside a teammate, now. Ahead "
@@ -137,6 +143,24 @@ SYSTEM = (
     "MEMORY: lessons tagged [WIN]/[LOSS] from past matches arrive in your context — repeat "
     "what won, avoid what lost. Save one concrete, game-grounded lesson when you learn "
     "something real."
+)
+
+# the ablation control: the SAME mind with the Artel infrastructure removed. Identical
+# game rules, identical ladder where possible; no radio, no board, no beacons, no memory.
+SOLO_SYSTEM = (
+    "You are an AI playing Phalanx, a turn-based tank game on a hexagonal arena, driving one "
+    "tank on team Red against the three tanks of team Artel. Your teammates are {mates}, but "
+    "you have NO communication with them — no radio, no shared map, no shared memory. You "
+    "know only what you see.\n"
+    + _GOAL_RULES
+    + "PRIORITIES, in order — when they conflict, the higher one wins:\n"
+    "1. ZONE: outside the safe zone, move toward the center every turn. Never hold there.\n"
+    "2. FORMATION: stay within 2 hexes of a teammate YOU CAN SEE when possible — you have no "
+    "other way to know where they are.\n"
+    "3. FIRE: a ready gun with a target in range always shoots, at the cheapest power that "
+    "reaches. You can move the same turn.\n"
+    "4. FOCUS: concentrate your fire on one enemy at a time. Never duel a kiter at long "
+    "range; close to free-fire range behind cover, or refuse the fight."
 )
 
 TOOLS = [
@@ -232,6 +256,8 @@ TOOLS = [
 # AXIAL_DIRS rotates counterclockwise on screen (E, NE, NW, W, SW, SE) — so a LEFT turn
 # (toward the tank's port side) is +1, and RIGHT is -1. These were mirrored for a long
 # time, which made every steering decision come out backwards.
+TOOLS_SOLO = [t for t in TOOLS if t["name"] == "act"]
+
 _TURN = {"left": 1, "right": -1, "none": 0}
 
 
@@ -261,8 +287,13 @@ def _open_dir(wallset: set, want: int) -> int:
 
 # --- provider adapters: a neutral transcript in/out, provider wire format hidden here ---
 def _build_payload(
-    ep: dict, system: str, transcript: list[dict], force_act: bool = False
+    ep: dict,
+    system: str,
+    transcript: list[dict],
+    force_act: bool = False,
+    tools: list | None = None,
 ) -> tuple[str, dict, dict]:
+    toolset = tools if tools is not None else TOOLS
     if ep["provider"] == "anthropic":
         messages = []
         for e in transcript:
@@ -291,7 +322,7 @@ def _build_payload(
             "system": system,
             "tools": [
                 {"name": t["name"], "description": t["description"], "input_schema": t["schema"]}
-                for t in TOOLS
+                for t in toolset
             ],
             "tool_choice": {"type": "tool", "name": "act"} if force_act else {"type": "any"},
             "messages": messages,
@@ -337,7 +368,7 @@ def _build_payload(
                     "parameters": t["schema"],
                 },
             }
-            for t in TOOLS
+            for t in toolset
         ],
         "tool_choice": {"type": "function", "function": {"name": "act"}}
         if force_act
@@ -411,13 +442,17 @@ def _live_endpoints() -> list[dict]:
 
 
 async def _chat(
-    http: httpx.AsyncClient, system: str, transcript: list[dict], force_act: bool = False
+    http: httpx.AsyncClient,
+    system: str,
+    transcript: list[dict],
+    force_act: bool = False,
+    tools: list | None = None,
 ) -> tuple[str, list[dict], int, int, dict]:
     # ask the first live provider; on a rate-limit/error fail the SAME turn over to the next
     # IMMEDIATELY — no retry-backoff against a dead quota. Raises only when all are exhausted.
     last: tuple[dict, httpx.Response] | None = None
     for ep in _live_endpoints():
-        url, payload, headers = _build_payload(ep, system, transcript, force_act)
+        url, payload, headers = _build_payload(ep, system, transcript, force_act, tools)
         r = await http.post(url, headers=headers, json=payload)
         if r.status_code < 300:
             text, calls, tin, tout = _parse(ep, r.json())
@@ -861,11 +896,15 @@ async def decide(
     counts: dict | None = None,
     objective: dict | None = None,
     beacons: dict | None = None,
+    solo: bool = False,
 ) -> tuple[dict, float, str, str]:
-    inbox, fresh_beacons = await _consume_inbox(http, agent)
-    if beacons is not None:
-        beacons.update(fresh_beacons)
-    board = await _board(http, agent)
+    if solo:
+        inbox, board = "", ""
+    else:
+        inbox, fresh_beacons = await _consume_inbox(http, agent)
+        if beacons is not None:
+            beacons.update(fresh_beacons)
+        board = await _board(http, agent)
     user = _perception_text(p)
     if beacons:
         user += "\nTEAMMATE POSITIONS (Artel beacons, ~1 turn old): " + "; ".join(
@@ -884,7 +923,8 @@ async def decide(
         )
     if inbox:
         user += f"\nNEW team reports this turn: {inbox}"
-    system = SYSTEM.format(mates=" and ".join(mate_ids) or "your team")
+    system = (SOLO_SYSTEM if solo else SYSTEM).format(mates=" and ".join(mate_ids) or "your team")
+    toolset = TOOLS_SOLO if solo else None
     transcript: list[dict] = [{"role": "user", "text": user}]
     intent = {"turn": 0, "move": "hold", "fire": 0}
     cost, plan, recalled = 0.0, "", ""
@@ -892,7 +932,7 @@ async def decide(
         # the LAST round forces the act tool: the model always chooses its own action;
         # the reflex is a failure backstop, not a co-pilot
         force_act = round_i == MAX_TOOL_ROUNDS - 1
-        text, calls, tin, tout, ep = await _chat(http, system, transcript, force_act)
+        text, calls, tin, tout, ep = await _chat(http, system, transcript, force_act, toolset)
         cost += tin * ep["cin"] + tout * ep["cout"]
         if not calls:
             break
@@ -1055,8 +1095,14 @@ class Squad:
     model is the driver: nothing here chooses moves. Disabled (no keys / over the spend cap) it
     does nothing and the server falls back to the deterministic Bot so the arena never stalls."""
 
-    def __init__(self):
-        self.agents = self._load_agents()
+    def __init__(self, solo: bool = False, label: str = "artel"):
+        # solo=True is the ablation control: the SAME LLM mind, with every Artel channel
+        # removed — private continuity stays, sharing goes. Artel is the only variable.
+        self.solo = solo
+        self.label = label
+        self.agents = (
+            [{"id": f"{label}-{i}", "key": ""} for i in (1, 2, 3)] if solo else self._load_agents()
+        )
         self.spent = 0.0
         self.last_error: str | None = None  # most recent agent failure, for /debug + logs
         self._http: httpx.AsyncClient | None = None
@@ -1098,7 +1144,7 @@ class Squad:
             return None
         if self._http is None:
             self._http = httpx.AsyncClient(timeout=httpx.Timeout(LLM_TIMEOUT))
-        if agent["id"] not in self._joined:
+        if not self.solo and agent["id"] not in self._joined:
             await self._ensure_member(agent)
             self._joined.add(agent["id"])
         mate_ids = [a["id"] for a in self.agents if a["id"] != agent["id"]]
@@ -1120,7 +1166,7 @@ class Squad:
             for eid, v in cur_enemies.items()
             if eid not in prev_ids and f"#{eid}" not in intel_text
         ]
-        if fresh:
+        if fresh and not self.solo:
             sights = "; ".join(
                 f"#{v['id']} at ({p['q'] + v['dq']},{p['r'] + v['dr']})"
                 + (f" energy {v['energy']}" if "energy" in v else "")
@@ -1147,6 +1193,7 @@ class Squad:
                     self.tool_counts,
                     self._objectives.setdefault(tank_id, {}),
                     self._beacons.setdefault(tank_id, {}),
+                    self.solo,
                 ),
                 timeout=DECIDE_DEADLINE,
             )
@@ -1160,18 +1207,19 @@ class Squad:
             self._plans[tank_id] = plan
         if recalled:
             self._recalled[tank_id] = recalled[:300]
-        # transponder: broadcast position over Artel every turn — equipment, not strategy.
-        # Teammates read it from their inboxes; formation becomes actionable every turn.
-        asyncio.create_task(
-            _send(
-                self._http,
-                agent,
-                "team",
-                f"POS ({p['q']},{p['r']}) t{p.get('tick', '?')}",
-                [],
-                "beacon",
+        if not self.solo:
+            # transponder: broadcast position over Artel every turn — equipment, not
+            # strategy. Teammates read it from their inboxes.
+            asyncio.create_task(
+                _send(
+                    self._http,
+                    agent,
+                    "team",
+                    f"POS ({p['q']},{p['r']}) t{p.get('tick', '?')}",
+                    [],
+                    "beacon",
+                )
             )
-        )
         if inbox:
             log_ = self._intel.setdefault(tank_id, [])
             for line in inbox.split(" | "):
@@ -1197,6 +1245,20 @@ class Squad:
 
     async def on_start(self) -> None:
         if not self.enabled:
+            return
+        if self.solo:
+            self._context = {}
+            self._last = {}
+            self._plans = {}
+            self._intel = {}
+            self._recalled = {}
+            self._seen_ids = {}
+            self._beacons = {}
+            self._objectives = {}
+            self._claims = []
+            self.tool_counts = {}
+            if self._http is None:
+                self._http = httpx.AsyncClient(timeout=httpx.Timeout(LLM_TIMEOUT))
             return
         if self._http is None:
             self._http = httpx.AsyncClient(timeout=httpx.Timeout(LLM_TIMEOUT))
@@ -1246,6 +1308,8 @@ class Squad:
                 )
 
     async def on_loss(self, surviving_tank_ids: set[int]) -> None:
+        if self.solo:
+            return
         # shock event: a blue tank died. The opening plan is stale the moment the team is
         # outnumbered — the surviving lead calls an adjusted one, broadcast over Artel.
         if self._http is None or not self.enabled:
@@ -1267,6 +1331,8 @@ class Squad:
     async def on_end(
         self, won: bool, survivors: set[int], assign: dict[int, dict], events: str = ""
     ) -> None:
+        if self.solo:
+            return
         if self._http is None or not assign:
             return
         # close out this match's target claims — Artel tasks never get left in limbo
