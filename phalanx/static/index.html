@@ -281,6 +281,7 @@ function render(now){
       ctx.lineWidth=2; ctx.strokeStyle='rgba(255,90,90,.5)'; ctx.stroke();
     }
   }
+  const floatTexts=[];
   // beams — a straight shot from shooter to target with a travelling pulse head (the
   // engine's hex-line LOS check approximates exactly this segment, so straight is honest)
   beams=beams.filter(b=>now-b.born<BEAM_MS);
@@ -310,14 +311,9 @@ function render(now){
     ctx.beginPath(); ctx.arc(e.x,e.y,3+ease(Math.min(1,t*2.5))*s*0.75,0,7);
     ctx.strokeStyle=rgba(c,a); ctx.lineWidth=2.5; ctx.stroke();
     if(f.dmg){ const fs=Math.max(13,Math.round(s*0.55));
-      ctx.font=`bold ${fs}px ui-monospace,monospace`;
-      ctx.textAlign='center'; ctx.fillStyle=`rgba(255,235,235,${a})`;
-      // outline must scale with the font and join round — a fixed 3px stroke on a small
-      // font fills the loops of the '2' and "-12" reads as "-1"
-      ctx.strokeStyle=`rgba(0,0,0,${a*.8})`; ctx.lineWidth=Math.max(1.5,fs*0.16); ctx.lineJoin='round';
       const tx=Math.max(16,Math.min(cssW-16,e.x+(f.jx||0)));
       const ty=Math.max(14,Math.min(cssH-6,e.y-s*0.8-t*s*0.9+(f.jy||0)));
-      ctx.strokeText(`-${f.dmg}`,tx,ty); ctx.fillText(`-${f.dmg}`,tx,ty); }
+      floatTexts.push({s:`-${f.dmg}`,x:tx,y:ty,fs,fill:`rgba(255,235,235,${a})`,a}); }
   }
 
   // energy gained by the shooter when a hit lands — the other half of the -12 story
@@ -326,12 +322,9 @@ function render(now){
     const t=(now-g.born)/FLASH_MS, a=1-t;
     const e=(g.tg&&anim[g.tg])?curPos(anim[g.tg],now):{x:g.x,y:g.y};
     const fs=Math.max(12,Math.round(s*0.45));
-    ctx.font=`bold ${fs}px ui-monospace,monospace`; ctx.textAlign='center';
-    ctx.fillStyle=`rgba(140,240,170,${a})`;
-    ctx.strokeStyle=`rgba(0,0,0,${a*.8})`; ctx.lineWidth=Math.max(1.5,fs*0.16); ctx.lineJoin='round';
     const tx=Math.max(16,Math.min(cssW-16,e.x+(g.jx||0)));
     const ty=Math.max(14,Math.min(cssH-6,e.y-s*0.8-t*s*0.9+(g.jy||0)));
-    ctx.strokeText(`+${g.amt}`,tx,ty); ctx.fillText(`+${g.amt}`,tx,ty);
+    floatTexts.push({s:`+${g.amt}`,x:tx,y:ty,fs,fill:`rgba(140,240,170,${a})`,a});
   }
 
   // death bursts (scheduled after the killing impact lands)
@@ -374,6 +367,15 @@ function render(now){
   for(const w of snap.wall_list){ const [x,y]=center(w.q,w.r);
     hexPath(x,y,s*0.93); ctx.fillStyle='#27303b'; ctx.fill();
     hexPath(x,y,s*0.93); ctx.lineWidth=1; ctx.strokeStyle='rgba(255,255,255,.08)'; ctx.stroke();
+  }
+
+  // floating numbers go ABOVE everything — cover must never hide the scorekeeping
+  ctx.textAlign='center'; ctx.lineJoin='round';
+  for(const ft of floatTexts){
+    ctx.font=`bold ${ft.fs}px ui-monospace,monospace`;
+    ctx.strokeStyle=`rgba(0,0,0,${ft.a*.8})`; ctx.lineWidth=Math.max(1.5,ft.fs*0.16);
+    ctx.fillStyle=ft.fill;
+    ctx.strokeText(ft.s,ft.x,ft.y); ctx.fillText(ft.s,ft.x,ft.y);
   }
 }
 function loop(now){ try{ render(now); }catch(e){ /* never let one bad frame kill the loop */ } requestAnimationFrame(loop); }
