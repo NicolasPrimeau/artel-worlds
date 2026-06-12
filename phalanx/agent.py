@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import logging
 import os
 
@@ -513,6 +514,50 @@ _REL = {
 }
 
 
+_UF = re.compile(r"UNDER FIRE by #(\d+)(?: at \((-?\d+),(-?\d+)\))?")
+_POS = re.compile(r"\((-?\d+),(-?\d+)\)")
+
+
+def _support_call(p: dict, beacons: dict, self_id: str) -> dict | None:
+    # turn a teammate's UNDER FIRE beacon into an ACTIONABLE call: a computed shot when the
+    # attacker is already on my line, a computed approach when it is not — the last mile
+    # between knowing an ally is dying and doing something about it
+    for k, v in beacons.items():
+        if k == self_id:
+            continue
+        m = _UF.search(str(v))
+        if not m:
+            continue
+        atk = int(m.group(1))
+        atk_pos = (int(m.group(2)), int(m.group(3))) if m.group(2) is not None else None
+        seen = next((e for e in p["visible"] if e["kind"] == "enemy" and e["id"] == atk), None)
+        powers = p.get("power_range", [3, 5, 7])
+        if seen and seen.get("clear_shot", True) and seen["dist"] <= powers[-1] and p["gun_ready"]:
+            need = next(i + 1 for i, rng_ in enumerate(powers) if seen["dist"] <= rng_)
+            return {
+                "fire": atk,
+                "text": f"ALLY UNDER FIRE ({k} {v}). SUPPORT NOW: #{atk} is ON YOUR LINE — "
+                f"fire at it this turn (power {need}). This outranks everything below zone.",
+            }
+        if atk_pos:
+            return {
+                "move_to": atk_pos,
+                "text": f"ALLY UNDER FIRE ({k} {v}). SUPPORT: their attacker #{atk} is at "
+                f"({atk_pos[0]},{atk_pos[1]}) — move_to it to bring it into your line, and "
+                f"shoot the moment it appears in your state. This outranks your current plan.",
+            }
+        pm = _POS.search(str(v))
+        if pm:
+            ally_pos = (int(pm.group(1)), int(pm.group(2)))
+            return {
+                "move_to": ally_pos,
+                "text": f"ALLY UNDER FIRE ({k} {v}). SUPPORT: converge on your teammate at "
+                f"({ally_pos[0]},{ally_pos[1]}) — they are dying alone. This outranks your "
+                f"current plan.",
+            }
+    return None
+
+
 def _perception_text(p: dict) -> str:
     # the agent's FULL state, every turn: itself (position, energy, cannon, gun), the zone,
     # everything it can see (enemies, teammates, cover) in absolute hex coordinates, and what
@@ -950,13 +995,9 @@ async def decide(
         user += "\nTEAMMATE POSITIONS (Artel beacons, ~1 turn old): " + "; ".join(
             f"{k} at {v}" for k, v in beacons.items() if k != agent["id"]
         )
-        under = [f"{k} {v}" for k, v in beacons.items() if k != agent["id"] and "UNDER FIRE" in v]
-        if under and not p.get("hit_taken"):
-            user += (
-                "\nALLY UNDER FIRE — " + "; ".join(under) + ". Their attacker is the "
-                "unit's FOCUS target: shoot it now if it is in your fire-now list, "
-                "otherwise converge to bring it into range. This outranks your current plan."
-            )
+        support = _support_call(p, beacons, agent["id"])
+        if support and not p.get("hit_taken"):
+            user += "\n" + support["text"]
     if board:
         user += f"\nTEAM BOARD — current objectives: {board}"
     if objective and not objective.get("task_id"):
@@ -1115,6 +1156,19 @@ async def decide(
         intent["fire"] = rx["fire"]
         if rx.get("power"):
             intent["power"] = rx["power"]
+    if (
+        not solo
+        and beacons
+        and intent.get("move", "hold") == "hold"
+        and not intent.get("move_to")
+        and not intent.get("fire")
+        and not intent.get("fire_at")
+    ):
+        # the model idled while a teammate is under fire: the default is to converge, not
+        # to stand in a field. Only covers turns the model made no real choice.
+        sc = _support_call(p, beacons, agent["id"])
+        if sc and sc.get("move_to"):
+            intent["move_to"] = sc["move_to"]
     if (
         intent.get("move", "hold") == "hold"
         and not intent.get("fire")

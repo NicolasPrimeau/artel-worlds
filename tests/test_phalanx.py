@@ -345,3 +345,90 @@ def test_fire_at_through_a_teammate_is_floored(monkeypatch):
         A.decide(None, {"id": "t", "key": "k"}, p, [], solo=True)
     )
     assert "fire_at" not in intent  # the ray crosses the ally at (7,5) — floored
+
+
+def test_support_call_computes_shot_or_approach():
+    from phalanx.agent import _support_call
+
+    base = {
+        "q": 5,
+        "r": 5,
+        "gun_ready": True,
+        "power_range": [3, 5, 7],
+        "visible": [
+            {"id": 4, "kind": "enemy", "dq": 3, "dr": 0, "dist": 3, "dir": 0, "clear_shot": True}
+        ],
+    }
+    beacons = {"mate": "(9,5) t7 UNDER FIRE by #4 at (8,5)"}
+    sc = _support_call(base, beacons, "me")
+    assert sc["fire"] == 4 and "fire at it this turn" in sc["text"]  # attacker on my line: shoot
+
+    blind = dict(base, visible=[])
+    sc = _support_call(blind, beacons, "me")
+    assert sc["move_to"] == (8, 5)  # attacker known but unseen: converge on it
+
+    sc = _support_call(blind, {"mate": "(9,5) t7 UNDER FIRE by #4"}, "me")
+    assert sc["move_to"] == (9, 5)  # attacker unknown: converge on the teammate
+
+    assert _support_call(blind, {"mate": "(9,5) t7"}, "me") is None  # nobody under fire
+
+
+def test_idle_tank_converges_on_ally_under_fire(monkeypatch):
+    import asyncio
+
+    from phalanx import agent as A
+
+    p = {
+        "id": 1,
+        "q": 2,
+        "r": 9,
+        "heading": 0,
+        "energy": 80,
+        "gun_ready": True,
+        "tick": 5,
+        "width": 15,
+        "height": 15,
+        "map_radius": 7,
+        "power_range": [3, 5, 7],
+        "power_cost": [0, 2, 4],
+        "fire_range": 7,
+        "visible": [],
+        "walls": [],
+        "safe": True,
+        "zone_radius": 14,
+        "dist_center": 5,
+        "to_center": 0,
+        "hit_taken": 0,
+        "last_fire": "",
+    }
+
+    async def idle_chat(http, system, transcript, force=None, toolset=None):
+        return (
+            "",
+            [{"id": "c1", "name": "act", "input": {"move": "hold"}}],
+            0,
+            0,
+            {"cin": 0.0, "cout": 0.0},
+        )
+
+    monkeypatch.setattr(A, "_chat", idle_chat)
+    monkeypatch.setattr(A, "_consume_inbox", _noop_inbox)
+    monkeypatch.setattr(A, "_board", _noop_board)
+    monkeypatch.setattr(A, "_send", _noop_send)
+    beacons = {"mate": "(9,5) t5 UNDER FIRE by #4 at (8,5)"}
+    intent, cost, plan, inbox, recalled = asyncio.run(
+        A.decide(None, {"id": "me", "key": "k"}, p, ["mate"], beacons=beacons, solo=False)
+    )
+    assert intent.get("move_to") == (8, 5) or intent.get("move") == "fwd"
+
+
+async def _noop_inbox(http, agent):
+    return "", {}
+
+
+async def _noop_board(http, agent):
+    return ""
+
+
+async def _noop_send(http, agent, to, text, parents, subject=""):
+    return None
