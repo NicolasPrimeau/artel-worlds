@@ -39,7 +39,8 @@
   .st.live{color:var(--green);background:rgba(110,231,168,.12);}.st.live::before{background:var(--green);box-shadow:0 0 8px var(--green);}
   .st.idle{color:var(--amber);background:rgba(255,180,84,.12);}.st.idle::before{background:var(--amber);}
   .st.unreachable{color:var(--red);background:rgba(255,93,93,.12);}.st.unreachable::before{background:var(--red);}
-  .row{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:12px;align-items:baseline;}
+  .row{display:flex;flex-wrap:wrap;gap:10px 22px;margin-top:12px;align-items:baseline;}
+  .row .m{min-width:0;}
   .m .v{font-size:18px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;}
   .m .v.spend{color:var(--gold);}
   .m .v.a{color:var(--artel-soft);} .m .v.s{color:var(--solo);}
@@ -48,7 +49,7 @@
   .facts b{color:var(--fg);font-weight:600;}
   .dots{display:flex;gap:5px;margin-top:10px;align-items:center;flex-wrap:wrap;}
   .dots span{width:11px;height:11px;border-radius:3px;background:#222833;}
-  .dots span.w{background:var(--artel);} .dots span.l{background:var(--red);} .dots span.o{background:#39414f;}
+  .dots span.win{background:var(--artel);} .dots span.loss{background:var(--red);} .dots span.draw{background:#39414f;}
   .dots .lbl{color:var(--dim);font-size:10.5px;margin-left:6px;}
   .chartbox{position:relative;height:150px;margin-top:12px;}
   .chartbox.tall{height:180px;}
@@ -165,17 +166,16 @@ function card(w){
   } else if (w.key === "phalanx"){
     const sc = facts.scores || {};
     const recent = (facts.recent || []).slice().reverse();
-    const dots = recent.map(h => `<span class="${h.winner === "artel" ? "w" : h.winner ? "l" : "o"}" title="${h.winner||"draw"}"></span>`).join("");
+    const dots = recent.map(h => `<span class="${h.winner === "artel" ? "win" : h.winner ? "loss" : "draw"}" title="${h.winner||"draw"}"></span>`).join("");
     const t = facts.throttled && Object.keys(facts.throttled).length
       ? Object.entries(facts.throttled).map(([k,v])=>`${k}:${v}`).join(", ") : "none";
     body = `
       <div class="row">
-        <div class="m"><div class="v spend">${money(w.spend)}</div><div class="k">spend (${w.spend_label||"all time"}, cap ${money(w.cap)})</div></div>
-        <div class="m"><div class="v"><span class="a" style="color:var(--artel-soft)">${sc.artel ?? 0}</span><span style="color:var(--dim);font-weight:400"> – </span><span style="color:var(--red)">${sc.red ?? 0}</span></div><div class="k">Artel – Red wins</div></div>
-        <div class="m"><div class="v">${facts.match ?? "—"}</div><div class="k">matches finished</div></div>
+        <div class="m"><div class="v spend">${money(w.spend)}</div><div class="k">spend (cap ${money(w.cap)})</div></div>
+        <div class="m"><div class="v"><span style="color:var(--artel-soft)">${sc.artel ?? 0}</span><span style="color:var(--dim);font-weight:400">–</span><span style="color:var(--red)">${sc.red ?? 0}</span></div><div class="k">wins (A–R)</div></div>
       </div>
-      ${recent.length ? `<div class="dots">${dots}<span class="lbl">last ${recent.length} matches (blue = Artel won)</span></div>` : ""}
-      <div class="facts">rate-limit hits <b>${t}</b></div>`;
+      ${recent.length ? `<div class="dots">${dots}</div>` : ""}
+      <div class="facts">${facts.match ?? 0} matches finished · last ${recent.length || 0} above (blue = Artel won) · rate-limit hits <b>${t}</b></div>`;
   } else {
     body = `
       <div class="row">
