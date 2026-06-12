@@ -166,22 +166,39 @@ class World:
         per = [n // tribes] * tribes
         for i in range(n % tribes):
             per[i] += 1
-        cols = max(1, round(math.sqrt(tribes * self.cfg.width / self.cfg.height)))
-        rows = math.ceil(tribes / cols)
-        order = list(range(tribes))
-        self.rng.shuffle(order)
+
+        def torus_dist(a, b):
+            dx = abs(a[0] - b[0])
+            dy = abs(a[1] - b[1])
+            dx = min(dx, self.cfg.width - dx)
+            dy = min(dy, self.cfg.height - dy)
+            return math.hypot(dx, dy)
+
+        # settlements land anywhere — purely random anchors, kept apart by a minimum
+        # toroidal separation so villages never spawn on top of each other
+        min_sep = 0.7 * math.sqrt(self.cfg.width * self.cfg.height / tribes)
+        anchors: list[tuple[int, int]] = []
+        while len(anchors) < tribes:
+            best, best_d = None, -1.0
+            for _ in range(60):
+                cand = (
+                    self.rng.randrange(self.cfg.width),
+                    self.rng.randrange(self.cfg.height),
+                )
+                d = min((torus_dist(cand, a) for a in anchors), default=min_sep + 1)
+                if d >= min_sep:
+                    best = cand
+                    break
+                if d > best_d:
+                    best, best_d = cand, d
+            anchors.append(best)
         for t in range(tribes):
             lineage = self.new_lineage()
             self.register_tribe(lineage, f"house:{HOUSE_NAMES[t % len(HOUSE_NAMES)]}")
             # one shared randomized strand per tribe: every founder cell starts with the SAME
             # complete DNA, so a tribe is genetically uniform until mutation and selection diverge it
             g = random_genome(self.rng, self.cfg.max_genes)
-            gi = order[t]
-            jx, jy = self.cfg.width // (cols * 4), self.cfg.height // (rows * 4)
-            cx = int((gi % cols + 0.5) * self.cfg.width / cols + self.rng.randint(-jx, jx))
-            cy = int((gi // cols + 0.5) * self.cfg.height / rows + self.rng.randint(-jy, jy))
-            cx %= self.cfg.width
-            cy %= self.cfg.height
+            cx, cy = anchors[t]
             rad = max(3, int(math.sqrt(per[t]) * 1.6))
             placed, attempts = 0, 0
             while placed < per[t] and attempts < per[t] * 80:
