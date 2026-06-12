@@ -57,6 +57,13 @@ async def metrics():
     }
 
 
+@app.post("/reset")
+async def reset():
+    # wipe the MTTR curve and restart the paired A/B from zero (operator action)
+    await G.reset()
+    return {"ok": True, "cursor": G.cursor}
+
+
 @app.post("/fire")
 async def fire():
     # force the next incident immediately — for demos and the smoke test; the loop fires on its own

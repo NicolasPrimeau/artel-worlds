@@ -149,6 +149,12 @@ class Metrics:
             )
         return out
 
+    def reset_all(self) -> None:
+        # wipe the whole curve — used by the operator reset to restart the A/B from zero
+        with self._lock:
+            self._db.execute("DELETE FROM incidents")
+            self._db.commit()
+
     def close(self) -> None:
         with self._lock:
             self._db.close()

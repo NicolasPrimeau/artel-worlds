@@ -846,3 +846,25 @@ async def ui_stats(request: Request):
         )
     total = sum(w["spend"] for w in worlds if isinstance(w.get("spend"), (int, float)))
     return {"worlds": worlds, "total_spend": round(total, 4), "ts": int(time.time())}
+
+
+@app.post("/ui/reset", include_in_schema=False)
+async def ui_reset(request: Request, world: str = ""):
+    # operator reset for any world, proxied server-side so the page never makes a cross-origin
+    # call. Auth-gated like the rest of the board.
+    if UI_PASSWORD and not _authed(request):
+        raise HTTPException(status_code=401, detail="sign in")
+    if world == "automata":
+        async with G.lock:
+            G.reset()
+        await _reset_artel_project()
+        return {"ok": True, "world": "automata"}
+    target = {"phalanx": PHALANX_DEBUG, "watchtower": WATCHTOWER_DEBUG}.get(world)
+    if not target:
+        raise HTTPException(status_code=400, detail="unknown world")
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(f"{target}/reset", timeout=20)
+            return {"ok": r.status_code < 300, "world": world, "status": r.status_code}
+        except Exception as e:
+            return {"ok": False, "world": world, "error": str(e)}

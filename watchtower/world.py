@@ -133,6 +133,33 @@ class World:
         self.live = None
         await self._broadcast()
 
+    async def reset(self) -> None:
+        # operator reset: wipe the curve and restart the A/B from zero. Clears persisted metrics,
+        # the deterministic cursor, today's spend, both fleets' infra, and every responder's notes —
+        # and best-effort clears the SHARED Artel runbooks so the Artel fleet starts with no edge.
+        await self._ensure()
+        self.metrics.reset_all()
+        self.cursor = 0
+        self.spent_today = 0.0
+        self.artel_infra.reset()
+        self.solo_infra.reset()
+        self.live = None
+        for r in self.solo:
+            r.store.notes.clear()
+            r.store.feed.clear()
+        for r in self.artel:
+            r.store.feed.clear()
+        if self._http is not None and self.artel:
+            try:
+                await self._http.post(
+                    f"{A.ARTEL_URL}/projects/{A.WATCHTOWER_PROJECT}/clear",
+                    headers=A._headers(self.artel[0].store.agent),
+                    json={"memory": True, "tasks": True, "messages": True},
+                )
+            except Exception:
+                pass
+        await self._broadcast()
+
     async def loop(self) -> None:
         await asyncio.sleep(WARMUP_SECONDS)
         while True:
