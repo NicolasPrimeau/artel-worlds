@@ -121,6 +121,24 @@
   #tip .hd { font-weight:700; color:#fff; display:flex; align-items:center; gap:6px; margin-bottom:4px; }
   #tip .dot { width:9px; height:9px; border-radius:50%; }
   #tip table td { color:var(--dim); padding:0; } #tip td.v { color:var(--fg); text-align:right; padding-left:14px; }
+  .share { position:relative; flex:1; display:flex; }
+  .share button#sharebtn {
+    flex:1; display:inline-flex; align-items:center; justify-content:center; gap:6px; white-space:nowrap;
+    font:inherit; font-weight:600; font-size:11px; cursor:pointer;
+    color:var(--fg); background:#1a2230; border:1px solid var(--line); border-radius:8px; padding:6px 8px;
+  }
+  .share button#sharebtn:hover { border-color:#2f3a4c; color:#fff; }
+  #sharepop {
+    position:absolute; bottom:calc(100% + 6px); right:0; z-index:30; display:flex; flex-direction:column; min-width:130px;
+    background:var(--panel, #12141b); border:1px solid var(--line); border-radius:9px; padding:4px;
+    box-shadow:0 10px 30px rgba(0,0,0,.55); backdrop-filter:blur(10px);
+  }
+  .share #sharepop a, .share #sharepop button {
+    flex:none; width:auto; background:none; border:0; text-align:left;
+    font:inherit; font-size:11px; font-weight:600; text-align:left; text-decoration:none; cursor:pointer;
+    color:var(--fg); background:none; border:0; border-radius:6px; padding:6px 9px;
+  }
+  .share #sharepop a:hover, .share #sharepop button:hover { background:#1a2230; color:#fff; }
 </style>
 </head>
 <body>
@@ -162,6 +180,7 @@
       <a class="primary" href="https://artel.run/ui?project=phalanx#dashboard" target="_blank" rel="noopener">Watch the team coordinate, live → <b>artel.run</b></a>
       <a class="gh" href="https://github.com/NicolasPrimeau/artel" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.5 7.5 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg> Artel source</a>
       <a class="gh" href="https://github.com/NicolasPrimeau/artel-worlds" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.5 7.5 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg> Worlds source</a>
+      <span class="share"><button id="sharebtn" type="button" aria-label="share this page"><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="currentColor"><path d="M11 2.5a2.5 2.5 0 1 1 .603 1.628l-6.718 3.12a2.499 2.499 0 0 1 0 1.504l6.718 3.12a2.5 2.5 0 1 1-.488.876l-6.718-3.12a2.5 2.5 0 1 1 0-3.256l6.718-3.12A2.5 2.5 0 0 1 11 2.5z"/></svg> share</button><div id="sharepop" hidden><button id="sharecopy" type="button">copy link</button><a id="shareli" href="#" target="_blank" rel="noopener">LinkedIn</a><a id="sharex" href="#" target="_blank" rel="noopener">X</a></div></span>
     </div>
   </div>
 </div>
@@ -463,6 +482,29 @@ function connect(){ const proto=location.protocol==='https:'?'wss':'ws'; const w
 }
 new ResizeObserver(resize).observe($('wrap'));
 resize(); connect(); requestAnimationFrame(loop);
+</script>
+<script>
+(() => {
+  const shareUrl = (document.querySelector('meta[property="og:url"]') || {}).content || location.origin + '/';
+  const shareTitle = (document.querySelector('meta[property="og:title"]') || {}).content || document.title;
+  const btn = document.getElementById('sharebtn'), pop = document.getElementById('sharepop');
+  const copy = document.getElementById('sharecopy');
+  document.getElementById('shareli').href = 'https://www.linkedin.com/sharing/share-offsite/?url=' + encodeURIComponent(shareUrl);
+  document.getElementById('sharex').href = 'https://twitter.com/intent/tweet?url=' + encodeURIComponent(shareUrl) + '&text=' + encodeURIComponent(shareTitle);
+  btn.addEventListener('click', () => {
+    if (navigator.share) { navigator.share({ title: shareTitle, url: shareUrl }).catch(() => {}); return; }
+    pop.hidden = !pop.hidden;
+  });
+  document.addEventListener('click', e => { if (!pop.hidden && !e.target.closest('.share')) pop.hidden = true; });
+  copy.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(shareUrl); } catch (_) {
+      const t = document.createElement('textarea'); t.value = shareUrl; document.body.appendChild(t); t.select();
+      try { document.execCommand('copy'); } catch (__) {} t.remove();
+    }
+    copy.textContent = 'copied \u2713'; pop.hidden = true;
+    setTimeout(() => { copy.textContent = 'copy link'; }, 1400);
+  });
+})();
 </script>
 </body>
 </html>

@@ -114,6 +114,25 @@
     .race,.feeds { grid-template-columns:1fr; }
     .hero { gap:6px 18px; } .stat .v { font-size:22px; }
   }
+  .share { position:relative; flex:1 1 120px; display:flex; }
+  .share button#sharebtn {
+    flex:1; display:inline-flex; align-items:center; justify-content:center; gap:6px; white-space:nowrap;
+    font:inherit; font-weight:600; font-size:11px; cursor:pointer;
+    color:var(--fg); background:#1a2230; border:1px solid var(--line); border-radius:8px; padding:7px 8px;
+  }
+  .share button#sharebtn:hover { border-color:#2f3a4c; color:#fff; }
+  .share svg { width:12px; height:12px; }
+  #sharepop {
+    position:absolute; bottom:calc(100% + 6px); right:0; z-index:30; display:flex; flex-direction:column; min-width:130px;
+    background:#12141b; border:1px solid var(--line); border-radius:9px; padding:4px;
+    box-shadow:0 10px 30px rgba(0,0,0,.55);
+  }
+  .share #sharepop a, .share #sharepop button {
+    flex:none; width:auto; background:none; border:0; text-align:left;
+    font:inherit; font-size:11px; font-weight:600; text-align:left; text-decoration:none; cursor:pointer;
+    color:var(--fg); background:none; border:0; border-radius:6px; padding:6px 9px;
+  }
+  .share #sharepop a:hover, .share #sharepop button:hover { background:#1a2230; color:#fff; }
 </style>
 </head>
 <body>
@@ -197,6 +216,7 @@
       <a href="https://worlds.artel.run/" target="_blank" rel="noopener">← all worlds</a>
       <a href="https://github.com/NicolasPrimeau/artel-worlds" target="_blank" rel="noopener">Worlds source</a>
       <a href="https://github.com/NicolasPrimeau/artel" target="_blank" rel="noopener">Artel source</a>
+      <span class="share"><button id="sharebtn" type="button" aria-label="share this page"><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="currentColor"><path d="M11 2.5a2.5 2.5 0 1 1 .603 1.628l-6.718 3.12a2.499 2.499 0 0 1 0 1.504l6.718 3.12a2.5 2.5 0 1 1-.488.876l-6.718-3.12a2.5 2.5 0 1 1 0-3.256l6.718-3.12A2.5 2.5 0 0 1 11 2.5z"/></svg> share</button><div id="sharepop" hidden><button id="sharecopy" type="button">copy link</button><a id="shareli" href="#" target="_blank" rel="noopener">LinkedIn</a><a id="sharex" href="#" target="_blank" rel="noopener">X</a></div></span>
     </div>
   </section>
 </main>
@@ -332,6 +352,29 @@ function connect(){
 fetch("/state").then(r=>r.json()).then(render).catch(()=>{});
 connect();
 setInterval(()=>fetch("/state").then(r=>r.json()).then(render).catch(()=>{}), 5000);
+</script>
+<script>
+(() => {
+  const shareUrl = (document.querySelector('meta[property="og:url"]') || {}).content || location.origin + '/';
+  const shareTitle = (document.querySelector('meta[property="og:title"]') || {}).content || document.title;
+  const btn = document.getElementById('sharebtn'), pop = document.getElementById('sharepop');
+  const copy = document.getElementById('sharecopy');
+  document.getElementById('shareli').href = 'https://www.linkedin.com/sharing/share-offsite/?url=' + encodeURIComponent(shareUrl);
+  document.getElementById('sharex').href = 'https://twitter.com/intent/tweet?url=' + encodeURIComponent(shareUrl) + '&text=' + encodeURIComponent(shareTitle);
+  btn.addEventListener('click', () => {
+    if (navigator.share) { navigator.share({ title: shareTitle, url: shareUrl }).catch(() => {}); return; }
+    pop.hidden = !pop.hidden;
+  });
+  document.addEventListener('click', e => { if (!pop.hidden && !e.target.closest('.share')) pop.hidden = true; });
+  copy.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(shareUrl); } catch (_) {
+      const t = document.createElement('textarea'); t.value = shareUrl; document.body.appendChild(t); t.select();
+      try { document.execCommand('copy'); } catch (__) {} t.remove();
+    }
+    copy.textContent = 'copied \u2713'; pop.hidden = true;
+    setTimeout(() => { copy.textContent = 'copy link'; }, 1400);
+  });
+})();
 </script>
 </body>
 </html>

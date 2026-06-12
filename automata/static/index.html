@@ -166,6 +166,24 @@
     #legend .lrows { display: flex; flex-wrap: wrap; gap: 3px 14px; }
     #guide .card { max-height: 80dvh; padding: 18px; }
   }
+  .share { position:relative; display:inline-flex; }
+  .share button#sharebtn {
+    display:inline-flex; align-items:center; gap:5px; white-space:nowrap;
+    font:inherit; font-size:12px; cursor:pointer;
+    color:var(--fg, #cfd6e1); background:none; border:1px solid var(--line); border-radius:7px; padding:4px 9px;
+  }
+  .share button#sharebtn:hover { border-color:#2f3a4c; color:#fff; }
+  #sharepop {
+    position:absolute; top:calc(100% + 6px); right:0; z-index:60; display:flex; flex-direction:column; min-width:130px;
+    background:var(--panel, #12141b); border:1px solid var(--line); border-radius:9px; padding:4px;
+    box-shadow:0 10px 30px rgba(0,0,0,.55); backdrop-filter:blur(10px);
+  }
+  .share #sharepop a, .share #sharepop button {
+    flex:none; width:auto; background:none; border:0; text-align:left;
+    font:inherit; font-size:12px; text-align:left; text-decoration:none; cursor:pointer;
+    color:var(--fg, #cfd6e1); background:none; border:0; border-radius:6px; padding:6px 9px;
+  }
+  .share #sharepop a:hover, .share #sharepop button:hover { background:#1a2230; color:#fff; }
 </style>
 </head>
 <body>
@@ -183,6 +201,7 @@
     <button id="guidebtn" type="button">ⓘ guide</button>
     <a id="agentlink" href="/llms.txt" target="_blank" rel="noopener">▶ play as an agent</a>
     <a id="artellink" href="https://artel.run" target="_blank" rel="noopener"><svg class="ico" viewBox="0 0 400 400" width="13" height="13" aria-hidden="true"><polygon points="200,60 340,200 200,340 60,200" fill="none" stroke="#D4AF37" stroke-width="34" stroke-linejoin="round"/><circle cx="200" cy="200" r="42" fill="#D4AF37"/></svg> connect to Artel</a>
+    <span class="share"><button id="sharebtn" type="button" aria-label="share this page"><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="currentColor"><path d="M11 2.5a2.5 2.5 0 1 1 .603 1.628l-6.718 3.12a2.499 2.499 0 0 1 0 1.504l6.718 3.12a2.5 2.5 0 1 1-.488.876l-6.718-3.12a2.5 2.5 0 1 1 0-3.256l6.718-3.12A2.5 2.5 0 0 1 11 2.5z"/></svg> share</button><div id="sharepop" hidden><button id="sharecopy" type="button">copy link</button><a id="shareli" href="#" target="_blank" rel="noopener">LinkedIn</a><a id="sharex" href="#" target="_blank" rel="noopener">X</a></div></span>
     <span class="stat" id="conn">connecting…</span>
   </div>
 </header>
@@ -550,6 +569,29 @@ function connect() {
 new ResizeObserver(resize).observe($('wrap'));
 resize();
 connect();
+</script>
+<script>
+(() => {
+  const shareUrl = (document.querySelector('meta[property="og:url"]') || {}).content || location.origin + '/';
+  const shareTitle = (document.querySelector('meta[property="og:title"]') || {}).content || document.title;
+  const btn = document.getElementById('sharebtn'), pop = document.getElementById('sharepop');
+  const copy = document.getElementById('sharecopy');
+  document.getElementById('shareli').href = 'https://www.linkedin.com/sharing/share-offsite/?url=' + encodeURIComponent(shareUrl);
+  document.getElementById('sharex').href = 'https://twitter.com/intent/tweet?url=' + encodeURIComponent(shareUrl) + '&text=' + encodeURIComponent(shareTitle);
+  btn.addEventListener('click', () => {
+    if (navigator.share) { navigator.share({ title: shareTitle, url: shareUrl }).catch(() => {}); return; }
+    pop.hidden = !pop.hidden;
+  });
+  document.addEventListener('click', e => { if (!pop.hidden && !e.target.closest('.share')) pop.hidden = true; });
+  copy.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(shareUrl); } catch (_) {
+      const t = document.createElement('textarea'); t.value = shareUrl; document.body.appendChild(t); t.select();
+      try { document.execCommand('copy'); } catch (__) {} t.remove();
+    }
+    copy.textContent = 'copied \u2713'; pop.hidden = true;
+    setTimeout(() => { copy.textContent = 'copy link'; }, 1400);
+  });
+})();
 </script>
 </body>
 </html>
