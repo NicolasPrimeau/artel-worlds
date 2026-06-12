@@ -201,7 +201,8 @@ TOOLS = [
                     "type": "array",
                     "items": {"type": "integer"},
                     "description": "hex [q,r] to step toward this turn — the drivetrain "
-                    "handles turning and obstacles; preferred over move/turn",
+                    "handles turning and obstacles. OMIT move_to to stand still: holding "
+                    "position while firing is fully respected and often correct.",
                 },
                 "move": {"type": "string", "enum": ["fwd", "back", "hold"]},
                 "turn": {"type": "string", "enum": ["left", "right", "none"]},
