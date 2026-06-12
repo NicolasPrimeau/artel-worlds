@@ -55,11 +55,11 @@ class Config:
     # Closing zone: a safe region around the center that shrinks over the match,
     # herding the teams together so fights actually happen (and matches resolve by
     # combat, not stalemate). Tanks caught outside it bleed energy.
-    zone_start: int = 14  # tick the safe zone begins to close
-    zone_close: int = 40  # tick it reaches its minimum radius
+    zone_start: int = 26  # tick the safe zone begins to close (1s ticks: fights develop first)
+    zone_close: int = 60  # tick it reaches its minimum radius
     zone_min: int = 2  # minimum safe radius, in hexes from center
     zone_damage: float = 6.0  # energy lost per tick spent outside the zone
-    match_max_ticks: int = 70  # hard cap — force a result so a match can never stall forever
+    match_max_ticks: int = 95  # hard cap — force a result so a match can never stall forever
 
 
 DEFAULT = Config()
