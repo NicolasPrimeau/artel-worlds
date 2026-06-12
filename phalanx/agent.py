@@ -118,11 +118,15 @@ SYSTEM = (
     "into it steer real decisions by your teammates, this turn and next match. Everything you "
     "send through it must be about THIS arena, grounded in what you actually perceived — enemy "
     "ids, hex coordinates, energy, ticks, walls.\n"
-    "TWO things must BOTH work every turn: (1) play YOUR tank well — fire whenever you can "
-    "(a ready gun with a target in range should always shoot; you can move the same turn), "
-    "take good ground, never idle; AND (2) COORDINATE over Artel — share what you see, agree "
-    "on a target, focus fire together. A team that only chats but plays sloppily loses; a tank "
-    "that plays well but ignores its team loses.\n"
+    "PLAY YOUR TANK first, every turn: fire whenever you can (a ready gun with a target in "
+    "range should always shoot; you can move the same turn), take good ground, never idle.\n"
+    "SPEAK ONLY TO CHANGE WHAT A TEAMMATE DOES. Artel messages are battlefield reports, not "
+    "commentary — the useful ones are: 'SPOTTED #5 at (7,4) energy 40' (a sighting they can't "
+    "see), 'TAKING FIRE at (6,8) from #4' (they should help or you should fall back to them), "
+    "'FOCUS #5' (a target call), 'REGROUP at (8,6)' (a rally point). If nothing changed since "
+    "the last report, SAY NOTHING — a silent turn is correct; a repeated or empty message "
+    "trains your teammates to ignore the channel. READ the team reports in your context and "
+    "act on them: a teammate's sighting is a real enemy position you cannot see yourself.\n"
     "ARRIVE TOGETHER: while advancing stay within 2 hexes of a teammate, and if you are ahead "
     "of your team, hold or angle back until they catch up — the tank that reaches the enemy "
     "first fights 3-vs-1 and dies before the team can trade back.\n"
@@ -142,13 +146,11 @@ SYSTEM = (
 TOOLS = [
     {
         "name": "tell_team",
-        "description": "Send REAL INTEL a teammate can act on: enemy id + hex coordinates + "
-        "energy, a threat's position, your own position/energy when hurt, or a change of plan. "
-        "Teammates CANNOT see what you see — fog of war — so an unshared sighting is intel the "
-        "team doesn't have. ONLY send what is NEW: if a teammate already called this enemy or "
-        "this fact this turn, do not echo it — acknowledge by acting, not by repeating. Vague "
-        "chatter is noise; new coordinates, target switches, and warnings are coordination. No "
-        "message at all is better than a duplicate.",
+        "description": "Send a battlefield report teammates will act on: SPOTTED <id> at (q,r) "
+        "energy <e> / TAKING FIRE at (q,r) from <id> / FOCUS <id> / REGROUP at (q,r). Teammates "
+        "cannot see what you see — an unshared sighting is intel the team doesn't have. Send "
+        "ONLY what is new since the team's last reports; if nothing changed, send nothing — "
+        "acting on a teammate's report IS the acknowledgment.",
         "schema": {
             "type": "object",
             "properties": {
@@ -697,7 +699,7 @@ async def decide(
     notes: str = "",
     claims: list | None = None,
     counts: dict | None = None,
-) -> tuple[dict, float, str]:
+) -> tuple[dict, float, str, str]:
     inbox = await _consume_inbox(http, agent)
     user = _perception_text(p)
     if notes:
@@ -705,7 +707,7 @@ async def decide(
     if memory:
         user += f"\nTeam memory from past matches: {memory}"
     if inbox:
-        user += f"\nFrom Artel teammates: {inbox}"
+        user += f"\nNEW team reports this turn: {inbox}"
     system = SYSTEM.format(mates=" and ".join(mate_ids) or "your team")
     transcript: list[dict] = [{"role": "user", "text": user}]
     intent = {"turn": 0, "move": "hold", "fire": 0}
@@ -779,7 +781,7 @@ async def decide(
         intent["fire"] = rx["fire"]
     if intent.get("move", "hold") == "hold" and not intent.get("fire"):
         intent["turn"], intent["move"] = rx["turn"], rx["move"]
-    return intent, cost, plan
+    return intent, cost, plan, inbox
 
 
 class Squad:
@@ -799,6 +801,7 @@ class Squad:
         self._context: dict[int, str] = {}  # per-tank memory recalled at match start
         self._last: dict[int, str] = {}  # per-tank last action, carried into the next turn
         self._plans: dict[int, str] = {}  # per-tank standing plan (the agent's own words)
+        self._intel: dict[int, list[str]] = {}  # per-tank log of teammate reports (via Artel)
         self._claims: list[tuple[dict, str]] = []  # (agent, task id) opened this match
         self.tool_counts: dict[str, int] = {}  # Artel tool usage this match, for /debug
 
@@ -831,13 +834,17 @@ class Squad:
             await self._ensure_member(agent)
             self._joined.add(agent["id"])
         mate_ids = [a["id"] for a in self.agents if a["id"] != agent["id"]]
-        # continuity: the agent sees what it just did and the plan it set, so it can follow
-        # through across turns instead of rediscovering the situation from scratch every 2.5s
+        # continuity: the agent sees what it just did, the plan it set, and the teammate
+        # reports it has received (newest last, tick-stamped) — so intel from Artel persists
+        # long enough to act on, instead of evaporating after the turn it arrived
         notes = self._last.get(tank_id, "")
         if self._plans.get(tank_id):
             notes += f" Your standing plan: {self._plans[tank_id]}"
+        intel = self._intel.get(tank_id) or []
+        if intel:
+            notes += "\nTeam reports so far (oldest first): " + " | ".join(intel)
         try:
-            intent, cost, plan = await asyncio.wait_for(
+            intent, cost, plan, inbox = await asyncio.wait_for(
                 decide(
                     self._http,
                     agent,
@@ -858,6 +865,11 @@ class Squad:
         self.last_error = None
         if plan:
             self._plans[tank_id] = plan
+        if inbox:
+            log_ = self._intel.setdefault(tank_id, [])
+            for line in inbox.split(" | "):
+                log_.append(f"t{p.get('tick', '?')} {line}")
+            del log_[:-6]
         fired = f"fired at #{intent['fire']}" if intent.get("fire") else "held fire"
         self._last[tank_id] = f"Last turn you {fired} and moved {intent.get('move', 'hold')}."
         return intent
@@ -873,6 +885,7 @@ class Squad:
         self._context = {}
         self._last = {}
         self._plans = {}
+        self._intel = {}
         self._claims = []
         self.tool_counts = {}
         for tid, agent in self._assign.items():
