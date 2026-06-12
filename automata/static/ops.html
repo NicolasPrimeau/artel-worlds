@@ -6,44 +6,59 @@
 <meta name="theme-color" content="#0a0b0f">
 <link rel="icon" type="image/x-icon" href="/favicon.ico">
 <title>Artel Worlds — operations &amp; cost</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
 <style>
   :root{--bg:#090a0e;--panel:rgba(18,20,27,.72);--line:#1b212b;--fg:#e6eaf1;--dim:#79839a;
-    --gold:#d4af37;--artel:#3d8bff;--artel-soft:#7fb0ff;--green:#6ee7a8;--amber:#ffb454;--red:#ff5d5d;}
+    --gold:#d4af37;--artel:#3d8bff;--artel-soft:#7fb0ff;--solo:#ffae42;--green:#6ee7a8;--amber:#ffb454;--red:#ff5d5d;}
   *{box-sizing:border-box;}
   html,body{margin:0;min-height:100%;}
   body{background:radial-gradient(1000px 500px at 50% -10%,rgba(61,139,255,.09),transparent 60%),var(--bg);
-    color:var(--fg);font:13.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+    color:var(--fg);font:13.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-x:hidden;}
   a{color:var(--artel-soft);text-decoration:none;}
-  .wrap{max-width:880px;margin:0 auto;padding:40px 20px;}
+  .wrap{max-width:980px;margin:0 auto;padding:34px 18px;}
   header{display:flex;align-items:center;gap:12px;margin-bottom:6px;}
   header svg{display:block;}
   header h1{font-size:17px;margin:0;letter-spacing:4px;font-weight:800;color:#fff;}
   header .sp{margin-left:auto;font-size:12px;}
-  .sub{color:var(--dim);font-size:12.5px;margin:8px 0 26px;}
+  .sub{color:var(--dim);font-size:12.5px;margin:8px 0 22px;}
   .sub b{color:var(--gold);}
+  /* hero strip */
+  .hero{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;}
+  .hs{flex:1 1 150px;background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:13px 16px;}
+  .hs .v{font-size:23px;font-weight:800;color:var(--gold);font-variant-numeric:tabular-nums;}
+  .hs .v.plain{color:#fff;}
+  .hs .k{color:var(--dim);font-size:11px;margin-top:2px;}
+  /* cards */
   .grid{display:grid;gap:14px;}
-  .w{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;backdrop-filter:blur(12px);}
+  .w{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;backdrop-filter:blur(12px);}
   .top{display:flex;align-items:center;gap:11px;flex-wrap:wrap;}
-  .nm{font-size:16px;font-weight:800;color:#fff;letter-spacing:1px;}
-  .tag{color:var(--dim);font-size:12px;}
+  .nm{font-size:15px;font-weight:800;color:#fff;letter-spacing:1px;}
+  .tag{color:var(--dim);font-size:11.5px;}
   .st{margin-left:auto;font-size:11px;padding:3px 10px;border-radius:20px;display:inline-flex;align-items:center;gap:6px;}
   .st::before{content:"";width:7px;height:7px;border-radius:50%;}
   .st.live{color:var(--green);background:rgba(110,231,168,.12);}.st.live::before{background:var(--green);box-shadow:0 0 8px var(--green);}
   .st.idle{color:var(--amber);background:rgba(255,180,84,.12);}.st.idle::before{background:var(--amber);}
   .st.unreachable{color:var(--red);background:rgba(255,93,93,.12);}.st.unreachable::before{background:var(--red);}
-  .row{display:flex;flex-wrap:wrap;gap:26px;margin-top:14px;align-items:baseline;}
-  .m .v{font-size:20px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;}
+  .row{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:12px;align-items:baseline;}
+  .m .v{font-size:18px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;}
   .m .v.spend{color:var(--gold);}
-  .m .k{color:var(--dim);font-size:11px;}
-  .facts{color:var(--dim);font-size:11.5px;margin-top:12px;}
+  .m .v.a{color:var(--artel-soft);} .m .v.s{color:var(--solo);}
+  .m .k{color:var(--dim);font-size:10.5px;}
+  .facts{color:var(--dim);font-size:11.5px;margin-top:10px;}
   .facts b{color:var(--fg);font-weight:600;}
-  .total{margin:24px 0 8px;padding:16px 20px;border:1px dashed var(--line);border-radius:13px;display:flex;align-items:baseline;gap:14px;}
-  .total .v{font-size:24px;font-weight:800;color:var(--gold);}
+  .dots{display:flex;gap:5px;margin-top:10px;align-items:center;flex-wrap:wrap;}
+  .dots span{width:11px;height:11px;border-radius:3px;background:#222833;}
+  .dots span.w{background:var(--artel);} .dots span.l{background:var(--red);} .dots span.o{background:#39414f;}
+  .dots .lbl{color:var(--dim);font-size:10.5px;margin-left:6px;}
+  .chartbox{position:relative;height:150px;margin-top:12px;}
+  .chartbox.tall{height:180px;}
+  .chartbox canvas{max-width:100%;}
   .reset{background:#161a22;border:1px solid var(--line);color:var(--dim);font:inherit;font-size:11px;padding:5px 12px;border-radius:7px;cursor:pointer;transition:border-color .15s,color .15s;}
   .reset:hover{border-color:var(--red);color:var(--red);}
-  .cardfoot{margin-top:13px;display:flex;justify-content:flex-end;}
+  .cardfoot{margin-top:12px;display:flex;justify-content:flex-end;}
   .foot{color:var(--dim);font-size:12px;margin-top:24px;border-top:1px solid var(--line);padding-top:16px;}
   .foot a{margin-right:18px;}
+  @media(min-width:760px){ .grid{grid-template-columns:1fr 1fr;} .w.wide{grid-column:1 / -1;} }
 </style>
 </head>
 <body>
@@ -55,12 +70,20 @@
   </header>
   <div class="sub">Live operations &amp; LLM cost across every world. Updated <b id="upd">—</b>.</div>
 
-  <div class="total">
-    <span class="v" id="total">$—</span>
-    <span class="k" style="color:var(--dim);font-size:12px;">combined LLM spend (current process / today)</span>
+  <div class="hero">
+    <div class="hs"><div class="v" id="t-total">$—</div><div class="k">LLM spend, all time</div></div>
+    <div class="hs"><div class="v" id="t-today">$—</div><div class="k">today</div></div>
+    <div class="hs"><div class="v" id="t-avg">$—</div><div class="k">avg / day (7d)</div></div>
+    <div class="hs"><div class="v plain" id="t-month">$—</div><div class="k">est. month (LLM + ~$10 Fly)</div></div>
   </div>
 
-  <div class="grid" id="grid"></div>
+  <div class="grid">
+    <div class="w wide" id="card-spend">
+      <div class="top"><span class="nm">Cost per day</span><span class="tag">LLM spend by world, last 14 days</span></div>
+      <div class="chartbox tall"><canvas id="spendchart"></canvas></div>
+    </div>
+    <div id="grid-worlds" style="display:contents"></div>
+  </div>
 
   <div class="foot">
     <a href="/worlds">← all worlds</a>
@@ -73,35 +96,123 @@ const money = v => v == null ? "—" : "$" + Number(v).toFixed(v < 1 ? 4 : 2);
 const pct = v => v == null ? "—" : Math.round(v*100) + "%";
 const secs = v => v == null ? "—" : (v >= 60 ? (v/60).toFixed(1)+"m" : Math.round(v)+"s");
 
-function facts(w){
-  const f = w.facts || {};
-  if (w.key === "automata") return `tick <b>${f.tick ?? "—"}</b> · population <b>${f.population ?? "—"}</b>`;
-  if (w.key === "phalanx"){
-    const t = f.throttled && Object.keys(f.throttled).length ? Object.entries(f.throttled).map(([k,v])=>`${k}:${v}`).join(", ") : "none";
-    return `match <b>${f.match ?? "—"}</b> · rate-limit hits <b>${t}</b>`;
-  }
-  if (w.key === "watchtower")
-    return `incidents <b>${f.incidents ?? 0}</b> · Artel MTTR <b>${secs(f.artel_mttr)}</b> vs solo <b>${secs(f.solo_mttr)}</b> · win rate <b>${pct(f.win_rate)}</b>`;
-  return "";
+const PAL = { artel:"#3d8bff", artelA:"rgba(61,139,255,.8)", solo:"#ffae42", soloA:"rgba(255,174,66,.8)",
+  gold:"rgba(212,175,55,.85)", grid:"#161b24" };
+if (window.Chart){
+  Chart.defaults.color = "#79839a";
+  Chart.defaults.borderColor = PAL.grid;
+  Chart.defaults.font.family = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+  Chart.defaults.font.size = 10;
+  Chart.defaults.animation = false;
+  Chart.defaults.plugins.legend.display = false;
+  Object.assign(Chart.defaults.plugins.tooltip, {
+    backgroundColor:"rgba(18,20,27,.97)", borderColor:"#2b323d", borderWidth:1,
+    titleColor:"#e6eaf1", bodyColor:"#e6eaf1", padding:9, displayColors:false,
+  });
+}
+const charts = {};
+function upsert(id, cfg){
+  const el = $(id);
+  if (!el || !window.Chart) return;
+  if (charts[id]){ charts[id].data = cfg.data; charts[id].update("none"); return; }
+  charts[id] = new Chart(el, cfg);
 }
 
-function render(d){
-  $("upd").textContent = new Date((d.ts||0)*1000).toLocaleTimeString();
-  $("total").textContent = money(d.total_spend);
-  $("grid").innerHTML = (d.worlds||[]).map(w => `
-    <div class="w">
+function spendChart(series){
+  upsert("spendchart", { type:"bar",
+    data:{ labels: series.map(s=>s.day.slice(5)), datasets:[
+      { label:"Watchtower", data: series.map(s=>s.watchtower||0), backgroundColor:PAL.artelA, stack:"s", borderRadius:2 },
+      { label:"Phalanx", data: series.map(s=>s.phalanx||0), backgroundColor:PAL.gold, stack:"s", borderRadius:2 },
+    ]},
+    options:{ maintainAspectRatio:false,
+      scales:{ x:{ grid:{display:false}, stacked:true }, y:{ stacked:true, beginAtZero:true, ticks:{ callback:v=>"$"+v } } },
+      plugins:{ legend:{display:true, position:"top", labels:{boxWidth:10, boxHeight:10}},
+        tooltip:{ callbacks:{ label:c=>` ${c.dataset.label}: ${money(c.parsed.y)}` } } } }
+  });
+}
+
+function wedgeChart(wedge){
+  const pts = (wedge||[]).filter(d=>d.artel_mttr!=null || d.solo_mttr!=null);
+  if (pts.length < 2) return;
+  upsert("wt-wedge", { type:"line",
+    data:{ labels: pts.map(d=>d.from_seq), datasets:[
+      { label:"Solo", data: pts.map(d=>d.solo_mttr), borderColor:PAL.solo, pointRadius:2, borderWidth:2, tension:.3, spanGaps:true },
+      { label:"Artel", data: pts.map(d=>d.artel_mttr), borderColor:PAL.artel, backgroundColor:"rgba(61,139,255,.10)",
+        fill:"-1", pointRadius:2, borderWidth:2, tension:.3, spanGaps:true },
+    ]},
+    options:{ maintainAspectRatio:false, interaction:{mode:"index",intersect:false},
+      scales:{ x:{ grid:{display:false} }, y:{ beginAtZero:true, ticks:{ callback:secs } } },
+      plugins:{ tooltip:{ callbacks:{ label:c=>` ${c.dataset.label}: ${secs(c.parsed.y)} mean fix` } } } }
+  });
+}
+
+function card(w){
+  const facts = w.facts || {};
+  let body = "";
+  if (w.key === "watchtower"){
+    const m = facts.misses || [];
+    body = `
+      <div class="row">
+        <div class="m"><div class="v spend">${money(w.spend)}</div><div class="k">spend (${w.spend_label||"all time"})</div></div>
+        <div class="m"><div class="v spend">${money(w.spend_today)}</div><div class="k">today (cap ${money(w.cap)})</div></div>
+        <div class="m"><div class="v a">${secs(facts.artel_mttr)}</div><div class="k">Artel MTTR</div></div>
+        <div class="m"><div class="v s">${secs(facts.solo_mttr)}</div><div class="k">solo MTTR</div></div>
+        <div class="m"><div class="v">${pct(facts.win_rate)}</div><div class="k">Artel wins</div></div>
+      </div>
+      <div class="facts">incidents <b>${facts.incidents ?? 0}</b> · gave up <b>${m[0] ?? "—"}</b> Artel / <b>${m[1] ?? "—"}</b> solo</div>
+      ${(facts.wedge||[]).length >= 2 ? '<div class="chartbox"><canvas id="wt-wedge"></canvas></div>'
+        : '<div class="facts">MTTR curve appears after ~20 incidents.</div>'}`;
+  } else if (w.key === "phalanx"){
+    const sc = facts.scores || {};
+    const recent = (facts.recent || []).slice().reverse();
+    const dots = recent.map(h => `<span class="${h.winner === "artel" ? "w" : h.winner ? "l" : "o"}" title="${h.winner||"draw"}"></span>`).join("");
+    const t = facts.throttled && Object.keys(facts.throttled).length
+      ? Object.entries(facts.throttled).map(([k,v])=>`${k}:${v}`).join(", ") : "none";
+    body = `
+      <div class="row">
+        <div class="m"><div class="v spend">${money(w.spend)}</div><div class="k">spend (${w.spend_label||"all time"}, cap ${money(w.cap)})</div></div>
+        <div class="m"><div class="v a">${sc.artel ?? 0}</div><div class="k">Artel wins</div></div>
+        <div class="m"><div class="v" style="color:var(--red)">${sc.red ?? 0}</div><div class="k">Red wins</div></div>
+        <div class="m"><div class="v">${facts.match ?? "—"}</div><div class="k">matches</div></div>
+      </div>
+      ${recent.length ? `<div class="dots">${dots}<span class="lbl">last ${recent.length} matches (blue = Artel won)</span></div>` : ""}
+      <div class="facts">rate-limit hits <b>${t}</b></div>`;
+  } else {
+    body = `
+      <div class="row">
+        <div class="m"><div class="v">${facts.tick ?? "—"}</div><div class="k">tick</div></div>
+        <div class="m"><div class="v">${facts.population ?? "—"}</div><div class="k">population</div></div>
+        <div class="m"><div class="v spend">$0</div><div class="k">LLM spend (not metered)</div></div>
+      </div>`;
+  }
+  return `
+    <div class="w${w.key === "watchtower" ? " wide" : ""}">
       <div class="top">
         <span class="nm"><a href="${w.url||'#'}" style="color:#fff" target="_blank" rel="noopener">${w.name}</a></span>
         <span class="tag">${w.model || ""}${w.fallback ? " → " + w.fallback : ""}</span>
         <span class="st ${w.status||'idle'}">${w.status||'idle'}</span>
       </div>
-      <div class="row">
-        <div class="m"><div class="v spend">${money(w.spend)}</div><div class="k">spend${w.spend_label ? " ("+w.spend_label+")" : ""}</div></div>
-        <div class="m"><div class="v">${money(w.cap)}</div><div class="k">cap</div></div>
-      </div>
-      <div class="facts">${facts(w)}</div>
+      ${body}
       <div class="cardfoot"><button class="reset" onclick="resetWorld('${w.key}','${w.name}')">reset ${w.name}</button></div>
-    </div>`).join("");
+    </div>`;
+}
+
+function render(d){
+  $("upd").textContent = new Date((d.ts||0)*1000).toLocaleTimeString();
+  $("t-total").textContent = money(d.total_spend);
+  $("t-today").textContent = money(d.today_spend);
+  const series = d.spend_series || [];
+  const last7 = series.slice(-7);
+  const avg = last7.length ? last7.reduce((a,s)=>a+(s.phalanx||0)+(s.watchtower||0),0)/last7.length : null;
+  $("t-avg").textContent = money(avg);
+  $("t-month").textContent = avg==null ? "—" : money(avg*30 + 10);
+
+  // cards are re-rendered each tick, so charts inside them rebind from scratch
+  for (const id in charts){ if (id !== "spendchart"){ charts[id].destroy(); delete charts[id]; } }
+  $("grid-worlds").innerHTML = (d.worlds||[]).map(card).join("");
+  spendChart(series);
+  const wt = (d.worlds||[]).find(w=>w.key==="watchtower");
+  if (wt && wt.facts) wedgeChart(wt.facts.wedge);
 }
 
 async function resetWorld(key, name){

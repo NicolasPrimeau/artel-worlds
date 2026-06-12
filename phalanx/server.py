@@ -60,6 +60,8 @@ class Phalanx:
         self._squad_match = -1  # which match the squad is currently driving
         self._squad_started = -1  # which match the squad has already run on_start for
         self.history: list[dict] = []  # last matches' outcomes + kill logs, for /debug
+        self.spend_days: dict[str, float] = {}  # iso day -> usd, the cost-per-day ledger
+        self._ledgered = 0.0  # spend already attributed to a day
         self._restore_state()
         self._new_match()
 
@@ -74,6 +76,21 @@ class Phalanx:
         self.squad.spent = float(raw.get("squad_spent", 0.0))
         if self.red_squad is not None:
             self.red_squad.spent = float(raw.get("red_spent", 0.0))
+        self.spend_days = {k: float(v) for k, v in (raw.get("spend_days") or {}).items()}
+        self._ledgered = self.squad.spent + (self.red_squad.spent if self.red_squad else 0.0)
+
+    def ledger_spend(self) -> None:
+        import datetime
+
+        total = self.squad.spent + (self.red_squad.spent if self.red_squad else 0.0)
+        delta = total - self._ledgered
+        if delta <= 0:
+            return
+        day = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+        self.spend_days[day] = round(self.spend_days.get(day, 0.0) + delta, 6)
+        self._ledgered = total
+        for k in sorted(self.spend_days)[:-30]:
+            del self.spend_days[k]
 
     def persist_state(self) -> None:
         try:
@@ -87,6 +104,7 @@ class Phalanx:
                         "match_no": self.match_no,
                         "squad_spent": round(self.squad.spent, 6),
                         "red_spent": round(self.red_squad.spent, 6) if self.red_squad else 0.0,
+                        "spend_days": self.spend_days,
                     }
                 )
             )
@@ -285,6 +303,7 @@ async def _tick_loop():
                         }
                     )
                     del G.history[:-10]
+                    G.ledger_spend()
                     G.persist_state()
                     if live_artel:
                         survivors = {t.id for t in a.tanks.values() if t.team in COORDINATED}
@@ -332,6 +351,8 @@ async def debug():
         "viewers": len(G.viewers),
         "live_artel": G.squad.enabled and G._squad_match == G.match_no,
         "red_mode": "llm-solo" if G.red_squad is not None else "bots",
+        "scores": dict(G.scores),
+        "spend_days": dict(G.spend_days),
         "squad": G.squad.status(),
         "red_squad": G.red_squad.status() if G.red_squad is not None else None,
         "team_counts": a.stats()["team_counts"],

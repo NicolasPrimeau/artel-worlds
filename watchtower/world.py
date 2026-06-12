@@ -49,6 +49,7 @@ class World:
         )
         self.spent_today = 0.0
         self.spent_total = 0.0
+        self.spend_days: dict[str, float] = {}
         self._day = self._utc_day()
         self.live: dict | None = None  # the incident in flight, for the race clocks
         self.viewers: set = set()
@@ -116,6 +117,7 @@ class World:
             if raw:
                 sp = json.loads(raw)
                 self.spent_total = float(sp.get("total", 0.0))
+                self.spend_days = {k: float(v) for k, v in (sp.get("days") or {}).items()}
                 if sp.get("day") == self._utc_day():
                     self.spent_today = float(sp.get("today", 0.0))
         except Exception as e:
@@ -145,6 +147,7 @@ class World:
                         "total": round(self.spent_total, 6),
                         "today": round(self.spent_today, 6),
                         "day": self._day,
+                        "days": self.spend_days,
                     }
                 ),
             )
@@ -181,6 +184,10 @@ class World:
             )
             self.spent_today += ca + cs
             self.spent_total += ca + cs
+            day = self._utc_day()
+            self.spend_days[day] = round(self.spend_days.get(day, 0.0) + ca + cs, 6)
+            for k in sorted(self.spend_days)[:-30]:
+                del self.spend_days[k]
             self.last_error = None
         except Exception as e:
             self.last_error = f"{type(e).__name__}: {e}"
@@ -301,6 +308,7 @@ class World:
             "cursor": self.cursor,
             "spent_today": round(self.spent_today, 4),
             "spent_total": round(self.spent_total, 4),
+            "spend_days": dict(self.spend_days),
             "cap_daily": A.SPEND_CAP_DAILY_USD,
             "artel_wall": self.artel_infra.status_wall(),
             "solo_wall": self.solo_infra.status_wall(),

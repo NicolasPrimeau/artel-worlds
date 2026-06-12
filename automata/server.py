@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as _dt
 import base64
 import contextlib
 import hashlib
@@ -755,9 +756,9 @@ async def ui_page(request: Request):
     return FileResponse(page) if page.exists() else JSONResponse({"ui": "ops.html missing"})
 
 
-async def _fetch_debug(client: httpx.AsyncClient, url: str) -> dict | None:
+async def _fetch_json(client: httpx.AsyncClient, url: str) -> dict | None:
     try:
-        r = await client.get(f"{url}/debug", timeout=5)
+        r = await client.get(url, timeout=5)
         return r.json() if r.status_code < 300 else None
     except Exception:
         return None
@@ -769,8 +770,10 @@ async def ui_stats(request: Request):
     if UI_PASSWORD and not _authed(request):
         raise HTTPException(status_code=401, detail="sign in")
     async with httpx.AsyncClient() as client:
-        ph, wt = await asyncio.gather(
-            _fetch_debug(client, PHALANX_DEBUG), _fetch_debug(client, WATCHTOWER_DEBUG)
+        ph, wt, wt_state = await asyncio.gather(
+            _fetch_json(client, f"{PHALANX_DEBUG}/debug"),
+            _fetch_json(client, f"{WATCHTOWER_DEBUG}/debug"),
+            _fetch_json(client, f"{WATCHTOWER_DEBUG}/state"),
         )
     worlds = []
     a = G.snapshot()
@@ -788,7 +791,9 @@ async def ui_stats(request: Request):
         }
     )
     if ph:
-        sq = ph.get("squad", {})
+        sq = ph.get("squad") or {}
+        red = ph.get("red_squad") or {}
+        spend = (sq.get("spent_usd") or 0.0) + (red.get("spent_usd") or 0.0)
         worlds.append(
             {
                 "key": "phalanx",
@@ -798,9 +803,19 @@ async def ui_stats(request: Request):
                 "status": "live" if ph.get("live_artel") else "idle",
                 "model": sq.get("model"),
                 "fallback": sq.get("fallback_model"),
-                "spend": sq.get("spent_usd"),
+                "spend": round(spend, 4),
+                "spend_label": "all time",
                 "cap": sq.get("cap_usd"),
-                "facts": {"match": ph.get("match"), "throttled": sq.get("throttled_429s")},
+                "spend_days": ph.get("spend_days") or {},
+                "facts": {
+                    "match": ph.get("match"),
+                    "scores": ph.get("scores") or {},
+                    "recent": [
+                        {"winner": h.get("winner"), "live": h.get("live_artel")}
+                        for h in (ph.get("history") or [])[:10]
+                    ],
+                    "throttled": sq.get("throttled_429s"),
+                },
             }
         )
     else:
@@ -816,7 +831,19 @@ async def ui_stats(request: Request):
             }
         )
     if wt:
-        s = wt.get("summary") if isinstance(wt.get("summary"), dict) else {}
+        s = {
+            k: wt.get(k)
+            for k in (
+                "incidents",
+                "artel_mttr_all",
+                "solo_mttr_all",
+                "artel_mttr_recent",
+                "solo_mttr_recent",
+                "artel_win_rate",
+                "artel_misses",
+                "solo_misses",
+            )
+        }
         worlds.append(
             {
                 "key": "watchtower",
@@ -826,14 +853,18 @@ async def ui_stats(request: Request):
                 "status": "live" if wt.get("enabled") else "idle",
                 "model": wt.get("model"),
                 "fallback": wt.get("fallback_model"),
-                "spend": wt.get("spent_today"),
+                "spend": wt.get("spent_total", wt.get("spent_today")),
+                "spend_label": "all time",
+                "spend_today": wt.get("spent_today"),
                 "cap": wt.get("cap_daily"),
-                "spend_label": "today",
+                "spend_days": wt.get("spend_days") or {},
                 "facts": {
-                    "incidents": (s or {}).get("incidents"),
-                    "artel_mttr": (s or {}).get("artel_mttr_recent"),
-                    "solo_mttr": (s or {}).get("solo_mttr_recent"),
-                    "win_rate": (s or {}).get("artel_win_rate"),
+                    "incidents": s.get("incidents"),
+                    "artel_mttr": s.get("artel_mttr_recent"),
+                    "solo_mttr": s.get("solo_mttr_recent"),
+                    "win_rate": s.get("artel_win_rate"),
+                    "misses": [s.get("artel_misses"), s.get("solo_misses")],
+                    "wedge": (wt_state or {}).get("wedge") or [],
                 },
             }
         )
@@ -850,7 +881,20 @@ async def ui_stats(request: Request):
             }
         )
     total = sum(w["spend"] for w in worlds if isinstance(w.get("spend"), (int, float)))
-    return {"worlds": worlds, "total_spend": round(total, 4), "ts": int(time.time())}
+    days: dict[str, dict[str, float]] = {}
+    for w in worlds:
+        for d, v in (w.get("spend_days") or {}).items():
+            days.setdefault(d, {})[w["key"]] = round(float(v), 6)
+    series = [{"day": d, **days[d]} for d in sorted(days)][-14:]
+    today = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d")
+    today_spend = sum(days.get(today, {}).values())
+    return {
+        "worlds": worlds,
+        "total_spend": round(total, 4),
+        "today_spend": round(today_spend, 4),
+        "spend_series": series,
+        "ts": int(time.time()),
+    }
 
 
 @app.post("/ui/reset", include_in_schema=False)
