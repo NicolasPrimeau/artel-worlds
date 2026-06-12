@@ -271,7 +271,9 @@ def _build_payload(
                 {"name": t["name"], "description": t["description"], "input_schema": t["schema"]}
                 for t in toolset
             ],
-            "tool_choice": {"type": "tool", "name": "act"} if force_act else {"type": "any"},
+            "tool_choice": {"type": "tool", "name": toolset[0]["name"]}
+            if force_act
+            else {"type": "any"},
             "messages": messages,
         }
         headers = {
@@ -317,7 +319,7 @@ def _build_payload(
             }
             for t in toolset
         ],
-        "tool_choice": {"type": "function", "function": {"name": "act"}}
+        "tool_choice": {"type": "function", "function": {"name": toolset[0]["name"]}}
         if force_act
         else "required",
         "messages": messages,
