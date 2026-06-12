@@ -645,7 +645,9 @@ async def thumb(name: str):
     p = STATIC / "thumbs" / f"{safe}.webp"
     if not p.exists():
         raise HTTPException(status_code=404)
-    return FileResponse(p, media_type="image/webp", headers={"Cache-Control": "public, max-age=3600"})
+    return FileResponse(
+        p, media_type="image/webp", headers={"Cache-Control": "public, max-age=3600"}
+    )
 
 
 def _automata_ui():
