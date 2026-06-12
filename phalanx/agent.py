@@ -467,12 +467,17 @@ def _perception_text(p: dict) -> str:
         if e["kind"] != "enemy":
             continue
         rel = _REL[(e["dir"] - hd) % 6]
-        in_range = e["dist"] <= fr
+        clear = e.get("clear_shot", True)
+        in_range = e["dist"] <= fr and clear
         need = next((i + 1 for i, rng_ in enumerate(powers) if e["dist"] <= rng_), 0)
         if in_range:
             can_fire.append(f"#{e['id']} (power {need})")
         energy = f", energy {e['energy']}" if "energy" in e else ""
-        tag = f"hit with power {need}+" if in_range else f"out of range (>{fr})"
+        tag = (
+            f"hit with power {need}+"
+            if in_range
+            else ("a tank blocks the shot" if not clear else f"out of range (>{fr})")
+        )
         foes.append(
             f"#{e['id']} at ({q + e['dq']},{r + e['dr']}) dist {e['dist']} {rel} [{tag}]{energy}"
         )
@@ -816,7 +821,7 @@ def _reflex(p: dict) -> dict:
     fr = p.get("fire_range", 7)
     powers = p.get("power_range", [3, 5, 7])
     seen = [v for v in p["visible"] if v["kind"] == "enemy"]
-    in_range = [v for v in seen if v["dist"] <= fr]
+    in_range = [v for v in seen if v["dist"] <= fr and v.get("clear_shot", True)]
     costs = p.get("power_cost", [0, 2, 4])
     fire, power = 0, 0
     if p.get("gun_ready") and in_range:
@@ -967,7 +972,9 @@ async def decide(
     dist_of = {
         v["id"]: v["dist"]
         for v in p["visible"]
-        if v["kind"] == "enemy" and v["dist"] <= p.get("fire_range", 7)
+        if v["kind"] == "enemy"
+        and v["dist"] <= p.get("fire_range", 7)
+        and v.get("clear_shot", True)
     }
     if intent.get("fire") and (intent["fire"] not in dist_of or not p.get("gun_ready")):
         intent["fire"] = 0

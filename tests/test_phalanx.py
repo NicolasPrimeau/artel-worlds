@@ -47,6 +47,8 @@ def test_firing_hits_target_in_range_with_los():
     shooter = next(t for t in a.tanks.values() if t.team == "blue")
     victim = next(t for t in a.tanks.values() if t.team == "red")
     a.walls.clear()
+    for i, o in enumerate(t for t in a.tanks.values() if t not in (shooter, victim)):
+        o.q, o.r = 1 + i, 12  # park bystanders off the firing line — tanks block shots now
     shooter.q, shooter.r, shooter.cooldown = 5, 5, 0
     victim.q, victim.r = 8, 5  # 3 hexes away, clear line of sight
     v0 = victim.energy

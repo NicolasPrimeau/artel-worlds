@@ -71,7 +71,11 @@ class Bot:
                 continue
             eq, er = p["q"] + v["dq"], p["r"] + v["dr"]
             self.board[v["id"]] = {"q": eq, "r": er, "energy": v.get("energy", 999), "seen": tick}
-            visible[v["id"]] = {"dir": v["dir"], "dist": v["dist"]}
+            visible[v["id"]] = {
+                "dir": v["dir"],
+                "dist": v["dist"],
+                "clear": v.get("clear_shot", True),
+            }
 
         # 2. forget sightings that have gone stale
         for eid in [e for e, rec in self.board.items() if tick - rec["seen"] > KNOWLEDGE_TTL]:
@@ -81,7 +85,11 @@ class Bot:
         #    enemy this temperament points at: weakest in range for an opportunist, nearest
         #    for everyone else.
         intent: dict = {}
-        in_range = [e for e in visible if visible[e]["dist"] <= cfg.fire_range]
+        in_range = [
+            e
+            for e in visible
+            if visible[e]["dist"] <= cfg.fire_range and visible[e].get("clear", True)
+        ]
         if p["gun_ready"] and in_range:
             if self.traits["pick"] == "weak":
                 tgt = min(in_range, key=lambda e: (self.board[e]["energy"], visible[e]["dist"]))

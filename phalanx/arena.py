@@ -147,12 +147,15 @@ class Arena:
         f = (t - cfg.zone_start) / (cfg.zone_close - cfg.zone_start)
         return full - (full - cfg.zone_min) * f
 
-    def _blocked(self, aq: int, ar: int, bq: int, br: int) -> bool:
+    def _blocked(self, aq: int, ar: int, bq: int, br: int, tanks_block: bool = False) -> bool:
+        occ = {(t.q, t.r) for t in self.tanks.values()} if tanks_block else None
         for q, r in hex_line(aq, ar, bq, br):
             if (q, r) == (aq, ar) or (q, r) == (bq, br):
                 continue
             if (q, r) in self.walls:
                 return True
+            if occ is not None and (q, r) in occ:
+                return True  # a tank in the line of fire eats the shot — friend or foe
         return False
 
     # --- contract ---
@@ -179,6 +182,7 @@ class Arena:
                 "dr": o.r - me.r,
                 "dist": d,
                 "dir": dir_toward(me.q, me.r, o.q, o.r),
+                "clear_shot": not self._blocked(me.q, me.r, o.q, o.r, tanks_block=True),
             }
             if ally or d <= rng // 2:
                 entry["energy"] = round(o.energy)
@@ -294,7 +298,7 @@ class Arena:
                 continue
             if hex_distance(t.q, t.r, target.q, target.r) > cfg.power_range[power - 1]:
                 continue
-            if self._blocked(t.q, t.r, target.q, target.r):
+            if self._blocked(t.q, t.r, target.q, target.r, tanks_block=True):
                 continue
             t.target = target.id  # the turret aims here (360°); the hull keeps its facing
             target.energy -= cfg.shot_damage
