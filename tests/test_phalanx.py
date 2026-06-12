@@ -142,3 +142,40 @@ def test_scoreboard_survives_a_restart(tmp_path, monkeypatch):
     assert g2.history[-1]["winner"] == "artel"
     assert g2.squad.spent == 0.42
     assert g2.match_no == g.match_no + 1  # the wiped in-flight match restarts as the next one
+
+
+def test_bfs_routes_around_a_tank_when_a_detour_exists():
+    from phalanx.tank import AXIAL_DIRS, bfs_step
+
+    # straight-line corridor east with an ally parked one step ahead, open hexes around:
+    # the path must detour, not queue
+    R = 7
+    me, target = (7, 7), (11, 7)
+    ally = {(8, 7)}
+    d = bfs_step(*me, *target, set(), R, soft=ally)
+    assert d is not None
+    step = (me[0] + AXIAL_DIRS[d][0], me[1] + AXIAL_DIRS[d][1])
+    assert step not in ally  # routed around, not into/behind the ally
+
+
+def test_bfs_queues_behind_a_tank_in_a_sole_corridor():
+    from phalanx.tank import AXIAL_DIRS, bfs_step
+
+    # walls force a single-file corridor: (8,7) is the only way east, an ally sits in it.
+    # bfs returns the through-route's first step only via the queue fallback, which vetoes
+    # step one — so the result is a WAIT (None) rather than an illegal shove
+    R = 7
+    walls = {(8, 6), (8, 8), (7, 6), (7, 8), (9, 6), (9, 8)}
+    ally = {(8, 7)}
+    d = bfs_step(7, 7, 11, 7, walls, R, soft=ally)
+    assert d is None or (7 + AXIAL_DIRS[d][0], 7 + AXIAL_DIRS[d][1]) not in ally
+
+
+def test_bfs_still_reaches_target_through_remembered_walls():
+    from phalanx.tank import bfs_step
+
+    # a wall pocket between us and the target: with the walls known, a path is found around
+    R = 7
+    walls = {(8, 6), (8, 7), (8, 8)}
+    d = bfs_step(7, 7, 10, 7, walls, R)
+    assert d is not None

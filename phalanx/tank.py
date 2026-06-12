@@ -59,20 +59,15 @@ def hex_line(aq: int, ar: int, bq: int, br: int) -> list[tuple[int, int]]:
     return out
 
 
-def bfs_step(
+def _bfs_first_step(
     q: int,
     r: int,
     tq: int,
     tr: int,
     blocked: set,
     R: int,
-    avoid_first: frozenset | set = frozenset(),
+    avoid_first: frozenset | set,
 ) -> int | None:
-    """First-step direction (0-5) of a shortest known path from (q,r) toward (tq,tr) on the
-    radius-R hexagon, around `blocked` cells (known walls). Cells in `avoid_first` (tanks)
-    only block the immediate step — they move, so they don't veto the whole route. If the
-    target itself cannot be entered, any cell beside it counts as arrival. Returns None when
-    no route is known (caller falls back to a greedy step)."""
     from collections import deque
 
     start, target = (q, r), (tq, tr)
@@ -104,6 +99,30 @@ def bfs_step(
                 return AXIAL_DIRS.index((node[0] - q, node[1] - r))
             queue.append(n)
     return None
+
+
+def bfs_step(
+    q: int,
+    r: int,
+    tq: int,
+    tr: int,
+    blocked: set,
+    R: int,
+    avoid_first: frozenset | set = frozenset(),
+    soft: frozenset | set = frozenset(),
+) -> int | None:
+    """First-step direction (0-5) of a shortest known path from (q,r) toward (tq,tr) on the
+    radius-R hexagon, around `blocked` cells (known walls). `soft` cells (tanks) are routed
+    AROUND when any alternative path exists; only when they sit in the sole corridor does the
+    path go through them, and then they merely veto the immediate step (they move, so the
+    route stays valid — queue behind, don't stall). If the target itself cannot be entered,
+    any cell beside it counts as arrival. Returns None when no route is known (caller falls
+    back to a greedy step)."""
+    if soft:
+        step = _bfs_first_step(q, r, tq, tr, blocked | set(soft), R, frozenset())
+        if step is not None:
+            return step
+    return _bfs_first_step(q, r, tq, tr, blocked, R, set(avoid_first) | set(soft))
 
 
 @dataclass

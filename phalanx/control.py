@@ -48,7 +48,7 @@ class Bot:
         """One step of a BFS path toward (tq, tr) around known walls (tanks veto only the
         immediate step — they move). Falls back to a wall-sliding greedy step when no route
         is known."""
-        d = bfs_step(p["q"], p["r"], tq, tr, walls, R, occ)
+        d = bfs_step(p["q"], p["r"], tq, tr, walls, R, soft=occ)
         if d is None:
             want = dir_toward(p["q"], p["r"], tq, tr)
             for off in (0, 1, -1, 2, -2, 3):

@@ -131,13 +131,16 @@ SYSTEM = (
     "of the unit? Wait for it.\n"
     "3. FIRE: a ready gun with a target in range always shoots, at the cheapest power that "
     "reaches. You can move the same turn.\n"
-    "4. FOCUS: pour the unit's fire into ONE enemy — the one the team called. Never duel a "
+    "4. SUPPORT: a teammate UNDER FIRE (their beacon says so) outranks everything below — "
+    "move to put a shot on their attacker, not toward the center. A unit that lets its "
+    "tanks die alone loses one tank at a time.\n"
+    "5. FOCUS: pour the unit's fire into ONE enemy — the one the team called. Never duel a "
     "kiter at long range; close to free-fire range behind cover, or refuse the fight.\n"
-    "5. REPORT (Artel message): only what is NEW and actionable — 'SPOTTED #5 at (7,4) "
+    "6. REPORT (Artel message): only what is NEW and actionable — 'SPOTTED #5 at (7,4) "
     "energy 40', 'TAKING FIRE at (6,8) from #4', 'FOCUS #5', 'REGROUP at (8,6)', 'AT (4,9) "
     "heading (7,6)' when nobody can see you. Nothing new = say nothing. Teammates' reports "
     "are real positions you cannot see — act on them.\n"
-    "6. OBJECTIVE (Artel task board): your ONE medium-term commitment — 'hold around (8,6)', "
+    "7. OBJECTIVE (Artel task board): your ONE medium-term commitment — 'hold around (8,6)', "
     "'push east with phalanx-blue-2'. It should survive 5+ turns; change it only when "
     "reality breaks it. The board in your state IS the team's strategy.\n"
     "MEMORY: lessons tagged [WIN]/[LOSS] from past matches arrive in your context — repeat "
@@ -897,6 +900,7 @@ async def decide(
     objective: dict | None = None,
     beacons: dict | None = None,
     solo: bool = False,
+    wall_mem: set | None = None,
 ) -> tuple[dict, float, str, str]:
     if solo:
         inbox, board = "", ""
@@ -910,6 +914,12 @@ async def decide(
         user += "\nTEAMMATE POSITIONS (Artel beacons, ~1 turn old): " + "; ".join(
             f"{k} at {v}" for k, v in beacons.items() if k != agent["id"]
         )
+        under = [f"{k} {v}" for k, v in beacons.items() if k != agent["id"] and "UNDER FIRE" in v]
+        if under and not p.get("hit_taken"):
+            user += (
+                "\nALLY UNDER FIRE — " + "; ".join(under) + ". Supporting them outranks "
+                "your current plan: converge and put a shot on their attacker."
+            )
     if board:
         user += f"\nTEAM BOARD — current objectives: {board}"
     if objective and not objective.get("task_id"):
@@ -1036,17 +1046,27 @@ async def decide(
     mt = intent.pop("move_to", None)
     if mt and (mt[0], mt[1]) != (p["q"], p["r"]):
         wall_abs = {(p["q"] + w_["dq"], p["r"] + w_["dr"]) for w_ in p.get("walls", [])}
+        if wall_mem is not None:
+            # walls are static for the whole match: remember every one this tank has seen,
+            # so cover discovered three turns ago still routes around when out of sight
+            wall_mem |= wall_abs
+            wall_abs = set(wall_mem)
         occ_abs = {(p["q"] + v["dq"], p["r"] + v["dr"]) for v in p.get("visible", [])}
         R_ = p.get("map_radius", (p.get("width", 15) - 1) // 2)
-        best = bfs_step(p["q"], p["r"], mt[0], mt[1], wall_abs, R_, occ_abs)
+        best = bfs_step(p["q"], p["r"], mt[0], mt[1], wall_abs, R_, soft=occ_abs)
         if best is None:
             d0 = _hexdist(p["q"], p["r"], mt[0], mt[1])
             bd = None
             for dd in range(6):
                 dq, dr = AXIAL_DIRS[dd]
-                prog = d0 - _hexdist(p["q"] + dq, p["r"] + dr, mt[0], mt[1])
+                nq, nr = p["q"] + dq, p["r"] + dr
+                if (nq, nr) in wall_abs or not _on_map(p, nq, nr):
+                    continue
+                prog = d0 - _hexdist(nq, nr, mt[0], mt[1])
                 if bd is None or prog > bd:
                     best, bd = dd, prog
+            if best is None:
+                best = p["heading"]
         hh = p["heading"]
         intent["turn"] = 0 if hh == best else (1 if (best - hh) % 6 <= 3 else -1)
         travel = (hh + intent["turn"]) % 6
@@ -1115,6 +1135,7 @@ class Squad:
         self._recalled: dict[int, str] = {}  # per-tank latest recall result — persists all match
         self._seen_ids: dict[int, set] = {}  # per-tank enemy ids seen last turn (own eyes only)
         self._beacons: dict[int, dict] = {}  # per-tank latest teammate beacons (via Artel)
+        self._walls: dict[int, set] = {}  # per-tank remembered walls (own sightings only)
         self._objectives: dict[int, dict] = {}  # per-tank current board objective (Artel task)
         self._claims: list[tuple[dict, str]] = []  # (agent, task id) opened this match
         self.tool_counts: dict[str, int] = {}  # Artel tool usage this match, for /debug
@@ -1194,6 +1215,7 @@ class Squad:
                     self._objectives.setdefault(tank_id, {}),
                     self._beacons.setdefault(tank_id, {}),
                     self.solo,
+                    self._walls.setdefault(tank_id, set()),
                 ),
                 timeout=DECIDE_DEADLINE,
             )
@@ -1210,16 +1232,21 @@ class Squad:
         if not self.solo:
             # transponder: broadcast position over Artel every turn — equipment, not
             # strategy. Teammates read it from their inboxes.
-            asyncio.create_task(
-                _send(
-                    self._http,
-                    agent,
-                    "team",
-                    f"POS ({p['q']},{p['r']}) t{p.get('tick', '?')}",
-                    [],
-                    "beacon",
+            beacon = f"POS ({p['q']},{p['r']}) t{p.get('tick', '?')}"
+            if p.get("hit_taken"):
+                shooter = next(
+                    (
+                        v
+                        for v in p.get("visible", [])
+                        if v["kind"] == "enemy" and v.get("id") == p.get("hit_from")
+                    ),
+                    None,
                 )
-            )
+                where = (
+                    f" at ({p['q'] + shooter['dq']},{p['r'] + shooter['dr']})" if shooter else ""
+                )
+                beacon += f" UNDER FIRE by #{p.get('hit_from', '?')}{where}"
+            asyncio.create_task(_send(self._http, agent, "team", beacon, [], "beacon"))
         if inbox:
             log_ = self._intel.setdefault(tank_id, [])
             for line in inbox.split(" | "):
@@ -1256,6 +1283,7 @@ class Squad:
             self._beacons = {}
             self._objectives = {}
             self._claims = []
+            self._walls = {}
             self.tool_counts = {}
             if self._http is None:
                 self._http = httpx.AsyncClient(timeout=httpx.Timeout(LLM_TIMEOUT))
@@ -1271,6 +1299,7 @@ class Squad:
         self._beacons = {}
         self._objectives = {}
         self._claims = []
+        self._walls = {}
         self.tool_counts = {}
         for tid, agent in self._assign.items():
             if agent["id"] not in self._joined:
