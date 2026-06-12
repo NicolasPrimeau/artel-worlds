@@ -429,16 +429,25 @@ function render(s){
 }
 
 let ws;
+let wsRetry = 0;
 function connect(){
   const proto = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(`${proto}://${location.host}/stream`);
-  ws.onopen = () => { $("conn").classList.add("live"); $("conn").textContent = "live"; };
+  wsRetry = 0; ws.onopen = () => { $("conn").classList.add("live"); $("conn").textContent = "live"; };
   ws.onmessage = e => { try { render(JSON.parse(e.data)); } catch(_){} };
-  ws.onclose = () => { $("conn").classList.remove("live"); $("conn").textContent = "reconnecting"; setTimeout(connect, 2500); };
+  ws.onclose = () => { $("conn").classList.remove("live"); $("conn").textContent = "reconnecting"; setTimeout(connect, Math.min(3000, 400 * 2**(wsRetry++))); };
   ws.onerror = () => ws.close();
 }
 fetch("/state").then(r=>r.json()).then(render).catch(()=>{});
 connect();
+function wakeReconnect(){
+  if (document.hidden) return;
+  if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING){ wsRetry = 0; connect(); }
+}
+addEventListener("visibilitychange", wakeReconnect);
+addEventListener("online", wakeReconnect);
+addEventListener("focus", wakeReconnect);
+
 setInterval(()=>fetch("/state").then(r=>r.json()).then(render).catch(()=>{}), 5000);
 </script>
 <script>

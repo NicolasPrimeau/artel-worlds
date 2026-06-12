@@ -562,18 +562,27 @@ function apply(s) {
   blit();
 }
 
+let wsRetry = 0;
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const ws = new WebSocket(`${proto}://${location.host}/stream`);
-  ws.onopen = () => { $('conn').textContent = 'live'; $('conn').className = 'stat live'; };
+  wsRetry = 0; ws.onopen = () => { $('conn').textContent = 'live'; $('conn').className = 'stat live'; };
   ws.onmessage = e => apply(JSON.parse(e.data));
-  ws.onclose = () => { $('conn').textContent = 'reconnecting…'; $('conn').className = 'stat down'; setTimeout(connect, 1500); };
+  ws.onclose = () => { $('conn').textContent = 'reconnecting…'; $('conn').className = 'stat down'; setTimeout(connect, Math.min(3000, 400 * 2**(wsRetry++))); };
   ws.onerror = () => ws.close();
 }
 
 new ResizeObserver(resize).observe($('wrap'));
 resize();
 connect();
+function wakeReconnect(){
+  if (document.hidden) return;
+  if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING){ wsRetry = 0; connect(); }
+}
+addEventListener("visibilitychange", wakeReconnect);
+addEventListener("online", wakeReconnect);
+addEventListener("focus", wakeReconnect);
+
 </script>
 <script>
 (() => {
