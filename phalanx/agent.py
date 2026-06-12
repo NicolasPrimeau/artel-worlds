@@ -162,7 +162,8 @@ _ACT_PROPS = {
         "type": "array",
         "items": {"type": "integer"},
         "description": "predictive shot: aim at a HEX [q,r] — fire where a mover is GOING. "
-        "Overrides fire's aim; still costs the chosen power.",
+        "Overrides fire's aim; still costs the chosen power. NOT your own move_to "
+        "destination, and never through a wall or teammate.",
     },
     "move_to": {
         "type": "array",
@@ -1052,6 +1053,52 @@ async def _artel_ops(http, agent, inp, p, mate_ids, objective, claims, counts) -
                     claims.append((agent, tid))
 
 
+def _check_fire_at(intent: dict, p: dict, powers: list) -> None:
+    # ONE gate for every predictive shot: gun up, in range, ray not eaten by a known wall
+    # before the aim cell, no teammate on the line, and not aimed at the tank's own move
+    # destination (a small-model confusion: "shoot where I am going").
+    fa = intent.get("fire_at")
+    if not fa:
+        return
+    if not p.get("gun_ready"):
+        intent.pop("fire_at", None)
+        return
+    d_aim = _hexdist(p["q"], p["r"], fa[0], fa[1])
+    if d_aim < 1 or d_aim > powers[-1]:
+        intent.pop("fire_at", None)
+        return
+    mt = intent.get("move_to")
+    if mt and (int(mt[0]), int(mt[1])) == (int(fa[0]), int(fa[1])):
+        enemy_there = any(
+            v["kind"] == "enemy" and (p["q"] + v["dq"], p["r"] + v["dr"]) == (fa[0], fa[1])
+            for v in p["visible"]
+        )
+        if not enemy_there:
+            intent.pop("fire_at", None)  # shooting its own destination at nothing
+            return
+    need = next(i + 1 for i, rng_ in enumerate(powers) if d_aim <= rng_)
+    intent["power"] = max(int(intent.get("power", 0) or 0), need)
+    wall_cells = {(p["q"] + w["dq"], p["r"] + w["dr"]) for w in p.get("walls", [])}
+    ally_cells = {(p["q"] + v["dq"], p["r"] + v["dr"]) for v in p["visible"] if v["kind"] == "ally"}
+    scale = powers[intent["power"] - 1] / d_aim
+    ext = (
+        round(p["q"] + (fa[0] - p["q"]) * scale),
+        round(p["r"] + (fa[1] - p["r"]) * scale),
+    )
+    for c in hex_line(p["q"], p["r"], ext[0], ext[1]):
+        if c == (p["q"], p["r"]):
+            continue
+        before_aim = _hexdist(p["q"], p["r"], c[0], c[1]) < d_aim
+        if c in wall_cells and before_aim:
+            intent.pop("fire_at", None)  # a known wall eats the ray before the aim
+            return
+        if c in ally_cells:
+            intent.pop("fire_at", None)  # a teammate is on that line
+            return
+        if c == (fa[0], fa[1]):
+            break
+
+
 def _sanitize_intent(intent: dict, p: dict, beacons: dict | None, self_id: str, solo: bool) -> dict:
     # ALL the floors in one place, in precedence order. They exist so a tank never
     # under-acts on a phantom (a shot the engine will reject, a step into a wall) and never
@@ -1065,37 +1112,8 @@ def _sanitize_intent(intent: dict, p: dict, beacons: dict | None, self_id: str, 
         and v["dist"] <= p.get("fire_range", 7)
         and v.get("clear_shot", True)
     }
-    # predictive shots: trusted, but never through a teammate and never beyond the gun
-    if intent.get("fire_at"):
-        if not p.get("gun_ready"):
-            intent.pop("fire_at", None)
-        else:
-            d_aim = _hexdist(p["q"], p["r"], *intent["fire_at"])
-            if d_aim < 1 or d_aim > powers[-1]:
-                intent.pop("fire_at", None)
-            else:
-                need = next(i + 1 for i, rng_ in enumerate(powers) if d_aim <= rng_)
-                intent["power"] = max(int(intent.get("power", 0) or 0), need)
-                ally_cells = {
-                    (p["q"] + v["dq"], p["r"] + v["dr"])
-                    for v in p["visible"]
-                    if v["kind"] == "ally"
-                }
-                if ally_cells:
-                    aq, ar = intent["fire_at"]
-                    scale = powers[intent["power"] - 1] / d_aim
-                    ext = (
-                        round(p["q"] + (aq - p["q"]) * scale),
-                        round(p["r"] + (ar - p["r"]) * scale),
-                    )
-                    for c in hex_line(p["q"], p["r"], ext[0], ext[1]):
-                        if c == (p["q"], p["r"]):
-                            continue
-                        if c in ally_cells:
-                            intent.pop("fire_at", None)
-                            break
-                        if c == (aq, ar):
-                            break
+    # every predictive shot passes ONE gate, wherever it came from
+    _check_fire_at(intent, p, powers)
     if intent.get("fire_at"):
         intent["fire"] = 0  # the predictive aim IS the shot
     elif intent.get("fire") and (intent["fire"] not in dist_of or not p.get("gun_ready")):
@@ -1176,9 +1194,14 @@ def _sanitize_intent(intent: dict, p: dict, beacons: dict | None, self_id: str, 
                 need = max(int(intent.get("power", 0) or 0), need)
                 costs = p.get("power_cost", [0, 2, 4])
                 if p.get("energy", 0) - costs[need - 1] > 0:  # never lead yourself to death
+                    keep_fire = intent.get("fire")
                     intent["fire_at"] = lead
-                    intent["fire"] = 0
                     intent["power"] = need
+                    _check_fire_at(intent, p, powers)
+                    if intent.get("fire_at"):
+                        intent["fire"] = 0
+                    else:
+                        intent["fire"] = keep_fire  # bad lead: the id shot stays
     # AUTO-SCOOT: firing while standing on an enemy's clear line is how blue gets traded
     # down — if the tank shoots and ends its turn stationary while exposed, step it off the
     # line (shoot-and-scoot is doctrine, not a suggestion).

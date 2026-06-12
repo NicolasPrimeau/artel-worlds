@@ -684,3 +684,69 @@ def test_floor_pipeline_does_not_cripple_combat():
                 break
         wins[a.winner] += 1
     assert wins["artel"] >= 9, f"floors crippled combat: {dict(wins)}"
+
+
+def test_fire_at_gate_kills_the_three_confusions():
+    from phalanx.agent import _sanitize_intent
+
+    base = {
+        "id": 1,
+        "q": 5,
+        "r": 5,
+        "heading": 0,
+        "energy": 70,
+        "gun_ready": True,
+        "power_range": [3, 5, 7],
+        "power_cost": [0, 2, 4],
+        "fire_range": 7,
+        "visible": [],
+        "walls": [],
+        "safe": True,
+        "dist_center": 2,
+        "to_center": 0,
+        "hit_taken": 0,
+        "map_radius": 7,
+        "width": 15,
+        "height": 15,
+    }
+    # 1. shooting your own empty destination ("fire where I'm moving")
+    out = _sanitize_intent(
+        {"turn": 0, "move": "hold", "fire": 0, "fire_at": (8, 5), "move_to": (8, 5)},
+        dict(base),
+        {},
+        "me",
+        True,
+    )
+    assert not out.get("fire_at")
+
+    # 2. a known wall eats the ray before the aim cell
+    p = dict(base)
+    p["walls"] = [{"dq": 2, "dr": 0}]
+    out = _sanitize_intent(
+        {"turn": 0, "move": "hold", "fire": 0, "fire_at": (9, 5)}, p, {}, "me", True
+    )
+    assert not out.get("fire_at")
+
+    # 3. an auto-lead that would cross a teammate falls back to the valid id shot
+    p = dict(base)
+    p["visible"] = [
+        {
+            "id": 5,
+            "kind": "enemy",
+            "dq": 4,
+            "dr": 0,
+            "dist": 4,
+            "dir": 0,
+            "clear_shot": True,
+            "energy": 50,
+            "step": [0, 1],
+        },
+        {"id": 2, "kind": "ally", "dq": 2, "dr": 1, "dist": 3, "dir": 0},
+    ]
+    out = _sanitize_intent({"turn": 0, "move": "hold", "fire": 5, "power": 2}, p, {}, "me", True)
+    if out.get("fire_at"):
+        from phalanx.tank import hex_line
+
+        assert (7, 6) not in hex_line(5, 5, *out["fire_at"])
+    else:
+        assert out.get("fire") == 5  # gate rejected the lead; the id shot survived
