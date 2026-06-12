@@ -29,7 +29,11 @@
   }
   header h1 span { color: var(--dim); font-weight: 400; letter-spacing: 1px; }
   .stat { color: var(--dim); white-space: nowrap; }
-  .stat b { color: #fff; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stat b { color: #fff; font-weight: 600; font-variant-numeric: tabular-nums; display: inline-block; text-align: right; }
+  #s_tick { min-width: 5ch; } #s_pop { min-width: 4ch; }
+  #s_tr, #s_pl { min-width: 2ch; }
+  #s_en { min-width: 5ch; } #s_tox { min-width: 4ch; }
+  #s_bd { display: inline-block; min-width: 9ch; font-variant-numeric: tabular-nums; }
   .up { color: var(--up); } .down { color: var(--down); }
   #spark { width: 92px; height: 22px; display: block; opacity: .9; }
   header .actions { margin-left: auto; display: flex; align-items: center; gap: 4px 14px; flex-wrap: wrap; }
