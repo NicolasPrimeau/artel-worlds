@@ -786,6 +786,15 @@ async def command(
             )
     if board:
         user += f"\nTEAM BOARD — current objectives: {board}"
+    if not solo and objective is not None:
+        if not objective.get("task_id"):
+            user += (
+                "\nYou have NO objective on the team board — post one (a medium-term "
+                "commitment the unit can build around: hold an area, push a lane, escort a "
+                "hurt teammate)."
+            )
+        elif objective.get("text"):
+            user += f"\nYour current board objective: {objective['text']}"
     if notes:
         user += f"\n{notes}"
     if memory:
