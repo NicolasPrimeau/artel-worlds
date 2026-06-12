@@ -99,8 +99,11 @@ SYSTEM = (
     "GOAL: destroy all three enemy tanks. Last team standing wins; a draw or mutual "
     "destruction is a loss.\n"
     "RULES:\n"
-    "- Each turn all tanks act at once. You may turn (left/right), move one hex (fwd/back "
-    "along your facing), and fire — all in the same turn.\n"
+    "- Each turn all tanks act at once: one step of movement AND a shot, together.\n"
+    "- MOVE BY DESTINATION: in act, set move_to [q,r] — any hex on the map. Your drivetrain "
+    "takes the best single step toward it this turn (turning as needed, sliding around "
+    "cover, queueing behind teammates). Think in destinations: the enemy you are closing "
+    "on, the rally point, the center. Use move 'hold' only to deliberately stand still.\n"
     "- Energy is health and fuel; 0 = destroyed; no regeneration. A hit deals 12 and refunds "
     "the shooter 2.\n"
     "- Fire = enemy id + power. Power 1: range 3, FREE. Power 2: range 5, costs 2. Power 3: "
@@ -193,6 +196,12 @@ TOOLS = [
         "schema": {
             "type": "object",
             "properties": {
+                "move_to": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "hex [q,r] to step toward this turn — the drivetrain "
+                    "handles turning and obstacles; preferred over move/turn",
+                },
                 "move": {"type": "string", "enum": ["fwd", "back", "hold"]},
                 "turn": {"type": "string", "enum": ["left", "right", "none"]},
                 "fire": {
@@ -870,6 +879,12 @@ async def decide(
                     "fire": int(inp.get("fire", 0) or 0),
                     "power": int(inp.get("power", 0) or 0),
                 }
+                mt = inp.get("move_to")
+                if isinstance(mt, (list, tuple)) and len(mt) == 2:
+                    try:
+                        intent["move_to"] = (int(mt[0]), int(mt[1]))
+                    except (TypeError, ValueError):
+                        pass
                 plan = str(inp.get("plan", "") or "")[:140]
                 acted = True
                 results.append({"id": c["id"], "output": "ok"})
@@ -942,6 +957,21 @@ async def decide(
             intent["power"] = rx["power"]
     if intent.get("move", "hold") == "hold" and not intent.get("fire"):
         intent["turn"], intent["move"] = rx["turn"], rx["move"]
+    # drivetrain: the model thinks in destinations; we translate one optimal step. Choosing
+    # WHERE to go is entirely the model's; turning mechanics are the tank's transmission.
+    mt = intent.pop("move_to", None)
+    if mt and (mt[0], mt[1]) != (p["q"], p["r"]):
+        d0 = _hexdist(p["q"], p["r"], mt[0], mt[1])
+        best, bd = None, None
+        for dd in range(6):
+            dq, dr = AXIAL_DIRS[dd]
+            prog = d0 - _hexdist(p["q"] + dq, p["r"] + dr, mt[0], mt[1])
+            if bd is None or prog > bd:
+                best, bd = dd, prog
+        hh = p["heading"]
+        intent["turn"] = 0 if hh == best else (1 if (best - hh) % 6 <= 3 else -1)
+        travel = (hh + intent["turn"]) % 6
+        intent["move"] = "fwd" if travel == best else "hold"  # rotate first if not facing yet
     # phantom-MOVE floor: a step into cover or off the map is silently rejected by the
     # engine — tanks have shoved a map edge for whole matches. Deflect toward the nearest
     # open direction (rotating first if the hull can't face it within one turn).
