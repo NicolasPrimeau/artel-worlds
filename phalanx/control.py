@@ -87,9 +87,12 @@ class Bot:
                 tgt = min(in_range, key=lambda e: (self.board[e]["energy"], visible[e]["dist"]))
             else:
                 tgt = min(in_range, key=lambda e: visible[e]["dist"])
-            intent["fire"] = tgt
             d = visible[tgt]["dist"]
-            intent["power"] = next(i + 1 for i, rng_ in enumerate(cfg.power_range) if d <= rng_)
+            need = next(i + 1 for i, rng_ in enumerate(cfg.power_range) if d <= rng_)
+            # bots stay prudent: fire only when the shot won't drain them to death
+            if p["energy"] > cfg.power_cost[need - 1]:
+                intent["fire"] = tgt
+                intent["power"] = need
 
         # 4. the closing zone bleeds energy outside the safe radius — get back inside it,
         #    keeping a margin so we don't loiter on the bleeding edge. No trade is worth

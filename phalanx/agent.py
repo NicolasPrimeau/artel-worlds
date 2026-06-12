@@ -109,8 +109,10 @@ SYSTEM = (
     "Damage is always 12. Your facing does NOT matter for shooting, only for moving. There is "
     "no aiming and no missing: every entry your state lists under 'you can fire NOW at' is a "
     "GUARANTEED hit at the stated power — and any other shot WASTES the trigger pull: you "
-    "still pay that power's energy and the reload, but hit nothing. The gun is ready again "
-    "the very next turn. Long pokes are expensive; closing in is cheap.\n"
+    "still pay that power's energy and the reload, but hit nothing. The gun draws from YOUR "
+    "energy: you may fire down to your last point, and a shot that leaves you at 0 destroys "
+    "you — a desperate last shot is legal, but know you are spending your life. The gun is "
+    "ready again the very next turn. Long pokes are expensive; closing in is cheap.\n"
     "- Cover hexes are impassable and block both shots and sight. You see only what has a "
     "clear line to you within distance 8 — fog of war; your teammates see different things.\n"
     "- Tanks are solid: you cannot move into a hex another tank occupies, teammate or enemy. "
@@ -541,6 +543,13 @@ def _perception_text(p: dict) -> str:
     if blocked_dirs:
         lines.append(
             "- You CANNOT move into: " + ", ".join(blocked_dirs) + " — pick another direction."
+        )
+    costs = p.get("power_cost", [1, 2, 4])
+    if p["energy"] <= costs[-1]:
+        lines.append(
+            f"- ENERGY CRITICAL ({p['energy']}): firing costs {costs[0]}/{costs[1]}/{costs[2]} "
+            f"energy by power, and a shot that leaves you at 0 destroys you. Choose power you "
+            f"survive — or spend yourself on a shot that matters."
         )
     if p.get("hit_taken"):
         shooter = p.get("hit_from", 0)

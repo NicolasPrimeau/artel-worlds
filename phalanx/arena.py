@@ -204,6 +204,7 @@ class Arena:
             "zone_radius": round(rad, 2),
             "fire_range": self.cfg.fire_range,
             "power_range": list(self.cfg.power_range),
+            "power_cost": list(self.cfg.power_cost),
             "map_radius": self.cfg.map_radius,
             "to_center": dir_toward(me.q, me.r, cq, cr),
             "dist_center": hex_distance(me.q, me.r, cq, cr),
@@ -276,8 +277,10 @@ class Arena:
                 power = 2
             power = max(1, min(len(cfg.power_range), power))
             cost = cfg.power_cost[power - 1]
-            if not tgt_id or t.cooldown > 0 or t.energy <= cost:
+            if not tgt_id or t.cooldown > 0 or t.energy <= 0:
                 continue
+            # a live tank can ALWAYS pull the trigger — but the gun drains its own energy,
+            # and a shot that leaves it at 0 destroys it. Desperation is a choice, not a gate.
             # pulling the trigger ALWAYS costs energy (scaled by power) and starts the
             # reload — a shot at a target out of range or behind cover is wasted, not free
             t.energy -= cost
@@ -327,7 +330,12 @@ class Arena:
         for tid in dead:
             t = self.tanks[tid]
             k = hit_by.get(tid)
-            cause = f"by #{k.id} ({k.team})" if k is not None else "by the closing zone"
+            if k is not None:
+                cause = f"by #{k.id} ({k.team})"
+            elif hex_distance(t.q, t.r, cq, cr) > rad:
+                cause = "by the closing zone"
+            else:
+                cause = "burned out — its own shot drained the last energy"
             allies = [o for o in self.tanks.values() if o.team == t.team and o.id != tid]
             near = min((hex_distance(t.q, t.r, o.q, o.r) for o in allies), default=None)
             ally = (
