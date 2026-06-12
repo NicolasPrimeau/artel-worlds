@@ -59,6 +59,53 @@ def hex_line(aq: int, ar: int, bq: int, br: int) -> list[tuple[int, int]]:
     return out
 
 
+def bfs_step(
+    q: int,
+    r: int,
+    tq: int,
+    tr: int,
+    blocked: set,
+    R: int,
+    avoid_first: frozenset | set = frozenset(),
+) -> int | None:
+    """First-step direction (0-5) of a shortest known path from (q,r) toward (tq,tr) on the
+    radius-R hexagon, around `blocked` cells (known walls). Cells in `avoid_first` (tanks)
+    only block the immediate step — they move, so they don't veto the whole route. If the
+    target itself cannot be entered, any cell beside it counts as arrival. Returns None when
+    no route is known (caller falls back to a greedy step)."""
+    from collections import deque
+
+    start, target = (q, r), (tq, tr)
+    if start == target:
+        return None
+
+    def on_map(c: tuple) -> bool:
+        return hex_distance(c[0], c[1], R, R) <= R
+
+    target_enterable = on_map(target) and target not in blocked
+    prev: dict = {start: None}
+    queue = deque([start])
+    while queue:
+        cur = queue.popleft()
+        for dq_, dr_ in AXIAL_DIRS:
+            n = (cur[0] + dq_, cur[1] + dr_)
+            if n in prev or not on_map(n):
+                continue
+            if n in blocked:
+                continue
+            if cur == start and n in avoid_first:
+                continue
+            prev[n] = cur
+            arrived = n == target if target_enterable else hex_distance(n[0], n[1], tq, tr) <= 1
+            if arrived:
+                node = n
+                while prev[node] != start:
+                    node = prev[node]
+                return AXIAL_DIRS.index((node[0] - q, node[1] - r))
+            queue.append(n)
+    return None
+
+
 @dataclass
 class Tank:
     id: int

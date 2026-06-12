@@ -7,6 +7,8 @@ import os
 
 import httpx
 
+from .tank import bfs_step
+
 log = logging.getLogger("phalanx")
 
 # The Artel team is three real LLM agents — one per tank — each running its own loop
@@ -989,15 +991,22 @@ async def decide(
         intent["turn"], intent["move"] = rx["turn"], rx["move"]
     # drivetrain: the model thinks in destinations; we translate one optimal step. Choosing
     # WHERE to go is entirely the model's; turning mechanics are the tank's transmission.
+    # Pathfinding is BFS over PERCEIVED walls (unknown terrain assumed open), so wall
+    # pockets route around instead of trapping a greedy step; tanks only veto step one.
     mt = intent.pop("move_to", None)
     if mt and (mt[0], mt[1]) != (p["q"], p["r"]):
-        d0 = _hexdist(p["q"], p["r"], mt[0], mt[1])
-        best, bd = None, None
-        for dd in range(6):
-            dq, dr = AXIAL_DIRS[dd]
-            prog = d0 - _hexdist(p["q"] + dq, p["r"] + dr, mt[0], mt[1])
-            if bd is None or prog > bd:
-                best, bd = dd, prog
+        wall_abs = {(p["q"] + w_["dq"], p["r"] + w_["dr"]) for w_ in p.get("walls", [])}
+        occ_abs = {(p["q"] + v["dq"], p["r"] + v["dr"]) for v in p.get("visible", [])}
+        R_ = p.get("map_radius", (p.get("width", 15) - 1) // 2)
+        best = bfs_step(p["q"], p["r"], mt[0], mt[1], wall_abs, R_, occ_abs)
+        if best is None:
+            d0 = _hexdist(p["q"], p["r"], mt[0], mt[1])
+            bd = None
+            for dd in range(6):
+                dq, dr = AXIAL_DIRS[dd]
+                prog = d0 - _hexdist(p["q"] + dq, p["r"] + dr, mt[0], mt[1])
+                if bd is None or prog > bd:
+                    best, bd = dd, prog
         hh = p["heading"]
         intent["turn"] = 0 if hh == best else (1 if (best - hh) % 6 <= 3 else -1)
         travel = (hh + intent["turn"]) % 6
