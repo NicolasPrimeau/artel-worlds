@@ -258,6 +258,10 @@ class Arena:
                 tgt_id = 0
             if not tgt_id or t.cooldown > 0 or t.energy <= cfg.shot_cost:
                 continue
+            # pulling the trigger ALWAYS costs energy and starts the reload — a shot at a
+            # target out of range or behind cover is wasted, not free
+            t.energy -= cfg.shot_cost
+            t.cooldown = cfg.gun_cooldown
             target = self.tanks.get(tgt_id)
             if target is None or target.id == t.id:
                 continue
@@ -267,8 +271,6 @@ class Arena:
                 continue
             if self._blocked(t.q, t.r, target.q, target.r):
                 continue
-            t.energy -= cfg.shot_cost
-            t.cooldown = cfg.gun_cooldown
             t.target = target.id  # the turret aims here (360°); the hull keeps its facing
             target.energy -= cfg.shot_damage
             hit_by[target.id] = t

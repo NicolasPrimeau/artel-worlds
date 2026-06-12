@@ -80,9 +80,12 @@ def test_wall_blocks_line_of_sight():
     victim.q, victim.r = 8, 5
     a.walls = {(6, 5), (7, 5)}  # wall sits on the line between them
     v0 = victim.energy
+    s0 = shooter.energy
     a.submit(shooter.id, {"fire": victim.id})
     a.step()
     assert a.tanks[victim.id].energy >= v0  # shot blocked: no damage, only regen
+    assert shooter.energy <= s0 - DEFAULT.shot_cost  # the trigger pull still cost energy
+    assert shooter.cooldown == max(0, DEFAULT.gun_cooldown - 1)  # and started the reload
 
 
 def test_each_tank_board_is_private():
