@@ -61,6 +61,8 @@ class Bot:
         cq, cr = cfg.width // 2, cfg.height // 2
         R = cfg.map_radius
         wallset = {(p["q"] + w["dq"], p["r"] + w["dr"]) for w in p.get("walls", [])}
+        # tanks are as solid as cover for the immediate step — don't shove allies or enemies
+        wallset |= {(p["q"] + v["dq"], p["r"] + v["dr"]) for v in p.get("visible", [])}
 
         # 1. fold what I personally see this tick into my private board
         visible: dict[int, dict] = {}

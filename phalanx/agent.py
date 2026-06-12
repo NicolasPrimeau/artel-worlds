@@ -113,6 +113,9 @@ SYSTEM = (
     "the very next turn. Long pokes are expensive; closing in is cheap.\n"
     "- Cover hexes are impassable and block both shots and sight. You see only what has a "
     "clear line to you within distance 8 — fog of war; your teammates see different things.\n"
+    "- Tanks are solid: you cannot move into a hex another tank occupies, teammate or enemy. "
+    "Formation means ADJACENT hexes, never the same hex — if your step is onto a teammate, "
+    "pick the open hex beside them instead.\n"
     "- The safe zone shrinks toward the arena center as the match goes on. Any tank outside it "
     "loses energy every turn: when you are outside, holding position is forbidden — move "
     "toward the center every turn until you are safe (you can still fire while moving).\n"
@@ -507,6 +510,7 @@ def _perception_text(p: dict) -> str:
 
     w, h = p.get("width", 15), p.get("height", 15)
     wallset = {(w_["dq"], w_["dr"]) for w_ in p.get("walls", [])}
+    occ = {(v["dq"], v["dr"]): v for v in p.get("visible", [])}
     blocked_dirs = []
     for d in range(6):
         dq, dr = AXIAL_DIRS[d]
@@ -515,6 +519,10 @@ def _perception_text(p: dict) -> str:
             blocked_dirs.append(f"({nq},{nr}) [MAP EDGE]")
         elif (dq, dr) in wallset:
             blocked_dirs.append(f"({nq},{nr}) [cover]")
+        elif (dq, dr) in occ:
+            v = occ[(dq, dr)]
+            who = "teammate" if v["kind"] == "ally" else "enemy"
+            blocked_dirs.append(f"({nq},{nr}) [{who} #{v['id']} — tanks are solid]")
     lines = [
         f"STATE — turn {p.get('tick', '?')}, you are tank #{p['id']}:",
         f"- Arena: a HEXAGON of radius {(w - 1) // 2} around the center ({w // 2},{h // 2}) "
@@ -805,6 +813,7 @@ def _reflex(p: dict) -> dict:
     if tdir is None:
         return {"turn": 0, "move": "hold", "fire": fire, "power": power}
     blocked = {(w["dq"], w["dr"]) for w in p.get("walls", [])}
+    blocked |= {(v["dq"], v["dr"]) for v in p.get("visible", [])}  # tanks are solid
     for dd in range(6):
         dq, dr = AXIAL_DIRS[dd]
         if not _on_map(p, p["q"] + dq, p["r"] + dr):
@@ -928,10 +937,15 @@ async def decide(
     # open direction (rotating first if the hull can't face it within one turn).
     if intent.get("move") in ("fwd", "back"):
         wallset = {(w_["dq"], w_["dr"]) for w_ in p.get("walls", [])}
+        occ_rel = {(v["dq"], v["dr"]) for v in p.get("visible", [])}
 
         def _open(d: int) -> bool:
             dq, dr = AXIAL_DIRS[d]
-            return _on_map(p, p["q"] + dq, p["r"] + dr) and (dq, dr) not in wallset
+            return (
+                _on_map(p, p["q"] + dq, p["r"] + dr)
+                and (dq, dr) not in wallset
+                and (dq, dr) not in occ_rel
+            )
 
         newh = (p["heading"] + intent.get("turn", 0)) % 6
         tdir = newh if intent["move"] == "fwd" else (newh + 3) % 6
