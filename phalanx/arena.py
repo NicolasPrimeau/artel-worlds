@@ -310,6 +310,7 @@ class Arena:
                     "team": t.team,
                     "path": hex_line(t.q, t.r, target.q, target.r),
                     "dmg": cfg.shot_damage,
+                    "reward": cfg.hit_reward,
                     "power": power,
                 }
             )

@@ -109,6 +109,7 @@ class Phalanx:
                     "team": s["team"],
                     "path": s.get("path", []),
                     "dmg": s.get("dmg", 0),
+                    "reward": s.get("reward", 0),
                     "power": s.get("power", 2),
                 }
                 for s in a.tracers
