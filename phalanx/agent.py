@@ -114,10 +114,15 @@ SYSTEM = (
     "- The safe zone shrinks toward the arena center as the match goes on. Any tank outside it "
     "loses energy every turn: when you are outside, holding position is forbidden — move "
     "toward the center every turn until you are safe (you can still fire while moving).\n"
-    "ARTEL is your team's coordination layer: the messages, lessons, and target claims you put "
-    "into it steer real decisions by your teammates, this turn and next match. Everything you "
-    "send through it must be about THIS arena, grounded in what you actually perceived — enemy "
-    "ids, hex coordinates, energy, ticks, walls.\n"
+    "ARTEL is your team's coordination layer, with three registers. MESSAGES are the now — "
+    "battlefield reports. The TASK BOARD is the strategy — each tank keeps ONE current "
+    "tactical objective on it, a medium-term commitment that outlives single turns: 'hold the "
+    "area around (8,6)', 'advance the east lane in formation with phalanx-blue-2', 'destroy "
+    "enemy #5'. The team's strategy IS the set of objectives on the board — read it in your "
+    "state, keep yours current, and pick objectives that complement your teammates'. MEMORY is "
+    "what outlives the match — which objectives and tactics actually worked. Everything in all "
+    "three must be grounded in what you actually perceived: ids, hex coordinates, energy, "
+    "ticks, walls.\n"
     "PLAY YOUR TANK first, every turn: fire whenever you can (a ready gun with a target in "
     "range should always shoot; you can move the same turn), take good ground, never idle.\n"
     "SPEAK ONLY TO CHANGE WHAT A TEAMMATE DOES. Artel messages are battlefield reports, not "
@@ -130,17 +135,14 @@ SYSTEM = (
     "ARRIVE TOGETHER: while advancing stay within 2 hexes of a teammate, and if you are ahead "
     "of your team, hold or angle back until they catch up — the tank that reaches the enemy "
     "first fights 3-vs-1 and dies before the team can trade back.\n"
-    "STRATEGY — the team fights ONE fight, not three: there is a TEAM PLAN (from the pre-match "
-    "huddle, updated over Artel as the fight turns) and following it beats any solo brilliance. "
-    "Concentrate the team's fire on ONE enemy at a time (three guns destroy one tank fast, "
-    "turning 3v3 into a 3v2 lead). USE Artel to make that happen — call the enemy you are firing "
-    "on so the others pile onto it, act on what teammates tell you, and if the plan stops "
-    "working say so and call the adjustment. The enemy hunts in separate lanes: when threats "
-    "come from different directions and the team must split, divide them with claim_target so "
-    "every threat has exactly one owner and nothing slips through unwatched. Push toward the "
-    "enemy together and stay close enough for crossfire; never wander off alone. Recall past "
-    "lessons before you commit, and remember a CONCRETE one after a fight — but never let a "
-    "message or a note cost you a shot."
+    "STRATEGY — the team fights ONE fight, not three: the huddle plan opens the match, the "
+    "task board carries it forward, and messages adjust it as the fight turns. Concentrate "
+    "fire on ONE enemy at a time (three guns destroy one tank fast, turning 3v3 into a 3v2 "
+    "lead). When the enemy comes from separate lanes, split via objectives so every lane has "
+    "exactly one owner; when you move together, put it on the board ('advance west lane in "
+    "formation'). If the board no longer matches reality, change your objective — a stale "
+    "objective is a lie to your team. Recall past lessons before you commit, and remember a "
+    "CONCRETE one after a fight — but never let a message or a note cost you a shot."
 )
 
 TOOLS = [
@@ -189,20 +191,17 @@ TOOLS = [
         },
     },
     {
-        "name": "claim_target",
-        "description": "Claim an enemy id as YOUR target so the team DIVIDES enemies and covers "
-        "different threats. Include where you last saw it so teammates know which sector is "
-        "covered. Take one NO teammate has already claimed (check messages/recall first) — do "
-        "not all claim the same id, that is just noise. Use it when the team should split, not "
-        "when you are already focus-firing one enemy together.",
+        "name": "set_objective",
+        "description": "Commit to YOUR tactical objective for the next several turns and post "
+        "it on the team board (an Artel task): 'hold the area around (8,6)', 'advance the east "
+        "lane in formation with phalanx-blue-2', 'flank south to (4,9)', 'destroy enemy #5'. "
+        "This replaces your previous objective and is announced to the team. Read the TEAM "
+        "BOARD in your state first and pick something that complements your teammates' "
+        "objectives — and change it the moment it stops matching reality.",
         "schema": {
             "type": "object",
-            "properties": {
-                "enemy_id": {"type": "integer"},
-                "q": {"type": "integer", "description": "hex q where you last saw it"},
-                "r": {"type": "integer", "description": "hex r where you last saw it"},
-            },
-            "required": ["enemy_id"],
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
         },
     },
     {
@@ -561,35 +560,58 @@ async def _recall(http: httpx.AsyncClient, agent: dict, query: str) -> str:
     return " | ".join(m.get("content", "")[:140] for m in rows if m.get("content"))
 
 
-async def _claim_target(
-    http: httpx.AsyncClient, agent: dict, enemy_id: int, mate_ids: list[str], at: str = ""
+async def _set_objective(
+    http: httpx.AsyncClient, agent: dict, text: str, mate_ids: list[str], prev_id: str = ""
 ) -> str:
-    # A claim only coordinates if teammates SEE it — broadcast it to the project (it lands in
-    # their inbox next turn) WITH the target's last-seen position, so the team knows which
-    # sector is covered. The Artel task makes the claim visible/auditable in the UI and is
-    # claimed properly so the squad can complete it at match end instead of leaving it open.
-    if not enemy_id:
+    # The team's STRATEGY layer: each tank keeps one tactical objective on the board as a
+    # real Artel task (created -> claimed; superseded objectives are completed). Teammates
+    # read the board from Artel every turn, and the change is announced as a message too.
+    if not text:
         return ""
-    where = f" last seen at {at}" if at else ""
-    await _send(
-        http, agent, "team", f"claiming enemy #{enemy_id}{where} — it's mine to cover", mate_ids
-    )
     try:
+        if prev_id:
+            await http.post(
+                f"{ARTEL_URL}/tasks/{prev_id}/complete",
+                headers=_headers(agent),
+                json={"body": "superseded by a new objective"},
+            )
         r = await http.post(
             f"{ARTEL_URL}/tasks",
             headers=_headers(agent),
             json={
-                "title": f"destroy enemy {enemy_id}{where}",
+                "title": text[:140],
                 "project": PHALANX_PROJECT,
-                "tags": ["phalanx", "target"],
+                "tags": ["phalanx", "objective"],
             },
         )
         task_id = r.json().get("id", "") if r.status_code < 300 else ""
         if task_id:
             await http.post(f"{ARTEL_URL}/tasks/{task_id}/claim", headers=_headers(agent), json={})
+        await _send(http, agent, "team", f"OBJECTIVE: {text}"[:280], mate_ids)
         return task_id
     except Exception:
         return ""
+
+
+async def _board(http: httpx.AsyncClient, agent: dict) -> str:
+    # the strategy as it stands: every tank's current (claimed) objective, read from Artel
+    try:
+        r = await http.get(
+            f"{ARTEL_URL}/tasks",
+            headers=_headers(agent),
+            params={"project": PHALANX_PROJECT, "status": "claimed", "limit": 10},
+        )
+        rows = r.json() if r.status_code < 300 else []
+    except Exception:
+        return ""
+    if not isinstance(rows, list):
+        return ""
+    lines = [
+        f"{(t.get('assigned_to') or '?')}: {t.get('title', '')}"
+        for t in rows
+        if "objective" in (t.get("tags") or [])
+    ]
+    return " | ".join(lines[:6])
 
 
 async def _oneshot(http: httpx.AsyncClient, sys: str, user: str, max_tokens: int = 60) -> str:
@@ -644,11 +666,11 @@ async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str, events: s
         "center — nothing else exists in this game). " + outcome + " From the match log, "
         "extract ONE reusable tactical rule the team can apply in ANY future match — 'when X "
         "happens, do Y' — that this match's events actually justify, stated only in terms of "
-        "the game's real pieces. Tank ids, coordinates, and kill order change every match: do "
-        "not retell them, generalize from them (e.g. losses to the closing zone -> a rule about "
-        "when to rotate in; first kill won the fight -> a rule about forcing an early pick). "
-        "Use ONLY the log; never invent. Do NOT write platitudes like 'focus fire more'. ONE "
-        "short sentence, no preamble."
+        "the game's real pieces. If the log lists the team's objectives, judge them: name the "
+        "kind of objective that won or lost this match (held an area, advanced in formation, "
+        "split across lanes). Tank ids, coordinates, and kill order change every match: do "
+        "not retell them, generalize from them. Use ONLY the log; never invent. Do NOT write "
+        "platitudes like 'focus fire more'. ONE short sentence, no preamble."
     )
     return await _oneshot(http, sys, f"Match log: {events or 'no kills were recorded'}\nRule:")
 
@@ -699,9 +721,15 @@ async def decide(
     notes: str = "",
     claims: list | None = None,
     counts: dict | None = None,
+    objective: dict | None = None,
 ) -> tuple[dict, float, str, str]:
     inbox = await _consume_inbox(http, agent)
+    board = await _board(http, agent)
     user = _perception_text(p)
+    if board:
+        user += f"\nTEAM BOARD — current objectives: {board}"
+    if objective and not objective.get("task_id"):
+        user += "\nYou have NO objective on the board yet — set one."
     if notes:
         user += f"\n{notes}"
     if memory:
@@ -747,19 +775,17 @@ async def decide(
             elif c["name"] == "recall":
                 found = await _recall(http, agent, str(c["input"].get("query", "")))
                 results.append({"id": c["id"], "output": found or "nothing relevant"})
-            elif c["name"] == "claim_target":
-                inp = c["input"]
-                at = (
-                    f"({inp.get('q')},{inp.get('r')})"
-                    if inp.get("q") is not None and inp.get("r") is not None
-                    else ""
+            elif c["name"] == "set_objective":
+                txt = str(c["input"].get("text", ""))[:140]
+                tid = await _set_objective(
+                    http, agent, txt, mate_ids, (objective or {}).get("task_id", "")
                 )
-                tid = await _claim_target(
-                    http, agent, int(inp.get("enemy_id", 0) or 0), mate_ids, at
-                )
-                if tid and claims is not None:
-                    claims.append((agent, tid))
-                results.append({"id": c["id"], "output": "claimed and announced to the team"})
+                if tid:
+                    if objective is not None:
+                        objective["task_id"], objective["text"] = tid, txt
+                    if claims is not None:
+                        claims.append((agent, tid))
+                results.append({"id": c["id"], "output": "posted on the team board"})
         if acted:
             break
         transcript.append({"role": "tool", "results": results})
@@ -802,6 +828,7 @@ class Squad:
         self._last: dict[int, str] = {}  # per-tank last action, carried into the next turn
         self._plans: dict[int, str] = {}  # per-tank standing plan (the agent's own words)
         self._intel: dict[int, list[str]] = {}  # per-tank log of teammate reports (via Artel)
+        self._objectives: dict[int, dict] = {}  # per-tank current board objective (Artel task)
         self._claims: list[tuple[dict, str]] = []  # (agent, task id) opened this match
         self.tool_counts: dict[str, int] = {}  # Artel tool usage this match, for /debug
 
@@ -854,6 +881,7 @@ class Squad:
                     notes.strip(),
                     self._claims,
                     self.tool_counts,
+                    self._objectives.setdefault(tank_id, {}),
                 ),
                 timeout=DECIDE_DEADLINE,
             )
@@ -886,6 +914,7 @@ class Squad:
         self._last = {}
         self._plans = {}
         self._intel = {}
+        self._objectives = {}
         self._claims = []
         self.tool_counts = {}
         for tid, agent in self._assign.items():
@@ -938,11 +967,15 @@ class Squad:
             except Exception:
                 pass
         self._claims = []
-        # one grounded note per match, not three near-identical platitudes
+        # one grounded note per match, not three near-identical platitudes — judged against
+        # the objectives the team actually committed to, so memory records which TACTICS work
         _, agent = next(iter(assign.items()))
         outcome = (
             f"Your team {'WON' if won else 'LOST'} with {len(survivors)} of 3 tanks still alive."
         )
+        objs = " ; ".join(o.get("text", "") for o in self._objectives.values() if o.get("text"))
+        if objs:
+            events = f"{events}. Team objectives this match: {objs}" if events else objs
         try:
             lesson = await _reflect(self._http, agent, outcome, events)
         except Exception:
