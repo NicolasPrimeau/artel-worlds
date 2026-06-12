@@ -542,6 +542,21 @@ def _perception_text(p: dict) -> str:
         lines.append(
             "- You CANNOT move into: " + ", ".join(blocked_dirs) + " — pick another direction."
         )
+    if p.get("hit_taken"):
+        shooter = p.get("hit_from", 0)
+        seen_sh = next(
+            (e for e in p["visible"] if e["kind"] == "enemy" and e["id"] == shooter), None
+        )
+        where = (
+            f"#{shooter} at ({q + seen_sh['dq']},{r + seen_sh['dr']})"
+            if seen_sh
+            else f"#{shooter}, NOT in your sight (it shoots you from cover or beyond your vision)"
+        )
+        lines.append(
+            f"- ALARM — YOU ARE TAKING FIRE: {p['hit_taken']} damage last turn from {where}. "
+            f"Tell the team where, and either get help, break line of sight, or fall back to "
+            f"a teammate. Standing alone under fire is how tanks die."
+        )
     # urgency, where it changes the right move
     if not p.get("safe", True):
         lines.append(
@@ -854,7 +869,7 @@ async def decide(
     system = SYSTEM.format(mates=" and ".join(mate_ids) or "your team")
     transcript: list[dict] = [{"role": "user", "text": user}]
     intent = {"turn": 0, "move": "hold", "fire": 0}
-    cost, plan = 0.0, ""
+    cost, plan, recalled = 0.0, "", ""
     for round_i in range(MAX_TOOL_ROUNDS):
         # the LAST round forces the act tool: the model always chooses its own action;
         # the reflex is a failure backstop, not a co-pilot
@@ -893,6 +908,7 @@ async def decide(
                 results.append({"id": c["id"], "output": "saved"})
             elif c["name"] == "recall":
                 found = await _recall(http, agent, str(c["input"].get("query", "")))
+                recalled = found or recalled
                 results.append({"id": c["id"], "output": found or "nothing relevant"})
             elif c["name"] == "set_objective":
                 txt = str(c["input"].get("text", ""))[:140]
@@ -958,7 +974,7 @@ async def decide(
                     travel = (hh + intent["turn"]) % 6
                     intent["move"] = "fwd" if travel == d2 and _open(travel) else "hold"
                     break
-    return intent, cost, plan, inbox
+    return intent, cost, plan, inbox, recalled
 
 
 class Squad:
@@ -979,6 +995,7 @@ class Squad:
         self._last: dict[int, str] = {}  # per-tank last action + what it saw, for continuity
         self._plans: dict[int, str] = {}  # per-tank standing plan (the agent's own words)
         self._intel: dict[int, list[str]] = {}  # per-tank log of teammate reports (via Artel)
+        self._recalled: dict[int, str] = {}  # per-tank latest recall result — persists all match
         self._objectives: dict[int, dict] = {}  # per-tank current board objective (Artel task)
         self._claims: list[tuple[dict, str]] = []  # (agent, task id) opened this match
         self.tool_counts: dict[str, int] = {}  # Artel tool usage this match, for /debug
@@ -1018,11 +1035,13 @@ class Squad:
         notes = self._last.get(tank_id, "")
         if self._plans.get(tank_id):
             notes += f" Your standing plan: {self._plans[tank_id]}"
+        if self._recalled.get(tank_id):
+            notes += f" What you recalled earlier: {self._recalled[tank_id]}"
         intel = self._intel.get(tank_id) or []
         if intel:
             notes += "\nTeam reports so far (oldest first): " + " | ".join(intel)
         try:
-            intent, cost, plan, inbox = await asyncio.wait_for(
+            intent, cost, plan, inbox, recalled = await asyncio.wait_for(
                 decide(
                     self._http,
                     agent,
@@ -1044,6 +1063,8 @@ class Squad:
         self.last_error = None
         if plan:
             self._plans[tank_id] = plan
+        if recalled:
+            self._recalled[tank_id] = recalled[:300]
         if inbox:
             log_ = self._intel.setdefault(tank_id, [])
             for line in inbox.split(" | "):
@@ -1057,10 +1078,10 @@ class Squad:
             if v["kind"] == "enemy"
         )
         self._last[tank_id] = (
-            f"Last turn (t{p.get('tick', '?')}) you were at ({p['q']},{p['r']}), {fired}, "
-            f"moved {intent.get('move', 'hold')}; you saw: {seen or 'no enemies'}. If an enemy "
-            f"from then is missing from your state now, it moved or broke line of sight — it "
-            f"still exists."
+            f"Last turn (t{p.get('tick', '?')}) you were at ({p['q']},{p['r']}) with energy "
+            f"{p['energy']}, {fired}, moved {intent.get('move', 'hold')}; you saw: "
+            f"{seen or 'no enemies'}. If an enemy from then is missing from your state now, "
+            f"it moved or broke line of sight — it still exists."
         )
         return intent
 
@@ -1076,6 +1097,7 @@ class Squad:
         self._last = {}
         self._plans = {}
         self._intel = {}
+        self._recalled = {}
         self._objectives = {}
         self._claims = []
         self.tool_counts = {}

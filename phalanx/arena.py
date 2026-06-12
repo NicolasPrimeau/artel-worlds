@@ -198,6 +198,8 @@ class Arena:
             "heading": me.heading,
             "energy": round(me.energy),
             "gun_ready": me.cooldown == 0,
+            "hit_taken": round(me.hit_taken),
+            "hit_from": me.hit_from,
             "safe": hex_distance(me.q, me.r, cq, cr) <= rad,
             "zone_radius": round(rad, 2),
             "fire_range": self.cfg.fire_range,
@@ -221,6 +223,9 @@ class Arena:
         self.tracers = []
         living = list(self.tanks.values())
         self.rng.shuffle(living)
+        for t in living:
+            t.hit_taken = 0.0
+            t.hit_from = 0
         # team standing going into this step — used to break a mutual wipeout so a
         # match never ends in a draw: whoever was ahead when both fell takes it.
         pre_energy: dict[str, float] = {}
@@ -288,6 +293,8 @@ class Arena:
                 continue
             t.target = target.id  # the turret aims here (360°); the hull keeps its facing
             target.energy -= cfg.shot_damage
+            target.hit_taken += cfg.shot_damage
+            target.hit_from = t.id
             hit_by[target.id] = t
             if target.team != t.team:
                 t.energy = min(cfg.max_energy, t.energy + cfg.hit_reward)
