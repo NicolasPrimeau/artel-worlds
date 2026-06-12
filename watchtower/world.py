@@ -110,6 +110,8 @@ class World:
             "artel_by": a_resp.id,
             "solo_by": s_resp.id,
         }
+        a_task = await a_resp.store.open_incident(seq, spec.title, spec.family, spec.alert)
+        s_task = await s_resp.store.open_incident(seq, spec.title, spec.family, spec.alert)
         await self._broadcast()
 
         async def step():
@@ -133,10 +135,16 @@ class World:
         self.metrics.record(
             seq, spec.family, "solo", s_inc.mttr(), len(s_inc.actions), s_inc.resolved
         )
+        miss_note = (
+            f"Closed UNRESOLVED after {len(a_inc.actions)} actions; MTTR booked at the cap. "
+            "Next responder on this family: crack it and record the runbook."
+        )
+        await a_resp.store.close_incident(a_task, a_inc.resolved, miss_note)
+        await s_resp.store.close_incident(s_task, s_inc.resolved, miss_note)
         if a_inc.resolved:
-            await a_resp.store.close_followups(spec.family)
-        else:
-            await a_resp.store.file_followup(spec.family, seq, spec.title)
+            await a_resp.store.sweep_family(spec.family)
+        if s_inc.resolved:
+            await s_resp.store.sweep_family(spec.family)
         self.cursor += 1
         self.live = None
         await self._broadcast()

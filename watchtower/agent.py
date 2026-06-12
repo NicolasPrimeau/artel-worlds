@@ -93,6 +93,9 @@ SYSTEM = (
     "YOUR LOOP, in order:\n"
     "1. RECALL FIRST: call recall with the symptoms. If a past runbook matches, follow it — that is "
     "the entire point of having one. Do not re-derive what you already know.\n"
+    "1b. CHECK THE BOARD: call check_board once — an open task may be a past UNRESOLVED incident of "
+    "this same fault with notes from whoever tried before. If your fix cracks an open board item, "
+    "close_task it.\n"
     "2. DIAGNOSE: inspect / read_logs the suspect nodes to confirm the root cause. Cheap, but not "
     "free — don't inspect the whole graph when the runbook already named the fix.\n"
     "3. REMEDIATE: apply the SINGLE correct fix (sometimes an ordered pair). A wrong or needless "
@@ -102,8 +105,9 @@ SYSTEM = (
     "root cause and the fix in terms of the SYMPTOM PATTERN (kind of node, which dials, the order of "
     "steps), NOT this incident's specific node name or numbers (those change every time). One tight "
     "rule. Skip platitudes you already know.\n"
-    "You may also tell_team a one-line status for the war room. Keep acting until the incident reads "
-    "RESOLVED."
+    "You may also tell_team a one-line status for the war room, and file_task work that should NOT "
+    "block restoring service (preventive fixes, monitoring gaps, cleanup you noticed). Keep acting "
+    "until the incident reads RESOLVED."
 )
 
 _NODE_PROP = {
@@ -158,6 +162,35 @@ TOOLS = [
             "type": "object",
             "properties": {"text": {"type": "string"}},
             "required": ["text"],
+        },
+    },
+    {
+        "name": "check_board",
+        "description": "List the team's open tasks. Past UNRESOLVED incidents sit here with notes — "
+        "if this fault looks familiar, the board may say what was already tried and failed.",
+        "schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "file_task",
+        "description": "File a task for work that should not block restoring service: a preventive "
+        "fix, a monitoring gap, cleanup. Someone on the team picks it up later.",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "short imperative title"},
+                "detail": {"type": "string", "description": "what and why, one or two lines"},
+            },
+            "required": ["title"],
+        },
+    },
+    {
+        "name": "close_task",
+        "description": "Complete an open board task by id (from check_board) — use when your fix "
+        "resolves what the task tracked.",
+        "schema": {
+            "type": "object",
+            "properties": {"task_id": {"type": "string"}},
+            "required": ["task_id"],
         },
     },
     {
@@ -389,7 +422,7 @@ class ArtelStore:
         except Exception:
             pass
 
-    async def _open_followups(self) -> list[dict]:
+    async def _open_tasks(self) -> list[dict]:
         r = await self.http.get(
             f"{ARTEL_URL}/tasks",
             headers=_headers(self.agent),
@@ -398,28 +431,92 @@ class ArtelStore:
         rows = r.json() if r.status_code < 300 else []
         return rows if isinstance(rows, list) else []
 
-    async def file_followup(self, family: str, seq: int, title: str) -> None:
+    async def board(self) -> str:
         try:
-            if any(family in (t.get("tags") or []) for t in await self._open_followups()):
-                return
+            rows = await self._open_tasks()
+        except Exception:
+            return ""
+        return "\n".join(
+            f"[{t['id'][:8]}] {t.get('title', '')[:90]} — {t.get('description', '')[:140]}"
+            for t in rows[:6]
+        )
+
+    async def file_task(self, title: str, detail: str, tags: list[str] | None = None) -> None:
+        if not title:
+            return
+        try:
             await self.http.post(
                 f"{ARTEL_URL}/tasks",
                 headers=_headers(self.agent),
                 json={
-                    "title": f"Unresolved fault: {title}",
-                    "description": f"Incident #{seq} ({family}) closed unresolved. Whoever cracks "
-                    "this family next: record the working fix as a runbook.",
+                    "title": title[:120],
+                    "description": (detail or "")[:400],
                     "project": WATCHTOWER_PROJECT,
-                    "tags": [family, "followup"],
+                    "tags": tags or [],
                 },
             )
         except Exception:
             pass
 
-    async def close_followups(self, family: str) -> None:
+    async def finish_task(self, task_id: str) -> bool:
+        if not task_id:
+            return False
         try:
-            for t in await self._open_followups():
-                if family in (t.get("tags") or []):
+            h = _headers(self.agent)
+            full = next(
+                (t["id"] for t in await self._open_tasks() if t["id"].startswith(task_id)), None
+            )
+            if not full:
+                return False
+            await self.http.post(f"{ARTEL_URL}/tasks/{full}/claim", headers=h)
+            r = await self.http.post(f"{ARTEL_URL}/tasks/{full}/complete", headers=h)
+            return r.status_code < 300
+        except Exception:
+            return False
+
+    async def open_incident(self, seq: int, title: str, family: str, alert: str) -> str | None:
+        # every incident is a real task on the shared board: filed and claimed by the responder,
+        # completed on resolution, left open with a note on a miss — the board IS the incident log
+        try:
+            h = _headers(self.agent)
+            r = await self.http.post(
+                f"{ARTEL_URL}/tasks",
+                headers=h,
+                json={
+                    "title": f"Incident #{seq}: {title}",
+                    "description": alert[:300],
+                    "project": WATCHTOWER_PROJECT,
+                    "tags": [family, "incident"],
+                },
+            )
+            if r.status_code >= 300:
+                return None
+            tid = r.json().get("id")
+            await self.http.post(f"{ARTEL_URL}/tasks/{tid}/claim", headers=h)
+            return tid
+        except Exception:
+            return None
+
+    async def close_incident(self, task_id: str | None, resolved: bool, note: str) -> None:
+        if not task_id:
+            return
+        try:
+            h = _headers(self.agent)
+            if resolved:
+                await self.http.post(f"{ARTEL_URL}/tasks/{task_id}/complete", headers=h)
+            else:
+                await self.http.post(
+                    f"{ARTEL_URL}/tasks/{task_id}/comments", headers=h, json={"body": note[:300]}
+                )
+                await self.http.post(f"{ARTEL_URL}/tasks/{task_id}/unclaim", headers=h)
+        except Exception:
+            pass
+
+    async def sweep_family(self, family: str) -> None:
+        # the family just got cracked: complete any older incident tasks still open for it
+        try:
+            for t in await self._open_tasks():
+                if family in (t.get("tags") or []) and "incident" in (t.get("tags") or []):
                     h = _headers(self.agent)
                     await self.http.post(f"{ARTEL_URL}/tasks/{t['id']}/claim", headers=h)
                     await self.http.post(f"{ARTEL_URL}/tasks/{t['id']}/complete", headers=h)
@@ -459,6 +556,7 @@ class SoloStore:
         self.shared = False
         self.notes: list[str] = []
         self.feed: list[dict] = []
+        self.tasks: list[dict] = []
 
     async def join(self) -> None:
         return None
@@ -481,11 +579,47 @@ class SoloStore:
             self.feed.append({"from": self.agent_id, "text": text[:200]})
             del self.feed[:-40]
 
-    async def file_followup(self, family: str, seq: int, title: str) -> None:
-        return None
+    async def board(self) -> str:
+        return "\n".join(
+            f"[{t['id']}] {t['title'][:90]} — {t['detail'][:140]}" for t in self.tasks if t["open"]
+        )[:1200]
 
-    async def close_followups(self, family: str) -> None:
-        return None
+    async def file_task(self, title: str, detail: str, tags: list[str] | None = None) -> None:
+        if title:
+            self.tasks.append(
+                {
+                    "id": f"t{len(self.tasks)}",
+                    "title": title,
+                    "detail": detail or "",
+                    "tags": tags or [],
+                    "open": True,
+                }
+            )
+            del self.tasks[:-50]
+
+    async def finish_task(self, task_id: str) -> bool:
+        for t in self.tasks:
+            if t["id"].startswith(task_id) and t["open"]:
+                t["open"] = False
+                return True
+        return False
+
+    async def open_incident(self, seq: int, title: str, family: str, alert: str) -> str | None:
+        await self.file_task(f"Incident #{seq}: {title}", alert, [family, "incident"])
+        return self.tasks[-1]["id"]
+
+    async def close_incident(self, task_id: str | None, resolved: bool, note: str) -> None:
+        for t in self.tasks:
+            if t["id"] == task_id:
+                if resolved:
+                    t["open"] = False
+                else:
+                    t["detail"] = (t["detail"] + " | " + note)[:400]
+
+    async def sweep_family(self, family: str) -> None:
+        for t in self.tasks:
+            if t["open"] and family in t.get("tags", []):
+                t["open"] = False
 
 
 def _render_incident(inc: Incident) -> str:
@@ -540,6 +674,15 @@ async def respond(http, inc: Incident, store, counts: dict | None = None, on_ste
             elif name == "tell_team":
                 await store.notify(str(inp.get("text", "")))
                 out = {"result": "posted"}
+            elif name == "check_board":
+                b = await store.board()
+                out = {"board": b or "board is clear"}
+            elif name == "file_task":
+                await store.file_task(str(inp.get("title", "")), str(inp.get("detail", "")))
+                out = {"result": "task filed"}
+            elif name == "close_task":
+                done = await store.finish_task(str(inp.get("task_id", "")))
+                out = {"result": "task completed" if done else "no open task with that id"}
             else:
                 out = {"error": f"unknown tool {name}"}
             results.append({"id": c["id"], "output": json.dumps(out)})

@@ -171,3 +171,28 @@ def test_resolved_incident_always_records_a_runbook():
     assert spec.family in store.notes[0]
     fix_step = f"{spec.fix[0][0]} {spec.fix[0][1]}"
     assert fix_step in store.notes[0]
+
+
+def test_solo_board_is_private_and_tracks_incident_lifecycle():
+    import asyncio
+
+    from watchtower import agent as A
+
+    async def run():
+        s1 = A.SoloStore("solo-1")
+        s2 = A.SoloStore("solo-2")
+        tid = await s1.open_incident(4, "Replica lag", "db_primary_stuck", "alert text")
+        assert "Incident #4" in await s1.board()
+        assert await s2.board() == ""  # private: a teammate's board shows nothing
+
+        await s1.close_incident(tid, resolved=False, note="gave up")
+        assert "gave up" in await s1.board()  # miss stays open, note attached
+
+        await s1.file_task("add lag alerting", "threshold gap")
+        assert await s1.finish_task("t1") is True
+        assert "lag alerting" not in await s1.board()
+
+        await s1.sweep_family("db_primary_stuck")
+        assert "Incident #4" not in await s1.board()  # family cracked: old incident closed
+
+    asyncio.run(run())
