@@ -60,6 +60,7 @@ class Phalanx:
         self._squad_match = -1  # which match the squad is currently driving
         self._squad_started = -1  # which match the squad has already run on_start for
         self.history: list[dict] = []  # last matches' outcomes + kill logs, for /debug
+        self.completed = 0  # matches that actually finished — match_no also counts restarts
         self.spend_days: dict[str, float] = {}  # iso day -> usd, the cost-per-day ledger
         self._ledgered = 0.0  # spend already attributed to a day
         self._restore_state()
@@ -73,6 +74,7 @@ class Phalanx:
         self.scores = {k: int(v) for k, v in (raw.get("scores") or {}).items()}
         self.history = list(raw.get("history") or [])[-10:]
         self.match_no = int(raw.get("match_no", -1))
+        self.completed = int(raw.get("completed", 0))
         self.squad.spent = float(raw.get("squad_spent", 0.0))
         if self.red_squad is not None:
             self.red_squad.spent = float(raw.get("red_spent", 0.0))
@@ -102,6 +104,7 @@ class Phalanx:
                         "scores": self.scores,
                         "history": self.history,
                         "match_no": self.match_no,
+                        "completed": self.completed,
                         "squad_spent": round(self.squad.spent, 6),
                         "red_spent": round(self.red_squad.spent, 6) if self.red_squad else 0.0,
                         "spend_days": self.spend_days,
@@ -285,6 +288,7 @@ async def _tick_loop():
                     # calls an adjusted one (broadcast over Artel, like everything else)
                     asyncio.create_task(G.squad.on_loss(artel_after))
                 if ended:
+                    G.completed += 1
                     if a.winner:
                         G.scores[a.winner] = G.scores.get(a.winner, 0) + 1
                     # match record for /debug: outcome + the real kill log + how much the
@@ -352,6 +356,7 @@ async def debug():
         "live_artel": G.squad.enabled and G._squad_match == G.match_no,
         "red_mode": "llm-solo" if G.red_squad is not None else "bots",
         "scores": dict(G.scores),
+        "completed": G.completed,
         "spend_days": dict(G.spend_days),
         "squad": G.squad.status(),
         "red_squad": G.red_squad.status() if G.red_squad is not None else None,

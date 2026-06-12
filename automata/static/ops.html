@@ -172,7 +172,7 @@ function card(w){
       <div class="row">
         <div class="m"><div class="v spend">${money(w.spend)}</div><div class="k">spend (${w.spend_label||"all time"}, cap ${money(w.cap)})</div></div>
         <div class="m"><div class="v"><span class="a" style="color:var(--artel-soft)">${sc.artel ?? 0}</span><span style="color:var(--dim);font-weight:400"> – </span><span style="color:var(--red)">${sc.red ?? 0}</span></div><div class="k">Artel – Red wins</div></div>
-        <div class="m"><div class="v">${facts.match ?? "—"}</div><div class="k">matches</div></div>
+        <div class="m"><div class="v">${facts.match ?? "—"}</div><div class="k">matches finished</div></div>
       </div>
       ${recent.length ? `<div class="dots">${dots}<span class="lbl">last ${recent.length} matches (blue = Artel won)</span></div>` : ""}
       <div class="facts">rate-limit hits <b>${t}</b></div>`;

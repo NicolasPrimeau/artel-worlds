@@ -808,7 +808,7 @@ async def ui_stats(request: Request):
                 "cap": sq.get("cap_usd"),
                 "spend_days": ph.get("spend_days") or {},
                 "facts": {
-                    "match": ph.get("match"),
+                    "match": ph.get("completed", ph.get("match")),
                     "scores": ph.get("scores") or {},
                     "recent": [
                         {"winner": h.get("winner"), "live": h.get("live_artel")}

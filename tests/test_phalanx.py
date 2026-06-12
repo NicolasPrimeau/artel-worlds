@@ -133,7 +133,11 @@ def test_scoreboard_survives_a_restart(tmp_path, monkeypatch):
     g.squad.spent = 0.42
     g.persist_state()
 
+    g.completed = 11
+    g.persist_state()
+
     g2 = Phalanx()
+    assert g2.completed == 11
     assert g2.scores == {"artel": 7, "red": 4}
     assert g2.history[-1]["winner"] == "artel"
     assert g2.squad.spent == 0.42
