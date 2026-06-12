@@ -500,9 +500,11 @@ def test_hurt_bot_parks_to_repair_when_nothing_in_sight():
     assert out["move"] != "hold" or out.get("fire")  # contact: fight or fall back, not nap
 
 
-def test_spend_cap_is_monthly():
+def test_spend_cap_is_monthly(monkeypatch):
+    from phalanx import agent as A
     from phalanx.agent import SPEND_CAP_USD, Squad
 
+    monkeypatch.setattr(A, "LLM_KEY", "test-key")  # the cap, not key presence, is under test
     sq = Squad(solo=True)
     sq.agents = [{"id": "x", "key": "k"}]
     sq.month, sq.month_spent = "2026-05", SPEND_CAP_USD + 1  # blew LAST month's budget
