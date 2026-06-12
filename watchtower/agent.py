@@ -523,6 +523,36 @@ class ArtelStore:
         except Exception:
             pass
 
+    async def save_handoff(self, summary: str) -> None:
+        try:
+            await self.http.post(
+                f"{ARTEL_URL}/sessions/handoff",
+                headers=_headers(self.agent),
+                json={"summary": summary[:300]},
+            )
+        except Exception:
+            pass
+
+    async def handoff(self) -> str:
+        # the native Artel session mechanism: my own last shift summary, plus every runbook the
+        # TEAM added while I was off rotation (the memory delta) — that delta is the sharing edge
+        try:
+            r = await self.http.get(f"{ARTEL_URL}/sessions/handoff", headers=_headers(self.agent))
+            data = r.json() if r.status_code < 300 else {}
+        except Exception:
+            return ""
+        lines = []
+        last = data.get("last_handoff") or {}
+        if last.get("summary"):
+            lines.append(f"your last shift: {last['summary'][:200]}")
+        delta = [
+            m for m in data.get("memory_delta") or [] if m.get("project") == WATCHTOWER_PROJECT
+        ]
+        if delta:
+            lines.append(f"while you were off shift the team added {len(delta)} runbook(s):")
+            lines += [f"- {m.get('content', '')[:140]}" for m in delta[-4:]]
+        return "\n".join(lines)
+
     async def notify(self, text: str) -> None:
         if not text:
             return
@@ -557,6 +587,7 @@ class SoloStore:
         self.notes: list[str] = []
         self.feed: list[dict] = []
         self.tasks: list[dict] = []
+        self.last_shift: str = ""
 
     async def join(self) -> None:
         return None
@@ -573,6 +604,12 @@ class SoloStore:
         if text:
             self.notes.append(text[:400])
             del self.notes[:-200]
+
+    async def save_handoff(self, summary: str) -> None:
+        self.last_shift = summary[:300]
+
+    async def handoff(self) -> str:
+        return f"your last shift: {self.last_shift}" if self.last_shift else ""
 
     async def notify(self, text: str) -> None:
         if text:
@@ -643,7 +680,11 @@ async def respond(http, inc: Incident, store, counts: dict | None = None, on_ste
     # USD spent on LLM calls. The store is the only thing that differs between the two fleets.
     cost = 0.0
     recorded = False
-    transcript = [{"role": "user", "text": _render_incident(inc)}]
+    intro = _render_incident(inc)
+    handoff = await store.handoff()
+    if handoff:
+        intro += "\nShift context:\n" + handoff
+    transcript = [{"role": "user", "text": intro}]
     for _ in range(MAX_ROUNDS):
         try:
             text, calls, tin, tout, ep = await _chat(http, SYSTEM, transcript)

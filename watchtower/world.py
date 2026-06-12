@@ -145,6 +145,15 @@ class World:
             await a_resp.store.sweep_family(spec.family)
         if s_inc.resolved:
             await s_resp.store.sweep_family(spec.family)
+
+        def _shift_note(inc) -> str:
+            outcome = (
+                f"resolved in {inc.mttr():.0f}s" if inc.resolved else "went UNRESOLVED (capped)"
+            )
+            return f"incident #{seq} ({spec.family}): {outcome} after {len(inc.actions)} actions."
+
+        await a_resp.store.save_handoff(_shift_note(a_inc))
+        await s_resp.store.save_handoff(_shift_note(s_inc))
         self.cursor += 1
         self.live = None
         await self._broadcast()

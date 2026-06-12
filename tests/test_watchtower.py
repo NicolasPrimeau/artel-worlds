@@ -196,3 +196,18 @@ def test_solo_board_is_private_and_tracks_incident_lifecycle():
         assert "Incident #4" not in await s1.board()  # family cracked: old incident closed
 
     asyncio.run(run())
+
+
+def test_handoff_is_private_for_solo_fleet():
+    import asyncio
+
+    from watchtower import agent as A
+
+    async def run():
+        s1 = A.SoloStore("solo-1")
+        s2 = A.SoloStore("solo-2")
+        await s1.save_handoff("incident #3 (db_primary_stuck): resolved in 240s")
+        assert "incident #3" in await s1.handoff()  # own last shift carries over
+        assert await s2.handoff() == ""  # a teammate inherits nothing — no delta, no team
+
+    asyncio.run(run())
