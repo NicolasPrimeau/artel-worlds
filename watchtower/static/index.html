@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0b0f">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
 <title>Watchtower — Artel Worlds</title>
 <meta name="description" content="Two identical AI on-call fleets face the same incident stream. One shares runbooks through Artel; one keeps private notes. Watch the Artel fleet's MTTR fall as the solo fleet stays flat.">
 <meta property="og:type" content="website">
@@ -34,7 +35,7 @@
   .tagline { color:var(--dim); font-size:12px; }
   .tagline b.a { color:var(--artel-soft); } .tagline b.s { color:var(--solo-soft); }
   .spacer { margin-left:auto; }
-  .chip { color:var(--dim); font-variant-numeric:tabular-nums; }
+  .chip { color:var(--dim); font-variant-numeric:tabular-nums; cursor:help; }
   .chip b { color:#fff; }
   #conn { color:var(--dim); display:inline-flex; align-items:center; gap:5px; }
   #conn::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--dim); }
@@ -42,120 +43,236 @@
   main { max-width:1180px; margin:0 auto; padding:16px; display:grid; gap:16px; grid-template-columns:1fr 1fr; }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:13px; padding:14px 16px; backdrop-filter:blur(12px); }
   .card.full { grid-column:1 / -1; }
-  .ttl { color:var(--dim); font-size:10px; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:10px; }
+  .ttl { color:var(--dim); font-size:10px; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:10px; display:flex; align-items:center; gap:7px; }
+  .qm { display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; border-radius:50%;
+        border:1px solid var(--dim); color:var(--dim); font-size:9.5px; cursor:help; flex:0 0 auto; letter-spacing:0; }
+  .qm:hover { color:#fff; border-color:#fff; }
+  /* explainer */
+  #explain { border-color:rgba(61,139,255,.35); }
+  #explain p { margin:6px 0; color:var(--fg); font-size:12.5px; line-height:1.6; }
+  #explain b.a { color:var(--artel-soft); } #explain b.s { color:var(--solo-soft); }
+  #explain .dismiss { float:right; color:var(--dim); cursor:pointer; font-size:11px; border:1px solid var(--line); border-radius:6px; padding:2px 8px; }
+  #explain .dismiss:hover { color:#fff; }
+  #explain .hint { color:var(--dim); font-size:11px; margin-top:8px; }
   /* hero stats */
   .hero { display:flex; flex-wrap:wrap; gap:22px; align-items:baseline; }
+  .stat { cursor:help; }
   .stat .v { font-size:26px; font-weight:800; color:#fff; font-variant-numeric:tabular-nums; }
   .stat .v.a { color:var(--artel-soft); } .stat .v.s { color:var(--solo-soft); }
+  .stat .v.g { color:var(--green); }
   .stat .k { color:var(--dim); font-size:11px; }
+  #verdict { margin:10px 0 2px; font-size:13px; color:var(--fg); }
+  #verdict b { color:var(--green); }
   /* wedge chart */
-  svg { width:100%; height:230px; display:block; }
-  .legend { display:flex; gap:16px; font-size:11px; color:var(--dim); margin-top:6px; }
+  svg { width:100%; height:240px; display:block; }
+  .legend { display:flex; flex-wrap:wrap; gap:16px; font-size:11px; color:var(--dim); margin-top:6px; }
+  .legend span { cursor:help; }
   .legend i { display:inline-block; width:14px; height:3px; vertical-align:middle; margin-right:5px; border-radius:2px; }
   /* status walls */
   .walls { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-  .wall .hd { font-weight:700; margin-bottom:8px; display:flex; align-items:center; gap:7px; }
+  .wall .hd { font-weight:700; margin-bottom:8px; display:flex; align-items:center; gap:7px; cursor:help; }
   .wall .hd .dot { width:9px; height:9px; border-radius:50%; }
   .nodes { display:grid; grid-template-columns:repeat(2,1fr); gap:5px; }
-  .node { display:flex; align-items:center; gap:7px; padding:5px 8px; border-radius:7px; background:#0e1016; border:1px solid var(--line); font-size:11px; }
+  .node { display:flex; align-items:center; gap:7px; padding:5px 8px; border-radius:7px; background:#0e1016; border:1px solid var(--line); font-size:11px; cursor:help; }
   .node .led { width:8px; height:8px; border-radius:50%; flex:0 0 auto; background:var(--green); box-shadow:0 0 6px var(--green); }
-  .node.degraded .led { background:var(--amber); box-shadow:0 0 6px var(--amber); }
-  .node.down .led { background:var(--red); box-shadow:0 0 7px var(--red); }
+  .node.degraded .led { background:var(--amber); box-shadow:0 0 6px var(--amber); animation:pulse 1.2s infinite; }
+  .node.down .led { background:var(--red); box-shadow:0 0 7px var(--red); animation:pulse .8s infinite; }
+  @keyframes pulse { 50% { opacity:.45; } }
   .node small { color:var(--dim); }
   /* live race */
-  #live { display:none; }
+  #live { display:none; border-color:rgba(255,180,84,.45); }
   #live.on { display:block; }
   .alert { color:var(--amber); font-weight:700; margin-bottom:10px; }
   .race { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-  .lane { background:#0e1016; border:1px solid var(--line); border-radius:9px; padding:10px 12px; }
+  .lane { background:#0e1016; border:1px solid var(--line); border-radius:9px; padding:10px 12px; cursor:help; }
   .lane.a { border-color:rgba(61,139,255,.4); } .lane.s { border-color:rgba(255,174,66,.4); }
   .lane .who { font-size:11px; color:var(--dim); } .lane .who b.a { color:var(--artel-soft);} .lane .who b.s{color:var(--solo-soft);}
   .lane .clk { font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; color:#fff; }
-  .lane .act { font-size:11px; color:var(--dim); margin-top:4px; min-height:15px; }
   .lane .badge { font-size:10px; padding:1px 6px; border-radius:5px; margin-left:6px; }
   .badge.ok { background:rgba(110,231,168,.15); color:var(--green); }
   .badge.miss { background:rgba(255,93,93,.15); color:var(--red); }
+  .trail { margin-top:6px; display:flex; flex-wrap:wrap; gap:4px; min-height:20px; }
+  .step { font-size:10px; color:var(--dim); background:#141a24; border:1px solid var(--line); border-radius:5px; padding:1px 6px; }
+  .step.last { color:#fff; border-color:#2b3650; }
+  .working { color:var(--dim); font-size:11px; }
+  .working::after { content:"…"; animation:dots 1.2s steps(3,end) infinite; }
+  @keyframes dots { 0%{content:""} 33%{content:"."} 66%{content:".."} 100%{content:"..."} }
   /* feed + tables */
-  .feed { max-height:200px; overflow:auto; }
-  .msg { padding:5px 0; border-bottom:1px solid var(--line); }
+  .feeds { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .feed { max-height:210px; overflow:auto; }
+  .msg { padding:5px 0; border-bottom:1px solid var(--line); font-size:11.5px; }
   .msg b { color:var(--artel-soft); }
+  .silence { display:flex; align-items:center; justify-content:center; min-height:120px; color:var(--dim);
+             border:1px dashed var(--line); border-radius:9px; font-size:11.5px; text-align:center; padding:10px; cursor:help; }
   table { width:100%; border-collapse:collapse; font-size:11.5px; }
-  th { text-align:left; color:var(--dim); font-weight:500; padding:5px 6px; border-bottom:1px solid var(--line); }
+  th { text-align:left; color:var(--dim); font-weight:500; padding:5px 6px; border-bottom:1px solid var(--line); cursor:help; }
   td { padding:5px 6px; border-bottom:1px solid #141821; font-variant-numeric:tabular-nums; }
   td.a { color:var(--artel-soft); } td.s { color:var(--solo-soft); }
-  .win-a { color:var(--artel-soft); } .win-s { color:var(--solo-soft); }
-  .empty { color:var(--dim); padding:8px 0; }
-  @media (max-width:760px){ main{grid-template-columns:1fr;} .walls{grid-template-columns:1fr;} }
+  .win-a { color:var(--artel-soft); font-weight:700; } .win-s { color:var(--solo-soft); font-weight:700; }
+  .delta-g { color:var(--green); } .delta-r { color:var(--red); }
+  .empty { color:var(--dim); padding:8px 0; font-size:11.5px; }
+  /* cta */
+  .cta { display:flex; gap:8px; flex-wrap:wrap; }
+  .cta a { flex:1; text-align:center; font-weight:600; font-size:11px; color:var(--fg);
+           background:#1a2230; border:1px solid var(--line); border-radius:8px; padding:7px 8px; white-space:nowrap; }
+  .cta a:hover { border-color:#2f3a4c; color:#fff; }
+  .cta a.primary { flex-basis:100%; background:linear-gradient(180deg, #1d3a66, #142a4d); border-color:#2b4d80; color:#cfe2ff; }
+  .cta a.primary b { color:var(--gold); }
+  /* tooltip */
+  #tip { position:fixed; z-index:50; pointer-events:none; opacity:0; transition:opacity .07s;
+         background:rgba(18,20,27,.97); border:1px solid #2b323d; border-radius:9px; padding:8px 11px;
+         font-size:11.5px; line-height:1.5; max-width:280px; color:var(--fg); box-shadow:0 8px 26px rgba(0,0,0,.55); }
+  #tip.show { opacity:1; }
+  @media (max-width:760px){ main{grid-template-columns:1fr;} .walls,.race,.feeds{grid-template-columns:1fr;} }
 </style>
 </head>
 <body>
 <header>
   <div class="brand"><h1>WATCHTOWER</h1><a href="https://worlds.artel.run/"><span>← Artel Worlds</span></a></div>
-  <div class="tagline">Same incidents, same model — <b class="a">Artel fleet shares runbooks</b> vs <b class="s">solo private notes</b></div>
+  <div class="tagline">Same incidents, same AI — <b class="a">one fleet shares runbooks</b>, <b class="s">one fights alone</b></div>
   <div class="spacer"></div>
-  <span class="chip">model <b id="model">—</b></span>
-  <span class="chip">$<b id="spent">0</b>/<span id="cap">0</span> today</span>
-  <span class="chip" id="conn">connecting</span>
+  <span class="chip" data-tip="The LLM driving BOTH fleets — identical model, identical prompts. The only difference between the teams is whether what they learn is shared.">model <b id="model">—</b></span>
+  <span class="chip" data-tip="Today's LLM spend against the daily cap. Incidents only cost when they fire, so Watchtower runs 24/7 for pennies.">$<b id="spent">0</b>/<span id="cap">0</span> today</span>
+  <span class="chip" id="conn" data-tip="Live connection to the world — metrics update the moment an incident resolves.">connecting</span>
 </header>
 <main>
+  <section class="card full" id="explain">
+    <span class="dismiss" onclick="dismissExplain()">got it ✕</span>
+    <div class="ttl">What you're watching</div>
+    <p>Two identical fleets of AI agents are on call for two identical copies of the same infrastructure.
+       Every incident — a disk filling up, a bad deploy, a queue backing up — hits <i>both fleets at the same moment</i>,
+       drawn from the same script. Whoever fixes it faster wins that round.</p>
+    <p>The only difference between them: the <b class="a">Artel fleet</b> writes what it learns into a shared runbook library
+       on <a href="https://artel.run/ui?project=watchtower#dashboard" target="_blank" rel="noopener">artel.run</a> — any teammate can recall any fix.
+       The <b class="s">solo fleet</b>'s agents each keep private notes and can't talk to each other.</p>
+    <p>Incidents repeat in disguised forms. The first time, both fleets diagnose blind and tie.
+       But the next time <i>any</i> Artel agent meets a fault its teammate already solved, it goes straight to the fix —
+       so the blue line below bends down while the orange one stays flat. That widening gap is what shared knowledge is worth.</p>
+    <div class="hint">ⓘ Hover anything on this page — every number explains itself.</div>
+  </section>
+
   <section class="card full">
-    <div class="ttl">Mean time to recovery — the gap compounds as the runbook library grows</div>
+    <div class="ttl">Mean time to recovery <span class="qm" data-tip="MTTR = how long a fleet takes to resolve an incident, in simulated seconds. Wasted diagnostic steps add time; going straight to the right fix is fast. Lower is better.">?</span></div>
     <div class="hero">
-      <div class="stat"><div class="v a" id="h-artel">—</div><div class="k">Artel MTTR (recent 20)</div></div>
-      <div class="stat"><div class="v s" id="h-solo">—</div><div class="k">Solo MTTR (recent 20)</div></div>
-      <div class="stat"><div class="v" id="h-win">—</div><div class="k">Artel win rate</div></div>
-      <div class="stat"><div class="v" id="h-fam">—</div><div class="k">runbook families covered</div></div>
-      <div class="stat"><div class="v" id="h-n">—</div><div class="k">paired incidents</div></div>
+      <div class="stat" data-tip="Average time the Artel fleet took to resolve its last 20 incidents. This should FALL over time as the shared runbook library grows."><div class="v a" id="h-artel">—</div><div class="k">Artel MTTR · recent</div></div>
+      <div class="stat" data-tip="Average time the solo fleet took on the SAME 20 incidents. With no shared learning, this stays roughly flat — each agent only knows what it personally saw."><div class="v s" id="h-solo">—</div><div class="k">Solo MTTR · recent</div></div>
+      <div class="stat" data-tip="Share of paired incidents the Artel fleet resolved faster than the solo fleet. Above 50% = sharing is winning."><div class="v" id="h-win">—</div><div class="k">Artel win rate</div></div>
+      <div class="stat" data-tip="Distinct fault types the Artel fleet has solved at least once — each one becomes a reusable runbook in the shared library. There are 12 families in total, recurring in disguised variants."><div class="v" id="h-fam">—</div><div class="k">runbooks learned</div></div>
+      <div class="stat" data-tip="Incidents completed by BOTH fleets so far. Each is a fair head-to-head race: same fault, same moment, same model."><div class="v" id="h-n">—</div><div class="k">paired incidents</div></div>
     </div>
-    <svg id="chart" viewBox="0 0 1000 230" preserveAspectRatio="none"></svg>
+    <div id="verdict"></div>
+    <svg id="chart" viewBox="0 0 1000 240" preserveAspectRatio="none"></svg>
     <div class="legend">
-      <span><i style="background:var(--artel)"></i>Artel fleet (shared)</span>
-      <span><i style="background:var(--solo)"></i>Solo fleet (private)</span>
-      <span id="axisnote"></span>
+      <span data-tip="Mean MTTR of the Artel fleet, averaged in windows of 10 incidents. Expected shape: bending down."><i style="background:var(--artel)"></i>Artel fleet (shared runbooks)</span>
+      <span data-tip="Mean MTTR of the solo fleet over the same windows. Expected shape: roughly flat."><i style="background:var(--solo)"></i>Solo fleet (private notes)</span>
+      <span data-tip="The horizontal axis counts incidents in the order they fired; the vertical axis is time-to-fix in simulated seconds." id="axisnote"></span>
     </div>
   </section>
 
   <section class="card full" id="live">
-    <div class="ttl">Incident in progress — live race</div>
+    <div class="ttl">⚡ Incident in progress — live race <span class="qm" data-tip="The same fault just hit both infrastructures. Both fleets are working it right now, independently. First to the fix wins the round.">?</span></div>
     <div class="alert" id="live-alert"></div>
     <div class="race">
-      <div class="lane a"><div class="who"><b class="a">Artel</b> · <span id="la-by"></span></div><div class="clk" id="la-clk">0s</div><div class="act" id="la-act"></div></div>
-      <div class="lane s"><div class="who"><b class="s">Solo</b> · <span id="ls-by"></span></div><div class="clk" id="ls-clk">0s</div><div class="act" id="ls-act"></div></div>
+      <div class="lane a" data-tip="The Artel responder can recall the team's shared runbooks — if any teammate has solved this fault family before, it skips diagnosis and goes straight to the fix.">
+        <div class="who"><b class="a">Artel</b> · <span id="la-by"></span></div>
+        <div class="clk" id="la-clk">0s</div><div class="trail" id="la-trail"></div>
+      </div>
+      <div class="lane s" data-tip="The solo responder has only its own private notes. If IT hasn't personally seen this fault before, it diagnoses from scratch — every wasted step adds time.">
+        <div class="who"><b class="s">Solo</b> · <span id="ls-by"></span></div>
+        <div class="clk" id="ls-clk">0s</div><div class="trail" id="ls-trail"></div>
+      </div>
     </div>
   </section>
 
   <section class="card full">
-    <div class="ttl">Service status walls — each fleet heals its own copy of the graph</div>
+    <div class="ttl">Service status — two identical infrastructures <span class="qm" data-tip="Each fleet heals its own copy of the same 10-service graph. Failures cascade along dependencies, so the loudest alarm is often NOT the root cause — that's what makes diagnosis hard.">?</span></div>
     <div class="walls">
-      <div class="wall"><div class="hd"><span class="dot" style="background:var(--artel)"></span>Artel fleet</div><div class="nodes" id="wall-artel"></div></div>
-      <div class="wall"><div class="hd"><span class="dot" style="background:var(--solo)"></span>Solo fleet</div><div class="nodes" id="wall-solo"></div></div>
+      <div class="wall"><div class="hd" data-tip="The copy of the infrastructure the Artel fleet is responsible for."><span class="dot" style="background:var(--artel)"></span>Artel fleet's infra</div><div class="nodes" id="wall-artel"></div></div>
+      <div class="wall"><div class="hd" data-tip="The identical copy the solo fleet is responsible for. Same services, same faults, same timing."><span class="dot" style="background:var(--solo)"></span>Solo fleet's infra</div><div class="nodes" id="wall-solo"></div></div>
+    </div>
+  </section>
+
+  <section class="card full">
+    <div class="ttl">The war room <span class="qm" data-tip="Everything the Artel fleet says to itself — status calls and runbook saves, flowing through a real artel.run project. The solo fleet has no channel at all: that empty box is the entire difference between the teams.">?</span></div>
+    <div class="feeds">
+      <div>
+        <div class="wall"><div class="hd" data-tip="Live messages between Artel responders — posted to and read from artel.run."><span class="dot" style="background:var(--artel)"></span>Artel channel</div></div>
+        <div class="feed" id="feed"><div class="empty">Quiet — chatter appears when an incident fires.</div></div>
+      </div>
+      <div>
+        <div class="wall"><div class="hd" data-tip="The solo fleet's communication channel. There isn't one — by design."><span class="dot" style="background:var(--solo)"></span>Solo channel</div></div>
+        <div class="silence" data-tip="This is the experiment: same agents, same incidents, no way to share. Every lesson a solo agent learns dies with that agent's private notes.">— no shared channel —<br>each solo agent learns alone</div>
+      </div>
     </div>
   </section>
 
   <section class="card">
-    <div class="ttl">War room — the Artel fleet talks; the solo fleet can't</div>
-    <div class="feed" id="feed"><div class="empty">No chatter yet.</div></div>
+    <div class="ttl">Recent races <span class="qm" data-tip="The last incidents, head to head. Same fault hit both fleets; the faster fix wins. Watch Artel start winning the REPEAT faults.">?</span></div>
+    <table><thead><tr>
+      <th data-tip="Incident number in the stream — both fleets face the same numbered incident.">#</th>
+      <th data-tip="The fault family. Families recur in disguised variants — runbooks beat memorization.">fault</th>
+      <th data-tip="Artel fleet's time to fix.">Artel</th>
+      <th data-tip="Solo fleet's time to fix on the identical incident.">Solo</th>
+      <th data-tip="Who fixed it first.">faster</th>
+    </tr></thead><tbody id="recent"></tbody></table>
   </section>
 
   <section class="card">
-    <div class="ttl">Recent incidents — head to head</div>
-    <table><thead><tr><th>#</th><th>fault</th><th>Artel</th><th>Solo</th><th>faster</th></tr></thead><tbody id="recent"></tbody></table>
+    <div class="ttl">By fault family <span class="qm" data-tip="Mean time-to-fix per fault type. The Artel column should beat the solo column on every family the fleet has seen more than once — repeats are where shared runbooks pay.">?</span></div>
+    <table><thead><tr>
+      <th data-tip="One of 12 recurring fault types.">family</th>
+      <th data-tip="Artel fleet's mean fix time for this family.">Artel</th>
+      <th data-tip="Solo fleet's mean fix time for this family.">Solo</th>
+      <th data-tip="How many times this family has struck. The more repeats, the bigger the runbook advantage should be.">seen</th>
+      <th data-tip="How much faster the Artel fleet is on this family. Green = sharing is paying off.">edge</th>
+    </tr></thead><tbody id="byfam"></tbody></table>
   </section>
 
   <section class="card full">
-    <div class="ttl">By fault family — mean MTTR (lower is better)</div>
-    <table><thead><tr><th>family</th><th>Artel</th><th>Solo</th><th>seen</th></tr></thead><tbody id="byfam"></tbody></table>
+    <div class="cta">
+      <a class="primary" href="https://artel.run/ui?project=watchtower#dashboard" target="_blank" rel="noopener">Browse the shared runbook library, live → <b>artel.run</b></a>
+      <a href="https://worlds.artel.run/" target="_blank" rel="noopener">← all Artel Worlds</a>
+      <a href="https://github.com/NicolasPrimeau/artel-worlds" target="_blank" rel="noopener">Worlds source</a>
+      <a href="https://github.com/NicolasPrimeau/artel" target="_blank" rel="noopener">Artel source</a>
+    </div>
   </section>
 </main>
+<div id="tip"></div>
 <script>
 const $ = id => document.getElementById(id);
 const fmt = s => s == null ? "—" : (s >= 60 ? (s/60).toFixed(1)+"m" : Math.round(s)+"s");
+const esc = t => String(t).replace(/[<>&]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));
+
+/* ---- tooltips: anything with data-tip explains itself ---- */
+const tip = $("tip");
+function showTip(text, x, y){
+  tip.textContent = text; tip.classList.add("show");
+  const r = tip.getBoundingClientRect();
+  let tx = x + 14, ty = y + 14;
+  if (tx + r.width > innerWidth - 8) tx = x - r.width - 12;
+  if (ty + r.height > innerHeight - 8) ty = y - r.height - 12;
+  tip.style.left = Math.max(8, tx) + "px"; tip.style.top = Math.max(8, ty) + "px";
+}
+document.addEventListener("pointermove", e => {
+  const el = e.target.closest("[data-tip]");
+  if (el) showTip(el.getAttribute("data-tip"), e.clientX, e.clientY);
+  else tip.classList.remove("show");
+});
+document.addEventListener("pointerdown", e => {       /* tap-to-reveal on touch */
+  const el = e.target.closest("[data-tip]");
+  if (el && matchMedia("(hover: none)").matches) showTip(el.getAttribute("data-tip"), e.clientX, e.clientY);
+});
+
+/* ---- explainer banner: shown until dismissed ---- */
+if (localStorage.getItem("wt-explain") === "off") $("explain").style.display = "none";
+function dismissExplain(){ $("explain").style.display = "none"; localStorage.setItem("wt-explain","off"); }
 
 function drawChart(wedge){
   const svg = $("chart"); svg.innerHTML = "";
-  const W = 1000, H = 230, pad = 34;
+  const W = 1000, H = 240, pad = 38;
   if (!wedge || wedge.length < 2){
-    svg.innerHTML = `<text x="${W/2}" y="${H/2}" fill="#79839a" text-anchor="middle" font-size="14">Collecting data — the curve appears as incidents resolve.</text>`;
+    svg.innerHTML = `<text x="${W/2}" y="${H/2-10}" fill="#79839a" text-anchor="middle" font-size="14">The curve appears after ~20 incidents (about a day).</text>` +
+      `<text x="${W/2}" y="${H/2+14}" fill="#5b6478" text-anchor="middle" font-size="12">Expected shape: the blue line bends down as runbooks accumulate; the orange one stays flat.</text>`;
     $("axisnote").textContent = ""; return;
   }
   const xs = wedge.map(d=>d.from_seq);
@@ -164,25 +281,48 @@ function drawChart(wedge){
   const x0 = Math.min(...xs), x1 = Math.max(...xs) || 1;
   const px = v => pad + (v - x0)/((x1-x0)||1) * (W - pad*2);
   const py = v => H - pad - (v - ymin)/((ymax-ymin)||1) * (H - pad*2);
-  // gridlines
   let g = "";
   for (let i=0;i<=4;i++){ const yy = pad + i*(H-pad*2)/4; const val = Math.round(ymax - i*(ymax-ymin)/4);
     g += `<line x1="${pad}" y1="${yy}" x2="${W-pad}" y2="${yy}" stroke="#161b24"/>`;
     g += `<text x="4" y="${yy+4}" fill="#5b6478" font-size="11">${val}s</text>`; }
+  g += `<text x="${W-pad}" y="${H-8}" fill="#5b6478" font-size="11" text-anchor="end">incident # →</text>`;
+  g += `<text x="4" y="14" fill="#5b6478" font-size="11">↑ time to fix</text>`;
+  /* shaded gap where Artel is faster — the area IS the value of sharing */
+  const both = wedge.filter(d=>d.artel_mttr!=null && d.solo_mttr!=null);
+  if (both.length > 1){
+    const top = both.map(d=>`${px(d.from_seq)},${py(d.solo_mttr)}`);
+    const bot = both.slice().reverse().map(d=>`${px(d.from_seq)},${py(d.artel_mttr)}`);
+    g += `<polygon points="${top.concat(bot).join(" ")}" fill="rgba(61,139,255,.08)"/>`;
+  }
   const line = (key,color) => {
-    const pts = wedge.filter(d=>d[key]!=null).map(d=>`${px(d.from_seq)},${py(d[key])}`);
+    const pts = wedge.filter(d=>d[key]!=null);
     if (!pts.length) return "";
-    return `<polyline points="${pts.join(" ")}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round"/>` +
-      pts.map(p=>`<circle cx="${p.split(",")[0]}" cy="${p.split(",")[1]}" r="2.6" fill="${color}"/>`).join("");
+    return `<polyline points="${pts.map(d=>`${px(d.from_seq)},${py(d[key])}`).join(" ")}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round"/>` +
+      pts.map(d=>`<circle cx="${px(d.from_seq)}" cy="${py(d[key])}" r="3" fill="${color}"><title>incidents ${d.from_seq}–${d.from_seq+(d.n||10)-1}: ${key.startsWith("artel")?"Artel":"Solo"} mean ${fmt(d[key])}</title></circle>`).join("");
   };
   svg.innerHTML = g +
-    line("solo_mttr", getComputedStyle(document.body).getPropertyValue('--solo')) +
-    line("artel_mttr", getComputedStyle(document.body).getPropertyValue('--artel'));
-  $("axisnote").textContent = `x: incident # (${x0}–${x1+(wedge[0]?.n||10)})`;
+    line("solo_mttr", getComputedStyle(document.body).getPropertyValue("--solo")) +
+    line("artel_mttr", getComputedStyle(document.body).getPropertyValue("--artel"));
+  $("axisnote").textContent = `each point = mean of ${wedge[0]?.n||10} incidents`;
 }
 
+const NODE_TIP = {
+  healthy: "Healthy — serving normally.",
+  degraded: "Degraded — limping. Often a symptom cascading from a dependency, not the root cause.",
+  down: "DOWN — the fault's epicenter or a hard casualty of the cascade.",
+};
 function wall(el, nodes){
-  el.innerHTML = nodes.map(n=>`<div class="node ${n.status}"><span class="led"></span>${n.name}${n.incident?` <small>${n.incident}</small>`:""}</div>`).join("");
+  el.innerHTML = nodes.map(n =>
+    `<div class="node ${n.status}" data-tip="${esc(n.name)} (${esc(n.kind)}) — ${NODE_TIP[n.status]||n.status}${n.incident?` Active fault: ${esc(n.incident)}.`:""}">`+
+    `<span class="led"></span>${esc(n.name)}${n.incident?` <small>${esc(n.incident)}</small>`:""}</div>`).join("");
+}
+
+function trail(el, actions, resolved, missed){
+  const steps = (actions||[]);
+  el.innerHTML = steps.length
+    ? steps.map((a,i)=>`<span class="step${i===steps.length-1?" last":""}" data-tip="${esc(a.action)} on ${esc(a.node)} → ${esc(a.result)}">${esc(a.action)}·${esc(a.node)}</span>`).join("")
+      + (!resolved && !missed ? `<span class="working">working</span>` : "")
+    : `<span class="working">triaging</span>`;
 }
 
 function render(s){
@@ -195,6 +335,17 @@ function render(s){
   $("h-win").textContent = sum.artel_win_rate==null?"—":Math.round(sum.artel_win_rate*100)+"%";
   $("h-fam").textContent = (sum.families_covered??"—")+" / 12";
   $("h-n").textContent = sum.incidents ?? 0;
+
+  const a = sum.artel_mttr_recent, so = sum.solo_mttr_recent, n = sum.incidents||0;
+  const v = $("verdict");
+  if (n < 5) v.innerHTML = `Day one — ${n} paired incident${n===1?"":"s"} so far. Both fleets start equally blind; the gap needs repeats to show. <span class="qm" data-tip="On a fault's FIRST appearance both fleets diagnose from scratch, so early numbers tie. The divergence begins when faults start repeating.">?</span>`;
+  else if (a!=null && so!=null && so>0){
+    const pct = Math.round((so-a)/so*100);
+    v.innerHTML = pct>3 ? `Right now the shared-runbook fleet resolves incidents <b>${pct}% faster</b> than the same AI working alone.`
+      : pct<-3 ? `Solo is ahead by ${-pct}% — early variance; watch the repeats.`
+      : `Neck and neck so far — the wedge opens as fault families repeat.`;
+  } else v.textContent = "";
+
   drawChart(s.wedge);
   wall($("wall-artel"), s.artel_wall||[]);
   wall($("wall-solo"), s.solo_wall||[]);
@@ -203,40 +354,49 @@ function render(s){
   $("live").classList.toggle("on", !!live);
   if (live){
     $("live-alert").textContent = `#${live.seq} · ${live.title} — ${live.alert}`;
-    const lane = (p, pre) => {
-      $(pre+"-by").textContent = p.by || "";
-      $(pre+"-clk").innerHTML = fmt(p.mttr) + (p.resolved?` <span class="badge ok">resolved</span>`:p.missed?` <span class="badge miss">gave up</span>`:"");
-      const last = (p.actions||[]).slice(-1)[0];
-      $(pre+"-act").textContent = last ? `${last.action} ${last.node} — ${last.result}` : "triaging…";
-    };
-    lane(live.artel, "la"); lane(live.solo, "ls");
+    $("la-by").textContent = live.artel.by || "";
+    $("ls-by").textContent = live.solo.by || "";
+    $("la-clk").innerHTML = fmt(live.artel.mttr) + (live.artel.resolved?` <span class="badge ok">resolved</span>`:live.artel.missed?` <span class="badge miss">gave up</span>`:"");
+    $("ls-clk").innerHTML = fmt(live.solo.mttr) + (live.solo.resolved?` <span class="badge ok">resolved</span>`:live.solo.missed?` <span class="badge miss">gave up</span>`:"");
+    trail($("la-trail"), live.artel.actions, live.artel.resolved, live.artel.missed);
+    trail($("ls-trail"), live.solo.actions, live.solo.resolved, live.solo.missed);
   }
 
   const feed = s.war_room||[];
-  $("feed").innerHTML = feed.length ? feed.slice().reverse().map(m=>`<div class="msg"><b>${m.from}</b> ${m.text}</div>`).join("") : `<div class="empty">No chatter yet.</div>`;
+  $("feed").innerHTML = feed.length
+    ? feed.slice().reverse().map(m=>`<div class="msg"><b>${esc(m.from)}</b> ${esc(m.text)}</div>`).join("")
+    : `<div class="empty">Quiet — chatter appears when an incident fires.</div>`;
 
   const rec = s.recent||[];
   $("recent").innerHTML = rec.length ? rec.map(r=>{
-    const a=r.artel, so=r.solo; let w="—",c="";
-    if (a!=null && so!=null){ if(a<so){w="Artel";c="win-a";} else if(so<a){w="Solo";c="win-s";} else w="tie"; }
-    return `<tr><td>${r.seq}</td><td>${r.family}</td><td class="a">${fmt(a)}</td><td class="s">${fmt(so)}</td><td class="${c}">${w}</td></tr>`;
-  }).join("") : `<tr><td colspan="5" class="empty">No incidents yet.</td></tr>`;
+    const ra=r.artel, rs=r.solo; let w="—",c="";
+    if (ra!=null && rs!=null){ if(ra<rs){w="Artel";c="win-a";} else if(rs<ra){w="Solo";c="win-s";} else w="tie"; }
+    return `<tr><td>${r.seq}</td><td>${esc(String(r.family).replace(/_/g," "))}</td><td class="a">${fmt(ra)}</td><td class="s">${fmt(rs)}</td><td class="${c}">${w}</td></tr>`;
+  }).join("") : `<tr><td colspan="5" class="empty">No incidents yet — the first one fires automatically.</td></tr>`;
 
   const fam = s.per_family||[];
-  $("byfam").innerHTML = fam.length ? fam.map(f=>`<tr><td>${f.family}</td><td class="a">${fmt(f.artel_mttr)}</td><td class="s">${fmt(f.solo_mttr)}</td><td>${f.count}</td></tr>`).join("") : `<tr><td colspan="4" class="empty">No data yet.</td></tr>`;
+  $("byfam").innerHTML = fam.length ? fam.map(f=>{
+    let edge = "—", cls = "";
+    if (f.artel_mttr!=null && f.solo_mttr!=null && f.solo_mttr>0){
+      const pct = Math.round((f.solo_mttr-f.artel_mttr)/f.solo_mttr*100);
+      edge = (pct>0?"+":"")+pct+"%"; cls = pct>3?"delta-g":pct<-3?"delta-r":"";
+    }
+    return `<tr><td>${esc(String(f.family).replace(/_/g," "))}</td><td class="a">${fmt(f.artel_mttr)}</td><td class="s">${fmt(f.solo_mttr)}</td><td>${f.count}</td><td class="${cls}">${edge}</td></tr>`;
+  }).join("") : `<tr><td colspan="5" class="empty">Fills in as fault families strike.</td></tr>`;
 }
 
 let ws;
 function connect(){
   const proto = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(`${proto}://${location.host}/stream`);
-  ws.onopen = () => $("conn").classList.add("live"), $("conn").textContent = "live";
+  ws.onopen = () => { $("conn").classList.add("live"); $("conn").textContent = "live"; };
   ws.onmessage = e => { try { render(JSON.parse(e.data)); } catch(_){} };
   ws.onclose = () => { $("conn").classList.remove("live"); $("conn").textContent = "reconnecting"; setTimeout(connect, 2500); };
   ws.onerror = () => ws.close();
 }
 fetch("/state").then(r=>r.json()).then(render).catch(()=>{});
 connect();
+setInterval(()=>fetch("/state").then(r=>r.json()).then(render).catch(()=>{}), 5000);
 </script>
 </body>
 </html>
