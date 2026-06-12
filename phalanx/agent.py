@@ -718,11 +718,29 @@ async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str, events: s
         "happens, do Y' — that this match's events actually justify, stated only in terms of "
         "the game's real pieces. If the log lists the team's objectives, judge them: name the "
         "kind of objective that won or lost this match (held an area, advanced in formation, "
-        "split across lanes). Tank ids, coordinates, and kill order change every match: do "
+        "split across lanes). The log records how far the nearest ally stood at each death — "
+        "dying far from every ally is a cohesion failure worth a rule. Tank ids, coordinates, "
+        "and kill order change every match: do "
         "not retell them, generalize from them. Use ONLY the log; never invent. Do NOT write "
         "platitudes like 'focus fire more'. ONE short sentence, no preamble."
     )
     return await _oneshot(http, sys, f"Match log: {events or 'no kills were recorded'}\nRule:")
+
+
+async def _rehuddle(http: httpx.AsyncClient, survivors: str, board: str, intel: str) -> str:
+    # a teammate just fell — the surviving lead adjusts the plan, and it reaches the team
+    # the same way everything does: as an Artel broadcast
+    sys = (
+        "You lead what remains of team Artel in a 3v3-turned-smaller tank match (hex arena, "
+        "shrinking safe zone). A teammate was just destroyed. In at most two short sentences, "
+        "give the survivors an adjusted plan: regroup where, focus whom, hold or push. Be "
+        "concrete (coordinates, enemy ids); no preamble."
+    )
+    user = (
+        f"Survivors: {survivors}. Current board: {board or 'no objectives posted'}. "
+        f"Recent reports: {intel or 'none'}\nAdjusted plan:"
+    )
+    return await _oneshot(http, sys, user, 90)
 
 
 async def _huddle(http: httpx.AsyncClient, mates: str, memory: str) -> str:
@@ -1056,6 +1074,25 @@ class Squad:
                     f"{self._context.get(lead_tid, '')} Your team plan (broadcast to the "
                     f"team): {plan}".strip()
                 )
+
+    async def on_loss(self, surviving_tank_ids: set[int]) -> None:
+        # shock event: a blue tank died. The opening plan is stale the moment the team is
+        # outnumbered — the surviving lead calls an adjusted one, broadcast over Artel.
+        if self._http is None or not self.enabled:
+            return
+        alive = [(tid, ag) for tid, ag in self._assign.items() if tid in surviving_tank_ids]
+        if not alive:
+            return
+        lead_tid, lead = alive[0]
+        survivors = ", ".join(ag["id"] for _, ag in alive)
+        board = await _board(self._http, lead)
+        intel = " | ".join((self._intel.get(lead_tid) or [])[-3:])
+        try:
+            plan = await _rehuddle(self._http, survivors, board, intel)
+        except Exception:
+            plan = ""
+        if plan:
+            await _send(self._http, lead, "team", f"TEAM PLAN (revised): {plan}"[:280], [])
 
     async def on_end(
         self, won: bool, survivors: set[int], assign: dict[int, dict], events: str = ""

@@ -197,8 +197,14 @@ async def _tick_loop():
                     intent = await task
                     if isinstance(intent, dict):
                         a.submit(tid, intent)
+                artel_before = {t.id for t in a.tanks.values() if t.team in COORDINATED}
                 a.step()
+                artel_after = {t.id for t in a.tanks.values() if t.team in COORDINATED}
                 ended = a.winner is not None or len(a.teams_alive()) <= 1
+                if live_artel and not ended and artel_after < artel_before:
+                    # a blue tank just fell — the opening plan is stale; the surviving lead
+                    # calls an adjusted one (broadcast over Artel, like everything else)
+                    asyncio.create_task(G.squad.on_loss(artel_after))
                 if ended:
                     if a.winner:
                         G.scores[a.winner] = G.scores.get(a.winner, 0) + 1

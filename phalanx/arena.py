@@ -314,14 +314,23 @@ class Arena:
             if hex_distance(t.q, t.r, cq, cr) > rad:
                 t.energy -= cfg.zone_damage
 
-        # 5. deaths — logged with attribution so after-action lessons rest on real facts
+        # 5. deaths — logged with attribution AND how far the nearest ally stood, so
+        # after-action lessons can measure cohesion failures instead of guessing at them
         dead = [t.id for t in self.tanks.values() if t.energy <= 0]
         for tid in dead:
             t = self.tanks[tid]
             k = hit_by.get(tid)
             cause = f"by #{k.id} ({k.team})" if k is not None else "by the closing zone"
+            allies = [o for o in self.tanks.values() if o.team == t.team and o.id != tid]
+            near = min((hex_distance(t.q, t.r, o.q, o.r) for o in allies), default=None)
+            ally = (
+                f", nearest ally {near} hexes away"
+                if near is not None
+                else ", last tank of its team"
+            )
             self.events.append(
-                f"tick {self.tick_count}: tank #{tid} ({t.team}) destroyed {cause} at ({t.q},{t.r})"
+                f"tick {self.tick_count}: tank #{tid} ({t.team}) destroyed {cause} "
+                f"at ({t.q},{t.r}){ally}"
             )
             del self.tanks[tid]
         del self.events[:-40]
