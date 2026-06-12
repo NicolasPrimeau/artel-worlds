@@ -132,7 +132,8 @@ SYSTEM = (
     "3. FIRE: a ready gun with a target in range always shoots, at the cheapest power that "
     "reaches. You can move the same turn.\n"
     "4. SUPPORT: a teammate UNDER FIRE (their beacon says so) outranks everything below — "
-    "move to put a shot on their attacker, not toward the center. A unit that lets its "
+    "their attacker IS the unit's focus target: if it's in your fire-now list shoot it NOW, "
+    "otherwise move to bring it into range. Not toward the center. A unit that lets its "
     "tanks die alone loses one tank at a time.\n"
     "5. FOCUS: pour the unit's fire into ONE enemy — the one the team called. Never duel a "
     "kiter at long range; close to free-fire range behind cover, or refuse the fight.\n"
@@ -917,8 +918,9 @@ async def decide(
         under = [f"{k} {v}" for k, v in beacons.items() if k != agent["id"] and "UNDER FIRE" in v]
         if under and not p.get("hit_taken"):
             user += (
-                "\nALLY UNDER FIRE — " + "; ".join(under) + ". Supporting them outranks "
-                "your current plan: converge and put a shot on their attacker."
+                "\nALLY UNDER FIRE — " + "; ".join(under) + ". Their attacker is the "
+                "unit's FOCUS target: shoot it now if it is in your fire-now list, "
+                "otherwise converge to bring it into range. This outranks your current plan."
             )
     if board:
         user += f"\nTEAM BOARD — current objectives: {board}"
