@@ -824,7 +824,10 @@ async def command(
             counts["command"] = counts.get("command", 0) + 1
         if inp.get("clear_orders"):
             bot.orders.clear()
-        focus = int(inp.get("focus", 0) or 0)
+        try:
+            focus = int(inp.get("focus", 0) or 0)
+        except (TypeError, ValueError):
+            focus = 0
         if focus:
             bot.orders["focus"] = focus
             fa = inp.get("focus_at")
