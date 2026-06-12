@@ -51,7 +51,15 @@ class Incident:
         self.step_i = 0
         self.resolved = False
         self.missed = False
+        # real ops time is noisy: every duration draws from a normal around its base cost,
+        # clamped to [0.5x, 2x]. Seeded per (seq, fleet) so replays and tests reproduce; both
+        # fleets draw from identical distributions, so the noise is unbiased between arms.
+        self._rng = Random(f"time:{seq}:{fleet}:{spec.family}")
+        self._detection = self._cost(DETECTION_SECONDS)
         spec.apply(infra)
+
+    def _cost(self, base: float) -> float:
+        return round(min(base * 2.0, max(base * 0.5, self._rng.gauss(base, base * 0.25))), 1)
 
     @property
     def family(self) -> str:
@@ -69,21 +77,21 @@ class Incident:
         action = (action or "").strip()
         node = (node or "").strip()
         if action in DIAGNOSTIC_ACTIONS:
-            self.elapsed += ACTION_SECONDS[action]
+            self.elapsed += self._cost(ACTION_SECONDS[action])
             out = self.infra.inspect(node) if action == "inspect" else self.infra.read_logs(node)
             self._record(action, node, "ok")
             return out
         if action not in REMEDIATION_ACTIONS:
-            self.elapsed += 5.0
+            self.elapsed += self._cost(5.0)
             self._record(action, node, "unknown action")
             return {"error": f"unknown action '{action}'", "valid": list(ACTION_SECONDS)}
         if node not in self.infra.nodes:
-            self.elapsed += 5.0
+            self.elapsed += self._cost(5.0)
             self._record(action, node, "no such node")
             return {"error": f"no node named '{node}'"}
         want_action, want_node = self.spec.fix[self.step_i]
         if action == want_action and node == want_node:
-            self.elapsed += ACTION_SECONDS[action]
+            self.elapsed += self._cost(ACTION_SECONDS[action])
             self.step_i += 1
             self._record(action, node, "applied")
             if self.step_i >= len(self.spec.fix):
@@ -94,7 +102,7 @@ class Incident:
                     "resolved": True,
                 }
             return {"result": f"{action} on {node} applied — partial, more remains"}
-        self.elapsed += ACTION_SECONDS[action] + WRONG_ACTION_PENALTY
+        self.elapsed += self._cost(ACTION_SECONDS[action]) + self._cost(WRONG_ACTION_PENALTY)
         self._record(action, node, "no effect")
         return {"result": f"{action} on {node} had no effect — symptoms persist"}
 
@@ -116,7 +124,7 @@ class Incident:
     def mttr(self) -> float:
         if self.missed:
             return UNRESOLVED_MTTR
-        return DETECTION_SECONDS + self.elapsed
+        return self._detection + self.elapsed
 
     def view(self) -> dict:
         return {

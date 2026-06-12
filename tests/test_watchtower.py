@@ -337,3 +337,17 @@ def test_solo_retention_fades_cold_paths_and_keeps_hot_ones():
         assert "rotate lb" in await s.recall("certificate handshake failing")
 
     asyncio.run(run())
+
+
+def test_action_times_are_noisy_bounded_and_reproducible():
+    spec = spec_for(42, 0)
+    times = set()
+    for fleet in ("artel", "solo"):
+        inc = Incident(spec, 0, Infra(DEFAULT), fleet)
+        inc.act("inspect", "db")
+        times.add(inc.elapsed)
+        assert 4.0 <= inc.elapsed <= 16.0  # clamped to [0.5x, 2x] of the 8s base
+        again = Incident(spec, 0, Infra(DEFAULT), fleet)
+        again.act("inspect", "db")
+        assert again.elapsed == inc.elapsed  # seeded: same incident + fleet replays identically
+    assert len(times) == 2  # but the two fleets draw independently
