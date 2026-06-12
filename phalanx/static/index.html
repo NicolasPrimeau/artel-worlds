@@ -359,10 +359,11 @@ function render(now){
     // turret traverse: aim smoothly tracks the live target (any angle), falling back to
     // the hull facing when there's nothing to shoot — the cannon visibly swings 360°
     let des=HEXANG[t.heading]??0;
-    if(t.target&&anim[t.target]){ const tp=curPos(anim[t.target],now); des=Math.atan2(tp.y-y,tp.x-x); }
+    if(m.aimUntil&&now<m.aimUntil&&m.aimX!=null){ des=Math.atan2(m.aimY-y,m.aimX-x); }
+    else if(t.target&&anim[t.target]){ const tp=curPos(anim[t.target],now); des=Math.atan2(tp.y-y,tp.x-x); }
     let cur=(m.aim===undefined)?des:m.aim;
     let dlt=des-cur; while(dlt>Math.PI)dlt-=2*Math.PI; while(dlt<-Math.PI)dlt+=2*Math.PI;
-    cur+=dlt*0.14; m.aim=cur; meta[t.id]=m;
+    cur+=dlt*0.25; m.aim=cur; meta[t.id]=m;
     drawTank(x,y,t.heading,cur,(m.eAt&&now<m.eAt)?m.e0:t.energy,t.team,t.coord);
     if(t.id===hoverId){ ctx.beginPath(); ctx.arc(x,y,s*0.7,0,7); ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke(); }
     hits.push({x,y,r:s*0.55,t});
@@ -386,9 +387,11 @@ function apply(snp){
   prevTick=snp.tick;
   // this tick's volley — scheduled to fire only after the glide settles, because the engine
   // fires AFTER moves (tracer cells are post-move). Beams track the live tanks regardless.
+  const aims={};
   if(L) for(const tc of (snp.tracer_list||[])){ const a=pix(tc.q,tc.r), b=pix(tc.tq,tc.tr);
     const tg=snp.tank_list.find(t=>t.q===tc.tq&&t.r===tc.tr);
     const sh=snp.tank_list.find(t=>t.q===tc.q&&t.r===tc.r);
+    if(sh) aims[sh.id]={x:b.x,y:b.y,until:now+FIRE_AT+BEAM_MS};
     beams.push({pts:[[a.x,a.y],[b.x,b.y]],team:tc.team,born:now+FIRE_AT,pw:tc.power||2});
     const jx=()=> (Math.random()-0.5)*L.size*1.2, jy=()=> (Math.random()-0.5)*L.size*0.7;
     flashes.push({x:b.x,y:b.y,team:tc.team,born:now+IMPACT_AT,tg:tg&&tg.id,dmg:Math.round(tc.dmg||0),jx:jx(),jy:jy()});
@@ -400,7 +403,9 @@ function apply(snp){
     A[t.id]={fromX:from.x,fromY:from.y,toX:to.x,toY:to.y,q:t.q,r:t.r};
     const pe=meta[t.id]?meta[t.id].e1:t.energy;
     meta[t.id]={team:t.team,coord:t.coord,heading:t.heading,e0:pe,e1:t.energy,eAt:now+IMPACT_AT,
-      aim:meta[t.id]&&meta[t.id].aim}; }
+      aim:meta[t.id]&&meta[t.id].aim,
+      aimX:aims[t.id]&&aims[t.id].x,aimY:aims[t.id]&&aims[t.id].y,
+      aimUntil:aims[t.id]&&aims[t.id].until}; }
   // deaths: keep the fallen tank on the field as a ghost gliding its last move (to the cell
   // the killing shot actually hit, if one matches), then burst once the volley lands
   const ids=new Set(snp.tank_list.map(t=>t.id));
