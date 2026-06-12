@@ -825,7 +825,7 @@ class Squad:
         self._assign: dict[int, dict] = {}  # tank id -> agent, fixed for the current match
         self._joined: set[str] = set()  # agents that have joined the project this process
         self._context: dict[int, str] = {}  # per-tank memory recalled at match start
-        self._last: dict[int, str] = {}  # per-tank last action, carried into the next turn
+        self._last: dict[int, str] = {}  # per-tank last action + what it saw, for continuity
         self._plans: dict[int, str] = {}  # per-tank standing plan (the agent's own words)
         self._intel: dict[int, list[str]] = {}  # per-tank log of teammate reports (via Artel)
         self._objectives: dict[int, dict] = {}  # per-tank current board objective (Artel task)
@@ -899,7 +899,18 @@ class Squad:
                 log_.append(f"t{p.get('tick', '?')} {line}")
             del log_[:-6]
         fired = f"fired at #{intent['fire']}" if intent.get("fire") else "held fire"
-        self._last[tank_id] = f"Last turn you {fired} and moved {intent.get('move', 'hold')}."
+        seen = "; ".join(
+            f"#{v['id']} at ({p['q'] + v['dq']},{p['r'] + v['dr']})"
+            + (f" energy {v['energy']}" if "energy" in v else "")
+            for v in p["visible"]
+            if v["kind"] == "enemy"
+        )
+        self._last[tank_id] = (
+            f"Last turn (t{p.get('tick', '?')}) you were at ({p['q']},{p['r']}), {fired}, "
+            f"moved {intent.get('move', 'hold')}; you saw: {seen or 'no enemies'}. If an enemy "
+            f"from then is missing from your state now, it moved or broke line of sight — it "
+            f"still exists."
+        )
         return intent
 
     def current_assignment(self) -> dict[int, dict]:
