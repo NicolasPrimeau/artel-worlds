@@ -233,3 +233,24 @@ def test_own_post_move_hull_does_not_block_own_shot():
     a.step()
     assert (shooter.q, shooter.r) == (6, 5)  # now standing on the old firing line
     assert a.tanks[victim.id].energy <= v0 - DEFAULT.shot_damage + 1  # shot was not self-blocked
+
+
+def test_operator_reset_wipes_the_series_but_keeps_spend(tmp_path, monkeypatch):
+    monkeypatch.setenv("PHALANX_STATE", str(tmp_path / "state.json"))
+    from fastapi.testclient import TestClient
+
+    from phalanx import server
+
+    with TestClient(server.app) as client:
+        server.G.scores = {"artel": 5, "red": 3}
+        server.G.completed = 8
+        server.G.history.append({"match": 1, "winner": "artel"})
+        server.G.squad.spent = 1.25
+        server.G.persist_state()
+
+        assert client.post("/reset").json()["ok"]
+        assert server.G.scores == {} and server.G.completed == 0 and server.G.history == []
+        assert server.G.squad.spent == 1.25  # money spent stays spent
+
+        g2 = server.Phalanx()  # the wipe was persisted, not just in-memory
+        assert g2.scores == {} and g2.completed == 0

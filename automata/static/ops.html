@@ -218,6 +218,8 @@ function render(d){
 async function resetWorld(key, name){
   const extra = key === "watchtower"
     ? " This wipes its MTTR curve and clears the shared runbooks — the A/B restarts from zero."
+    : key === "phalanx"
+    ? " This wipes the scoreboard, match history, and counter — the series restarts from 0-0. Spend is kept."
     : " It restarts the current run.";
   if (!confirm(`Reset ${name}?` + extra)) return;
   try{

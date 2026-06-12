@@ -438,8 +438,16 @@ async def state():
 
 @app.post("/reset")
 async def reset():
+    # the operator reset wipes the SERIES — scoreboard, history, match counter — and starts
+    # fresh. Spend survives: it is money actually spent, and zeroing it would falsify the
+    # cost reporting. (A mid-match restart is just a deploy; this is the intentional wipe.)
     async with G.lock:
+        G.scores = {}
+        G.history = []
+        G.completed = 0
+        G.match_no = -1
         G._new_match()
+        G.persist_state()
     return {"ok": True}
 
 
