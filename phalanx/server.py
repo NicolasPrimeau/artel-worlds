@@ -76,6 +76,8 @@ class Phalanx:
         self.match_no = int(raw.get("match_no", -1))
         self.completed = int(raw.get("completed", 0))
         self.squad.spent = float(raw.get("squad_spent", 0.0))
+        self.squad.month = str(raw.get("squad_month", ""))
+        self.squad.month_spent = float(raw.get("squad_month_spent", 0.0))
         if self.red_squad is not None:
             self.red_squad.spent = float(raw.get("red_spent", 0.0))
         self.spend_days = {k: float(v) for k, v in (raw.get("spend_days") or {}).items()}
@@ -106,6 +108,8 @@ class Phalanx:
                         "match_no": self.match_no,
                         "completed": self.completed,
                         "squad_spent": round(self.squad.spent, 6),
+                        "squad_month": self.squad.month,
+                        "squad_month_spent": round(self.squad.month_spent, 6),
                         "red_spent": round(self.red_squad.spent, 6) if self.red_squad else 0.0,
                         "spend_days": self.spend_days,
                     }

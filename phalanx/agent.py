@@ -41,7 +41,7 @@ _DEFAULT_URL = (
 )
 LLM_URL = os.environ.get("PHALANX_LLM_URL", _DEFAULT_URL)
 LLM_VERSION = os.environ.get("PHALANX_LLM_VERSION", "2023-06-01")
-SPEND_CAP_USD = float(os.environ.get("PHALANX_SPEND_CAP_USD", "20"))
+SPEND_CAP_USD = float(os.environ.get("PHALANX_SPEND_CAP_USD", "20"))  # per MONTH
 REASONING = os.environ.get("PHALANX_REASONING", "none")  # gemini thinking effort; none = off
 
 
@@ -95,7 +95,7 @@ LLM_TIMEOUT = float(os.environ.get("PHALANX_LLM_TIMEOUT", "12"))
 
 # Concise. Names the teammates, says coordinate through Artel — and stops there. No
 # instructions on HOW to use Artel: the coordination has to emerge, not be scripted.
-COMMAND_EVERY = int(os.environ.get("PHALANX_COMMAND_EVERY", "3"))  # ticks between routine orders
+COMMAND_EVERY = int(os.environ.get("PHALANX_COMMAND_EVERY", "4"))  # ticks between routine orders
 
 # The commander layer: each tank's MOTOR is the same deterministic Bot red uses (targeting,
 # range bands, pathing, prudence — identical competence on both sides). The LLM agent COMMANDS
@@ -894,7 +894,9 @@ class Squad:
         self.agents = (
             [{"id": f"{label}-{i}", "key": ""} for i in (1, 2, 3)] if solo else self._load_agents()
         )
-        self.spent = 0.0
+        self.spent = 0.0  # lifetime, for the ledger
+        self.month_spent = 0.0  # the cap operates per calendar month
+        self.month = ""  # "YYYY-MM" the month_spent belongs to
         self.last_error: str | None = None  # most recent agent failure, for /debug + logs
         self._http: httpx.AsyncClient | None = None
         self._assign: dict[int, dict] = {}  # tank id -> agent, fixed for the current match
@@ -910,6 +912,7 @@ class Squad:
         self._distress: dict | None = None  # squad-wide last UNDER FIRE call (sticky ~5 ticks)
         self._bots: dict[int, Bot] = {}  # the motors: same Bot red runs, one per tank
         self._cmd_tasks: dict[int, asyncio.Task] = {}  # in-flight commander calls (async)
+        self._commanded: set[int] = set()  # tanks that got at least one command this match
         self._objectives: dict[int, dict] = {}  # per-tank current board objective (Artel task)
         self._claims: list[tuple[dict, str]] = []  # (agent, task id) opened this match
         self.tool_counts: dict[str, int] = {}  # Artel tool usage this match, for /debug
@@ -923,7 +926,12 @@ class Squad:
     @property
     def enabled(self) -> bool:
         has_llm = bool(LLM_KEY) or bool(FALLBACK and FALLBACK["key"])
-        return bool(self.agents) and has_llm and self.spent < SPEND_CAP_USD
+        import datetime
+
+        now_month = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m")
+        if self.month != now_month:
+            self.month, self.month_spent = now_month, 0.0
+        return bool(self.agents) and has_llm and self.month_spent < SPEND_CAP_USD
 
     def assign(self, tank_ids: list[int]) -> None:
         """Bind this match's Artel tanks to agents, one agent per tank — and give each tank
@@ -1032,8 +1040,19 @@ class Squad:
         # command cadence: routine every COMMAND_EVERY ticks (staggered per tank), plus
         # immediately on alarms — taking fire, or fresh contact the team has not heard of
         idx = list(self._assign).index(tank_id) if tank_id in self._assign else 0
+        # a routine command is only worth paying for when something is happening: an enemy
+        # on the board, a distress call, fresh intel, or no orders issued yet this match.
+        # Alarms (taking fire, new contact) always command immediately.
+        interesting = (
+            bool(bot.board)
+            or bool(distress)
+            or bool(self._intel.get(tank_id))
+            or tank_id not in self._commanded
+        )
         due = (
-            (p.get("tick", 0) + idx) % COMMAND_EVERY == 0 or bool(p.get("hit_taken")) or bool(fresh)
+            ((p.get("tick", 0) + idx) % COMMAND_EVERY == 0 and interesting)
+            or bool(p.get("hit_taken"))
+            or bool(fresh)
         )
         # commands are ASYNC: the bot drives this very tick while its commander thinks in the
         # background; orders land when ready (standing orders by nature — a tick of latency is
@@ -1042,6 +1061,7 @@ class Squad:
         if prev is not None and prev.done():
             self._cmd_tasks.pop(tank_id, None)
         if due and tank_id not in self._cmd_tasks:
+            self._commanded.add(tank_id)
             self._cmd_tasks[tank_id] = asyncio.create_task(
                 self._run_command(tank_id, agent, p, bot, mate_ids, notes, distress)
             )
@@ -1082,6 +1102,7 @@ class Squad:
                 timeout=DECIDE_DEADLINE,
             )
             self.spent += cost
+            self.month_spent += cost
             self.last_error = None
             if plan:
                 self._plans[tank_id] = plan
@@ -1111,6 +1132,7 @@ class Squad:
             self._distress = None
             self._bots = {}
             self._cmd_tasks = {}
+            self._commanded = set()
             self._objectives = {}
             self._claims = []
             self._walls = {}
@@ -1130,6 +1152,7 @@ class Squad:
         self._distress = None
         self._bots = {}
         self._cmd_tasks = {}
+        self._commanded = set()
         self._objectives = {}
         self._claims = []
         self._walls = {}

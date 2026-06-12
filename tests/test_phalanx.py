@@ -498,3 +498,18 @@ def test_hurt_bot_parks_to_repair_when_nothing_in_sight():
     ]
     out = bot.decide(dict(p), DEFAULT, 6)
     assert out["move"] != "hold" or out.get("fire")  # contact: fight or fall back, not nap
+
+
+def test_spend_cap_is_monthly():
+    from phalanx.agent import SPEND_CAP_USD, Squad
+
+    sq = Squad(solo=True)
+    sq.agents = [{"id": "x", "key": "k"}]
+    sq.month, sq.month_spent = "2026-05", SPEND_CAP_USD + 1  # blew LAST month's budget
+    assert sq.enabled  # a new month resets the meter
+    assert sq.month_spent == 0.0
+    sq.month_spent = SPEND_CAP_USD + 1  # blew THIS month's budget
+    sq.month = (
+        __import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m")
+    )
+    assert not sq.enabled
