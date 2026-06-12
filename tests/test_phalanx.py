@@ -299,227 +299,6 @@ def test_teammate_on_the_line_eats_the_shot():
     assert shooter.energy < 100  # no reward for friendly hits, cost still paid
 
 
-def test_fire_at_through_a_teammate_is_floored(monkeypatch):
-    import asyncio
-
-    from phalanx import agent as A
-
-    p = {
-        "id": 1,
-        "q": 5,
-        "r": 5,
-        "heading": 0,
-        "energy": 80,
-        "gun_ready": True,
-        "tick": 3,
-        "width": 15,
-        "height": 15,
-        "map_radius": 7,
-        "power_range": [3, 5, 7],
-        "power_cost": [0, 2, 4],
-        "fire_range": 7,
-        "visible": [
-            {"id": 2, "kind": "ally", "dq": 2, "dr": 0, "dist": 2, "dir": 0},
-            {"id": 5, "kind": "enemy", "dq": 4, "dr": 0, "dist": 4, "dir": 0, "clear_shot": False},
-        ],
-        "walls": [],
-        "safe": True,
-        "zone_radius": 14,
-        "dist_center": 2,
-        "to_center": 0,
-        "hit_taken": 0,
-        "last_fire": "",
-    }
-
-    async def fake_chat(http, system, transcript, force=None, toolset=None):
-        return (
-            "",
-            [{"id": "c1", "name": "act", "input": {"fire_at": [9, 5], "power": 3}}],
-            0,
-            0,
-            {"cin": 0.0, "cout": 0.0},
-        )
-
-    monkeypatch.setattr(A, "_chat", fake_chat)
-    intent, cost, plan, inbox, recalled = asyncio.run(
-        A.decide(None, {"id": "t", "key": "k"}, p, [], solo=True)
-    )
-    assert "fire_at" not in intent  # the ray crosses the ally at (7,5) — floored
-
-
-def test_support_call_computes_shot_or_approach():
-    from phalanx.agent import _support_call
-
-    base = {
-        "q": 5,
-        "r": 5,
-        "gun_ready": True,
-        "power_range": [3, 5, 7],
-        "visible": [
-            {"id": 4, "kind": "enemy", "dq": 3, "dr": 0, "dist": 3, "dir": 0, "clear_shot": True}
-        ],
-    }
-    beacons = {"mate": "(9,5) t7 UNDER FIRE by #4 at (8,5)"}
-    sc = _support_call(base, beacons, "me")
-    assert sc["fire"] == 4 and "fire at it this turn" in sc["text"]  # attacker on my line: shoot
-
-    blind = dict(base, visible=[])
-    sc = _support_call(blind, beacons, "me")
-    assert sc["move_to"] == (8, 5)  # attacker known but unseen: converge on it
-
-    sc = _support_call(blind, {"mate": "(9,5) t7 UNDER FIRE by #4"}, "me")
-    assert sc["move_to"] == (9, 5)  # attacker unknown: converge on the teammate
-
-    assert _support_call(blind, {"mate": "(9,5) t7"}, "me") is None  # nobody under fire
-
-
-def test_idle_tank_converges_on_ally_under_fire(monkeypatch):
-    import asyncio
-
-    from phalanx import agent as A
-
-    p = {
-        "id": 1,
-        "q": 2,
-        "r": 9,
-        "heading": 0,
-        "energy": 80,
-        "gun_ready": True,
-        "tick": 5,
-        "width": 15,
-        "height": 15,
-        "map_radius": 7,
-        "power_range": [3, 5, 7],
-        "power_cost": [0, 2, 4],
-        "fire_range": 7,
-        "visible": [],
-        "walls": [],
-        "safe": True,
-        "zone_radius": 14,
-        "dist_center": 5,
-        "to_center": 0,
-        "hit_taken": 0,
-        "last_fire": "",
-    }
-
-    async def idle_chat(http, system, transcript, force=None, toolset=None):
-        return (
-            "",
-            [{"id": "c1", "name": "act", "input": {"move": "hold"}}],
-            0,
-            0,
-            {"cin": 0.0, "cout": 0.0},
-        )
-
-    monkeypatch.setattr(A, "_chat", idle_chat)
-    monkeypatch.setattr(A, "_consume_inbox", _noop_inbox)
-    monkeypatch.setattr(A, "_board", _noop_board)
-    monkeypatch.setattr(A, "_send", _noop_send)
-    beacons = {"mate": "(9,5) t5 UNDER FIRE by #4 at (8,5)"}
-    intent, cost, plan, inbox, recalled = asyncio.run(
-        A.decide(None, {"id": "me", "key": "k"}, p, ["mate"], beacons=beacons, solo=False)
-    )
-    assert intent.get("move_to") == (8, 5) or intent.get("move") == "fwd"
-
-
-async def _noop_inbox(http, agent):
-    return "", {}
-
-
-async def _noop_board(http, agent):
-    return ""
-
-
-async def _noop_send(http, agent, to, text, parents, subject=""):
-    return None
-
-
-def test_crossfire_floor_holds_the_shot_when_an_ally_hugs_the_line():
-    from phalanx.agent import _sanitize_intent
-
-    p = {
-        "id": 1,
-        "q": 5,
-        "r": 5,
-        "heading": 0,
-        "energy": 60,
-        "gun_ready": True,
-        "power_range": [3, 5, 7],
-        "power_cost": [0, 2, 4],
-        "fire_range": 7,
-        "visible": [
-            {"id": 2, "kind": "ally", "dq": 3, "dr": 0, "dist": 3, "dir": 0},  # in the scrum
-            {
-                "id": 5,
-                "kind": "enemy",
-                "dq": 4,
-                "dr": 0,
-                "dist": 4,
-                "dir": 0,
-                "clear_shot": True,
-                "energy": 60,
-            },
-        ],
-        "walls": [],
-        "safe": True,
-        "dist_center": 2,
-        "to_center": 0,
-    }
-    intent = _sanitize_intent({"turn": 0, "move": "hold", "fire": 5, "power": 2}, p, {}, "me", True)
-    assert not intent.get("fire")  # ally adjacent to the target — in the scrum
-
-    p2 = dict(p)
-    p2["visible"] = [
-        {"id": 2, "kind": "ally", "dq": 1, "dr": 1, "dist": 2, "dir": 5},  # near, NOT in scrum
-        p["visible"][1],
-    ]
-    intent = _sanitize_intent(
-        {"turn": 0, "move": "hold", "fire": 5, "power": 2}, p2, {}, "me", True
-    )
-    assert intent.get("fire") == 5  # formation no longer mutes the guns
-
-
-def test_burnout_floor_blocks_suicide_unless_finisher():
-    from phalanx.agent import _sanitize_intent
-
-    base = {
-        "id": 1,
-        "q": 5,
-        "r": 5,
-        "heading": 0,
-        "energy": 2,
-        "gun_ready": True,
-        "power_range": [3, 5, 7],
-        "power_cost": [0, 2, 4],
-        "fire_range": 7,
-        "visible": [
-            {
-                "id": 5,
-                "kind": "enemy",
-                "dq": 4,
-                "dr": 0,
-                "dist": 4,
-                "dir": 0,
-                "clear_shot": True,
-                "energy": 60,
-            }
-        ],
-        "walls": [],
-        "safe": True,
-        "dist_center": 2,
-        "to_center": 0,
-    }
-    out = _sanitize_intent({"turn": 0, "move": "hold", "fire": 5, "power": 2}, base, {}, "me", True)
-    assert not out.get("fire")  # power 2 costs 4 = death for nothing; power 1 cannot reach
-
-    finisher = dict(base)
-    finisher["visible"] = [dict(base["visible"][0], energy=10)]
-    out = _sanitize_intent(
-        {"turn": 0, "move": "hold", "fire": 5, "power": 2}, finisher, {}, "me", True
-    )
-    assert out.get("fire") == 5  # trading yourself for a kill stays a legal choice
-
-
 def test_repair_only_when_idle_untouched_and_inside():
     a, shooter, victim = _duel(41)
     victim.q, victim.r = 9, 5
@@ -544,20 +323,27 @@ def test_repair_only_when_idle_untouched_and_inside():
     assert a.tanks[shooter.id].energy == 48.0
 
 
-def test_auto_lead_converts_id_shot_on_a_mover():
-    from phalanx.agent import _sanitize_intent
+def test_orders_focus_overrides_temperament_and_seeds_intel():
+    from phalanx.control import Bot
 
+    bot = Bot(1, "artel", "brawler")
     p = {
-        "id": 1,
         "q": 5,
         "r": 5,
         "heading": 0,
-        "energy": 70,
+        "energy": 80,
         "gun_ready": True,
-        "power_range": [3, 5, 7],
-        "power_cost": [0, 2, 4],
-        "fire_range": 7,
         "visible": [
+            {
+                "id": 4,
+                "kind": "enemy",
+                "dq": 1,
+                "dr": 0,
+                "dist": 1,
+                "dir": 0,
+                "clear_shot": True,
+                "energy": 60,
+            },
             {
                 "id": 5,
                 "kind": "enemy",
@@ -566,187 +352,115 @@ def test_auto_lead_converts_id_shot_on_a_mover():
                 "dist": 3,
                 "dir": 0,
                 "clear_shot": True,
-                "energy": 50,
-                "step": [1, 0],
-            }
+                "energy": 60,
+            },
         ],
         "walls": [],
-        "safe": True,
-        "dist_center": 2,
-        "to_center": 0,
-        "hit_taken": 0,
-        "map_radius": 7,
-        "width": 15,
-        "height": 15,
+        "zone_radius": 14,
     }
-    out = _sanitize_intent(
-        {"turn": 0, "move": "hold", "fire": 5, "power": 1}, dict(p), {}, "me", True
-    )
-    # RADIAL mover (fleeing along the ray): the extended line already covers it — id shot stands
-    assert out.get("fire") == 5
-    assert not out.get("fire_at")
-
-    p["visible"][0]["step"] = [0, 1]  # TANGENTIAL: stepping off the ray — lead it
-    out = _sanitize_intent(
-        {"turn": 0, "move": "hold", "fire": 5, "power": 1}, dict(p), {}, "me", True
-    )
-    assert out.get("fire_at") == (8, 6)
-    assert not out.get("fire")
-
-    p["visible"][0]["step"] = [0, 0]
-    out = _sanitize_intent(
-        {"turn": 0, "move": "hold", "fire": 5, "power": 1}, dict(p), {}, "me", True
-    )
-    assert out.get("fire") == 5  # stationary target: the id shot stands
+    # no orders: a brawler shoots the nearest (#4)
+    assert bot.decide(dict(p), DEFAULT, 1)["fire"] == 4
+    # focus order: the called target outranks temperament
+    bot.orders["focus"] = 5
+    assert bot.decide(dict(p), DEFAULT, 2)["fire"] == 5
+    # focus_at seeds the board with intel the tank never saw itself
+    blind = dict(p, visible=[])
+    bot2 = Bot(2, "artel", "ranger")
+    bot2.orders.update({"focus": 5, "focus_at": (9, 5)})
+    bot2.decide(blind, DEFAULT, 3)
+    assert bot2.board[5]["q"] == 9 and bot2.board[5]["r"] == 5  # hunting a reported enemy
 
 
-def test_auto_scoot_steps_off_the_line_after_firing():
-    from phalanx.agent import _sanitize_intent
+def test_orders_regroup_moves_and_clears_on_arrival():
+    from phalanx.control import Bot
 
+    bot = Bot(1, "artel", "opportunist")
     p = {
-        "id": 1,
-        "q": 5,
-        "r": 5,
+        "q": 3,
+        "r": 10,
         "heading": 0,
-        "energy": 70,
+        "energy": 80,
         "gun_ready": True,
-        "power_range": [3, 5, 7],
-        "power_cost": [0, 2, 4],
-        "fire_range": 7,
-        "visible": [
-            {
-                "id": 5,
-                "kind": "enemy",
-                "dq": 3,
-                "dr": 0,
-                "dist": 3,
-                "dir": 0,
-                "clear_shot": True,
-                "energy": 50,
-                "step": [0, 0],
-            }
-        ],
+        "visible": [],
         "walls": [],
-        "safe": True,
-        "dist_center": 2,
-        "to_center": 0,
-        "hit_taken": 0,
-        "map_radius": 7,
-        "width": 15,
-        "height": 15,
+        "zone_radius": 14,
     }
-    out = _sanitize_intent(
-        {"turn": 0, "move": "hold", "fire": 5, "power": 1}, dict(p), {}, "me", True
-    )
-    assert out.get("move_to")  # fired while exposed: doctrine steps it off the line
-    assert out["move_to"] != (5, 5)
+    bot.orders["regroup"] = (8, 6)
+    out = bot.decide(dict(p), DEFAULT, 1)
+    assert out["move"] == "fwd"  # marching to the rally, not sweeping its lane
+    near = dict(p, q=8, r=7)  # adjacent to the rally point
+    bot.decide(near, DEFAULT, 2)
+    assert "regroup" not in bot.orders  # arrived: order clears itself
 
 
-def test_floor_pipeline_does_not_cripple_combat():
-    # REGRESSION HARNESS for the sanitizer/drivetrain floors: a floors-only blue (reflex
-    # through the full pipeline, no LLM) must stay FUNCTIONAL against the bots. It loses on
-    # strategy (~30% wins when healthy) and that's fine — but a floor bug that mutes guns or
-    # pulls shots off their lines collapses this to near zero. The indiscriminate auto-lead
-    # shipped exactly that way, past 60 green unit tests.
+def test_orders_post_holds_position_when_nothing_known():
+    from phalanx.control import Bot
+
+    bot = Bot(1, "artel", "brawler")
+    p = {
+        "q": 7,
+        "r": 7,
+        "heading": 0,
+        "energy": 80,
+        "gun_ready": True,
+        "visible": [],
+        "walls": [],
+        "zone_radius": 14,
+    }
+    bot.orders["post"] = (7, 7)
+    out = bot.decide(dict(p), DEFAULT, 1)
+    assert out["move"] == "hold"  # holding the assigned post instead of lane-sweeping
+
+
+def test_red_bots_never_have_orders():
+    # the ablation invariant: red runs the same Bot with orders forever empty
+    from phalanx.control import Bot
+
+    bot = Bot(4, "red")
+    assert bot.orders == {}
+
+
+def test_coordination_orders_beat_identical_solo_motors():
+    # THE architecture's claim, regression-tested: same Bot motors on both sides; blue gets
+    # a scripted commander with Artel-grade information (merged boards, focus calls, intel
+    # feeds). Coordination must produce a real edge (~58% healthy; <46% means the orders
+    # plumbing broke). The LLM commander only needs to approximate this policy.
     from collections import Counter
 
-    from phalanx.agent import _drivetrain, _reflex, _sanitize_intent
     from phalanx.control import STRATEGIES, Bot
 
-    def floors_blue(p, wall_mem):
-        intent = dict(_reflex(p))
-        intent = _sanitize_intent(intent, p, {}, "me", True)
-        _drivetrain(intent, p, wall_mem)
-        return intent
+    def command_blue(bots):
+        board = {}
+        for b in bots:
+            for eid, rec in b.board.items():
+                if eid not in board or rec["seen"] > board[eid]["seen"]:
+                    board[eid] = rec
+        if not board:
+            return
+        target = min(board, key=lambda e: (board[e]["energy"],))
+        rec = board[target]
+        for b in bots:
+            b.orders["focus"] = target
+            if target not in b.board:
+                b.orders["focus_at"] = (rec["q"], rec["r"])
 
     wins = Counter()
-    for m in range(60):
-        a = Arena(DEFAULT, seed=7000 + m)
+    for m in range(120):
+        a = Arena(DEFAULT, seed=9000 + m)
         a.seed_house(flip=bool(m % 2))
-        bots, mems = {}, {}
+        blue, red = {}, {}
         for i, t in enumerate(a.tanks.values()):
-            if t.team == "red":
-                bots[t.id] = Bot(t.id, t.team, STRATEGIES[i % len(STRATEGIES)])
-            mems[t.id] = set()
+            side = blue if t.team == "artel" else red
+            side[t.id] = Bot(t.id, t.team, STRATEGIES[i % len(STRATEGIES)])
         for _ in range(DEFAULT.match_max_ticks + 1):
+            command_blue([b for tid, b in blue.items() if tid in a.tanks])
             for t in list(a.tanks.values()):
                 p = a.perceive(t.id)
-                if not p:
-                    continue
-                a.submit(
-                    t.id,
-                    bots[t.id].decide(p, a.cfg, a.tick_count)
-                    if t.id in bots
-                    else floors_blue(p, mems[t.id]),
-                )
+                if p:
+                    bot = blue.get(t.id) or red[t.id]
+                    a.submit(t.id, bot.decide(p, a.cfg, a.tick_count))
             a.step()
             if a.winner:
                 break
         wins[a.winner] += 1
-    assert wins["artel"] >= 9, f"floors crippled combat: {dict(wins)}"
-
-
-def test_fire_at_gate_kills_the_three_confusions():
-    from phalanx.agent import _sanitize_intent
-
-    base = {
-        "id": 1,
-        "q": 5,
-        "r": 5,
-        "heading": 0,
-        "energy": 70,
-        "gun_ready": True,
-        "power_range": [3, 5, 7],
-        "power_cost": [0, 2, 4],
-        "fire_range": 7,
-        "visible": [],
-        "walls": [],
-        "safe": True,
-        "dist_center": 2,
-        "to_center": 0,
-        "hit_taken": 0,
-        "map_radius": 7,
-        "width": 15,
-        "height": 15,
-    }
-    # 1. shooting your own empty destination ("fire where I'm moving")
-    out = _sanitize_intent(
-        {"turn": 0, "move": "hold", "fire": 0, "fire_at": (8, 5), "move_to": (8, 5)},
-        dict(base),
-        {},
-        "me",
-        True,
-    )
-    assert not out.get("fire_at")
-
-    # 2. a known wall eats the ray before the aim cell
-    p = dict(base)
-    p["walls"] = [{"dq": 2, "dr": 0}]
-    out = _sanitize_intent(
-        {"turn": 0, "move": "hold", "fire": 0, "fire_at": (9, 5)}, p, {}, "me", True
-    )
-    assert not out.get("fire_at")
-
-    # 3. an auto-lead that would cross a teammate falls back to the valid id shot
-    p = dict(base)
-    p["visible"] = [
-        {
-            "id": 5,
-            "kind": "enemy",
-            "dq": 4,
-            "dr": 0,
-            "dist": 4,
-            "dir": 0,
-            "clear_shot": True,
-            "energy": 50,
-            "step": [0, 1],
-        },
-        {"id": 2, "kind": "ally", "dq": 2, "dr": 1, "dist": 3, "dir": 0},
-    ]
-    out = _sanitize_intent({"turn": 0, "move": "hold", "fire": 5, "power": 2}, p, {}, "me", True)
-    if out.get("fire_at"):
-        from phalanx.tank import hex_line
-
-        assert (7, 6) not in hex_line(5, 5, *out["fire_at"])
-    else:
-        assert out.get("fire") == 5  # gate rejected the lead; the id shot survived
+    assert wins["artel"] >= 55, f"coordination edge lost: {dict(wins)}"

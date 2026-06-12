@@ -8,7 +8,8 @@ import os
 
 import httpx
 
-from .tank import bfs_step, hex_line
+from .config import DEFAULT
+from .control import STRATEGIES, Bot
 
 log = logging.getLogger("phalanx")
 
@@ -94,105 +95,78 @@ LLM_TIMEOUT = float(os.environ.get("PHALANX_LLM_TIMEOUT", "12"))
 
 # Concise. Names the teammates, says coordinate through Artel — and stops there. No
 # instructions on HOW to use Artel: the coordination has to emerge, not be scripted.
-_GOAL_RULES = (
-    "GOAL: destroy all three enemy tanks; last team standing wins (a draw counts as a loss).\n"
-    "RULES:\n"
-    "- Simultaneous turns: every tank moves one step AND may shoot, together.\n"
-    "- move_to [q,r]: the drivetrain takes the best step toward it (turning, cover, queueing "
-    "behind teammates). Think in destinations; 'hold' only to deliberately stand still.\n"
-    "- Energy is health and fuel; 0 = destroyed; no regen. A hit deals 12, refunds the "
-    "shooter 2.\n"
-    "- BALLISTIC fire: power 1/2/3 = range 3/5/7 for 0/2/4 energy. Your shot is a fixed "
-    "line aimed at the target's CURRENT hex; the FIRST tank or wall on that line takes the "
-    "12 — including a TEAMMATE. A target that moves off the line is MISSED and you still "
-    "pay. Lead movers: fire_at the hex they are moving INTO. A shot that leaves you at 0 "
-    "destroys you. Ready again next turn; hull facing never matters for shooting.\n"
-    "- You fire from where you START the turn and move after — shoot, then duck into cover "
-    "the SAME turn; likewise ending your move off an enemy's line makes THEIR shot miss. A "
-    "gun trained on a corner pins whoever hides behind it; two angles beat one wall.\n"
-    "- Cover blocks movement, shots, and sight. Tanks are solid: formation = adjacent "
-    "hexes, never shared ones. Fog of war: sight 8 with a clear line; teammates see "
-    "different things.\n"
-    "- The safe zone shrinks toward the arena center; outside it you bleed every turn.\n"
-    "- REPAIR: hold still, don't fire, take no hit, inside the zone — recover 2 energy that "
-    "turn. Wounded? Fall back behind cover or teammates and repair; pressure a wounded "
-    "enemy so it never can.\n"
-)
+COMMAND_EVERY = int(os.environ.get("PHALANX_COMMAND_EVERY", "3"))  # ticks between routine orders
 
+# The commander layer: each tank's MOTOR is the same deterministic Bot red uses (targeting,
+# range bands, pathing, prudence — identical competence on both sides). The LLM agent COMMANDS
+# its bot through standing orders, at command cadence, from what it learns over Artel. Red
+# gets no orders: coordination is exactly and only what Artel buys.
 SYSTEM = (
-    "You drive one tank on team Artel against the three tanks of team Red in Phalanx, a "
-    "turn-based hex tank game. Your teammates are {mates}; you share Artel and fight as a "
-    "phalanx — one body, never three individuals.\n"
-    + _GOAL_RULES
-    + "PRIORITIES, in order (your state computes THE priority each turn — follow it):\n"
-    "1. ZONE: never linger outside the safe zone.\n"
-    "2. FORMATION: within 2 hexes of a teammate, and NEVER on the line between a teammate "
-    "and an enemy.\n"
-    "3. FIRE: a ready gun with a clear line shoots at the cheapest power that reaches — at "
-    "tanks that will still BE there. Lead movers; don't feed energy to dodges.\n"
-    "4. SUPPORT: a teammate UNDER FIRE outranks everything below — their attacker is the "
-    "unit's focus target: shoot it now or move to reach it.\n"
-    "5. FOCUS: the unit kills ONE enemy at a time; refuse long-range duels with kiters.\n"
-    "ARTEL, in the same act call — say: report only NEW actionable facts with coordinates "
-    "('SPOTTED #5 (7,4) energy 40', 'FOCUS #5', 'REGROUP (8,6)'); teammates' reports are "
-    "real positions you cannot see, act on them. objective: your ONE medium-term commitment "
-    "on the team board ('hold (8,6)', 'push east with blue-2') — change it only when "
-    "reality breaks it. lesson: save one concrete, game-grounded lesson when a move clearly "
-    "won or lost a fight; [WIN]/[LOSS] lessons from past matches arrive in your context — "
-    "trust wins, distrust losses."
+    "You command one tank in team Artel's three-tank unit in Phalanx (hex arena, shrinking "
+    "safe zone, last team standing). Your teammates are {mates}; everything the unit shares "
+    "flows through Artel. Your tank DRIVES ITSELF competently (targeting, range-keeping, "
+    "pathing, retreating when hurt). You do not steer — you give STANDING ORDERS when the "
+    "situation calls for them:\n"
+    "- focus: concentrate the unit's fire on ONE enemy id (pass focus_at [q,r] from a "
+    "teammate's report and your tank will hunt a target it has never seen — that is the "
+    "whole point of the radio).\n"
+    "- regroup [q,r]: rally there now. Use it to mass the unit, rescue a teammate under "
+    "fire, or collapse on a kill.\n"
+    "- post [q,r]: where to hold when it has no contact (ambush corners, cover the zone).\n"
+    "- clear_orders: release your tank back to its own instincts.\n"
+    "DOCTRINE, in order: a teammate UNDER FIRE outranks everything — focus their attacker "
+    "and converge; mass fire on ONE enemy (a 3v1 wins, three 1v1s lose); fight INSIDE the "
+    "shrinking zone, near cover, never strung out alone.\n"
+    "ARTEL, in the same call — say: report only NEW actionable facts with coordinates "
+    "('SPOTTED #5 (7,4) energy 40', 'FOCUS #5', 'RALLY (8,6)'); teammates' reports are real "
+    "positions you cannot see. objective: your ONE medium-term commitment on the team "
+    "board; change it only when reality breaks it. lesson: save one concrete lesson when a "
+    "call clearly won or lost a fight; [WIN]/[LOSS] lessons from past matches arrive in "
+    "your context — trust wins.\n"
+    "No orders needed? Send none — your tank fights fine alone; orders are for making three "
+    "tanks fight as ONE."
 )
 
-# the ablation control: the SAME mind with the Artel infrastructure removed. Identical
-# game rules; no radio, no board, no beacons, no shared memory.
 SOLO_SYSTEM = (
-    "You drive one tank on team Red against the three tanks of team Artel in Phalanx, a "
-    "turn-based hex tank game. Your teammates are {mates}, but you have NO communication "
-    "with them — no radio, no shared map, no shared memory. You know only what you see.\n"
-    + _GOAL_RULES
-    + "PRIORITIES, in order (your state computes THE priority each turn — follow it):\n"
-    "1. ZONE: never linger outside the safe zone.\n"
-    "2. FORMATION: stay within 2 hexes of a teammate YOU CAN SEE when possible.\n"
-    "3. FIRE: a ready gun with a clear line shoots at the cheapest power that reaches — at "
-    "tanks that will still BE there. Lead movers; don't feed energy to dodges.\n"
-    "4. FOCUS: concentrate fire on one enemy at a time; refuse long-range duels with kiters."
+    "You command one tank of team Red in Phalanx (hex arena, shrinking safe zone, last team "
+    "standing). Your teammates are {mates}, but you have NO communication with them — no "
+    "radio, no shared map. Your tank drives itself competently; you may give it standing "
+    "orders from what YOU can see: focus (enemy id), regroup [q,r], post [q,r], "
+    "clear_orders. No orders needed? Send none."
 )
 
-_ACT_PROPS = {
-    "fire_at": {
-        "type": "array",
-        "items": {"type": "integer"},
-        "description": "predictive shot: aim at a HEX [q,r] — fire where a mover is GOING. "
-        "Overrides fire's aim; still costs the chosen power. NOT your own move_to "
-        "destination, and never through a wall or teammate.",
-    },
-    "move_to": {
-        "type": "array",
-        "items": {"type": "integer"},
-        "description": "hex [q,r] to step toward this turn — the drivetrain handles turning "
-        "and obstacles. OMIT to stand still (holding while firing is often correct).",
-    },
-    "move": {"type": "string", "enum": ["fwd", "back", "hold"]},
-    "turn": {"type": "string", "enum": ["left", "right", "none"]},
-    "fire": {"type": "integer", "description": "enemy tank id to shoot at, or 0 to hold fire"},
-    "power": {
-        "type": "integer",
-        "description": "shot power 1-3: range 3/5/7 for 0/2/4 energy — smallest that reaches",
-    },
-    "plan": {
-        "type": "string",
-        "description": "one short line on your intent over the next few turns — shown back "
-        "to you next turn so you can follow through instead of starting over",
-    },
-}
 TOOLS = [
     {
-        "name": "act",
-        "description": "Your ONE call per turn: the tank's action plus any Artel traffic — "
-        "all together, nothing else follows.",
+        "name": "command",
+        "description": "Your one call: standing orders for your tank (all optional — omit "
+        "everything to leave it fighting on instinct) plus any Artel traffic.",
         "schema": {
             "type": "object",
             "properties": {
-                **_ACT_PROPS,
+                "focus": {
+                    "type": "integer",
+                    "description": "enemy tank id the unit should concentrate on (0 = none)",
+                },
+                "focus_at": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "[q,r] last reported position of the focus target — lets "
+                    "your tank hunt an enemy it has not seen itself",
+                },
+                "regroup": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "[q,r] rally point: the tank moves there now, then resumes",
+                },
+                "post": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "[q,r] where to hold when it has no contact",
+                },
+                "clear_orders": {
+                    "type": "boolean",
+                    "description": "true = drop all standing orders, back to instinct",
+                },
                 "say": {
                     "type": "string",
                     "description": "optional Artel report to the team: NEW actionable facts "
@@ -200,36 +174,35 @@ TOOLS = [
                 },
                 "objective": {
                     "type": "string",
-                    "description": "optional: replace YOUR objective on the team board — a "
-                    "medium-term commitment that should survive 5+ turns",
+                    "description": "optional: replace YOUR objective on the team board",
                 },
                 "lesson": {
                     "type": "string",
-                    "description": "optional: save one lesson that will still be true next "
-                    "match, in terms of the game's pieces — no positions, no platitudes",
+                    "description": "optional: one lesson that will still be true next match",
+                },
+                "plan": {
+                    "type": "string",
+                    "description": "one short line of intent — shown back to you next time",
                 },
             },
-            "required": ["move", "turn", "fire"],
         },
     }
 ]
-
-# AXIAL_DIRS rotates counterclockwise on screen (E, NE, NW, W, SW, SE) — so a LEFT turn
-# (toward the tank's port side) is +1, and RIGHT is -1. These were mirrored for a long
-# time, which made every steering decision come out backwards.
 TOOLS_SOLO = [
     {
-        "name": "act",
-        "description": "Your ONE call per turn: the tank's action. Nothing else follows.",
+        "name": "command",
+        "description": "Standing orders for your tank — all optional; omit everything to "
+        "leave it fighting on instinct.",
         "schema": {
             "type": "object",
-            "properties": dict(_ACT_PROPS),
-            "required": ["move", "turn", "fire"],
+            "properties": {
+                k: v
+                for k, v in TOOLS[0]["schema"]["properties"].items()
+                if k in ("focus", "regroup", "post", "clear_orders", "plan")
+            },
         },
     }
 ]
-
-_TURN = {"left": 1, "right": -1, "none": 0}
 
 
 def _hexdist(aq: int, ar: int, bq: int, br: int) -> int:
@@ -507,180 +480,47 @@ def _support_call(p: dict, beacons: dict, self_id: str) -> dict | None:
     return None
 
 
-def _perception_text(p: dict) -> str:
-    # the agent's FULL state, every turn: itself (position, energy, cannon, gun), the zone,
-    # everything it can see (enemies, teammates, cover) in absolute hex coordinates, and what
-    # it can shoot right now. Decisions can only be as good as the state they rest on.
-    fr = p.get("fire_range", 7)
-    powers = p.get("power_range", [3, 5, 7])
-    q, r, hd = p["q"], p["r"], p["heading"]
-    foes, can_fire = [], []
-    for e in p["visible"]:
-        if e["kind"] != "enemy":
-            continue
-        rel = _REL[(e["dir"] - hd) % 6]
-        clear = e.get("clear_shot", True)
-        in_range = e["dist"] <= fr and clear
-        need = next((i + 1 for i, rng_ in enumerate(powers) if e["dist"] <= rng_), 0)
-        if in_range:
-            can_fire.append(f"#{e['id']} (power {need})")
-        energy = f", energy {e['energy']}" if "energy" in e else ""
-        tag = (
-            f"hit with power {need}+"
-            if in_range
-            else ("a tank blocks the shot" if not clear else f"out of range (>{fr})")
-        )
-        step = e.get("step") or [0, 0]
-        if step[0] or step[1]:
-            lead = (q + e["dq"] + step[0], r + e["dr"] + step[1])
-            mv = f" MOVING — to hit it, fire_at its next hex ({lead[0]},{lead[1]})"
-        else:
-            mv = " stationary (a fire at its id will land)"
-        foes.append(
-            f"#{e['id']} at ({q + e['dq']},{r + e['dr']}) dist {e['dist']} {rel} [{tag}]{energy}{mv}"
-        )
-    allies = [
+def _command_brief(p: dict, bot) -> str:
+    # everything a COMMANDER needs, nothing a driver does: who is where, who is hurt, what
+    # the tank is currently ordered to do, and the alarms that should change the orders
+    q, r = p["q"], p["r"]
+    foes = [
         f"#{e['id']} at ({q + e['dq']},{r + e['dr']}) dist {e['dist']}"
+        + (f" energy {e['energy']}" if "energy" in e else "")
         for e in p["visible"]
-        if e["kind"] == "ally"
+        if e["kind"] == "enemy"
     ]
-    walls = sorted((q + w["dq"], r + w["dr"]) for w in p.get("walls", []))
-    fq, frr = AXIAL_DIRS[hd]
-    zr = p.get("zone_radius")
-    dc = p.get("dist_center", 0)
-
-    w, h = p.get("width", 15), p.get("height", 15)
-    wallset = {(w_["dq"], w_["dr"]) for w_ in p.get("walls", [])}
-    occ = {(v["dq"], v["dr"]): v for v in p.get("visible", [])}
-    blocked_dirs = []
-    for d in range(6):
-        dq, dr = AXIAL_DIRS[d]
-        nq, nr = q + dq, r + dr
-        if not _on_map(p, nq, nr):
-            blocked_dirs.append(f"({nq},{nr}) [MAP EDGE]")
-        elif (dq, dr) in wallset:
-            blocked_dirs.append(f"({nq},{nr}) [cover]")
-        elif (dq, dr) in occ:
-            v = occ[(dq, dr)]
-            who = "teammate" if v["kind"] == "ally" else "enemy"
-            blocked_dirs.append(f"({nq},{nr}) [{who} #{v['id']} — tanks are solid]")
+    known = [
+        f"#{eid} last seen at ({rec['q']},{rec['r']})"
+        for eid, rec in (bot.board if bot else {}).items()
+        if eid not in {e["id"] for e in p["visible"] if e["kind"] == "enemy"}
+    ]
+    allies = [
+        f"#{e['id']} at ({q + e['dq']},{r + e['dr']})" for e in p["visible"] if e["kind"] == "ally"
+    ]
+    orders = ", ".join(f"{k}={v}" for k, v in (bot.orders if bot else {}).items()) or "none"
+    zr, dc = p.get("zone_radius"), p.get("dist_center", 0)
+    cq, cr = p.get("width", 15) // 2, p.get("height", 15) // 2
     lines = [
-        f"STATE — turn {p.get('tick', '?')}, you are tank #{p['id']}:",
-        f"- Arena: a HEXAGON of radius {(w - 1) // 2} around the center ({w // 2},{h // 2}) "
-        f"(axial coords). Moving past its edge is impossible.",
-        f"- Position ({q},{r}), energy {p['energy']}, cannon facing ({q + fq},{r + frr}) "
-        f"[fwd moves there, back moves opposite; facing does not matter for shooting]",
-        f"- Gun: {'READY' if p['gun_ready'] else 'reloading (ready next turn)'}"
-        + (
-            f"; clear line RIGHT NOW to: {', '.join(can_fire)} — a shot is aimed at where "
-            f"they STAND; if they move off the line it misses"
-            if p["gun_ready"] and can_fire
-            else ""
-        ),
-        f"- Zone: safe radius {zr} around the arena center; you are {dc} from center — "
-        + ("INSIDE the safe zone" if p.get("safe", True) else "OUTSIDE, BLEEDING energy"),
-        f"- Enemies in sight: {'; '.join(foes) if foes else 'none'}",
-        f"- Teammates in sight: {'; '.join(allies) if allies else 'none'}",
-        "- Cover hexes in sight (impassable, block shots): "
-        + (", ".join(f"({wq},{wr})" for wq, wr in walls) if walls else "none"),
+        f"BRIEF — turn {p.get('tick', '?')}, your tank #{p['id']} "
+        f"({bot.strategy if bot else '?'} temperament):",
+        f"- At ({q},{r}), energy {p['energy']}, gun "
+        f"{'ready' if p.get('gun_ready') else 'reloading'}; standing orders: {orders}",
+        f"- Zone: safe radius {zr} around ({cq},{cr}); you are {dc} out — "
+        + ("inside" if p.get("safe", True) else "OUTSIDE, BLEEDING"),
+        f"- Enemies in ITS sight: {'; '.join(foes) if foes else 'none'}",
     ]
-    if blocked_dirs:
-        lines.append(
-            "- You CANNOT move into: " + ", ".join(blocked_dirs) + " — pick another direction."
-        )
-    threats = [
-        f"#{e['id']} (dist {e['dist']})"
-        for e in p["visible"]
-        if e["kind"] == "enemy" and e.get("clear_shot", True) and e["dist"] <= fr
-    ]
-    if threats:
-        lines.append(
-            "- EXPOSED: these enemies have a clear line on YOU right now: "
-            + ", ".join(threats)
-            + ". Ending your move behind cover or out of their line makes their shot MISS."
-        )
+    if known:
+        lines.append(f"- On its board (stale sightings): {'; '.join(known)}")
+    lines.append(f"- Teammates in sight: {'; '.join(allies) if allies else 'none'}")
     if p.get("last_fire"):
-        lines.append(f"- YOUR LAST SHOT: {p['last_fire']}.")
-    costs = p.get("power_cost", [0, 2, 4])
-    if p["energy"] <= costs[-1]:
-        lines.append(
-            f"- ENERGY CRITICAL ({p['energy']}): firing costs {costs[0]}/{costs[1]}/{costs[2]} "
-            f"energy by power, and a shot that leaves you at 0 destroys you. Choose power you "
-            f"survive — or spend yourself on a shot that matters."
-        )
+        lines.append(f"- Its last shot: {p['last_fire']}")
     if p.get("hit_taken"):
-        shooter = p.get("hit_from", 0)
-        seen_sh = next(
-            (e for e in p["visible"] if e["kind"] == "enemy" and e["id"] == shooter), None
-        )
-        where = (
-            f"#{shooter} at ({q + seen_sh['dq']},{r + seen_sh['dr']})"
-            if seen_sh
-            else f"#{shooter}, NOT in your sight (it shoots you from cover or beyond your vision)"
-        )
         lines.append(
-            f"- ALARM — YOU ARE TAKING FIRE: {p['hit_taken']} damage last turn from {where}. "
-            f"Tell the team where, and either get help, break line of sight, or fall back to "
-            f"a teammate. Standing alone under fire is how tanks die."
+            f"- ALARM: taking fire ({p['hit_taken']} dmg) from #{p.get('hit_from', '?')} — "
+            f"call for help or pull it out."
         )
     return "\n".join(lines)
-
-
-def _priority(p: dict, beacons: dict, self_id: str, has_objective: bool, solo: bool) -> str:
-    # ONE directive per turn, picked by the ladder — the nudges used to stack and shout
-    # over each other; a small model follows the loudest line, so there is only one now
-    zr, dc = p.get("zone_radius"), p.get("dist_center", 0)
-    cq, crr = p.get("width", 15) // 2, p.get("height", 15) // 2
-    if not p.get("safe", True):
-        return f"PRIORITY: you are OUTSIDE the zone — move_to ({cq},{crr}) NOW; fight on the way."
-    if p.get("hit_taken"):
-        shooter = p.get("hit_from", 0)
-        seen = next((e for e in p["visible"] if e["kind"] == "enemy" and e["id"] == shooter), None)
-        where = (
-            f"#{shooter} at ({p['q'] + seen['dq']},{p['r'] + seen['dr']})"
-            if seen
-            else f"#{shooter} (unseen)"
-        )
-        return (
-            f"PRIORITY: YOU ARE TAKING FIRE from {where} — shoot back if it is on your "
-            f"line, otherwise break the line or fall back to a teammate. Tell the team."
-        )
-    if not solo and beacons:
-        sc = _support_call(p, beacons, self_id)
-        if sc:
-            return "PRIORITY: " + sc["text"]
-    fr = p.get("fire_range", 7)
-    clear = [
-        e
-        for e in p["visible"]
-        if e["kind"] == "enemy" and e.get("clear_shot", True) and e["dist"] <= fr
-    ]
-    if clear and p.get("gun_ready"):
-        near = min(clear, key=lambda e: e["dist"])
-        return (
-            f"PRIORITY: clear shot on #{near['id']} — take it at the cheapest power, and "
-            f"reposition in the same turn (shoot-and-scoot)."
-        )
-    if clear and not p.get("gun_ready"):
-        return "PRIORITY: you are EXPOSED with an empty gun — end your move off their line."
-    seen_foes = [e for e in p["visible"] if e["kind"] == "enemy"]
-    if seen_foes:
-        near = min(seen_foes, key=lambda e: e["dist"])
-        return (
-            f"PRIORITY: close on #{near['id']} at "
-            f"({p['q'] + near['dq']},{p['r'] + near['dr']}) through cover and bring it "
-            f"into range."
-        )
-    if p.get("energy", 99) <= 30 and p.get("safe", True):
-        return (
-            "PRIORITY: you are wounded with no contact — hold still behind cover and REPAIR "
-            "(+2/turn); ask the team to screen you."
-        )
-    if zr is not None and zr - dc <= 2:
-        return f"PRIORITY: the zone is at your heels — drift toward ({cq},{crr}) as you fight."
-    if not solo and not has_objective:
-        return "PRIORITY: no enemies in sight — set an objective and advance with your team."
-    return "PRIORITY: advance with your team toward the shrinking center; report anything new."
 
 
 async def _consume_inbox(http: httpx.AsyncClient, agent: dict) -> tuple[str, dict]:
@@ -904,44 +744,11 @@ async def _huddle(http: httpx.AsyncClient, mates: str, memory: str) -> str:
     )
 
 
-def _reflex(p: dict) -> dict:
-    # a competent never-idle move computed from perception alone — used to fill gaps the model
-    # leaves and as the fallback when a decision errors or runs past the deadline. Fire the
-    # nearest in-range enemy; otherwise advance on the nearest enemy seen, else toward center.
-    fr = p.get("fire_range", 7)
-    powers = p.get("power_range", [3, 5, 7])
-    seen = [v for v in p["visible"] if v["kind"] == "enemy"]
-    in_range = [v for v in seen if v["dist"] <= fr and v.get("clear_shot", True)]
-    costs = p.get("power_cost", [0, 2, 4])
-    fire, power = 0, 0
-    if p.get("gun_ready") and in_range:
-        near = min(in_range, key=lambda v: v["dist"])
-        need = next(i + 1 for i, rng_ in enumerate(powers) if near["dist"] <= rng_)
-        if p.get("energy", 0) > costs[need - 1]:  # the backstop never spends the last point
-            fire, power = near["id"], need
-    tdir = None
-    if seen:
-        tdir = min(seen, key=lambda v: v["dist"])["dir"]
-    elif p.get("dist_center", 0) > 1:
-        tdir = p.get("to_center")
-    if tdir is None:
-        return {"turn": 0, "move": "hold", "fire": fire, "power": power}
-    blocked = {(w["dq"], w["dr"]) for w in p.get("walls", [])}
-    blocked |= {(v["dq"], v["dr"]) for v in p.get("visible", [])}  # tanks are solid
-    for dd in range(6):
-        dq, dr = AXIAL_DIRS[dd]
-        if not _on_map(p, p["q"] + dq, p["r"] + dr):
-            blocked.add((dq, dr))  # the map edge is as impassable as cover
-    d = _open_dir(blocked, tdir)
-    h = p["heading"]
-    turn = 0 if h == d else (1 if (d - h) % 6 <= 3 else -1)
-    return {"turn": turn, "move": "fwd", "fire": fire, "power": power}
-
-
-async def decide(
+async def command(
     http: httpx.AsyncClient,
     agent: dict,
     p: dict,
+    bot,
     mate_ids: list[str],
     memory: str = "",
     notes: str = "",
@@ -950,12 +757,11 @@ async def decide(
     objective: dict | None = None,
     beacons: dict | None = None,
     solo: bool = False,
-    wall_mem: set | None = None,
     distress: dict | None = None,
-) -> tuple[dict, float, str, str, str]:
-    # ONE decision = ONE model call. The act tool carries the action AND the Artel traffic
-    # (say / objective / lesson) as fields of the same choice — the old multi-round tool loop
-    # re-sent the whole context for every message, tripling cost for zero extra intelligence.
+) -> tuple[float, str, str]:
+    # ONE commander call: read the Artel picture, set standing orders on the bot, do the
+    # Artel traffic. The bot drives every tick regardless — a failed or skipped command
+    # call costs nothing but staleness.
     if solo:
         inbox, board = "", ""
     else:
@@ -964,16 +770,20 @@ async def decide(
         )
         if beacons is not None:
             beacons.update(fresh_beacons)
-    user = _perception_text(p)
-    # distress overlay: a teammate's UNDER FIRE call stays on the board for several turns —
-    # the live beacon only carries it for one, which is how distant tanks "never knew"
     view = dict(beacons or {})
     if distress and distress.get("victim") != agent["id"]:
         view[distress["victim"]] = distress["body"]
+    user = _command_brief(p, bot)
     if view:
         user += "\nTEAMMATE POSITIONS (Artel beacons, ~1 turn old): " + "; ".join(
             f"{k} at {v}" for k, v in view.items() if k != agent["id"]
         )
+        sc = _support_call(p, view, agent["id"])
+        if sc:
+            user += (
+                "\nALLY UNDER FIRE — focus their attacker and regroup on the fight; this "
+                "outranks everything else."
+            )
     if board:
         user += f"\nTEAM BOARD — current objectives: {board}"
     if notes:
@@ -984,10 +794,7 @@ async def decide(
             f"the match that taught it — trust wins, distrust losses): {memory}"
         )
     if inbox:
-        user += f"\nNEW team reports this turn: {inbox}"
-    user += "\n" + _priority(
-        p, view, agent["id"], bool(objective and objective.get("task_id")), solo
-    )
+        user += f"\nNEW team reports: {inbox}"
     system = (SOLO_SYSTEM if solo else SYSTEM).format(mates=" and ".join(mate_ids) or "your team")
     toolset = TOOLS_SOLO if solo else TOOLS
 
@@ -995,39 +802,41 @@ async def decide(
         http, system, [{"role": "user", "text": user}], True, toolset
     )
     cost = tin * ep["cin"] + tout * ep["cout"]
-    intent: dict = {"turn": 0, "move": "hold", "fire": 0}
     plan = ""
-    act = next((c for c in calls if c["name"] == "act"), None)
-    if act:
+    cmd = next((c for c in calls if c["name"] == "command"), None)
+    if cmd:
+        inp = cmd["input"]
         if counts is not None:
-            counts["act"] = counts.get("act", 0) + 1
-        inp = act["input"]
-        intent = {
-            "turn": _TURN.get(inp.get("turn", "none"), 0),
-            "move": inp.get("move", "hold"),
-            "fire": int(inp.get("fire", 0) or 0),
-            "power": int(inp.get("power", 0) or 0),
-        }
-        for key in ("move_to", "fire_at"):
+            counts["command"] = counts.get("command", 0) + 1
+        if inp.get("clear_orders"):
+            bot.orders.clear()
+        focus = int(inp.get("focus", 0) or 0)
+        if focus:
+            bot.orders["focus"] = focus
+            fa = inp.get("focus_at")
+            if isinstance(fa, (list, tuple)) and len(fa) == 2:
+                try:
+                    bot.orders["focus_at"] = (int(fa[0]), int(fa[1]))
+                except (TypeError, ValueError):
+                    pass
+        for key in ("regroup", "post"):
             v = inp.get(key)
             if isinstance(v, (list, tuple)) and len(v) == 2:
                 try:
-                    intent[key] = (int(v[0]), int(v[1]))
+                    cell = (int(v[0]), int(v[1]))
                 except (TypeError, ValueError):
-                    pass
+                    continue
+                if _on_map(p, cell[0], cell[1]):
+                    bot.orders[key] = cell
         plan = str(inp.get("plan", "") or "")[:140]
         if not solo:
             await _artel_ops(http, agent, inp, p, mate_ids, objective, claims, counts)
-
-    intent = _sanitize_intent(intent, p, view, agent["id"], solo)
-    _drivetrain(intent, p, wall_mem)
-    return intent, cost, plan, inbox, ""
+    return cost, plan, inbox
 
 
 async def _artel_ops(http, agent, inp, p, mate_ids, objective, claims, counts) -> None:
-    # the Artel side-effects of the decision. Sends are fire-and-forget (the tick never
-    # waits on the network); only a board change is awaited, because the claim must be
-    # tracked for end-of-match cleanup — and it is rare by design (5-turn lock).
+    # the Artel side-effects of a command. Sends are fire-and-forget; only a board change is
+    # awaited (claims must be tracked for end-of-match cleanup, and it is rare by design).
     say = str(inp.get("say", "") or "")[:280]
     lesson = str(inp.get("lesson", "") or "")[:400]
     obj_txt = str(inp.get("objective", "") or "")[:140]
@@ -1051,275 +860,6 @@ async def _artel_ops(http, agent, inp, p, mate_ids, objective, claims, counts) -
                 objective["set_tick"] = p.get("tick", 0)
                 if claims is not None:
                     claims.append((agent, tid))
-
-
-def _check_fire_at(intent: dict, p: dict, powers: list) -> None:
-    # ONE gate for every predictive shot: gun up, in range, ray not eaten by a known wall
-    # before the aim cell, no teammate on the line, and not aimed at the tank's own move
-    # destination (a small-model confusion: "shoot where I am going").
-    fa = intent.get("fire_at")
-    if not fa:
-        return
-    if not p.get("gun_ready"):
-        intent.pop("fire_at", None)
-        return
-    d_aim = _hexdist(p["q"], p["r"], fa[0], fa[1])
-    if d_aim < 1 or d_aim > powers[-1]:
-        intent.pop("fire_at", None)
-        return
-    mt = intent.get("move_to")
-    if mt and (int(mt[0]), int(mt[1])) == (int(fa[0]), int(fa[1])):
-        enemy_there = any(
-            v["kind"] == "enemy" and (p["q"] + v["dq"], p["r"] + v["dr"]) == (fa[0], fa[1])
-            for v in p["visible"]
-        )
-        if not enemy_there:
-            intent.pop("fire_at", None)  # shooting its own destination at nothing
-            return
-    need = next(i + 1 for i, rng_ in enumerate(powers) if d_aim <= rng_)
-    intent["power"] = max(int(intent.get("power", 0) or 0), need)
-    wall_cells = {(p["q"] + w["dq"], p["r"] + w["dr"]) for w in p.get("walls", [])}
-    ally_cells = {(p["q"] + v["dq"], p["r"] + v["dr"]) for v in p["visible"] if v["kind"] == "ally"}
-    scale = powers[intent["power"] - 1] / d_aim
-    ext = (
-        round(p["q"] + (fa[0] - p["q"]) * scale),
-        round(p["r"] + (fa[1] - p["r"]) * scale),
-    )
-    for c in hex_line(p["q"], p["r"], ext[0], ext[1]):
-        if c == (p["q"], p["r"]):
-            continue
-        before_aim = _hexdist(p["q"], p["r"], c[0], c[1]) < d_aim
-        if c in wall_cells and before_aim:
-            intent.pop("fire_at", None)  # a known wall eats the ray before the aim
-            return
-        if c in ally_cells:
-            intent.pop("fire_at", None)  # a teammate is on that line
-            return
-        if c == (fa[0], fa[1]):
-            break
-
-
-def _sanitize_intent(intent: dict, p: dict, beacons: dict | None, self_id: str, solo: bool) -> dict:
-    # ALL the floors in one place, in precedence order. They exist so a tank never
-    # under-acts on a phantom (a shot the engine will reject, a step into a wall) and never
-    # idles while a teammate dies — the model still drives every turn it makes a real choice.
-    powers = p.get("power_range", [3, 5, 7])
-    rx = _reflex(p)
-    dist_of = {
-        v["id"]: v["dist"]
-        for v in p["visible"]
-        if v["kind"] == "enemy"
-        and v["dist"] <= p.get("fire_range", 7)
-        and v.get("clear_shot", True)
-    }
-    # every predictive shot passes ONE gate, wherever it came from
-    _check_fire_at(intent, p, powers)
-    if intent.get("fire_at"):
-        intent["fire"] = 0  # the predictive aim IS the shot
-    elif intent.get("fire") and (intent["fire"] not in dist_of or not p.get("gun_ready")):
-        intent["fire"] = 0  # phantom: blocked, out of range, or reloading
-    elif intent.get("fire"):
-        need = next(i + 1 for i, rng_ in enumerate(powers) if dist_of[intent["fire"]] <= rng_)
-        intent["power"] = max(int(intent.get("power", 0) or 0), need)
-    if not intent.get("fire") and not intent.get("fire_at"):
-        intent["fire"] = rx["fire"]  # a clear shot the model ignored is still taken
-        if rx.get("power"):
-            intent["power"] = rx["power"]
-    # crossfire floor: hold the shot only when an ally is IN THE SCRUM — adjacent to the
-    # target and nearer than it (the geometry of every fratricide in the kill logs). The
-    # first version vetoed any ally near the line and muted the whole formation's guns.
-    if intent.get("fire") and intent["fire"] in dist_of:
-        tgt = next(v for v in p["visible"] if v["kind"] == "enemy" and v["id"] == intent["fire"])
-        t_cell = (p["q"] + tgt["dq"], p["r"] + tgt["dr"])
-        for v in p["visible"]:
-            if v["kind"] != "ally" or v["dist"] >= tgt["dist"]:
-                continue
-            a_cell = (p["q"] + v["dq"], p["r"] + v["dr"])
-            if _hexdist(a_cell[0], a_cell[1], t_cell[0], t_cell[1]) <= 1:
-                intent["fire"] = 0  # an ally is in the scrum — don't gamble them
-                break
-    # burnout floor: a shot that drains you to 0 destroys you — allowed only as a finisher
-    # on a target you can see dying (energy <= damage). Two tanks suicided in six matches.
-    shot = intent.get("fire") or intent.get("fire_at")
-    if (
-        shot
-        and p.get("energy", 0)
-        - p.get("power_cost", [0, 2, 4])[max(1, min(3, int(intent.get("power", 1) or 1))) - 1]
-        <= 0
-    ):
-        tgt_e = None
-        if intent.get("fire"):
-            seen = next(
-                (v for v in p["visible"] if v["kind"] == "enemy" and v["id"] == intent["fire"]),
-                None,
-            )
-            tgt_e = seen.get("energy") if seen else None
-        if tgt_e is None or tgt_e > 12:
-            costs = p.get("power_cost", [0, 2, 4])
-            alive = [i + 1 for i in range(len(costs)) if p.get("energy", 0) - costs[i] > 0]
-            if intent.get("fire") and alive:
-                need_d = dist_of.get(intent["fire"], 99)
-                ok = [pw for pw in alive if powers[pw - 1] >= need_d]
-                if ok:
-                    intent["power"] = ok[0]
-                else:
-                    intent["fire"] = 0
-            else:
-                intent["fire"] = 0
-                intent.pop("fire_at", None)
-    # AUTO-LEAD — but only for TANGENTIAL movers. The ray extends through the aim cell to
-    # full range, so a current-cell shot already covers anything moving ALONG the line
-    # (closing brawlers, straight-kiting rangers). Converting those to side-hex leads is
-    # what collapsed blue's kill rate; only a mover stepping OFF the ray needs leading.
-    if intent.get("fire") and intent["fire"] in dist_of and not intent.get("fire_at"):
-        tgt = next(v for v in p["visible"] if v["kind"] == "enemy" and v["id"] == intent["fire"])
-        step = tgt.get("step") or [0, 0]
-        if step[0] or step[1]:
-            t_cell = (p["q"] + tgt["dq"], p["r"] + tgt["dr"])
-            lead = (t_cell[0] + step[0], t_cell[1] + step[1])
-            d_t = max(1, tgt["dist"])
-            scale = powers[-1] / d_t
-            ext = (
-                round(p["q"] + (t_cell[0] - p["q"]) * scale),
-                round(p["r"] + (t_cell[1] - p["r"]) * scale),
-            )
-            ray = set(hex_line(p["q"], p["r"], ext[0], ext[1]))
-            d_lead = _hexdist(p["q"], p["r"], lead[0], lead[1])
-            if (
-                lead not in ray  # radial movers are already on the line — keep the id shot
-                and 1 <= d_lead <= powers[-1]
-                and _on_map(p, lead[0], lead[1])
-            ):
-                need = next(i + 1 for i, rng_ in enumerate(powers) if d_lead <= rng_)
-                need = max(int(intent.get("power", 0) or 0), need)
-                costs = p.get("power_cost", [0, 2, 4])
-                if p.get("energy", 0) - costs[need - 1] > 0:  # never lead yourself to death
-                    keep_fire = intent.get("fire")
-                    intent["fire_at"] = lead
-                    intent["power"] = need
-                    _check_fire_at(intent, p, powers)
-                    if intent.get("fire_at"):
-                        intent["fire"] = 0
-                    else:
-                        intent["fire"] = keep_fire  # bad lead: the id shot stays
-    # AUTO-SCOOT: firing while standing on an enemy's clear line is how blue gets traded
-    # down — if the tank shoots and ends its turn stationary while exposed, step it off the
-    # line (shoot-and-scoot is doctrine, not a suggestion).
-    if (
-        (intent.get("fire") or intent.get("fire_at"))
-        and intent.get("move", "hold") == "hold"
-        and not intent.get("move_to")
-    ):
-        threats = [
-            v
-            for v in p["visible"]
-            if v["kind"] == "enemy"
-            and v.get("clear_shot", True)
-            and v["dist"] <= p.get("fire_range", 7)
-        ]
-        if threats:
-            wallset = {(w_["dq"], w_["dr"]) for w_ in p.get("walls", [])}
-            occ_rel = {(v["dq"], v["dr"]) for v in p.get("visible", [])}
-            t_cells = [(p["q"] + t["dq"], p["r"] + t["dr"]) for t in threats]
-            best_cell, best_lines = None, None
-            for d in range(6):
-                dq, dr = AXIAL_DIRS[d]
-                if (dq, dr) in wallset or (dq, dr) in occ_rel:
-                    continue
-                nq, nr = p["q"] + dq, p["r"] + dr
-                if not _on_map(p, nq, nr):
-                    continue
-                on_lines = sum(
-                    1 for tc in t_cells if (nq, nr) in hex_line(tc[0], tc[1], p["q"], p["r"])
-                )
-                if best_lines is None or on_lines < best_lines:
-                    best_cell, best_lines = (nq, nr), on_lines
-            if best_cell:
-                intent["move_to"] = best_cell
-
-    # STANDING ORDER: when a teammate is under fire and this tank is unengaged (no enemy on
-    # its lines, not under fire itself) and the model gave no explicit destination, the unit
-    # converges on the fight. Assists are doctrine, not a suggestion — the model still
-    # overrides by naming any move_to of its own.
-    engaged = p.get("hit_taken") or any(
-        v["kind"] == "enemy" and v.get("clear_shot", True) and v["dist"] <= p.get("fire_range", 7)
-        for v in p["visible"]
-    )
-    if not solo and beacons and not engaged and not intent.get("move_to"):
-        sc = _support_call(p, beacons, self_id)
-        if sc and sc.get("move_to"):
-            intent["move_to"] = sc["move_to"]
-    idle = (
-        intent.get("move", "hold") == "hold"
-        and not intent.get("move_to")
-        and not intent.get("fire")
-        and not intent.get("fire_at")
-    )
-    if idle:
-        intent["turn"], intent["move"] = rx["turn"], rx["move"]
-    return intent
-
-
-def _drivetrain(intent: dict, p: dict, wall_mem: set | None) -> None:
-    # the model thinks in destinations; the drivetrain translates ONE optimal step —
-    # turning mechanics, remembered walls, routing around tanks, never shoving the map edge
-    mt = intent.pop("move_to", None)
-    if mt and (mt[0], mt[1]) != (p["q"], p["r"]):
-        wall_abs = {(p["q"] + w_["dq"], p["r"] + w_["dr"]) for w_ in p.get("walls", [])}
-        if wall_mem is not None:
-            wall_mem |= wall_abs  # walls are static all match: remember every one seen
-            wall_abs = set(wall_mem)
-        occ_abs = {(p["q"] + v["dq"], p["r"] + v["dr"]) for v in p.get("visible", [])}
-        R_ = p.get("map_radius", (p.get("width", 15) - 1) // 2)
-        best = bfs_step(p["q"], p["r"], mt[0], mt[1], wall_abs, R_, soft=occ_abs)
-        if best is None:
-            d0 = _hexdist(p["q"], p["r"], mt[0], mt[1])
-            bd = None
-            for dd in range(6):
-                dq, dr = AXIAL_DIRS[dd]
-                nq, nr = p["q"] + dq, p["r"] + dr
-                if (nq, nr) in wall_abs or not _on_map(p, nq, nr):
-                    continue
-                prog = d0 - _hexdist(nq, nr, mt[0], mt[1])
-                if bd is None or prog > bd:
-                    best, bd = dd, prog
-            if best is None:
-                best = p["heading"]
-        hh = p["heading"]
-        intent["turn"] = 0 if hh == best else (1 if (best - hh) % 6 <= 3 else -1)
-        travel = (hh + intent["turn"]) % 6
-        intent["move"] = "fwd" if travel == best else "hold"  # rotate first if not facing
-    # a step into cover or off the map is silently rejected by the engine — deflect, or
-    # queue behind a teammate (deflecting around allies is what scattered formations)
-    if intent.get("move") in ("fwd", "back"):
-        wallset = {(w_["dq"], w_["dr"]) for w_ in p.get("walls", [])}
-        ally_rel = {(v["dq"], v["dr"]) for v in p.get("visible", []) if v["kind"] == "ally"}
-        enemy_rel = {(v["dq"], v["dr"]) for v in p.get("visible", []) if v["kind"] == "enemy"}
-
-        def _open(d: int) -> bool:
-            dq, dr = AXIAL_DIRS[d]
-            return (
-                _on_map(p, p["q"] + dq, p["r"] + dr)
-                and (dq, dr) not in wallset
-                and (dq, dr) not in ally_rel
-                and (dq, dr) not in enemy_rel
-            )
-
-        newh = (p["heading"] + intent.get("turn", 0)) % 6
-        tdir = newh if intent["move"] == "fwd" else (newh + 3) % 6
-        if not _open(tdir):
-            dq, dr = AXIAL_DIRS[tdir]
-            if (dq, dr) in ally_rel:
-                intent["move"] = "hold"
-            else:
-                for off in (1, -1, 2, -2, 3):
-                    d2 = (tdir + off) % 6
-                    if _open(d2):
-                        hh = p["heading"]
-                        intent["turn"] = 0 if hh == d2 else (1 if (d2 - hh) % 6 <= 3 else -1)
-                        travel = (hh + intent["turn"]) % 6
-                        intent["move"] = "fwd" if travel == d2 and _open(travel) else "hold"
-                        break
 
 
 class Squad:
@@ -1351,6 +891,7 @@ class Squad:
         self._beacons: dict[int, dict] = {}  # per-tank latest teammate beacons (via Artel)
         self._walls: dict[int, set] = {}  # per-tank remembered walls (own sightings only)
         self._distress: dict | None = None  # squad-wide last UNDER FIRE call (sticky ~5 ticks)
+        self._bots: dict[int, Bot] = {}  # the motors: same Bot red runs, one per tank
         self._objectives: dict[int, dict] = {}  # per-tank current board objective (Artel task)
         self._claims: list[tuple[dict, str]] = []  # (agent, task id) opened this match
         self.tool_counts: dict[str, int] = {}  # Artel tool usage this match, for /debug
@@ -1367,8 +908,13 @@ class Squad:
         return bool(self.agents) and has_llm and self.spent < SPEND_CAP_USD
 
     def assign(self, tank_ids: list[int]) -> None:
-        """Bind this match's Artel tanks to agents, one agent per tank."""
+        """Bind this match's Artel tanks to agents, one agent per tank — and give each tank
+        its motor: the SAME deterministic Bot red runs, one temperament of each."""
         self._assign = {tid: ag for tid, ag in zip(tank_ids, self.agents)}
+        self._bots = {
+            tid: Bot(tid, self.label, STRATEGIES[i % len(STRATEGIES)])
+            for i, tid in enumerate(tank_ids)
+        }
 
     async def act(self, tank_id: int, perceive) -> dict | None:
         """One LLM move for this tank this tick, or None to leave it on the arena default."""
@@ -1448,40 +994,63 @@ class Squad:
             and p.get("tick", 0) - self._distress.get("tick", -99) <= 5
         ):
             distress = self._distress
-        try:
-            intent, cost, plan, inbox, recalled = await asyncio.wait_for(
-                decide(
-                    self._http,
-                    agent,
-                    p,
-                    mate_ids,
-                    self._context.get(tank_id, ""),
-                    notes.strip(),
-                    self._claims,
-                    self.tool_counts,
-                    self._objectives.setdefault(tank_id, {}),
-                    self._beacons.setdefault(tank_id, {}),
-                    self.solo,
-                    self._walls.setdefault(tank_id, set()),
-                    distress,
-                ),
-                timeout=DECIDE_DEADLINE,
-            )
-        except Exception as e:
-            self.last_error = f"{type(e).__name__}: {e}"
-            log.warning("phalanx agent %s fell back to reflex: %s", agent["id"], self.last_error)
-            return _reflex(p)
-        self.spent += cost
-        self.last_error = None
-        if plan:
-            self._plans[tank_id] = plan
-        if recalled:
-            self._recalled[tank_id] = recalled[:300]
-        if inbox:
-            log_ = self._intel.setdefault(tank_id, [])
-            for line in inbox.split(" | "):
-                log_.append(f"t{p.get('tick', '?')} {line}")
-            del log_[:-6]
+
+        bot = self._bots.get(tank_id)
+        if bot is None:
+            idx = list(self._assign).index(tank_id) if tank_id in self._assign else tank_id
+            bot = self._bots[tank_id] = Bot(tank_id, self.label, STRATEGIES[idx % len(STRATEGIES)])
+
+        # doctrine default between command calls: a fresh distress call with no standing
+        # orders pulls an unengaged tank toward the fight — the commander can override
+        engaged = p.get("hit_taken") or any(
+            v["kind"] == "enemy" and v["dist"] <= p.get("fire_range", 7)
+            for v in p.get("visible", [])
+        )
+        if distress and not engaged and not bot.orders:
+            m = _POS.search(distress.get("body", ""))
+            if m:
+                bot.orders["regroup"] = (int(m.group(1)), int(m.group(2)))
+
+        # command cadence: routine every COMMAND_EVERY ticks (staggered per tank), plus
+        # immediately on alarms — taking fire, or fresh contact the team has not heard of
+        idx = list(self._assign).index(tank_id) if tank_id in self._assign else 0
+        due = (
+            (p.get("tick", 0) + idx) % COMMAND_EVERY == 0 or bool(p.get("hit_taken")) or bool(fresh)
+        )
+        if due:
+            try:
+                cost, plan, inbox = await asyncio.wait_for(
+                    command(
+                        self._http,
+                        agent,
+                        p,
+                        bot,
+                        mate_ids,
+                        self._context.get(tank_id, ""),
+                        notes.strip(),
+                        self._claims,
+                        self.tool_counts,
+                        self._objectives.setdefault(tank_id, {}),
+                        self._beacons.setdefault(tank_id, {}),
+                        self.solo,
+                        distress,
+                    ),
+                    timeout=DECIDE_DEADLINE,
+                )
+                self.spent += cost
+                self.last_error = None
+                if plan:
+                    self._plans[tank_id] = plan
+                if inbox:
+                    log_ = self._intel.setdefault(tank_id, [])
+                    for line in inbox.split(" | "):
+                        log_.append(f"t{p.get('tick', '?')} {line}")
+                    del log_[:-6]
+            except Exception as e:
+                self.last_error = f"{type(e).__name__}: {e}"
+                log.warning("phalanx commander %s skipped a beat: %s", agent["id"], self.last_error)
+
+        intent = bot.decide(p, DEFAULT, p.get("tick", 0))
         fired = f"fired at #{intent['fire']}" if intent.get("fire") else "held fire"
         seen = "; ".join(
             f"#{v['id']} at ({p['q'] + v['dq']},{p['r'] + v['dr']})"
@@ -1490,10 +1059,9 @@ class Squad:
             if v["kind"] == "enemy"
         )
         self._last[tank_id] = (
-            f"Last turn (t{p.get('tick', '?')}) you were at ({p['q']},{p['r']}) with energy "
-            f"{p['energy']}, {fired}, moved {intent.get('move', 'hold')}; you saw: "
-            f"{seen or 'no enemies'}. If an enemy from then is missing from your state now, "
-            f"it moved or broke line of sight — it still exists."
+            f"Last brief (t{p.get('tick', '?')}): your tank was at ({p['q']},{p['r']}) energy "
+            f"{p['energy']}, {fired}; it saw: {seen or 'no enemies'}. Standing orders then: "
+            f"{dict(bot.orders) or 'none'}."
         )
         return intent
 
@@ -1512,6 +1080,7 @@ class Squad:
             self._seen_ids = {}
             self._beacons = {}
             self._distress = None
+            self._bots = {}
             self._objectives = {}
             self._claims = []
             self._walls = {}
@@ -1529,6 +1098,7 @@ class Squad:
         self._seen_ids = {}
         self._beacons = {}
         self._distress = None
+        self._bots = {}
         self._objectives = {}
         self._claims = []
         self._walls = {}
@@ -1563,6 +1133,11 @@ class Squad:
                 # message and lands in their inboxes on turn 1. In-process, only its author
                 # keeps it in context; no side-channel distribution.
                 await _send(self._http, lead, "team", f"TEAM PLAN: {plan}"[:280], [])
+                m = re.search(r"RALLY \((-?\d+),(-?\d+)\)", plan)
+                if m:
+                    # the huddle's rally point becomes the unit's opening order
+                    for b in self._bots.values():
+                        b.orders["regroup"] = (int(m.group(1)), int(m.group(2)))
                 self._context[lead_tid] = (
                     f"{self._context.get(lead_tid, '')} Your team plan (broadcast to the "
                     f"team): {plan}".strip()
