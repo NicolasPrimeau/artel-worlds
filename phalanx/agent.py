@@ -42,7 +42,6 @@ LLM_URL = os.environ.get("PHALANX_LLM_URL", _DEFAULT_URL)
 LLM_VERSION = os.environ.get("PHALANX_LLM_VERSION", "2023-06-01")
 SPEND_CAP_USD = float(os.environ.get("PHALANX_SPEND_CAP_USD", "20"))
 REASONING = os.environ.get("PHALANX_REASONING", "none")  # gemini thinking effort; none = off
-MAX_TOOL_ROUNDS = 3
 
 
 def _make_ep(provider: str, model: str, url: str, key: str, version: str, cin: str, cout: str):
@@ -96,189 +95,135 @@ LLM_TIMEOUT = float(os.environ.get("PHALANX_LLM_TIMEOUT", "12"))
 # Concise. Names the teammates, says coordinate through Artel — and stops there. No
 # instructions on HOW to use Artel: the coordination has to emerge, not be scripted.
 _GOAL_RULES = (
-    "GOAL: destroy all three enemy tanks. Last team standing wins; a draw or mutual "
-    "destruction is a loss.\n"
+    "GOAL: destroy all three enemy tanks; last team standing wins (a draw counts as a loss).\n"
     "RULES:\n"
-    "- Each turn all tanks act at once: one step of movement AND a shot, together.\n"
-    "- MOVE BY DESTINATION: in act, set move_to [q,r] — any hex on the map. Your drivetrain "
-    "takes the best path step toward it this turn (turning, routing around cover, queueing "
-    "behind teammates). Think in destinations. Use move 'hold' only to deliberately stand "
-    "still.\n"
-    "- Energy is health and fuel; 0 = destroyed; no regeneration. A hit deals 12 and refunds "
-    "the shooter 2.\n"
-    "- Fire = enemy id + power. Power 1: range 3, FREE. Power 2: range 5, costs 2. Power 3: "
-    "range 7, costs 4. BALLISTIC: your shot is aimed at the hex the target stands on when "
-    "you pull the trigger and travels that fixed line — whatever is FIRST on the line takes "
-    "the 12 damage: them, a wall, or a TEAMMATE. A target that moves off the line is MISSED "
-    "(you still pay). To hit a mover, predict: fire_at the hex they are moving INTO. The gun "
-    "draws from YOUR energy — a shot that leaves you at 0 destroys you. Ready again next "
-    "turn. Hull facing never matters for shooting.\n"
-    "- A tank standing in the line of fire blocks the shot — friend or foe. Never fire "
-    "through a teammate; against a stacked enemy, kill the front one first.\n"
-    "- TIMING: you fire from the hex you START the turn on and move after — shoot, then step "
-    "into cover the SAME turn (shoot-and-scoot). Likewise, when you are EXPOSED, ending "
-    "your move off the enemy's firing line makes their shot miss. Prefer targets that "
-    "cannot disengage; lead the ones that can. A gun trained on a corner pins whoever "
-    "hides behind it; two shooters on different angles make one wall useless — flank.\n"
-    "- Cover blocks movement, shots, and sight. Tanks are solid: formation means adjacent "
-    "hexes, never the same hex. Fog of war: you see distance 8 with a clear line; teammates "
-    "see different things.\n"
-    "- The safe zone shrinks toward the arena center; outside it you bleed energy every "
-    "turn.\n"
+    "- Simultaneous turns: every tank moves one step AND may shoot, together.\n"
+    "- move_to [q,r]: the drivetrain takes the best step toward it (turning, cover, queueing "
+    "behind teammates). Think in destinations; 'hold' only to deliberately stand still.\n"
+    "- Energy is health and fuel; 0 = destroyed; no regen. A hit deals 12, refunds the "
+    "shooter 2.\n"
+    "- BALLISTIC fire: power 1/2/3 = range 3/5/7 for 0/2/4 energy. Your shot is a fixed "
+    "line aimed at the target's CURRENT hex; the FIRST tank or wall on that line takes the "
+    "12 — including a TEAMMATE. A target that moves off the line is MISSED and you still "
+    "pay. Lead movers: fire_at the hex they are moving INTO. A shot that leaves you at 0 "
+    "destroys you. Ready again next turn; hull facing never matters for shooting.\n"
+    "- You fire from where you START the turn and move after — shoot, then duck into cover "
+    "the SAME turn; likewise ending your move off an enemy's line makes THEIR shot miss. A "
+    "gun trained on a corner pins whoever hides behind it; two angles beat one wall.\n"
+    "- Cover blocks movement, shots, and sight. Tanks are solid: formation = adjacent "
+    "hexes, never shared ones. Fog of war: sight 8 with a clear line; teammates see "
+    "different things.\n"
+    "- The safe zone shrinks toward the arena center; outside it you bleed every turn.\n"
 )
 
 SYSTEM = (
-    "You are an AI playing Phalanx, a turn-based tank game on a hexagonal arena, driving one "
-    "tank on team Artel against the three tanks of team Red. Your teammates are {mates}; the "
-    "three of you share Artel and fight as a phalanx: one body, never three individuals.\n"
+    "You drive one tank on team Artel against the three tanks of team Red in Phalanx, a "
+    "turn-based hex tank game. Your teammates are {mates}; you share Artel and fight as a "
+    "phalanx — one body, never three individuals.\n"
     + _GOAL_RULES
-    + "PRIORITIES, in order — when they conflict, the higher one wins:\n"
-    "1. ZONE: outside the safe zone, move toward the center every turn. Never hold there.\n"
-    "2. FORMATION: stay within 2 hexes of a teammate, but NEVER on the line between a "
-    "teammate and an enemy — ballistic shots hit the first tank on the line, yours "
-    "included. Their beacon positions are in your state every turn — out of formation means "
-    "move_to a hex beside a teammate, now. Ahead of the unit? Wait for it.\n"
-    "3. FIRE: a ready gun with a clear line shoots, at the cheapest power that reaches — but "
-    "aim at tanks that will still BE there: lead movers with fire_at, and don't feed energy "
-    "to dodges. You can move the same turn.\n"
-    "4. SUPPORT: a teammate UNDER FIRE (their beacon says so) outranks everything below — "
-    "their attacker IS the unit's focus target: if it's in your fire-now list shoot it NOW, "
-    "otherwise move to bring it into range. Not toward the center. A unit that lets its "
-    "tanks die alone loses one tank at a time.\n"
-    "5. FOCUS: pour the unit's fire into ONE enemy — the one the team called. Never duel a "
-    "kiter at long range; close to free-fire range behind cover, or refuse the fight.\n"
-    "6. REPORT (Artel message): only what is NEW and actionable — 'SPOTTED #5 at (7,4) "
-    "energy 40', 'TAKING FIRE at (6,8) from #4', 'FOCUS #5', 'REGROUP at (8,6)', 'AT (4,9) "
-    "heading (7,6)' when nobody can see you. Nothing new = say nothing. Teammates' reports "
-    "are real positions you cannot see — act on them.\n"
-    "7. OBJECTIVE (Artel task board): your ONE medium-term commitment — 'hold around (8,6)', "
-    "'push east with phalanx-blue-2'. It should survive 5+ turns; change it only when "
-    "reality breaks it. The board in your state IS the team's strategy.\n"
-    "MEMORY: lessons tagged [WIN]/[LOSS] from past matches arrive in your context — repeat "
-    "what won, avoid what lost. Save one concrete, game-grounded lesson when you learn "
-    "something real."
+    + "PRIORITIES, in order (your state computes THE priority each turn — follow it):\n"
+    "1. ZONE: never linger outside the safe zone.\n"
+    "2. FORMATION: within 2 hexes of a teammate, and NEVER on the line between a teammate "
+    "and an enemy.\n"
+    "3. FIRE: a ready gun with a clear line shoots at the cheapest power that reaches — at "
+    "tanks that will still BE there. Lead movers; don't feed energy to dodges.\n"
+    "4. SUPPORT: a teammate UNDER FIRE outranks everything below — their attacker is the "
+    "unit's focus target: shoot it now or move to reach it.\n"
+    "5. FOCUS: the unit kills ONE enemy at a time; refuse long-range duels with kiters.\n"
+    "ARTEL, in the same act call — say: report only NEW actionable facts with coordinates "
+    "('SPOTTED #5 (7,4) energy 40', 'FOCUS #5', 'REGROUP (8,6)'); teammates' reports are "
+    "real positions you cannot see, act on them. objective: your ONE medium-term commitment "
+    "on the team board ('hold (8,6)', 'push east with blue-2') — change it only when "
+    "reality breaks it. lesson: save one concrete, game-grounded lesson when a move clearly "
+    "won or lost a fight; [WIN]/[LOSS] lessons from past matches arrive in your context — "
+    "trust wins, distrust losses."
 )
 
 # the ablation control: the SAME mind with the Artel infrastructure removed. Identical
-# game rules, identical ladder where possible; no radio, no board, no beacons, no memory.
+# game rules; no radio, no board, no beacons, no shared memory.
 SOLO_SYSTEM = (
-    "You are an AI playing Phalanx, a turn-based tank game on a hexagonal arena, driving one "
-    "tank on team Red against the three tanks of team Artel. Your teammates are {mates}, but "
-    "you have NO communication with them — no radio, no shared map, no shared memory. You "
-    "know only what you see.\n"
+    "You drive one tank on team Red against the three tanks of team Artel in Phalanx, a "
+    "turn-based hex tank game. Your teammates are {mates}, but you have NO communication "
+    "with them — no radio, no shared map, no shared memory. You know only what you see.\n"
     + _GOAL_RULES
-    + "PRIORITIES, in order — when they conflict, the higher one wins:\n"
-    "1. ZONE: outside the safe zone, move toward the center every turn. Never hold there.\n"
-    "2. FORMATION: stay within 2 hexes of a teammate YOU CAN SEE when possible — you have no "
-    "other way to know where they are.\n"
-    "3. FIRE: a ready gun with a clear line shoots, at the cheapest power that reaches — but "
-    "aim at tanks that will still BE there: lead movers with fire_at, and don't feed energy "
-    "to dodges. You can move the same turn.\n"
-    "4. FOCUS: concentrate your fire on one enemy at a time. Never duel a kiter at long "
-    "range; close to free-fire range behind cover, or refuse the fight."
+    + "PRIORITIES, in order (your state computes THE priority each turn — follow it):\n"
+    "1. ZONE: never linger outside the safe zone.\n"
+    "2. FORMATION: stay within 2 hexes of a teammate YOU CAN SEE when possible.\n"
+    "3. FIRE: a ready gun with a clear line shoots at the cheapest power that reaches — at "
+    "tanks that will still BE there. Lead movers; don't feed energy to dodges.\n"
+    "4. FOCUS: concentrate fire on one enemy at a time; refuse long-range duels with kiters."
 )
 
+_ACT_PROPS = {
+    "fire_at": {
+        "type": "array",
+        "items": {"type": "integer"},
+        "description": "predictive shot: aim at a HEX [q,r] — fire where a mover is GOING. "
+        "Overrides fire's aim; still costs the chosen power.",
+    },
+    "move_to": {
+        "type": "array",
+        "items": {"type": "integer"},
+        "description": "hex [q,r] to step toward this turn — the drivetrain handles turning "
+        "and obstacles. OMIT to stand still (holding while firing is often correct).",
+    },
+    "move": {"type": "string", "enum": ["fwd", "back", "hold"]},
+    "turn": {"type": "string", "enum": ["left", "right", "none"]},
+    "fire": {"type": "integer", "description": "enemy tank id to shoot at, or 0 to hold fire"},
+    "power": {
+        "type": "integer",
+        "description": "shot power 1-3: range 3/5/7 for 0/2/4 energy — smallest that reaches",
+    },
+    "plan": {
+        "type": "string",
+        "description": "one short line on your intent over the next few turns — shown back "
+        "to you next turn so you can follow through instead of starting over",
+    },
+}
 TOOLS = [
     {
-        "name": "tell_team",
-        "description": "Send a battlefield report (see REPORT priority): new, actionable, "
-        "coordinate-bearing facts only. Duplicates and chatter are noise.",
-        "schema": {
-            "type": "object",
-            "properties": {
-                "to": {
-                    "type": "string",
-                    "description": "a teammate's agent id, or 'team' for both",
-                },
-                "text": {"type": "string"},
-            },
-            "required": ["to", "text"],
-        },
-    },
-    {
-        "name": "remember",
-        "description": "Save ONE lesson that will still be true NEXT match, stated only in terms "
-        "of the game's actual pieces (tanks, hexes, cover, energy, range, the zone) — a real "
-        "enemy habit ('red rushes the center by tick 10'), or a move that clearly won or lost a "
-        "fight. NOT current positions or energies (those die with this turn), NOT the team plan "
-        "(that is a message), NOT generic advice like 'focus fire' (already known), and NOT "
-        "anything involving mechanics this game does not have. If in doubt, don't save it.",
-        "schema": {
-            "type": "object",
-            "properties": {"text": {"type": "string"}},
-            "required": ["text"],
-        },
-    },
-    {
-        "name": "recall",
-        "description": "Search your team's shared memory for concrete lessons from past matches "
-        "(enemy habits, map hazards, what worked). Use it when you need to decide and prior "
-        "experience would help — then act on what comes back.",
-        "schema": {
-            "type": "object",
-            "properties": {"query": {"type": "string"}},
-            "required": ["query"],
-        },
-    },
-    {
-        "name": "set_objective",
-        "description": "Post YOUR one medium-term objective on the team board (an Artel task): "
-        "hold an area, push a lane with a teammate, destroy a target. It replaces your "
-        "previous objective, is announced to the team, and should survive 5+ turns — read "
-        "the board first and complement your teammates.",
-        "schema": {
-            "type": "object",
-            "properties": {"text": {"type": "string"}},
-            "required": ["text"],
-        },
-    },
-    {
         "name": "act",
-        "description": "Set your tank's action for this turn. Ends your turn.",
+        "description": "Your ONE call per turn: the tank's action plus any Artel traffic — "
+        "all together, nothing else follows.",
         "schema": {
             "type": "object",
             "properties": {
-                "fire_at": {
-                    "type": "array",
-                    "items": {"type": "integer"},
-                    "description": "predictive shot: aim at a HEX [q,r] instead of a tank — "
-                    "fire where a mover is going, not where it is. Overrides fire's aim; "
-                    "still costs the chosen power.",
-                },
-                "move_to": {
-                    "type": "array",
-                    "items": {"type": "integer"},
-                    "description": "hex [q,r] to step toward this turn — the drivetrain "
-                    "handles turning and obstacles. OMIT move_to to stand still: holding "
-                    "position while firing is fully respected and often correct.",
-                },
-                "move": {"type": "string", "enum": ["fwd", "back", "hold"]},
-                "turn": {"type": "string", "enum": ["left", "right", "none"]},
-                "fire": {
-                    "type": "integer",
-                    "description": "enemy tank id to shoot at, or 0 to hold fire",
-                },
-                "power": {
-                    "type": "integer",
-                    "description": "shot power 1-3 when firing: range 3/5/7 hexes for "
-                    "0/2/4 energy (base shots are free); use the smallest power that reaches",
-                },
-                "plan": {
+                **_ACT_PROPS,
+                "say": {
                     "type": "string",
-                    "description": "optional: one short line on what you intend over the next "
-                    "few turns (e.g. 'flanking right around the wall to reach #5') — shown back "
-                    "to you next turn so you can follow through instead of starting over",
+                    "description": "optional Artel report to the team: NEW actionable facts "
+                    "with coordinates only — silence beats noise",
+                },
+                "objective": {
+                    "type": "string",
+                    "description": "optional: replace YOUR objective on the team board — a "
+                    "medium-term commitment that should survive 5+ turns",
+                },
+                "lesson": {
+                    "type": "string",
+                    "description": "optional: save one lesson that will still be true next "
+                    "match, in terms of the game's pieces — no positions, no platitudes",
                 },
             },
             "required": ["move", "turn", "fire"],
         },
-    },
+    }
 ]
 
 # AXIAL_DIRS rotates counterclockwise on screen (E, NE, NW, W, SW, SE) — so a LEFT turn
 # (toward the tank's port side) is +1, and RIGHT is -1. These were mirrored for a long
 # time, which made every steering decision come out backwards.
-TOOLS_SOLO = [t for t in TOOLS if t["name"] == "act"]
+TOOLS_SOLO = [
+    {
+        "name": "act",
+        "description": "Your ONE call per turn: the tank's action. Nothing else follows.",
+        "schema": {
+            "type": "object",
+            "properties": dict(_ACT_PROPS),
+            "required": ["move", "turn", "fire"],
+        },
+    }
+]
 
 _TURN = {"left": 1, "right": -1, "none": 0}
 
@@ -591,8 +536,6 @@ def _perception_text(p: dict) -> str:
     ]
     walls = sorted((q + w["dq"], r + w["dr"]) for w in p.get("walls", []))
     fq, frr = AXIAL_DIRS[hd]
-    cdir = p.get("to_center")
-    center_rel = _REL[(cdir - hd) % 6] if cdir is not None else "toward mid-arena"
     zr = p.get("zone_radius")
     dc = p.get("dist_center", 0)
 
@@ -670,31 +613,59 @@ def _perception_text(p: dict) -> str:
             f"Tell the team where, and either get help, break line of sight, or fall back to "
             f"a teammate. Standing alone under fire is how tanks die."
         )
-    # urgency, where it changes the right move
-    if not p.get("safe", True):
-        lines.append(
-            f"- ZONE: move toward the center ({center_rel} of you) NOW, before anything else."
-        )
-    elif zr is not None and zr - dc <= 2:
-        lines.append(
-            f"- ZONE WARNING: margin {round(zr - dc, 1)} — drift toward the center "
-            f"({center_rel} of you) as you fight or the red cells swallow you."
-        )
-    if p["gun_ready"] and not can_fire:
-        seen_foes = [e for e in p["visible"] if e["kind"] == "enemy"]
-        if seen_foes:
-            near = min(seen_foes, key=lambda e: e["dist"])
-            rel = _REL[(near["dir"] - hd) % 6]
-            lines.append(
-                f"- You SEE #{near['id']} ({rel}, dist {near['dist']}) but it's out of range — "
-                f"close in and fire; don't hold still."
-            )
-        elif p.get("dist_center", 0) > 2:
-            lines.append(
-                f"- No enemy in sight — the fight converges on the center ({center_rel} of "
-                f"you) as the zone shrinks; advance to find them."
-            )
     return "\n".join(lines)
+
+
+def _priority(p: dict, beacons: dict, self_id: str, has_objective: bool, solo: bool) -> str:
+    # ONE directive per turn, picked by the ladder — the nudges used to stack and shout
+    # over each other; a small model follows the loudest line, so there is only one now
+    zr, dc = p.get("zone_radius"), p.get("dist_center", 0)
+    cq, crr = p.get("width", 15) // 2, p.get("height", 15) // 2
+    if not p.get("safe", True):
+        return f"PRIORITY: you are OUTSIDE the zone — move_to ({cq},{crr}) NOW; fight on the way."
+    if p.get("hit_taken"):
+        shooter = p.get("hit_from", 0)
+        seen = next((e for e in p["visible"] if e["kind"] == "enemy" and e["id"] == shooter), None)
+        where = (
+            f"#{shooter} at ({p['q'] + seen['dq']},{p['r'] + seen['dr']})"
+            if seen
+            else f"#{shooter} (unseen)"
+        )
+        return (
+            f"PRIORITY: YOU ARE TAKING FIRE from {where} — shoot back if it is on your "
+            f"line, otherwise break the line or fall back to a teammate. Tell the team."
+        )
+    if not solo and beacons:
+        sc = _support_call(p, beacons, self_id)
+        if sc:
+            return "PRIORITY: " + sc["text"]
+    fr = p.get("fire_range", 7)
+    clear = [
+        e
+        for e in p["visible"]
+        if e["kind"] == "enemy" and e.get("clear_shot", True) and e["dist"] <= fr
+    ]
+    if clear and p.get("gun_ready"):
+        near = min(clear, key=lambda e: e["dist"])
+        return (
+            f"PRIORITY: clear shot on #{near['id']} — take it at the cheapest power, and "
+            f"reposition in the same turn (shoot-and-scoot)."
+        )
+    if clear and not p.get("gun_ready"):
+        return "PRIORITY: you are EXPOSED with an empty gun — end your move off their line."
+    seen_foes = [e for e in p["visible"] if e["kind"] == "enemy"]
+    if seen_foes:
+        near = min(seen_foes, key=lambda e: e["dist"])
+        return (
+            f"PRIORITY: close on #{near['id']} at "
+            f"({p['q'] + near['dq']},{p['r'] + near['dr']}) through cover and bring it "
+            f"into range."
+        )
+    if zr is not None and zr - dc <= 2:
+        return f"PRIORITY: the zone is at your heels — drift toward ({cq},{crr}) as you fight."
+    if not solo and not has_objective:
+        return "PRIORITY: no enemies in sight — set an objective and advance with your team."
+    return "PRIORITY: advance with your team toward the shrinking center; report anything new."
 
 
 async def _consume_inbox(http: httpx.AsyncClient, agent: dict) -> tuple[str, dict]:
@@ -713,7 +684,7 @@ async def _consume_inbox(http: httpx.AsyncClient, agent: dict) -> tuple[str, dic
             beacons[sender] = body[4:].strip()
         elif body:
             lines.append(f"{sender}: {body}")
-    return " | ".join(lines), beacons
+    return " | ".join(lines)[:600], beacons
 
 
 async def _send(
@@ -746,23 +717,6 @@ async def _remember(http: httpx.AsyncClient, agent: dict, text: str) -> None:
         )
     except Exception:
         pass
-
-
-async def _recall(http: httpx.AsyncClient, agent: dict, query: str) -> str:
-    if not query:
-        return ""
-    try:
-        r = await http.get(
-            f"{ARTEL_URL}/memory/search",
-            headers=_headers(agent),
-            params={"q": query, "project": PHALANX_PROJECT, "limit": 5},
-        )
-        rows = r.json() if r.status_code < 300 else []
-    except Exception:
-        return ""
-    if not isinstance(rows, list):
-        return ""
-    return " | ".join(m.get("content", "")[:200] for m in rows if m.get("content"))
 
 
 async def _set_objective(
@@ -812,11 +766,11 @@ async def _board(http: httpx.AsyncClient, agent: dict) -> str:
     if not isinstance(rows, list):
         return ""
     lines = [
-        f"{(t.get('assigned_to') or '?')}: {t.get('title', '')}"
+        f"{(t.get('assigned_to') or '?')}: {t.get('title', '')[:90]}"
         for t in rows
         if "objective" in (t.get("tags") or [])
     ]
-    return " | ".join(lines[:6])
+    return " | ".join(lines[:5])
 
 
 async def _oneshot(http: httpx.AsyncClient, sys: str, user: str, max_tokens: int = 60) -> str:
@@ -882,7 +836,7 @@ async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str, events: s
     return await _oneshot(http, sys, f"Match log: {events or 'no kills were recorded'}\nRule:")
 
 
-async def _recent_lessons(http: httpx.AsyncClient, agent: dict, n: int = 8) -> str:
+async def _recent_lessons(http: httpx.AsyncClient, agent: dict, n: int = 6) -> str:
     # the corpus must CIRCULATE for strategy to emerge: newest lessons first, full enough
     # to mean something, each carrying the WIN/LOSS tag of the match that taught it
     try:
@@ -896,7 +850,7 @@ async def _recent_lessons(http: httpx.AsyncClient, agent: dict, n: int = 8) -> s
         return ""
     if not isinstance(rows, list):
         return ""
-    return " | ".join(m.get("content", "")[:200] for m in rows[:n] if m.get("content"))
+    return " | ".join(m.get("content", "")[:160] for m in rows[:n] if m.get("content"))
 
 
 async def _rehuddle(http: httpx.AsyncClient, survivors: str, board: str, intel: str) -> str:
@@ -982,26 +936,25 @@ async def decide(
     beacons: dict | None = None,
     solo: bool = False,
     wall_mem: set | None = None,
-) -> tuple[dict, float, str, str]:
+) -> tuple[dict, float, str, str, str]:
+    # ONE decision = ONE model call. The act tool carries the action AND the Artel traffic
+    # (say / objective / lesson) as fields of the same choice — the old multi-round tool loop
+    # re-sent the whole context for every message, tripling cost for zero extra intelligence.
     if solo:
         inbox, board = "", ""
     else:
-        inbox, fresh_beacons = await _consume_inbox(http, agent)
+        (inbox, fresh_beacons), board = await asyncio.gather(
+            _consume_inbox(http, agent), _board(http, agent)
+        )
         if beacons is not None:
             beacons.update(fresh_beacons)
-        board = await _board(http, agent)
     user = _perception_text(p)
     if beacons:
         user += "\nTEAMMATE POSITIONS (Artel beacons, ~1 turn old): " + "; ".join(
             f"{k} at {v}" for k, v in beacons.items() if k != agent["id"]
         )
-        support = _support_call(p, beacons, agent["id"])
-        if support and not p.get("hit_taken"):
-            user += "\n" + support["text"]
     if board:
         user += f"\nTEAM BOARD — current objectives: {board}"
-    if objective and not objective.get("task_id"):
-        user += "\nYou have NO objective on the board yet — set one."
     if notes:
         user += f"\n{notes}"
     if memory:
@@ -1011,100 +964,80 @@ async def decide(
         )
     if inbox:
         user += f"\nNEW team reports this turn: {inbox}"
+    user += "\n" + _priority(
+        p, beacons or {}, agent["id"], bool(objective and objective.get("task_id")), solo
+    )
     system = (SOLO_SYSTEM if solo else SYSTEM).format(mates=" and ".join(mate_ids) or "your team")
-    toolset = TOOLS_SOLO if solo else None
-    transcript: list[dict] = [{"role": "user", "text": user}]
-    intent = {"turn": 0, "move": "hold", "fire": 0}
-    cost, plan, recalled = 0.0, "", ""
-    for round_i in range(MAX_TOOL_ROUNDS):
-        # the LAST round forces the act tool: the model always chooses its own action;
-        # the reflex is a failure backstop, not a co-pilot
-        force_act = round_i == MAX_TOOL_ROUNDS - 1
-        text, calls, tin, tout, ep = await _chat(http, system, transcript, force_act, toolset)
-        cost += tin * ep["cin"] + tout * ep["cout"]
-        if not calls:
-            break
-        transcript.append({"role": "assistant", "text": text, "calls": calls})
-        results, acted = [], False
-        for c in calls:
+    toolset = TOOLS_SOLO if solo else TOOLS
+
+    text, calls, tin, tout, ep = await _chat(
+        http, system, [{"role": "user", "text": user}], True, toolset
+    )
+    cost = tin * ep["cin"] + tout * ep["cout"]
+    intent: dict = {"turn": 0, "move": "hold", "fire": 0}
+    plan = ""
+    act = next((c for c in calls if c["name"] == "act"), None)
+    if act:
+        if counts is not None:
+            counts["act"] = counts.get("act", 0) + 1
+        inp = act["input"]
+        intent = {
+            "turn": _TURN.get(inp.get("turn", "none"), 0),
+            "move": inp.get("move", "hold"),
+            "fire": int(inp.get("fire", 0) or 0),
+            "power": int(inp.get("power", 0) or 0),
+        }
+        for key in ("move_to", "fire_at"):
+            v = inp.get(key)
+            if isinstance(v, (list, tuple)) and len(v) == 2:
+                try:
+                    intent[key] = (int(v[0]), int(v[1]))
+                except (TypeError, ValueError):
+                    pass
+        plan = str(inp.get("plan", "") or "")[:140]
+        if not solo:
+            await _artel_ops(http, agent, inp, p, mate_ids, objective, claims, counts)
+
+    intent = _sanitize_intent(intent, p, beacons, agent["id"], solo)
+    _drivetrain(intent, p, wall_mem)
+    return intent, cost, plan, inbox, ""
+
+
+async def _artel_ops(http, agent, inp, p, mate_ids, objective, claims, counts) -> None:
+    # the Artel side-effects of the decision. Sends are fire-and-forget (the tick never
+    # waits on the network); only a board change is awaited, because the claim must be
+    # tracked for end-of-match cleanup — and it is rare by design (5-turn lock).
+    say = str(inp.get("say", "") or "")[:280]
+    lesson = str(inp.get("lesson", "") or "")[:400]
+    obj_txt = str(inp.get("objective", "") or "")[:140]
+    if say:
+        if counts is not None:
+            counts["tell_team"] = counts.get("tell_team", 0) + 1
+        asyncio.create_task(_send(http, agent, "team", say, mate_ids))
+    if lesson:
+        if counts is not None:
+            counts["remember"] = counts.get("remember", 0) + 1
+        asyncio.create_task(_remember(http, agent, lesson))
+    if obj_txt and objective is not None:
+        same = obj_txt.strip().lower() == objective.get("text", "").strip().lower()
+        locked = p.get("tick", 0) - objective.get("set_tick", -99) < 5
+        if not same and not locked:
             if counts is not None:
-                counts[c["name"]] = counts.get(c["name"], 0) + 1
-            if c["name"] == "act":
-                inp = c["input"]
-                intent = {
-                    "turn": _TURN.get(inp.get("turn", "none"), 0),
-                    "move": inp.get("move", "hold"),
-                    "fire": int(inp.get("fire", 0) or 0),
-                    "power": int(inp.get("power", 0) or 0),
-                }
-                mt = inp.get("move_to")
-                if isinstance(mt, (list, tuple)) and len(mt) == 2:
-                    try:
-                        intent["move_to"] = (int(mt[0]), int(mt[1]))
-                    except (TypeError, ValueError):
-                        pass
-                fa = inp.get("fire_at")
-                if isinstance(fa, (list, tuple)) and len(fa) == 2:
-                    try:
-                        intent["fire_at"] = (int(fa[0]), int(fa[1]))
-                    except (TypeError, ValueError):
-                        pass
-                plan = str(inp.get("plan", "") or "")[:140]
-                acted = True
-                results.append({"id": c["id"], "output": "ok"})
-            elif c["name"] == "tell_team":
-                await _send(
-                    http,
-                    agent,
-                    str(c["input"].get("to", "team")),
-                    str(c["input"].get("text", "")),
-                    mate_ids,
-                )
-                results.append({"id": c["id"], "output": "sent"})
-            elif c["name"] == "remember":
-                await _remember(http, agent, str(c["input"].get("text", "")))
-                results.append({"id": c["id"], "output": "saved"})
-            elif c["name"] == "recall":
-                found = await _recall(http, agent, str(c["input"].get("query", "")))
-                recalled = found or recalled
-                results.append({"id": c["id"], "output": found or "nothing relevant"})
-            elif c["name"] == "set_objective":
-                txt = str(c["input"].get("text", ""))[:140]
-                if objective and txt.strip().lower() == objective.get("text", "").strip().lower():
-                    results.append(
-                        {"id": c["id"], "output": "already your objective — board unchanged"}
-                    )
-                    continue
-                if objective and p.get("tick", 0) - objective.get("set_tick", -99) < 5:
-                    results.append(
-                        {
-                            "id": c["id"],
-                            "output": "objective locked (changes allowed every 5 turns) — "
-                            "fight the plan you committed to",
-                        }
-                    )
-                    continue
-                tid = await _set_objective(
-                    http, agent, txt, mate_ids, (objective or {}).get("task_id", "")
-                )
-                if tid:
-                    if objective is not None:
-                        objective["task_id"], objective["text"] = tid, txt
-                        objective["set_tick"] = p.get("tick", 0)
-                    if claims is not None:
-                        claims.append((agent, tid))
-                results.append({"id": c["id"], "output": "posted on the team board"})
-        if acted:
-            break
-        transcript.append({"role": "tool", "results": results})
-    # floors so a tank never under-acts: fire an in-range target the model ignored, and if it's
-    # left holding with nothing to shoot, advance (on the nearest enemy, else toward center). The
-    # model still drives whenever it makes a real choice; this only covers the turns it idles.
-    rx = _reflex(p)
-    # a shot the engine will reject (target out of range / behind cover / gun reloading) is a
-    # PHANTOM: it costs nothing, hits nothing, and must not excuse holding position — tanks
-    # have frozen for whole matches "firing" at an enemy through a wall
+                counts["set_objective"] = counts.get("set_objective", 0) + 1
+            tid = await _set_objective(http, agent, obj_txt, mate_ids, objective.get("task_id", ""))
+            if tid:
+                objective["task_id"], objective["text"] = tid, obj_txt
+                objective["set_tick"] = p.get("tick", 0)
+                if claims is not None:
+                    claims.append((agent, tid))
+
+
+def _sanitize_intent(intent: dict, p: dict, beacons: dict | None, self_id: str, solo: bool) -> dict:
+    # ALL the floors in one place, in precedence order. They exist so a tank never
+    # under-acts on a phantom (a shot the engine will reject, a step into a wall) and never
+    # idles while a teammate dies — the model still drives every turn it makes a real choice.
     powers = p.get("power_range", [3, 5, 7])
+    rx = _reflex(p)
     dist_of = {
         v["id"]: v["dist"]
         for v in p["visible"]
@@ -1112,18 +1045,17 @@ async def decide(
         and v["dist"] <= p.get("fire_range", 7)
         and v.get("clear_shot", True)
     }
+    # predictive shots: trusted, but never through a teammate and never beyond the gun
     if intent.get("fire_at"):
         if not p.get("gun_ready"):
             intent.pop("fire_at", None)
         else:
             d_aim = _hexdist(p["q"], p["r"], *intent["fire_at"])
             if d_aim < 1 or d_aim > powers[-1]:
-                intent.pop("fire_at", None)  # own hex or beyond any gun — a phantom
+                intent.pop("fire_at", None)
             else:
                 need = next(i + 1 for i, rng_ in enumerate(powers) if d_aim <= rng_)
                 intent["power"] = max(int(intent.get("power", 0) or 0), need)
-                # friendly-fire floor: a predicted ray that crosses a teammate's CURRENT hex
-                # would hit them first — the engine's line, extended to the gun's range
                 ally_cells = {
                     (p["q"] + v["dq"], p["r"] + v["dr"])
                     for v in p["visible"]
@@ -1136,56 +1068,49 @@ async def decide(
                         round(p["q"] + (aq - p["q"]) * scale),
                         round(p["r"] + (ar - p["r"]) * scale),
                     )
-                    ray = [
-                        c for c in hex_line(p["q"], p["r"], ext[0], ext[1]) if c != (p["q"], p["r"])
-                    ]
-                    for c in ray:
+                    for c in hex_line(p["q"], p["r"], ext[0], ext[1]):
+                        if c == (p["q"], p["r"]):
+                            continue
                         if c in ally_cells:
-                            intent.pop("fire_at", None)  # a teammate is on that line
+                            intent.pop("fire_at", None)
                             break
                         if c == (aq, ar):
                             break
     if intent.get("fire_at"):
         intent["fire"] = 0  # the predictive aim IS the shot
     elif intent.get("fire") and (intent["fire"] not in dist_of or not p.get("gun_ready")):
-        intent["fire"] = 0
+        intent["fire"] = 0  # phantom: blocked, out of range, or reloading
     elif intent.get("fire"):
         need = next(i + 1 for i, rng_ in enumerate(powers) if dist_of[intent["fire"]] <= rng_)
-        intent["power"] = max(int(intent.get("power", 0) or 0), need)  # never waste the pull
+        intent["power"] = max(int(intent.get("power", 0) or 0), need)
     if not intent.get("fire") and not intent.get("fire_at"):
-        intent["fire"] = rx["fire"]
+        intent["fire"] = rx["fire"]  # a clear shot the model ignored is still taken
         if rx.get("power"):
             intent["power"] = rx["power"]
-    if (
-        not solo
-        and beacons
-        and intent.get("move", "hold") == "hold"
+    idle = (
+        intent.get("move", "hold") == "hold"
         and not intent.get("move_to")
         and not intent.get("fire")
         and not intent.get("fire_at")
-    ):
-        # the model idled while a teammate is under fire: the default is to converge, not
-        # to stand in a field. Only covers turns the model made no real choice.
-        sc = _support_call(p, beacons, agent["id"])
+    )
+    if idle and not solo and beacons:
+        sc = _support_call(p, beacons, self_id)
         if sc and sc.get("move_to"):
-            intent["move_to"] = sc["move_to"]
-    if (
-        intent.get("move", "hold") == "hold"
-        and not intent.get("fire")
-        and not intent.get("fire_at")
-    ):
+            intent["move_to"] = sc["move_to"]  # idling while an ally is under fire: converge
+            idle = False
+    if idle:
         intent["turn"], intent["move"] = rx["turn"], rx["move"]
-    # drivetrain: the model thinks in destinations; we translate one optimal step. Choosing
-    # WHERE to go is entirely the model's; turning mechanics are the tank's transmission.
-    # Pathfinding is BFS over PERCEIVED walls (unknown terrain assumed open), so wall
-    # pockets route around instead of trapping a greedy step; tanks only veto step one.
+    return intent
+
+
+def _drivetrain(intent: dict, p: dict, wall_mem: set | None) -> None:
+    # the model thinks in destinations; the drivetrain translates ONE optimal step —
+    # turning mechanics, remembered walls, routing around tanks, never shoving the map edge
     mt = intent.pop("move_to", None)
     if mt and (mt[0], mt[1]) != (p["q"], p["r"]):
         wall_abs = {(p["q"] + w_["dq"], p["r"] + w_["dr"]) for w_ in p.get("walls", [])}
         if wall_mem is not None:
-            # walls are static for the whole match: remember every one this tank has seen,
-            # so cover discovered three turns ago still routes around when out of sight
-            wall_mem |= wall_abs
+            wall_mem |= wall_abs  # walls are static all match: remember every one seen
             wall_abs = set(wall_mem)
         occ_abs = {(p["q"] + v["dq"], p["r"] + v["dr"]) for v in p.get("visible", [])}
         R_ = p.get("map_radius", (p.get("width", 15) - 1) // 2)
@@ -1206,10 +1131,9 @@ async def decide(
         hh = p["heading"]
         intent["turn"] = 0 if hh == best else (1 if (best - hh) % 6 <= 3 else -1)
         travel = (hh + intent["turn"]) % 6
-        intent["move"] = "fwd" if travel == best else "hold"  # rotate first if not facing yet
-    # phantom-MOVE floor: a step into cover or off the map is silently rejected by the
-    # engine — tanks have shoved a map edge for whole matches. Deflect toward the nearest
-    # open direction (rotating first if the hull can't face it within one turn).
+        intent["move"] = "fwd" if travel == best else "hold"  # rotate first if not facing
+    # a step into cover or off the map is silently rejected by the engine — deflect, or
+    # queue behind a teammate (deflecting around allies is what scattered formations)
     if intent.get("move") in ("fwd", "back"):
         wallset = {(w_["dq"], w_["dr"]) for w_ in p.get("walls", [])}
         ally_rel = {(v["dq"], v["dr"]) for v in p.get("visible", []) if v["kind"] == "ally"}
@@ -1229,8 +1153,6 @@ async def decide(
         if not _open(tdir):
             dq, dr = AXIAL_DIRS[tdir]
             if (dq, dr) in ally_rel:
-                # blocked by a TEAMMATE: queue behind it — hold this turn, keep facing.
-                # Deflecting sideways here is what scattered the formation off the spawn.
                 intent["move"] = "hold"
             else:
                 for off in (1, -1, 2, -2, 3):
@@ -1241,7 +1163,6 @@ async def decide(
                         travel = (hh + intent["turn"]) % 6
                         intent["move"] = "fwd" if travel == d2 and _open(travel) else "hold"
                         break
-    return intent, cost, plan, inbox, recalled
 
 
 class Squad:
