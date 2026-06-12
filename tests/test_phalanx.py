@@ -448,7 +448,7 @@ def test_crossfire_floor_holds_the_shot_when_an_ally_hugs_the_line():
         "power_cost": [0, 2, 4],
         "fire_range": 7,
         "visible": [
-            {"id": 2, "kind": "ally", "dq": 2, "dr": -1, "dist": 2, "dir": 1},  # beside the line
+            {"id": 2, "kind": "ally", "dq": 3, "dr": 0, "dist": 3, "dir": 0},  # in the scrum
             {
                 "id": 5,
                 "kind": "enemy",
@@ -466,7 +466,17 @@ def test_crossfire_floor_holds_the_shot_when_an_ally_hugs_the_line():
         "to_center": 0,
     }
     intent = _sanitize_intent({"turn": 0, "move": "hold", "fire": 5, "power": 2}, p, {}, "me", True)
-    assert not intent.get("fire")  # ally one step from the firing line, closer than the target
+    assert not intent.get("fire")  # ally adjacent to the target — in the scrum
+
+    p2 = dict(p)
+    p2["visible"] = [
+        {"id": 2, "kind": "ally", "dq": 1, "dr": 1, "dist": 2, "dir": 5},  # near, NOT in scrum
+        p["visible"][1],
+    ]
+    intent = _sanitize_intent(
+        {"turn": 0, "move": "hold", "fire": 5, "power": 2}, p2, {}, "me", True
+    )
+    assert intent.get("fire") == 5  # formation no longer mutes the guns
 
 
 def test_burnout_floor_blocks_suicide_unless_finisher():

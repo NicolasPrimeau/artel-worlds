@@ -944,6 +944,7 @@ async def decide(
     beacons: dict | None = None,
     solo: bool = False,
     wall_mem: set | None = None,
+    distress: dict | None = None,
 ) -> tuple[dict, float, str, str, str]:
     # ONE decision = ONE model call. The act tool carries the action AND the Artel traffic
     # (say / objective / lesson) as fields of the same choice — the old multi-round tool loop
@@ -957,9 +958,14 @@ async def decide(
         if beacons is not None:
             beacons.update(fresh_beacons)
     user = _perception_text(p)
-    if beacons:
+    # distress overlay: a teammate's UNDER FIRE call stays on the board for several turns —
+    # the live beacon only carries it for one, which is how distant tanks "never knew"
+    view = dict(beacons or {})
+    if distress and distress.get("victim") != agent["id"]:
+        view[distress["victim"]] = distress["body"]
+    if view:
         user += "\nTEAMMATE POSITIONS (Artel beacons, ~1 turn old): " + "; ".join(
-            f"{k} at {v}" for k, v in beacons.items() if k != agent["id"]
+            f"{k} at {v}" for k, v in view.items() if k != agent["id"]
         )
     if board:
         user += f"\nTEAM BOARD — current objectives: {board}"
@@ -973,7 +979,7 @@ async def decide(
     if inbox:
         user += f"\nNEW team reports this turn: {inbox}"
     user += "\n" + _priority(
-        p, beacons or {}, agent["id"], bool(objective and objective.get("task_id")), solo
+        p, view, agent["id"], bool(objective and objective.get("task_id")), solo
     )
     system = (SOLO_SYSTEM if solo else SYSTEM).format(mates=" and ".join(mate_ids) or "your team")
     toolset = TOOLS_SOLO if solo else TOOLS
@@ -1006,7 +1012,7 @@ async def decide(
         if not solo:
             await _artel_ops(http, agent, inp, p, mate_ids, objective, claims, counts)
 
-    intent = _sanitize_intent(intent, p, beacons, agent["id"], solo)
+    intent = _sanitize_intent(intent, p, view, agent["id"], solo)
     _drivetrain(intent, p, wall_mem)
     return intent, cost, plan, inbox, ""
 
@@ -1095,27 +1101,18 @@ def _sanitize_intent(intent: dict, p: dict, beacons: dict | None, self_id: str, 
         intent["fire"] = rx["fire"]  # a clear shot the model ignored is still taken
         if rx.get("power"):
             intent["power"] = rx["power"]
-    # crossfire floor: the line is clear at trigger time, but an ally standing BESIDE it and
-    # nearer than the target steps onto it in the same simultaneous turn — the kill logs are
-    # full of blue killing blue exactly this way. Hold the shot when a closer ally hugs the line.
+    # crossfire floor: hold the shot only when an ally is IN THE SCRUM — adjacent to the
+    # target and nearer than it (the geometry of every fratricide in the kill logs). The
+    # first version vetoed any ally near the line and muted the whole formation's guns.
     if intent.get("fire") and intent["fire"] in dist_of:
         tgt = next(v for v in p["visible"] if v["kind"] == "enemy" and v["id"] == intent["fire"])
         t_cell = (p["q"] + tgt["dq"], p["r"] + tgt["dr"])
-        ray = [
-            c
-            for c in hex_line(p["q"], p["r"], t_cell[0], t_cell[1])
-            if c not in ((p["q"], p["r"]), t_cell)
-        ]
         for v in p["visible"]:
             if v["kind"] != "ally" or v["dist"] >= tgt["dist"]:
                 continue
             a_cell = (p["q"] + v["dq"], p["r"] + v["dr"])
-            if any(
-                _hexdist(a_cell[0], a_cell[1], c[0], c[1]) <= 1
-                for c in ray
-                if _hexdist(p["q"], p["r"], c[0], c[1]) > 1
-            ):
-                intent["fire"] = 0  # crossfire risk — reposition instead of gambling an ally
+            if _hexdist(a_cell[0], a_cell[1], t_cell[0], t_cell[1]) <= 1:
+                intent["fire"] = 0  # an ally is in the scrum — don't gamble them
                 break
     # burnout floor: a shot that drains you to 0 destroys you — allowed only as a finisher
     # on a target you can see dying (energy <= damage). Two tanks suicided in six matches.
@@ -1146,17 +1143,24 @@ def _sanitize_intent(intent: dict, p: dict, beacons: dict | None, self_id: str, 
             else:
                 intent["fire"] = 0
                 intent.pop("fire_at", None)
+    # STANDING ORDER: when a teammate is under fire and this tank is unengaged (no enemy on
+    # its lines, not under fire itself) and the model gave no explicit destination, the unit
+    # converges on the fight. Assists are doctrine, not a suggestion — the model still
+    # overrides by naming any move_to of its own.
+    engaged = p.get("hit_taken") or any(
+        v["kind"] == "enemy" and v.get("clear_shot", True) and v["dist"] <= p.get("fire_range", 7)
+        for v in p["visible"]
+    )
+    if not solo and beacons and not engaged and not intent.get("move_to"):
+        sc = _support_call(p, beacons, self_id)
+        if sc and sc.get("move_to"):
+            intent["move_to"] = sc["move_to"]
     idle = (
         intent.get("move", "hold") == "hold"
         and not intent.get("move_to")
         and not intent.get("fire")
         and not intent.get("fire_at")
     )
-    if idle and not solo and beacons:
-        sc = _support_call(p, beacons, self_id)
-        if sc and sc.get("move_to"):
-            intent["move_to"] = sc["move_to"]  # idling while an ally is under fire: converge
-            idle = False
     if idle:
         intent["turn"], intent["move"] = rx["turn"], rx["move"]
     return intent
@@ -1252,6 +1256,7 @@ class Squad:
         self._seen_ids: dict[int, set] = {}  # per-tank enemy ids seen last turn (own eyes only)
         self._beacons: dict[int, dict] = {}  # per-tank latest teammate beacons (via Artel)
         self._walls: dict[int, set] = {}  # per-tank remembered walls (own sightings only)
+        self._distress: dict | None = None  # squad-wide last UNDER FIRE call (sticky ~5 ticks)
         self._objectives: dict[int, dict] = {}  # per-tank current board objective (Artel task)
         self._claims: list[tuple[dict, str]] = []  # (agent, task id) opened this match
         self.tool_counts: dict[str, int] = {}  # Artel tool usage this match, for /debug
@@ -1317,6 +1322,38 @@ class Squad:
         intel = self._intel.get(tank_id) or []
         if intel:
             notes += "\nTeam reports so far (oldest first): " + " | ".join(intel)
+        if not self.solo:
+            # transponder: broadcast position over Artel every turn, BEFORE deciding — the
+            # distress call must go out even when this tank's own decision times out
+            beacon = f"POS ({p['q']},{p['r']}) t{p.get('tick', '?')}"
+            if p.get("hit_taken"):
+                shooter = next(
+                    (
+                        v
+                        for v in p.get("visible", [])
+                        if v["kind"] == "enemy" and v.get("id") == p.get("hit_from")
+                    ),
+                    None,
+                )
+                where = (
+                    f" at ({p['q'] + shooter['dq']},{p['r'] + shooter['dr']})" if shooter else ""
+                )
+                beacon += f" UNDER FIRE by #{p.get('hit_from', '?')}{where}"
+                # squad distress memory: stays actionable for several turns, because the
+                # live beacon is overwritten the very next tick
+                self._distress = {
+                    "tick": p.get("tick", 0),
+                    "victim": agent["id"],
+                    "body": beacon[4:],
+                }
+            asyncio.create_task(_send(self._http, agent, "team", beacon, [], "beacon"))
+        distress = None
+        if (
+            not self.solo
+            and self._distress
+            and p.get("tick", 0) - self._distress.get("tick", -99) <= 5
+        ):
+            distress = self._distress
         try:
             intent, cost, plan, inbox, recalled = await asyncio.wait_for(
                 decide(
@@ -1332,6 +1369,7 @@ class Squad:
                     self._beacons.setdefault(tank_id, {}),
                     self.solo,
                     self._walls.setdefault(tank_id, set()),
+                    distress,
                 ),
                 timeout=DECIDE_DEADLINE,
             )
@@ -1345,24 +1383,6 @@ class Squad:
             self._plans[tank_id] = plan
         if recalled:
             self._recalled[tank_id] = recalled[:300]
-        if not self.solo:
-            # transponder: broadcast position over Artel every turn — equipment, not
-            # strategy. Teammates read it from their inboxes.
-            beacon = f"POS ({p['q']},{p['r']}) t{p.get('tick', '?')}"
-            if p.get("hit_taken"):
-                shooter = next(
-                    (
-                        v
-                        for v in p.get("visible", [])
-                        if v["kind"] == "enemy" and v.get("id") == p.get("hit_from")
-                    ),
-                    None,
-                )
-                where = (
-                    f" at ({p['q'] + shooter['dq']},{p['r'] + shooter['dr']})" if shooter else ""
-                )
-                beacon += f" UNDER FIRE by #{p.get('hit_from', '?')}{where}"
-            asyncio.create_task(_send(self._http, agent, "team", beacon, [], "beacon"))
         if inbox:
             log_ = self._intel.setdefault(tank_id, [])
             for line in inbox.split(" | "):
@@ -1397,6 +1417,7 @@ class Squad:
             self._recalled = {}
             self._seen_ids = {}
             self._beacons = {}
+            self._distress = None
             self._objectives = {}
             self._claims = []
             self._walls = {}
@@ -1413,6 +1434,7 @@ class Squad:
         self._recalled = {}
         self._seen_ids = {}
         self._beacons = {}
+        self._distress = None
         self._objectives = {}
         self._claims = []
         self._walls = {}
