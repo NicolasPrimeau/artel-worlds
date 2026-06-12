@@ -774,7 +774,7 @@ async def ui_stats(request: Request):
             "key": "automata",
             "name": "Automata",
             "world": 1,
-            "url": "https://world.artel.run",
+            "url": "https://automata.artel.run",
             "status": "live",
             "model": LLM_MODEL if LLM_ENABLED else "heuristic CA (no LLM)",
             "spend": None,  # automata's house-tribe LLM spend is not metered
