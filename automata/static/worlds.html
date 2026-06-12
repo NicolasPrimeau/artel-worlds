@@ -101,10 +101,12 @@
   </div>
 </div>
 <script>
-// the Watchtower card is not a screenshot — it draws the experiment's REAL live curve
-addEventListener("load", async () => {
+// the Watchtower card is not a screenshot — it draws the experiment's REAL live curve,
+// and keeps it live: refetched every minute while the page is open
+let wtChart = null;
+async function drawWatchtower() {
   try {
-    if (!window.Chart) return;
+    if (!window.Chart || document.hidden) return;
     const r = await fetch("/hub/watchtower.json");
     if (!r.ok) return;
     const d = await r.json();
@@ -113,12 +115,19 @@ addEventListener("load", async () => {
     const cv = document.getElementById("wt-live");
     cv.hidden = false;
     document.querySelector("#wt-thumb img").style.visibility = "hidden";
+    if (wtChart) {
+      wtChart.data.labels = pts.map(w => w.from_seq);
+      wtChart.data.datasets[0].data = pts.map(w => w.solo_mttr);
+      wtChart.data.datasets[1].data = pts.map(w => w.artel_mttr);
+      wtChart.update("none");
+      return;
+    }
     const secs = v => v >= 60 ? +(v/60).toFixed(1) + "m" : v + "s";
     Chart.defaults.color = "#79839a";
     Chart.defaults.borderColor = "#161b24";
     Chart.defaults.font.family = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
     Chart.defaults.font.size = 9;
-    new Chart(cv, { type: "line",
+    wtChart = new Chart(cv, { type: "line",
       data: { labels: pts.map(w => w.from_seq), datasets: [
         { label: "Solo (alone)", data: pts.map(w => w.solo_mttr), borderColor: "#ffae42",
           pointRadius: 2, borderWidth: 2, tension: .3, spanGaps: true },
@@ -132,7 +141,9 @@ addEventListener("load", async () => {
         plugins: { legend: { display: true, position: "top", labels: { boxWidth: 8, boxHeight: 8 } } } }
     });
   } catch (_) {}
-});
+}
+addEventListener("load", () => { drawWatchtower(); setInterval(drawWatchtower, 60000); });
+addEventListener("visibilitychange", () => { if (!document.hidden) drawWatchtower(); });
 </script>
 </body>
 </html>

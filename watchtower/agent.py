@@ -144,8 +144,9 @@ TOOLS = [
         "name": "remediate",
         "description": "Apply a remediation to a node. action is one of restart, scale, rollback, "
         "clear_queue, failover, rotate. failover promotes a node's standby — target the sick "
-        "primary you are failing AWAY from. The wrong action, or the right one on the wrong node, "
-        "costs time and fixes nothing. Some incidents need two in a specific order.",
+        "primary you are failing AWAY from. clear_queue purges a backlog OR reclaims space "
+        "(queues, full disks, old segments). The wrong action, or the right one on the wrong "
+        "node, costs time and fixes nothing. Some incidents need two in a specific order.",
         "schema": {
             "type": "object",
             "properties": {
