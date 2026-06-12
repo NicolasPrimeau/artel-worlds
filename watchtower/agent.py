@@ -97,14 +97,18 @@ SYSTEM = (
     "this same fault with notes from whoever tried before. If your fix cracks an open board item, "
     "close_task it.\n"
     "2. DIAGNOSE: inspect / read_logs the suspect nodes to confirm the root cause. Cheap, but not "
-    "free — don't inspect the whole graph when the runbook already named the fix.\n"
+    "free — don't inspect the whole graph when the runbook already named the fix. WARNING: the same "
+    "page can have DIFFERENT root causes on different days — the obvious fix is sometimes wrong. "
+    "Confirm before you remediate; if a remediation reads 'no effect', your diagnosis was wrong — "
+    "re-diagnose, don't repeat it.\n"
     "3. REMEDIATE: apply the SINGLE correct fix (sometimes an ordered pair). A wrong or needless "
     "remediation costs extra and changes nothing. Available: restart, scale, rollback, clear_queue, "
     "failover, rotate — each on a named node.\n"
     "4. RECORD: once resolved, call remember with a runbook that will help NEXT time — state the "
     "root cause and the fix in terms of the SYMPTOM PATTERN (kind of node, which dials, the order of "
-    "steps), NOT this incident's specific node name or numbers (those change every time). One tight "
-    "rule. Skip platitudes you already know.\n"
+    "steps), NOT this incident's specific node name or numbers (those change every time). If this "
+    "page can have multiple roots, record the DISCRIMINATOR: what to check, and which reading "
+    "implies which fix. One tight rule. Skip platitudes you already know.\n"
     "You may also file_task work that should NOT block restoring service (preventive fixes, "
     "monitoring gaps, cleanup you noticed). Keep acting until the incident reads RESOLVED."
 )
@@ -740,5 +744,7 @@ async def _record_runbook(http, inc: Incident, store, transcript, counts) -> flo
     # model skipped it — synthesize the runbook from the fix that actually worked (identical
     # fallback for both fleets, so fairness holds)
     steps = " then ".join(f"{a} {n}" for a, n in inc.spec.fix)
-    await store.remember(f"runbook {inc.spec.family}: alert '{inc.spec.alert}'. fix: {steps}.")
+    await store.remember(
+        f"runbook {inc.spec.family}: alert '{inc.spec.alert}'. root: {inc.spec.root} fix: {steps}."
+    )
     return cost

@@ -141,6 +141,139 @@ def _db_primary_stuck(rng: Random) -> IncidentSpec:
     )
 
 
+def _deploy_regression(rng: Random) -> IncidentSpec:
+    # One PAGE, two possible truths. Error rate jumps minutes after a deploy on a service node.
+    # Usually it IS the deploy (roll back). But sometimes the deploy is innocent: its restart rush
+    # surfaced a connection-pool leak, and a rollback changes nothing — the pool needs draining.
+    # The alert is identical either way; only read_logs/inspect on the node tells them apart. A good
+    # runbook records the DISCRIMINATOR, not a reflex.
+    node = rng.choice(("api", "web", "auth"))
+    err = round(rng.uniform(15.0, 60.0), 1)
+    lat = round(rng.uniform(300, 900), 1)
+    pool = round(rng.uniform(95.0, 100.0), 1)
+    is_regression = rng.random() < 0.6
+
+    def apply(infra: Infra) -> None:
+        s = infra.nodes[node]
+        s.status, s.incident = "degraded", "deploy_regression"
+        s.metrics["error_rate"] = err
+        s.metrics["latency_ms"] = lat
+        s.deploy_version += 1
+        if is_regression:
+            s.logs = [
+                f"5xx rate {err}% since version bump",
+                f"NullPointer in NEW request handler path (v{s.deploy_version})",
+            ]
+        else:
+            s.metrics["conns"] = pool
+            s.logs = [
+                f"5xx rate {err}% since restart storm",
+                f"pool {pool}% checked-out, 0 idle — waiters timing out acquiring a connection",
+                "no errors attributable to new code paths",
+            ]
+        infra.propagate()
+
+    if is_regression:
+        root = "The deploy shipped a regression (new-code stack traces in the logs); roll it back."
+        fix = [("rollback", node)]
+    else:
+        root = (
+            "The deploy was innocent: its restart rush surfaced a leaked connection pool — "
+            "rollback does nothing; restart the node to drain the pool."
+        )
+        fix = [("restart", node)]
+    return IncidentSpec(
+        "deploy_regression",
+        "Errors spiking after a deploy",
+        root,
+        f"PAGE: {node} error rate {err}% spiked minutes after a deploy",
+        fix,
+        apply,
+    )
+
+
+def _stale_reads(rng: Random) -> IncidentSpec:
+    # Users see stale data. The page never names a node — the root is either the read replica
+    # lagging (failover) or the cache serving expired keys because invalidation wedged (restart
+    # cache). Checking db-replica's replication lag settles it in one inspect.
+    is_lag = rng.random() < 0.55
+    lag = round(rng.uniform(45.0, 400.0), 1)
+
+    def apply(infra: Infra) -> None:
+        if is_lag:
+            r = infra.nodes["db-replica"]
+            r.status, r.incident = "degraded", "stale_reads"
+            r.metrics["replica_lag_s"] = lag
+            r.logs = [f"replication lag {lag}s and climbing", f"serving reads {lag}s stale"]
+        else:
+            c = infra.nodes["cache"]
+            c.status, c.incident = "degraded", "stale_reads"
+            c.metrics["stale_keys_pct"] = round(40 + lag / 10, 1)
+            c.logs = [
+                "invalidation queue stalled — consumers see expired keys as fresh",
+                "replica lag normal; staleness originates here",
+            ]
+        infra.propagate()
+
+    if is_lag:
+        root = "The read replica fell behind the primary; failover/resync it."
+        fix = [("failover", "db-replica")]
+    else:
+        root = (
+            "Cache invalidation wedged and the cache is serving expired keys — the replica is "
+            "healthy; restart the cache."
+        )
+        fix = [("restart", "cache")]
+    return IncidentSpec(
+        "stale_reads",
+        "Users seeing stale data",
+        root,
+        "PAGE: users seeing stale data, read latency climbing across api",
+        fix,
+        apply,
+    )
+
+
+def _latency_surge(rng: Random) -> IncidentSpec:
+    # p99 collapses on a front-tier node. Half the time it is a genuine traffic surge (scale out);
+    # half the time the node is thrashing GC on a leaked heap and scaling just spreads sick
+    # replicas (restart). RPS vs memory dials disambiguate in one inspect.
+    node = rng.choice(("web", "api"))
+    p99 = round(rng.uniform(900.0, 3000.0), 1)
+    mem = round(rng.uniform(93.0, 99.0), 1)
+    is_surge = rng.random() < 0.5
+
+    def apply(infra: Infra) -> None:
+        s = infra.nodes[node]
+        s.status, s.incident = "degraded", "latency_surge"
+        s.metrics["latency_ms"] = p99
+        if is_surge:
+            s.metrics["rps_x_baseline"] = 2.4
+            s.logs = ["RPS 2.4x baseline, connection queue saturating", "memory and GC normal"]
+        else:
+            s.metrics["mem_pct"] = mem
+            s.logs = ["GC pause 900ms+, heap near limit", "RPS at baseline — load is NOT elevated"]
+        infra.propagate()
+
+    if is_surge:
+        root = "A real traffic surge overwhelmed the front tier; scale it out — nothing is broken."
+        fix = [("scale", node)]
+    else:
+        root = (
+            "Not load: a leaked heap has the node thrashing GC; scaling spreads sick replicas — "
+            "restart the node to reclaim memory."
+        )
+        fix = [("restart", node)]
+    return IncidentSpec(
+        "latency_surge",
+        "p99 collapsing on the front tier",
+        root,
+        f"PAGE: {node} p99 {p99}ms, error budget burning",
+        fix,
+        apply,
+    )
+
+
 FAMILIES: tuple[Fault, ...] = (
     _spike(
         "disk_full",
@@ -179,18 +312,12 @@ FAMILIES: tuple[Fault, ...] = (
         lambda n, v: "PAGE: cache unreachable, db CPU spiking from read fall-through",
         down=True,
     ),
-    _spike(
-        "bad_deploy",
-        "Regression in the latest deploy",
-        "The last deploy shipped a regression; error rate jumped on version bump — roll it back.",
-        ("api", "web", "auth"),
-        "error_rate",
-        15.0,
-        60.0,
-        "rollback",
-        lambda n, v: [f"5xx rate {v}% since v-bump", "NullPointer in new request handler path"],
-        lambda n, v: f"PAGE: {n} error rate {v}% spiked right after a deploy",
-        aux=lambda rng: {"deploy_bump": 1, "latency_ms": round(rng.uniform(300, 900), 1)},
+    Fault(
+        "deploy_regression",
+        "Errors spiking after a deploy",
+        "Same page, two roots: a real regression (rollback) or a pool leak the deploy surfaced "
+        "(restart) — the logs discriminate.",
+        _deploy_regression,
     ),
     _spike(
         "conn_pool_exhausted",
@@ -208,17 +335,12 @@ FAMILIES: tuple[Fault, ...] = (
         lambda n, v: f"PAGE: {n} cannot get db connections, pool {v}% exhausted",
         aux=lambda rng: {"error_rate": round(rng.uniform(8, 22), 1)},
     ),
-    _spike(
-        "replica_lag",
-        "Read replica fell behind",
-        "The replica lagged far behind the primary, serving stale reads; failover/resync it.",
-        ("db-replica",),
-        "replica_lag_s",
-        45.0,
-        400.0,
-        "failover",
-        lambda n, v: [f"replication lag {v}s", f"serving reads {v}s stale"],
-        lambda n, v: f"PAGE: db-replica lag {v}s, users seeing stale data",
+    Fault(
+        "stale_reads",
+        "Users seeing stale data",
+        "Same page, two roots: replica lag (failover) or wedged cache invalidation (restart "
+        "cache) — replica lag settles it in one inspect.",
+        _stale_reads,
     ),
     _spike(
         "cpu_saturation",
@@ -258,17 +380,12 @@ FAMILIES: tuple[Fault, ...] = (
         lambda n, v: "PAGE: workers idle + api 5xx — queue broker appears down",
         down=True,
     ),
-    _spike(
-        "traffic_spike",
-        "Organic traffic surge at the front tier",
-        "A real load surge overwhelmed the front tier; scale it out — nothing is broken, just small.",
-        ("web", "lb"),
-        "latency_ms",
-        900.0,
-        3000.0,
-        "scale",
-        lambda n, v: [f"p99 {v}ms, 2.4x normal RPS", "connection queue saturating"],
-        lambda n, v: f"PAGE: {n} p99 {v}ms under a traffic surge",
+    Fault(
+        "latency_surge",
+        "p99 collapsing on the front tier",
+        "Same page, two roots: an organic surge (scale) or GC thrash on a leaked heap (restart) — "
+        "the RPS and memory dials discriminate.",
+        _latency_surge,
     ),
     Fault(
         "queue_backlog",

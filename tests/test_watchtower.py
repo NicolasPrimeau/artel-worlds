@@ -211,3 +211,87 @@ def test_handoff_is_private_for_solo_fleet():
         assert await s2.handoff() == ""  # a teammate inherits nothing — no delta, no team
 
     asyncio.run(run())
+
+
+def _spawn_branch(key, want_fix_action, tries=400):
+    from random import Random
+
+    for i in range(tries):
+        f = next(f for f in FAMILIES if f.key == key)
+        spec = f.spawn(Random(i))
+        if spec.fix[0][0] == want_fix_action:
+            return spec
+    raise AssertionError(f"{key}: no spawn with fix {want_fix_action} in {tries} tries")
+
+
+def test_branched_families_draw_both_roots():
+    # probabilistic graphs: the same presentation must occur with each of its roots
+    for key, fixes in (
+        ("deploy_regression", ("rollback", "restart")),
+        ("stale_reads", ("failover", "restart")),
+        ("latency_surge", ("scale", "restart")),
+    ):
+        for fix in fixes:
+            assert _spawn_branch(key, fix)
+
+
+def test_branched_alert_never_leaks_the_root():
+    # the pager text must be identical in SHAPE across roots — diagnosis, not the alert,
+    # discriminates. Strip digits/node names and the templates must match.
+    import re
+
+    def shape(s):
+        s = re.sub(r"[0-9.]+", "#", s)
+        return re.sub(r"\b(api|web|auth|lb)\b", "@", s)
+
+    for key in ("deploy_regression", "stale_reads", "latency_surge"):
+        fixes = {
+            "deploy_regression": ("rollback", "restart"),
+            "stale_reads": ("failover", "restart"),
+            "latency_surge": ("scale", "restart"),
+        }[key]
+        a = _spawn_branch(key, fixes[0])
+        b = _spawn_branch(key, fixes[1])
+        assert shape(a.alert) == shape(b.alert)
+
+
+def test_wrong_branch_fix_has_no_effect_but_right_one_resolves():
+    # the reflex fix on the WRONG root burns time and changes nothing; a solo agent can still
+    # diagnose and recover — stumbling, not stonewalled
+    spec = _spawn_branch("deploy_regression", "restart")  # pool-leak root: rollback is the reflex
+    inc = _fresh_incident(spec)
+    node = spec.fix[0][1]
+    out = inc.act("rollback", node)
+    assert not inc.resolved and "no effect" in str(out.get("result", ""))
+    out = inc.act("restart", node)
+    assert inc.resolved and out.get("resolved") is True
+
+
+def test_branched_logs_carry_the_discriminator():
+    # a careful agent must be able to settle the branch from diagnostics alone
+    reg = _spawn_branch("deploy_regression", "rollback")
+    pool = _spawn_branch("deploy_regression", "restart")
+    ia, ib = Infra(DEFAULT), Infra(DEFAULT)
+    reg.apply(ia)
+    pool.apply(ib)
+    reg_logs = " ".join(ia.nodes[reg.fix[0][1]].logs)
+    pool_logs = " ".join(ib.nodes[pool.fix[0][1]].logs)
+    assert "NEW request handler" in reg_logs
+    assert "pool" in pool_logs and "no errors attributable to new code" in pool_logs
+
+
+def test_branched_apply_is_pure_across_fleets():
+    # paired-trial guarantee must hold for branched specs too: one spec, two infras, identical state
+    for key, fix in (
+        ("deploy_regression", "restart"),
+        ("latency_surge", "restart"),
+        ("stale_reads", "restart"),
+    ):
+        spec = _spawn_branch(key, fix)
+        ia, ib = Infra(DEFAULT), Infra(DEFAULT)
+        spec.apply(ia)
+        spec.apply(ib)
+        for name in DEFAULT.node_names:
+            assert ia.nodes[name].status == ib.nodes[name].status
+            assert ia.nodes[name].metrics == ib.nodes[name].metrics
+            assert ia.nodes[name].logs == ib.nodes[name].logs
