@@ -998,6 +998,7 @@ class Squad:
         self._plans: dict[int, str] = {}  # per-tank standing plan (the agent's own words)
         self._intel: dict[int, list[str]] = {}  # per-tank log of teammate reports (via Artel)
         self._recalled: dict[int, str] = {}  # per-tank latest recall result — persists all match
+        self._seen_ids: dict[int, set] = {}  # per-tank enemy ids seen last turn (own eyes only)
         self._objectives: dict[int, dict] = {}  # per-tank current board objective (Artel task)
         self._claims: list[tuple[dict, str]] = []  # (agent, task id) opened this match
         self.tool_counts: dict[str, int] = {}  # Artel tool usage this match, for /debug
@@ -1039,6 +1040,27 @@ class Squad:
             notes += f" Your standing plan: {self._plans[tank_id]}"
         if self._recalled.get(tank_id):
             notes += f" What you recalled earlier: {self._recalled[tank_id]}"
+        # event-driven report trigger: an enemy you JUST gained eyes on, that the team's
+        # reports don't mention, is intel only you hold — say so, once, when it's true
+        cur_enemies = {v["id"]: v for v in p.get("visible", []) if v["kind"] == "enemy"}
+        prev_ids = self._seen_ids.get(tank_id, set())
+        intel_text = " ".join(self._intel.get(tank_id) or [])
+        fresh = [
+            v
+            for eid, v in cur_enemies.items()
+            if eid not in prev_ids and f"#{eid}" not in intel_text
+        ]
+        if fresh:
+            sights = "; ".join(
+                f"#{v['id']} at ({p['q'] + v['dq']},{p['r'] + v['dr']})"
+                + (f" energy {v['energy']}" if "energy" in v else "")
+                for v in fresh
+            )
+            notes += (
+                f"\nNEW CONTACT — only YOU can see this; the team has no report of it: "
+                f"{sights}. Report it (SPOTTED) so the unit can act."
+            )
+        self._seen_ids[tank_id] = set(cur_enemies)
         intel = self._intel.get(tank_id) or []
         if intel:
             notes += "\nTeam reports so far (oldest first): " + " | ".join(intel)
@@ -1100,6 +1122,7 @@ class Squad:
         self._plans = {}
         self._intel = {}
         self._recalled = {}
+        self._seen_ids = {}
         self._objectives = {}
         self._claims = []
         self.tool_counts = {}
