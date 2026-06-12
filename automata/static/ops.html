@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0b0f">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<title>Artel Worlds — operations &amp; cost</title>
+<style>
+  :root{--bg:#090a0e;--panel:rgba(18,20,27,.72);--line:#1b212b;--fg:#e6eaf1;--dim:#79839a;
+    --gold:#d4af37;--artel:#3d8bff;--artel-soft:#7fb0ff;--green:#6ee7a8;--amber:#ffb454;--red:#ff5d5d;}
+  *{box-sizing:border-box;}
+  html,body{margin:0;min-height:100%;}
+  body{background:radial-gradient(1000px 500px at 50% -10%,rgba(61,139,255,.09),transparent 60%),var(--bg);
+    color:var(--fg);font:13.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+  a{color:var(--artel-soft);text-decoration:none;}
+  .wrap{max-width:880px;margin:0 auto;padding:40px 20px;}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:6px;}
+  header svg{display:block;}
+  header h1{font-size:17px;margin:0;letter-spacing:4px;font-weight:800;color:#fff;}
+  header .sp{margin-left:auto;font-size:12px;}
+  .sub{color:var(--dim);font-size:12.5px;margin:8px 0 26px;}
+  .sub b{color:var(--gold);}
+  .grid{display:grid;gap:14px;}
+  .w{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;backdrop-filter:blur(12px);}
+  .top{display:flex;align-items:center;gap:11px;flex-wrap:wrap;}
+  .nm{font-size:16px;font-weight:800;color:#fff;letter-spacing:1px;}
+  .tag{color:var(--dim);font-size:12px;}
+  .st{margin-left:auto;font-size:11px;padding:3px 10px;border-radius:20px;display:inline-flex;align-items:center;gap:6px;}
+  .st::before{content:"";width:7px;height:7px;border-radius:50%;}
+  .st.live{color:var(--green);background:rgba(110,231,168,.12);}.st.live::before{background:var(--green);box-shadow:0 0 8px var(--green);}
+  .st.idle{color:var(--amber);background:rgba(255,180,84,.12);}.st.idle::before{background:var(--amber);}
+  .st.unreachable{color:var(--red);background:rgba(255,93,93,.12);}.st.unreachable::before{background:var(--red);}
+  .row{display:flex;flex-wrap:wrap;gap:26px;margin-top:14px;align-items:baseline;}
+  .m .v{font-size:20px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;}
+  .m .v.spend{color:var(--gold);}
+  .m .k{color:var(--dim);font-size:11px;}
+  .facts{color:var(--dim);font-size:11.5px;margin-top:12px;}
+  .facts b{color:var(--fg);font-weight:600;}
+  .total{margin:24px 0 8px;padding:16px 20px;border:1px dashed var(--line);border-radius:13px;display:flex;align-items:baseline;gap:14px;}
+  .total .v{font-size:24px;font-weight:800;color:var(--gold);}
+  .foot{color:var(--dim);font-size:12px;margin-top:24px;border-top:1px solid var(--line);padding-top:16px;}
+  .foot a{margin-right:18px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <svg viewBox="0 0 400 400" width="22" height="22" aria-hidden="true"><polygon points="200,40 360,200 200,360 40,200" fill="none" stroke="#D4AF37" stroke-width="30" stroke-linejoin="round"/><circle cx="200" cy="200" r="46" fill="#D4AF37"/></svg>
+    <h1>ARTEL WORLDS</h1>
+    <span class="sp"><a href="/ui/logout">sign out</a></span>
+  </header>
+  <div class="sub">Live operations &amp; LLM cost across every world. Updated <b id="upd">—</b>.</div>
+
+  <div class="total">
+    <span class="v" id="total">$—</span>
+    <span class="k" style="color:var(--dim);font-size:12px;">combined LLM spend (current process / today)</span>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="foot">
+    <a href="/worlds">← all worlds</a>
+    <a href="https://artel.run/ui" target="_blank" rel="noopener">Artel UI ↗</a>
+  </div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const money = v => v == null ? "—" : "$" + Number(v).toFixed(v < 1 ? 4 : 2);
+const pct = v => v == null ? "—" : Math.round(v*100) + "%";
+const secs = v => v == null ? "—" : (v >= 60 ? (v/60).toFixed(1)+"m" : Math.round(v)+"s");
+
+function facts(w){
+  const f = w.facts || {};
+  if (w.key === "automata") return `tick <b>${f.tick ?? "—"}</b> · population <b>${f.population ?? "—"}</b>`;
+  if (w.key === "phalanx"){
+    const t = f.throttled && Object.keys(f.throttled).length ? Object.entries(f.throttled).map(([k,v])=>`${k}:${v}`).join(", ") : "none";
+    return `match <b>${f.match ?? "—"}</b> · rate-limit hits <b>${t}</b>`;
+  }
+  if (w.key === "watchtower")
+    return `incidents <b>${f.incidents ?? 0}</b> · Artel MTTR <b>${secs(f.artel_mttr)}</b> vs solo <b>${secs(f.solo_mttr)}</b> · win rate <b>${pct(f.win_rate)}</b>`;
+  return "";
+}
+
+function render(d){
+  $("upd").textContent = new Date((d.ts||0)*1000).toLocaleTimeString();
+  $("total").textContent = money(d.total_spend);
+  $("grid").innerHTML = (d.worlds||[]).map(w => `
+    <div class="w">
+      <div class="top">
+        <span class="nm"><a href="${w.url||'#'}" style="color:#fff" target="_blank" rel="noopener">${w.name}</a></span>
+        <span class="tag">World ${w.world}${w.model ? " · " + w.model : ""}${w.fallback ? " → " + w.fallback : ""}</span>
+        <span class="st ${w.status||'idle'}">${w.status||'idle'}</span>
+      </div>
+      <div class="row">
+        <div class="m"><div class="v spend">${money(w.spend)}</div><div class="k">spend${w.spend_label ? " ("+w.spend_label+")" : ""}</div></div>
+        <div class="m"><div class="v">${money(w.cap)}</div><div class="k">cap</div></div>
+      </div>
+      <div class="facts">${facts(w)}</div>
+    </div>`).join("");
+}
+
+async function tick(){
+  try{
+    const r = await fetch("/ui/stats.json", {credentials:"same-origin"});
+    if (r.status === 401){ location.href = "/ui/login"; return; }
+    render(await r.json());
+  }catch(_){}
+}
+tick(); setInterval(tick, 5000);
+</script>
+</body>
+</html>

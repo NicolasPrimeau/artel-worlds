@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0b0f">
+<title>Watchtower — Artel Worlds</title>
+<meta name="description" content="Two identical AI on-call fleets face the same incident stream. One shares runbooks through Artel; one keeps private notes. Watch the Artel fleet's MTTR fall as the solo fleet stays flat.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Artel Worlds">
+<meta property="og:title" content="Watchtower — shared runbooks win">
+<meta property="og:description" content="Same incidents, same model. One fleet shares what it learns through Artel; one doesn't. The MTTR gap compounds over time.">
+<meta property="og:url" content="https://watchtower.artel.run/">
+<style>
+  :root {
+    --bg:#090a0e; --panel:rgba(18,20,27,.72); --line:#1b212b; --fg:#e6eaf1; --dim:#79839a;
+    --gold:#d4af37; --artel:#3d8bff; --artel-soft:#7fb0ff; --solo:#ffae42; --solo-soft:#ffc777;
+    --green:#6ee7a8; --red:#ff5d5d; --amber:#ffb454;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; min-height:100%; }
+  body {
+    background:var(--bg); color:var(--fg);
+    font:13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  a { color:var(--artel-soft); text-decoration:none; }
+  header {
+    display:flex; flex-wrap:wrap; align-items:center; gap:6px 18px;
+    padding:11px 16px; border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(14,16,22,.9), rgba(14,16,22,.45)); position:sticky; top:0; z-index:5;
+  }
+  .brand h1 { font-size:14px; margin:0; letter-spacing:3px; font-weight:800; color:#fff; display:inline; }
+  .brand span { color:var(--dim); font-weight:400; letter-spacing:1px; font-size:12px; margin-left:8px; }
+  .tagline { color:var(--dim); font-size:12px; }
+  .tagline b.a { color:var(--artel-soft); } .tagline b.s { color:var(--solo-soft); }
+  .spacer { margin-left:auto; }
+  .chip { color:var(--dim); font-variant-numeric:tabular-nums; }
+  .chip b { color:#fff; }
+  #conn { color:var(--dim); display:inline-flex; align-items:center; gap:5px; }
+  #conn::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--dim); }
+  #conn.live { color:var(--green); } #conn.live::before { background:var(--green); box-shadow:0 0 8px var(--green); }
+  main { max-width:1180px; margin:0 auto; padding:16px; display:grid; gap:16px; grid-template-columns:1fr 1fr; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:13px; padding:14px 16px; backdrop-filter:blur(12px); }
+  .card.full { grid-column:1 / -1; }
+  .ttl { color:var(--dim); font-size:10px; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:10px; }
+  /* hero stats */
+  .hero { display:flex; flex-wrap:wrap; gap:22px; align-items:baseline; }
+  .stat .v { font-size:26px; font-weight:800; color:#fff; font-variant-numeric:tabular-nums; }
+  .stat .v.a { color:var(--artel-soft); } .stat .v.s { color:var(--solo-soft); }
+  .stat .k { color:var(--dim); font-size:11px; }
+  /* wedge chart */
+  svg { width:100%; height:230px; display:block; }
+  .legend { display:flex; gap:16px; font-size:11px; color:var(--dim); margin-top:6px; }
+  .legend i { display:inline-block; width:14px; height:3px; vertical-align:middle; margin-right:5px; border-radius:2px; }
+  /* status walls */
+  .walls { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .wall .hd { font-weight:700; margin-bottom:8px; display:flex; align-items:center; gap:7px; }
+  .wall .hd .dot { width:9px; height:9px; border-radius:50%; }
+  .nodes { display:grid; grid-template-columns:repeat(2,1fr); gap:5px; }
+  .node { display:flex; align-items:center; gap:7px; padding:5px 8px; border-radius:7px; background:#0e1016; border:1px solid var(--line); font-size:11px; }
+  .node .led { width:8px; height:8px; border-radius:50%; flex:0 0 auto; background:var(--green); box-shadow:0 0 6px var(--green); }
+  .node.degraded .led { background:var(--amber); box-shadow:0 0 6px var(--amber); }
+  .node.down .led { background:var(--red); box-shadow:0 0 7px var(--red); }
+  .node small { color:var(--dim); }
+  /* live race */
+  #live { display:none; }
+  #live.on { display:block; }
+  .alert { color:var(--amber); font-weight:700; margin-bottom:10px; }
+  .race { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .lane { background:#0e1016; border:1px solid var(--line); border-radius:9px; padding:10px 12px; }
+  .lane.a { border-color:rgba(61,139,255,.4); } .lane.s { border-color:rgba(255,174,66,.4); }
+  .lane .who { font-size:11px; color:var(--dim); } .lane .who b.a { color:var(--artel-soft);} .lane .who b.s{color:var(--solo-soft);}
+  .lane .clk { font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; color:#fff; }
+  .lane .act { font-size:11px; color:var(--dim); margin-top:4px; min-height:15px; }
+  .lane .badge { font-size:10px; padding:1px 6px; border-radius:5px; margin-left:6px; }
+  .badge.ok { background:rgba(110,231,168,.15); color:var(--green); }
+  .badge.miss { background:rgba(255,93,93,.15); color:var(--red); }
+  /* feed + tables */
+  .feed { max-height:200px; overflow:auto; }
+  .msg { padding:5px 0; border-bottom:1px solid var(--line); }
+  .msg b { color:var(--artel-soft); }
+  table { width:100%; border-collapse:collapse; font-size:11.5px; }
+  th { text-align:left; color:var(--dim); font-weight:500; padding:5px 6px; border-bottom:1px solid var(--line); }
+  td { padding:5px 6px; border-bottom:1px solid #141821; font-variant-numeric:tabular-nums; }
+  td.a { color:var(--artel-soft); } td.s { color:var(--solo-soft); }
+  .win-a { color:var(--artel-soft); } .win-s { color:var(--solo-soft); }
+  .empty { color:var(--dim); padding:8px 0; }
+  @media (max-width:760px){ main{grid-template-columns:1fr;} .walls{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><h1>WATCHTOWER</h1><a href="https://worlds.artel.run/"><span>← Artel Worlds · World 3</span></a></div>
+  <div class="tagline">Same incidents, same model — <b class="a">Artel fleet shares runbooks</b> vs <b class="s">solo private notes</b></div>
+  <div class="spacer"></div>
+  <span class="chip">model <b id="model">—</b></span>
+  <span class="chip">$<b id="spent">0</b>/<span id="cap">0</span> today</span>
+  <span class="chip" id="conn">connecting</span>
+</header>
+<main>
+  <section class="card full">
+    <div class="ttl">Mean time to recovery — the gap compounds as the runbook library grows</div>
+    <div class="hero">
+      <div class="stat"><div class="v a" id="h-artel">—</div><div class="k">Artel MTTR (recent 20)</div></div>
+      <div class="stat"><div class="v s" id="h-solo">—</div><div class="k">Solo MTTR (recent 20)</div></div>
+      <div class="stat"><div class="v" id="h-win">—</div><div class="k">Artel win rate</div></div>
+      <div class="stat"><div class="v" id="h-fam">—</div><div class="k">runbook families covered</div></div>
+      <div class="stat"><div class="v" id="h-n">—</div><div class="k">paired incidents</div></div>
+    </div>
+    <svg id="chart" viewBox="0 0 1000 230" preserveAspectRatio="none"></svg>
+    <div class="legend">
+      <span><i style="background:var(--artel)"></i>Artel fleet (shared)</span>
+      <span><i style="background:var(--solo)"></i>Solo fleet (private)</span>
+      <span id="axisnote"></span>
+    </div>
+  </section>
+
+  <section class="card full" id="live">
+    <div class="ttl">Incident in progress — live race</div>
+    <div class="alert" id="live-alert"></div>
+    <div class="race">
+      <div class="lane a"><div class="who"><b class="a">Artel</b> · <span id="la-by"></span></div><div class="clk" id="la-clk">0s</div><div class="act" id="la-act"></div></div>
+      <div class="lane s"><div class="who"><b class="s">Solo</b> · <span id="ls-by"></span></div><div class="clk" id="ls-clk">0s</div><div class="act" id="ls-act"></div></div>
+    </div>
+  </section>
+
+  <section class="card full">
+    <div class="ttl">Service status walls — each fleet heals its own copy of the graph</div>
+    <div class="walls">
+      <div class="wall"><div class="hd"><span class="dot" style="background:var(--artel)"></span>Artel fleet</div><div class="nodes" id="wall-artel"></div></div>
+      <div class="wall"><div class="hd"><span class="dot" style="background:var(--solo)"></span>Solo fleet</div><div class="nodes" id="wall-solo"></div></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="ttl">War room — the Artel fleet talks; the solo fleet can't</div>
+    <div class="feed" id="feed"><div class="empty">No chatter yet.</div></div>
+  </section>
+
+  <section class="card">
+    <div class="ttl">Recent incidents — head to head</div>
+    <table><thead><tr><th>#</th><th>fault</th><th>Artel</th><th>Solo</th><th>faster</th></tr></thead><tbody id="recent"></tbody></table>
+  </section>
+
+  <section class="card full">
+    <div class="ttl">By fault family — mean MTTR (lower is better)</div>
+    <table><thead><tr><th>family</th><th>Artel</th><th>Solo</th><th>seen</th></tr></thead><tbody id="byfam"></tbody></table>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const fmt = s => s == null ? "—" : (s >= 60 ? (s/60).toFixed(1)+"m" : Math.round(s)+"s");
+
+function drawChart(wedge){
+  const svg = $("chart"); svg.innerHTML = "";
+  const W = 1000, H = 230, pad = 34;
+  if (!wedge || wedge.length < 2){
+    svg.innerHTML = `<text x="${W/2}" y="${H/2}" fill="#79839a" text-anchor="middle" font-size="14">Collecting data — the curve appears as incidents resolve.</text>`;
+    $("axisnote").textContent = ""; return;
+  }
+  const xs = wedge.map(d=>d.from_seq);
+  const all = wedge.flatMap(d=>[d.artel_mttr, d.solo_mttr]).filter(v=>v!=null);
+  const ymax = Math.max(60, ...all) * 1.1, ymin = 0;
+  const x0 = Math.min(...xs), x1 = Math.max(...xs) || 1;
+  const px = v => pad + (v - x0)/((x1-x0)||1) * (W - pad*2);
+  const py = v => H - pad - (v - ymin)/((ymax-ymin)||1) * (H - pad*2);
+  // gridlines
+  let g = "";
+  for (let i=0;i<=4;i++){ const yy = pad + i*(H-pad*2)/4; const val = Math.round(ymax - i*(ymax-ymin)/4);
+    g += `<line x1="${pad}" y1="${yy}" x2="${W-pad}" y2="${yy}" stroke="#161b24"/>`;
+    g += `<text x="4" y="${yy+4}" fill="#5b6478" font-size="11">${val}s</text>`; }
+  const line = (key,color) => {
+    const pts = wedge.filter(d=>d[key]!=null).map(d=>`${px(d.from_seq)},${py(d[key])}`);
+    if (!pts.length) return "";
+    return `<polyline points="${pts.join(" ")}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round"/>` +
+      pts.map(p=>`<circle cx="${p.split(",")[0]}" cy="${p.split(",")[1]}" r="2.6" fill="${color}"/>`).join("");
+  };
+  svg.innerHTML = g +
+    line("solo_mttr", getComputedStyle(document.body).getPropertyValue('--solo')) +
+    line("artel_mttr", getComputedStyle(document.body).getPropertyValue('--artel'));
+  $("axisnote").textContent = `x: incident # (${x0}–${x1+(wedge[0]?.n||10)})`;
+}
+
+function wall(el, nodes){
+  el.innerHTML = nodes.map(n=>`<div class="node ${n.status}"><span class="led"></span>${n.name}${n.incident?` <small>${n.incident}</small>`:""}</div>`).join("");
+}
+
+function render(s){
+  $("model").textContent = s.model || "—";
+  $("spent").textContent = (s.spent_today||0).toFixed(3);
+  $("cap").textContent = (s.cap_daily||0).toFixed(2);
+  const sum = s.summary || {};
+  $("h-artel").textContent = fmt(sum.artel_mttr_recent);
+  $("h-solo").textContent = fmt(sum.solo_mttr_recent);
+  $("h-win").textContent = sum.artel_win_rate==null?"—":Math.round(sum.artel_win_rate*100)+"%";
+  $("h-fam").textContent = (sum.families_covered??"—")+" / 12";
+  $("h-n").textContent = sum.incidents ?? 0;
+  drawChart(s.wedge);
+  wall($("wall-artel"), s.artel_wall||[]);
+  wall($("wall-solo"), s.solo_wall||[]);
+
+  const live = s.live;
+  $("live").classList.toggle("on", !!live);
+  if (live){
+    $("live-alert").textContent = `#${live.seq} · ${live.title} — ${live.alert}`;
+    const lane = (p, pre) => {
+      $(pre+"-by").textContent = p.by || "";
+      $(pre+"-clk").innerHTML = fmt(p.mttr) + (p.resolved?` <span class="badge ok">resolved</span>`:p.missed?` <span class="badge miss">gave up</span>`:"");
+      const last = (p.actions||[]).slice(-1)[0];
+      $(pre+"-act").textContent = last ? `${last.action} ${last.node} — ${last.result}` : "triaging…";
+    };
+    lane(live.artel, "la"); lane(live.solo, "ls");
+  }
+
+  const feed = s.war_room||[];
+  $("feed").innerHTML = feed.length ? feed.slice().reverse().map(m=>`<div class="msg"><b>${m.from}</b> ${m.text}</div>`).join("") : `<div class="empty">No chatter yet.</div>`;
+
+  const rec = s.recent||[];
+  $("recent").innerHTML = rec.length ? rec.map(r=>{
+    const a=r.artel, so=r.solo; let w="—",c="";
+    if (a!=null && so!=null){ if(a<so){w="Artel";c="win-a";} else if(so<a){w="Solo";c="win-s";} else w="tie"; }
+    return `<tr><td>${r.seq}</td><td>${r.family}</td><td class="a">${fmt(a)}</td><td class="s">${fmt(so)}</td><td class="${c}">${w}</td></tr>`;
+  }).join("") : `<tr><td colspan="5" class="empty">No incidents yet.</td></tr>`;
+
+  const fam = s.per_family||[];
+  $("byfam").innerHTML = fam.length ? fam.map(f=>`<tr><td>${f.family}</td><td class="a">${fmt(f.artel_mttr)}</td><td class="s">${fmt(f.solo_mttr)}</td><td>${f.count}</td></tr>`).join("") : `<tr><td colspan="4" class="empty">No data yet.</td></tr>`;
+}
+
+let ws;
+function connect(){
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/stream`);
+  ws.onopen = () => $("conn").classList.add("live"), $("conn").textContent = "live";
+  ws.onmessage = e => { try { render(JSON.parse(e.data)); } catch(_){} };
+  ws.onclose = () => { $("conn").classList.remove("live"); $("conn").textContent = "reconnecting"; setTimeout(connect, 2500); };
+  ws.onerror = () => ws.close();
+}
+fetch("/state").then(r=>r.json()).then(render).catch(()=>{});
+connect();
+</script>
+</body>
+</html>

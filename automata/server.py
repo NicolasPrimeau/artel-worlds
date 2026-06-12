@@ -3,14 +3,23 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import hashlib
+import hmac
 import json
 import os
 import secrets
+import time
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi import FastAPI, Form, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+)
 from pydantic import BaseModel
 
 from .agent import HeuristicAgent
@@ -624,9 +633,216 @@ async def favicon():
     return FileResponse(STATIC / "favicon.ico")
 
 
-@app.get("/")
-async def root():
+def _automata_ui():
     index = STATIC / "index.html"
     if index.exists():
         return FileResponse(index)
-    return {"world": "Automata", "ui": "static/index.html not built yet"}
+    return JSONResponse({"world": "Automata", "ui": "static/index.html not built yet"})
+
+
+@app.get("/worlds")
+async def worlds_hub():
+    # the Artel Worlds hub — lists every world. Reachable directly, and served at the root of
+    # worlds.artel.run via the host check below.
+    hub = STATIC / "worlds.html"
+    return (
+        FileResponse(hub)
+        if hub.exists()
+        else JSONResponse({"worlds": ["automata", "phalanx", "watchtower"]})
+    )
+
+
+@app.get("/automata")
+async def automata_ui():
+    return _automata_ui()
+
+
+@app.get("/")
+async def root(request: Request):
+    # this app is both Automata (World 1) and the worlds hub. On worlds.artel.run the root IS the
+    # hub; on Automata's own host the root stays the game, so nothing about World 1 changes.
+    host = request.headers.get("host", "").split(":")[0]
+    if host.startswith("worlds."):
+        hub = STATIC / "worlds.html"
+        if hub.exists():
+            return FileResponse(hub)
+    return _automata_ui()
+
+
+# --- worlds.artel.run/ui: a login-gated cross-world stats board ---------------------------------
+# Same shape of auth as Artel's own UI: one password -> a session cookie. We sign the cookie with
+# HMAC instead of a DB table (this app has no DB), so it is stateless and survives restarts. The
+# board aggregates each world's /debug server-side, so there is no cross-origin fetch from the page.
+UI_PASSWORD = os.environ.get("WORLDS_UI_PASSWORD", "")
+_UI_SECRET = (os.environ.get("WORLDS_UI_SECRET") or UI_PASSWORD or "artel-worlds-dev").encode()
+_UI_TTL = 7 * 24 * 3600
+PHALANX_DEBUG = os.environ.get("PHALANX_DEBUG_URL", "https://phalanx.artel.run").rstrip("/")
+WATCHTOWER_DEBUG = os.environ.get("WATCHTOWER_DEBUG_URL", "https://watchtower.artel.run").rstrip(
+    "/"
+)
+
+_LOGIN_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Artel Worlds · sign in</title>
+<style>body{{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;
+background:radial-gradient(900px 460px at 50% -10%,rgba(61,139,255,.10),transparent 60%),#090a0e;
+color:#e6eaf1;font:14px/1.5 ui-monospace,Menlo,Consolas,monospace}}
+form{{background:rgba(18,20,27,.72);border:1px solid #1b212b;border-radius:14px;padding:30px 28px;width:300px;
+backdrop-filter:blur(12px);text-align:center}}h1{{letter-spacing:4px;font-size:15px;margin:0 0 4px}}
+p{{color:#79839a;font-size:12px;margin:0 0 18px}}input{{width:100%;padding:10px 12px;border-radius:8px;
+border:1px solid #1b212b;background:#0e1016;color:#e6eaf1;font:inherit;margin-bottom:12px}}
+button{{width:100%;padding:10px;border-radius:8px;border:0;background:#3d8bff;color:#fff;font:inherit;
+font-weight:700;cursor:pointer}}.err{{color:#ff5d5d;font-size:12px;margin-bottom:10px}}</style></head>
+<body><form method="POST" action="/ui/login"><h1>ARTEL WORLDS</h1><p>operations &amp; cost</p>
+{err}<input type="password" name="password" placeholder="password" autofocus>
+<button type="submit">sign in</button></form></body></html>"""
+
+
+def _sign(exp: int) -> str:
+    mac = hmac.new(_UI_SECRET, str(exp).encode(), hashlib.sha256).hexdigest()
+    return f"{exp}.{mac}"
+
+
+def _valid_session(cookie: str) -> bool:
+    try:
+        exp_s, mac = cookie.split(".", 1)
+        exp = int(exp_s)
+    except (ValueError, AttributeError):
+        return False
+    if exp < int(time.time()):
+        return False
+    good = hmac.new(_UI_SECRET, exp_s.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(good, mac)
+
+
+def _authed(request: Request) -> bool:
+    return _valid_session(request.cookies.get("worlds_session", ""))
+
+
+@app.get("/ui/login", response_class=HTMLResponse, include_in_schema=False)
+async def ui_login_page(error: str = ""):
+    err = '<div class="err">wrong password</div>' if error else ""
+    return _LOGIN_HTML.format(err=err)
+
+
+@app.post("/ui/login", include_in_schema=False)
+async def ui_login(password: str = Form(...)):
+    if UI_PASSWORD and secrets.compare_digest(password, UI_PASSWORD):
+        r = RedirectResponse("/ui", status_code=303)
+        r.set_cookie(
+            "worlds_session", _sign(int(time.time()) + _UI_TTL), httponly=True, samesite="lax"
+        )
+        return r
+    return RedirectResponse("/ui/login?error=1", status_code=303)
+
+
+@app.get("/ui/logout", include_in_schema=False)
+async def ui_logout():
+    r = RedirectResponse("/ui/login", status_code=303)
+    r.delete_cookie("worlds_session")
+    return r
+
+
+@app.get("/ui", include_in_schema=False)
+async def ui_page(request: Request):
+    if UI_PASSWORD and not _authed(request):
+        return RedirectResponse("/ui/login", status_code=303)
+    page = STATIC / "ops.html"
+    return FileResponse(page) if page.exists() else JSONResponse({"ui": "ops.html missing"})
+
+
+async def _fetch_debug(client: httpx.AsyncClient, url: str) -> dict | None:
+    try:
+        r = await client.get(f"{url}/debug", timeout=5)
+        return r.json() if r.status_code < 300 else None
+    except Exception:
+        return None
+
+
+@app.get("/ui/stats.json", include_in_schema=False)
+async def ui_stats(request: Request):
+    # server-side aggregation of every world's live cost + status. Auth-gated like the page itself.
+    if UI_PASSWORD and not _authed(request):
+        raise HTTPException(status_code=401, detail="sign in")
+    async with httpx.AsyncClient() as client:
+        ph, wt = await asyncio.gather(
+            _fetch_debug(client, PHALANX_DEBUG), _fetch_debug(client, WATCHTOWER_DEBUG)
+        )
+    worlds = []
+    a = G.snapshot()
+    worlds.append(
+        {
+            "key": "automata",
+            "name": "Automata",
+            "world": 1,
+            "url": "https://world.artel.run",
+            "status": "live",
+            "model": LLM_MODEL if LLM_ENABLED else "heuristic CA (no LLM)",
+            "spend": None,  # automata's house-tribe LLM spend is not metered
+            "cap": None,
+            "facts": {"tick": a.get("tick"), "population": a.get("population")},
+        }
+    )
+    if ph:
+        sq = ph.get("squad", {})
+        worlds.append(
+            {
+                "key": "phalanx",
+                "name": "Phalanx",
+                "world": 2,
+                "url": "https://phalanx.artel.run",
+                "status": "live" if ph.get("live_artel") else "idle",
+                "model": sq.get("model"),
+                "fallback": sq.get("fallback_model"),
+                "spend": sq.get("spent_usd"),
+                "cap": sq.get("cap_usd"),
+                "facts": {"match": ph.get("match"), "throttled": sq.get("throttled_429s")},
+            }
+        )
+    else:
+        worlds.append(
+            {
+                "key": "phalanx",
+                "name": "Phalanx",
+                "world": 2,
+                "status": "unreachable",
+                "url": "https://phalanx.artel.run",
+                "spend": None,
+                "cap": None,
+            }
+        )
+    if wt:
+        s = wt.get("summary") if isinstance(wt.get("summary"), dict) else {}
+        worlds.append(
+            {
+                "key": "watchtower",
+                "name": "Watchtower",
+                "world": 3,
+                "url": "https://watchtower.artel.run",
+                "status": "live" if wt.get("enabled") else "idle",
+                "model": wt.get("model"),
+                "fallback": wt.get("fallback_model"),
+                "spend": wt.get("spent_today"),
+                "cap": wt.get("cap_daily"),
+                "spend_label": "today",
+                "facts": {
+                    "incidents": (s or {}).get("incidents"),
+                    "artel_mttr": (s or {}).get("artel_mttr_recent"),
+                    "solo_mttr": (s or {}).get("solo_mttr_recent"),
+                    "win_rate": (s or {}).get("artel_win_rate"),
+                },
+            }
+        )
+    else:
+        worlds.append(
+            {
+                "key": "watchtower",
+                "name": "Watchtower",
+                "world": 3,
+                "status": "unreachable",
+                "url": "https://watchtower.artel.run",
+                "spend": None,
+                "cap": None,
+            }
+        )
+    total = sum(w["spend"] for w in worlds if isinstance(w.get("spend"), (int, float)))
+    return {"worlds": worlds, "total_spend": round(total, 4), "ts": int(time.time())}

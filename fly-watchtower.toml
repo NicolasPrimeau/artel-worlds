@@ -1,0 +1,41 @@
+app = "artel-watchtower"
+primary_region = "yyz"
+
+[build]
+  dockerfile = "Dockerfile.watchtower"
+
+[env]
+  WATCHTOWER_DB = "/data/watchtower.db"
+
+[mounts]
+  # the weeks-long MTTR curve lives here — it must survive restarts and redeploys
+  source = "watchtower_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # always-on: the world fires incidents 24/7 to accumulate the curve even with nobody watching.
+  # The per-day LLM spend cap is the real cost guard, not machine auto-stop.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 200
+    soft_limit = 150
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[checks]
+  [checks.health]
+    grace_period = "20s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    port = 8000
+    timeout = "5s"
+    type = "http"
