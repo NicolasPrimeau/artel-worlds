@@ -89,7 +89,7 @@ function render(d){
     <div class="w">
       <div class="top">
         <span class="nm"><a href="${w.url||'#'}" style="color:#fff" target="_blank" rel="noopener">${w.name}</a></span>
-        <span class="tag">World ${w.world}${w.model ? " · " + w.model : ""}${w.fallback ? " → " + w.fallback : ""}</span>
+        <span class="tag">${w.model || ""}${w.fallback ? " → " + w.fallback : ""}</span>
         <span class="st ${w.status||'idle'}">${w.status||'idle'}</span>
       </div>
       <div class="row">
