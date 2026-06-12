@@ -639,6 +639,15 @@ async def favicon():
     return FileResponse(STATIC / "favicon.ico")
 
 
+@app.get("/thumbs/{name}.webp", include_in_schema=False)
+async def thumb(name: str):
+    safe = "".join(c for c in name if c.isalnum() or c in "-_")
+    p = STATIC / "thumbs" / f"{safe}.webp"
+    if not p.exists():
+        raise HTTPException(status_code=404)
+    return FileResponse(p, media_type="image/webp", headers={"Cache-Control": "public, max-age=3600"})
+
+
 def _automata_ui():
     index = STATIC / "index.html"
     if index.exists():
