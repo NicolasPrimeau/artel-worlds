@@ -188,6 +188,8 @@ class Arena:
             "q": me.q,
             "r": me.r,
             "tick": self.tick_count,
+            "width": self.cfg.width,
+            "height": self.cfg.height,
             "heading": me.heading,
             "energy": round(me.energy),
             "gun_ready": me.cooldown == 0,

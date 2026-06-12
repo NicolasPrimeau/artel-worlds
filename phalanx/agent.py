@@ -87,7 +87,7 @@ FALLBACK = (
 _ENDPOINTS = [PRIMARY] + ([FALLBACK] if FALLBACK else [])
 # Hard ceiling on a tank's WHOLE decision (all tool rounds together) so a slow model can never
 # stall the synchronous tick — past it the tank falls back to a reflex move instead of freezing.
-DECIDE_DEADLINE = float(os.environ.get("PHALANX_DECIDE_DEADLINE", "8"))
+DECIDE_DEADLINE = float(os.environ.get("PHALANX_DECIDE_DEADLINE", "12"))
 LLM_TIMEOUT = float(os.environ.get("PHALANX_LLM_TIMEOUT", "12"))
 
 # Concise. Names the teammates, says coordinate through Artel — and stops there. No
@@ -228,7 +228,10 @@ TOOLS = [
     },
 ]
 
-_TURN = {"left": -1, "right": 1, "none": 0}
+# AXIAL_DIRS rotates counterclockwise on screen (E, NE, NW, W, SW, SE) — so a LEFT turn
+# (toward the tank's port side) is +1, and RIGHT is -1. These were mirrored for a long
+# time, which made every steering decision come out backwards.
+_TURN = {"left": 1, "right": -1, "none": 0}
 # Pointy-top hex axial directions, index == heading 0..5 (same convention as the arena).
 AXIAL_DIRS = ((1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))
 
@@ -244,7 +247,9 @@ def _open_dir(wallset: set, want: int) -> int:
 
 
 # --- provider adapters: a neutral transcript in/out, provider wire format hidden here ---
-def _build_payload(ep: dict, system: str, transcript: list[dict]) -> tuple[str, dict, dict]:
+def _build_payload(
+    ep: dict, system: str, transcript: list[dict], force_act: bool = False
+) -> tuple[str, dict, dict]:
     if ep["provider"] == "anthropic":
         messages = []
         for e in transcript:
@@ -275,7 +280,7 @@ def _build_payload(ep: dict, system: str, transcript: list[dict]) -> tuple[str, 
                 {"name": t["name"], "description": t["description"], "input_schema": t["schema"]}
                 for t in TOOLS
             ],
-            "tool_choice": {"type": "any"},
+            "tool_choice": {"type": "tool", "name": "act"} if force_act else {"type": "any"},
             "messages": messages,
         }
         headers = {
@@ -321,7 +326,9 @@ def _build_payload(ep: dict, system: str, transcript: list[dict]) -> tuple[str, 
             }
             for t in TOOLS
         ],
-        "tool_choice": "required",
+        "tool_choice": {"type": "function", "function": {"name": "act"}}
+        if force_act
+        else "required",
         "messages": messages,
     }
     if REASONING and "gemini" in ep["model"]:
@@ -391,13 +398,13 @@ def _live_endpoints() -> list[dict]:
 
 
 async def _chat(
-    http: httpx.AsyncClient, system: str, transcript: list[dict]
+    http: httpx.AsyncClient, system: str, transcript: list[dict], force_act: bool = False
 ) -> tuple[str, list[dict], int, int, dict]:
     # ask the first live provider; on a rate-limit/error fail the SAME turn over to the next
     # IMMEDIATELY — no retry-backoff against a dead quota. Raises only when all are exhausted.
     last: tuple[dict, httpx.Response] | None = None
     for ep in _live_endpoints():
-        url, payload, headers = _build_payload(ep, system, transcript)
+        url, payload, headers = _build_payload(ep, system, transcript, force_act)
         r = await http.post(url, headers=headers, json=payload)
         if r.status_code < 300:
             text, calls, tin, tout = _parse(ep, r.json())
@@ -425,13 +432,15 @@ def _headers(agent: dict) -> dict:
     }
 
 
+# relative bearing for (dir - heading) % 6, matching the counterclockwise AXIAL_DIRS order:
+# +1 step is toward the tank's LEFT, +5 toward its RIGHT
 _REL = {
     0: "dead ahead",
-    1: "ahead-right",
-    2: "behind-right",
+    1: "ahead-left",
+    2: "behind-left",
     3: "directly behind",
-    4: "behind-left",
-    5: "ahead-left",
+    4: "behind-right",
+    5: "ahead-right",
 }
 
 
@@ -466,8 +475,20 @@ def _perception_text(p: dict) -> str:
     zr = p.get("zone_radius")
     dc = p.get("dist_center", 0)
 
+    w, h = p.get("width", 16), p.get("height", 12)
+    wallset = {(w_["dq"], w_["dr"]) for w_ in p.get("walls", [])}
+    blocked_dirs = []
+    for d in range(6):
+        dq, dr = AXIAL_DIRS[d]
+        nq, nr = q + dq, r + dr
+        if not (0 <= nq < w and 0 <= nr < h):
+            blocked_dirs.append(f"({nq},{nr}) [MAP EDGE]")
+        elif (dq, dr) in wallset:
+            blocked_dirs.append(f"({nq},{nr}) [cover]")
     lines = [
         f"STATE — turn {p.get('tick', '?')}, you are tank #{p['id']}:",
+        f"- Arena: hexes q 0-{w - 1}, r 0-{h - 1}; center ({w // 2},{h // 2}). Moving past an "
+        f"edge is impossible.",
         f"- Position ({q},{r}), energy {p['energy']}, cannon facing ({q + fq},{r + frr}) "
         f"[fwd moves there, back moves opposite; facing does not matter for shooting]",
         f"- Gun: {'READY' if p['gun_ready'] else 'reloading (ready next turn)'}"
@@ -479,6 +500,10 @@ def _perception_text(p: dict) -> str:
         "- Cover hexes in sight (impassable, block shots): "
         + (", ".join(f"({wq},{wr})" for wq, wr in walls) if walls else "none"),
     ]
+    if blocked_dirs:
+        lines.append(
+            "- You CANNOT move into: " + ", ".join(blocked_dirs) + " — pick another direction."
+        )
     # urgency, where it changes the right move
     if not p.get("safe", True):
         lines.append(
@@ -705,8 +730,13 @@ def _reflex(p: dict) -> dict:
         tdir = p.get("to_center")
     if tdir is None:
         return {"turn": 0, "move": "hold", "fire": fire}
-    wallset = {(w["dq"], w["dr"]) for w in p.get("walls", [])}
-    d = _open_dir(wallset, tdir)
+    blocked = {(w["dq"], w["dr"]) for w in p.get("walls", [])}
+    bw, bh = p.get("width", 16), p.get("height", 12)
+    for dd in range(6):
+        dq, dr = AXIAL_DIRS[dd]
+        if not (0 <= p["q"] + dq < bw and 0 <= p["r"] + dr < bh):
+            blocked.add((dq, dr))  # the map edge is as impassable as cover
+    d = _open_dir(blocked, tdir)
     h = p["heading"]
     turn = 0 if h == d else (1 if (d - h) % 6 <= 3 else -1)
     return {"turn": turn, "move": "fwd", "fire": fire}
@@ -740,8 +770,11 @@ async def decide(
     transcript: list[dict] = [{"role": "user", "text": user}]
     intent = {"turn": 0, "move": "hold", "fire": 0}
     cost, plan = 0.0, ""
-    for _ in range(MAX_TOOL_ROUNDS):
-        text, calls, tin, tout, ep = await _chat(http, system, transcript)
+    for round_i in range(MAX_TOOL_ROUNDS):
+        # the LAST round forces the act tool: the model always chooses its own action;
+        # the reflex is a failure backstop, not a co-pilot
+        force_act = round_i == MAX_TOOL_ROUNDS - 1
+        text, calls, tin, tout, ep = await _chat(http, system, transcript, force_act)
         cost += tin * ep["cin"] + tout * ep["cout"]
         if not calls:
             break
@@ -807,6 +840,29 @@ async def decide(
         intent["fire"] = rx["fire"]
     if intent.get("move", "hold") == "hold" and not intent.get("fire"):
         intent["turn"], intent["move"] = rx["turn"], rx["move"]
+    # phantom-MOVE floor: a step into cover or off the map is silently rejected by the
+    # engine — tanks have shoved a map edge for whole matches. Deflect toward the nearest
+    # open direction (rotating first if the hull can't face it within one turn).
+    if intent.get("move") in ("fwd", "back"):
+        bw, bh = p.get("width", 16), p.get("height", 12)
+        wallset = {(w_["dq"], w_["dr"]) for w_ in p.get("walls", [])}
+
+        def _open(d: int) -> bool:
+            dq, dr = AXIAL_DIRS[d]
+            nq, nr = p["q"] + dq, p["r"] + dr
+            return 0 <= nq < bw and 0 <= nr < bh and (dq, dr) not in wallset
+
+        newh = (p["heading"] + intent.get("turn", 0)) % 6
+        tdir = newh if intent["move"] == "fwd" else (newh + 3) % 6
+        if not _open(tdir):
+            for off in (1, -1, 2, -2, 3):
+                d2 = (tdir + off) % 6
+                if _open(d2):
+                    hh = p["heading"]
+                    intent["turn"] = 0 if hh == d2 else (1 if (d2 - hh) % 6 <= 3 else -1)
+                    travel = (hh + intent["turn"]) % 6
+                    intent["move"] = "fwd" if travel == d2 and _open(travel) else "hold"
+                    break
     return intent, cost, plan, inbox
 
 
