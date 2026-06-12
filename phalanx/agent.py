@@ -105,14 +105,16 @@ SYSTEM = (
     "- Energy is health and fuel in one number; at 0 your tank is destroyed; it never "
     "regenerates. A hit costs the target 12 energy; landing a hit refunds the shooter 2.\n"
     "- Firing is target-based: name an enemy id AND a power. Power buys range, not damage: "
-    "power 1 reaches 3 hexes for 1 energy, power 2 reaches 5 for 2, power 3 reaches 7 for 4. "
+    "power 1 reaches 3 hexes and is FREE, power 2 reaches 5 for 2 energy, power 3 reaches 7 "
+    "for 4 energy. "
     "Damage is always 12. Your facing does NOT matter for shooting, only for moving. There is "
     "no aiming and no missing: every entry your state lists under 'you can fire NOW at' is a "
     "GUARANTEED hit at the stated power — and any other shot WASTES the trigger pull: you "
     "still pay that power's energy and the reload, but hit nothing. The gun draws from YOUR "
     "energy: you may fire down to your last point, and a shot that leaves you at 0 destroys "
     "you — a desperate last shot is legal, but know you are spending your life. The gun is "
-    "ready again the very next turn. Long pokes are expensive; closing in is cheap.\n"
+    "ready again the very next turn. Long pokes are expensive; close-range fire costs "
+    "NOTHING — there is never a reason to hold fire on a target within 3 hexes.\n"
     "- Cover hexes are impassable and block both shots and sight. You see only what has a "
     "clear line to you within distance 8 — fog of war; your teammates see different things.\n"
     "- Tanks are solid: you cannot move into a hex another tank occupies, teammate or enemy. "
@@ -235,7 +237,7 @@ TOOLS = [
                 "power": {
                     "type": "integer",
                     "description": "shot power 1-3 when firing: range 3/5/7 hexes for "
-                    "1/2/4 energy; use the smallest power that reaches your target",
+                    "0/2/4 energy (base shots are free); use the smallest power that reaches",
                 },
                 "plan": {
                     "type": "string",
@@ -544,7 +546,7 @@ def _perception_text(p: dict) -> str:
         lines.append(
             "- You CANNOT move into: " + ", ".join(blocked_dirs) + " — pick another direction."
         )
-    costs = p.get("power_cost", [1, 2, 4])
+    costs = p.get("power_cost", [0, 2, 4])
     if p["energy"] <= costs[-1]:
         lines.append(
             f"- ENERGY CRITICAL ({p['energy']}): firing costs {costs[0]}/{costs[1]}/{costs[2]} "

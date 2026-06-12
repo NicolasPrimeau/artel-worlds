@@ -32,7 +32,7 @@ class Config:
     # poking is expensive, closing in is cheap — and the fight is still decided by WHO
     # you shoot, which is exactly the coordination (focus-fire) story.
     power_range: tuple = (3, 5, 7)  # max hex distance for power 1 / 2 / 3
-    power_cost: tuple = (1.0, 2.0, 4.0)  # energy per trigger pull at power 1 / 2 / 3
+    power_cost: tuple = (0.0, 2.0, 4.0)  # base shots are FREE; energy buys reach
     shot_damage: float = 12.0
 
     @property
