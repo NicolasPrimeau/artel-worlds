@@ -892,6 +892,7 @@ class Squad:
         self._walls: dict[int, set] = {}  # per-tank remembered walls (own sightings only)
         self._distress: dict | None = None  # squad-wide last UNDER FIRE call (sticky ~5 ticks)
         self._bots: dict[int, Bot] = {}  # the motors: same Bot red runs, one per tank
+        self._cmd_tasks: dict[int, asyncio.Task] = {}  # in-flight commander calls (async)
         self._objectives: dict[int, dict] = {}  # per-tank current board objective (Artel task)
         self._claims: list[tuple[dict, str]] = []  # (agent, task id) opened this match
         self.tool_counts: dict[str, int] = {}  # Artel tool usage this match, for /debug
@@ -1017,38 +1018,16 @@ class Squad:
         due = (
             (p.get("tick", 0) + idx) % COMMAND_EVERY == 0 or bool(p.get("hit_taken")) or bool(fresh)
         )
-        if due:
-            try:
-                cost, plan, inbox = await asyncio.wait_for(
-                    command(
-                        self._http,
-                        agent,
-                        p,
-                        bot,
-                        mate_ids,
-                        self._context.get(tank_id, ""),
-                        notes.strip(),
-                        self._claims,
-                        self.tool_counts,
-                        self._objectives.setdefault(tank_id, {}),
-                        self._beacons.setdefault(tank_id, {}),
-                        self.solo,
-                        distress,
-                    ),
-                    timeout=DECIDE_DEADLINE,
-                )
-                self.spent += cost
-                self.last_error = None
-                if plan:
-                    self._plans[tank_id] = plan
-                if inbox:
-                    log_ = self._intel.setdefault(tank_id, [])
-                    for line in inbox.split(" | "):
-                        log_.append(f"t{p.get('tick', '?')} {line}")
-                    del log_[:-6]
-            except Exception as e:
-                self.last_error = f"{type(e).__name__}: {e}"
-                log.warning("phalanx commander %s skipped a beat: %s", agent["id"], self.last_error)
+        # commands are ASYNC: the bot drives this very tick while its commander thinks in the
+        # background; orders land when ready (standing orders by nature — a tick of latency is
+        # immaterial, and the tick clock never waits on an LLM)
+        prev = self._cmd_tasks.get(tank_id)
+        if prev is not None and prev.done():
+            self._cmd_tasks.pop(tank_id, None)
+        if due and tank_id not in self._cmd_tasks:
+            self._cmd_tasks[tank_id] = asyncio.create_task(
+                self._run_command(tank_id, agent, p, bot, mate_ids, notes, distress)
+            )
 
         intent = bot.decide(p, DEFAULT, p.get("tick", 0))
         fired = f"fired at #{intent['fire']}" if intent.get("fire") else "held fire"
@@ -1064,6 +1043,39 @@ class Squad:
             f"{dict(bot.orders) or 'none'}."
         )
         return intent
+
+    async def _run_command(self, tank_id, agent, p, bot, mate_ids, notes, distress) -> None:
+        try:
+            cost, plan, inbox = await asyncio.wait_for(
+                command(
+                    self._http,
+                    agent,
+                    p,
+                    bot,
+                    mate_ids,
+                    self._context.get(tank_id, ""),
+                    notes.strip(),
+                    self._claims,
+                    self.tool_counts,
+                    self._objectives.setdefault(tank_id, {}),
+                    self._beacons.setdefault(tank_id, {}),
+                    self.solo,
+                    distress,
+                ),
+                timeout=DECIDE_DEADLINE,
+            )
+            self.spent += cost
+            self.last_error = None
+            if plan:
+                self._plans[tank_id] = plan
+            if inbox:
+                log_ = self._intel.setdefault(tank_id, [])
+                for line in inbox.split(" | "):
+                    log_.append(f"t{p.get('tick', '?')} {line}")
+                del log_[:-6]
+        except Exception as e:
+            self.last_error = f"{type(e).__name__}: {e}"
+            log.warning("phalanx commander %s skipped a beat: %s", agent["id"], self.last_error)
 
     def current_assignment(self) -> dict[int, dict]:
         return dict(self._assign)
@@ -1081,6 +1093,7 @@ class Squad:
             self._beacons = {}
             self._distress = None
             self._bots = {}
+            self._cmd_tasks = {}
             self._objectives = {}
             self._claims = []
             self._walls = {}
@@ -1099,6 +1112,7 @@ class Squad:
         self._beacons = {}
         self._distress = None
         self._bots = {}
+        self._cmd_tasks = {}
         self._objectives = {}
         self._claims = []
         self._walls = {}
