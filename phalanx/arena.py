@@ -71,10 +71,12 @@ class Arena:
         return hex_distance(q, r, R, R) <= R  # the arena is a hexagon, not a box
 
     def _free_cell(self, near: tuple[int, int] | None = None) -> tuple[int, int]:
+        # spawns CLUSTER tight around the anchor (radius 1) — a team starts as a formed
+        # unit, not a scattered one; the anchors themselves sit far apart
         for _ in range(200):
             if near is not None:
-                q = near[0] + self.rng.randint(-3, 3)
-                r = near[1] + self.rng.randint(-3, 3)
+                q = near[0] + self.rng.randint(-1, 1)
+                r = near[1] + self.rng.randint(-1, 1)
             else:
                 q, r = self.rng.choice(self.cells())
             if self._in_bounds(q, r) and (q, r) not in self.walls and not self._tank_at(q, r):
