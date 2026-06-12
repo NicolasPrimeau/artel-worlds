@@ -143,8 +143,9 @@ TOOLS = [
     {
         "name": "remediate",
         "description": "Apply a remediation to a node. action is one of restart, scale, rollback, "
-        "clear_queue, failover, rotate. The wrong action, or the right one on the wrong node, costs "
-        "time and fixes nothing. Some incidents need two in a specific order.",
+        "clear_queue, failover, rotate. failover promotes a node's standby — target the sick "
+        "primary you are failing AWAY from. The wrong action, or the right one on the wrong node, "
+        "costs time and fixes nothing. Some incidents need two in a specific order.",
         "schema": {
             "type": "object",
             "properties": {
@@ -678,6 +679,20 @@ def _state_note(inc: Incident) -> str:
     return f"[board: {board}] [actions so far: {len(inc.actions)}] incident is {status}."
 
 
+async def _chat_patient(http, system, transcript, attempts: int = 4, delay: float = 20.0):
+    # ride out 429 windows and transient failures instead of abandoning the incident: the
+    # MTTR clock is simulated, so waiting in real time is free and identical for both fleets
+    last = None
+    for i in range(attempts):
+        try:
+            return await _chat(http, system, transcript)
+        except Exception as e:
+            last = e
+            if i < attempts - 1:
+                await asyncio.sleep(delay)
+    raise last
+
+
 async def respond(http, inc: Incident, store, counts: dict | None = None, on_step=None) -> float:
     # one responder works one incident to resolution (or until the action cap closes it). Returns the
     # USD spent on LLM calls. The store is the only thing that differs between the two fleets.
@@ -690,7 +705,7 @@ async def respond(http, inc: Incident, store, counts: dict | None = None, on_ste
     transcript = [{"role": "user", "text": intro}]
     for _ in range(MAX_ROUNDS):
         try:
-            text, calls, tin, tout, ep = await _chat(http, SYSTEM, transcript)
+            text, calls, tin, tout, ep = await _chat_patient(http, SYSTEM, transcript)
         except Exception as e:
             log.warning("watchtower responder %s llm failed: %s", inc.fleet, e)
             break

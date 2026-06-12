@@ -398,3 +398,40 @@ def test_world_state_survives_a_restart(monkeypatch):
             await w2.aclose()
 
         asyncio.run(run())
+
+
+def test_failover_accepts_either_side_of_the_promotion():
+    from watchtower.faults import _db_primary_stuck
+    from random import Random
+
+    spec = _db_primary_stuck(Random(5))
+    inc = _fresh_incident(spec)
+    out = inc.act("failover", "db-replica")  # the intuitive target: promote the replica
+    assert "applied" in str(out.get("result", ""))
+    inc.act("restart", "db")
+    assert inc.resolved
+
+
+def test_llm_outage_is_ridden_out_not_booked_as_a_miss(monkeypatch):
+    import asyncio
+
+    from watchtower import agent as A
+
+    spec = spec_for(11, 0)
+    inc = _fresh_incident(spec)
+    store = A.SoloStore("solo-test")
+    calls = {"n": 0}
+
+    async def flaky(http, system, transcript):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise RuntimeError("429 simulated")
+        return "", [], 0, 0, {"cin": 0.0, "cout": 0.0}
+
+    async def nosleep(_s):
+        return None
+
+    monkeypatch.setattr(A, "_chat", flaky)
+    monkeypatch.setattr(A.asyncio, "sleep", nosleep)
+    asyncio.run(A.respond(None, inc, store))
+    assert calls["n"] == 3  # two failures absorbed, the third answered

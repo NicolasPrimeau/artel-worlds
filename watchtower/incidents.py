@@ -90,6 +90,14 @@ class Incident:
             self._record(action, node, "no such node")
             return {"error": f"no node named '{node}'"}
         want_action, want_node = self.spec.fix[self.step_i]
+        if (
+            action == want_action == "failover"
+            and want_node == "db"
+            and node in ("db", "db-replica")
+        ):
+            # promoting the replica and failing over the primary are the same operation;
+            # punishing the synonym made db_primary_stuck an unlearnable black hole
+            node = want_node
         if action == want_action and node == want_node:
             self.elapsed += self._cost(ACTION_SECONDS[action])
             self.step_i += 1
