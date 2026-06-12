@@ -640,3 +640,47 @@ def test_auto_scoot_steps_off_the_line_after_firing():
     )
     assert out.get("move_to")  # fired while exposed: doctrine steps it off the line
     assert out["move_to"] != (5, 5)
+
+
+def test_floor_pipeline_does_not_cripple_combat():
+    # REGRESSION HARNESS for the sanitizer/drivetrain floors: a floors-only blue (reflex
+    # through the full pipeline, no LLM) must stay FUNCTIONAL against the bots. It loses on
+    # strategy (~30% wins when healthy) and that's fine — but a floor bug that mutes guns or
+    # pulls shots off their lines collapses this to near zero. The indiscriminate auto-lead
+    # shipped exactly that way, past 60 green unit tests.
+    from collections import Counter
+
+    from phalanx.agent import _drivetrain, _reflex, _sanitize_intent
+    from phalanx.control import STRATEGIES, Bot
+
+    def floors_blue(p, wall_mem):
+        intent = dict(_reflex(p))
+        intent = _sanitize_intent(intent, p, {}, "me", True)
+        _drivetrain(intent, p, wall_mem)
+        return intent
+
+    wins = Counter()
+    for m in range(60):
+        a = Arena(DEFAULT, seed=7000 + m)
+        a.seed_house(flip=bool(m % 2))
+        bots, mems = {}, {}
+        for i, t in enumerate(a.tanks.values()):
+            if t.team == "red":
+                bots[t.id] = Bot(t.id, t.team, STRATEGIES[i % len(STRATEGIES)])
+            mems[t.id] = set()
+        for _ in range(DEFAULT.match_max_ticks + 1):
+            for t in list(a.tanks.values()):
+                p = a.perceive(t.id)
+                if not p:
+                    continue
+                a.submit(
+                    t.id,
+                    bots[t.id].decide(p, a.cfg, a.tick_count)
+                    if t.id in bots
+                    else floors_blue(p, mems[t.id]),
+                )
+            a.step()
+            if a.winner:
+                break
+        wins[a.winner] += 1
+    assert wins["artel"] >= 9, f"floors crippled combat: {dict(wins)}"
