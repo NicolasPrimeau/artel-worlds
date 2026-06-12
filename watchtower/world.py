@@ -331,6 +331,8 @@ class World:
             "artel_agents": [a["id"] for a in self._artel_agents],
             "cursor": self.cursor,
             "spent_today": round(self.spent_today, 4),
+            "spent_total": round(self.spent_total, 4),
+            "spend_days": dict(self.spend_days),
             "cap_daily": A.SPEND_CAP_DAILY_USD,
             "last_error": self.last_error,
             "throttled_429s": dict(A.THROTTLED),
