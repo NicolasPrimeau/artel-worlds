@@ -958,9 +958,14 @@ class Squad:
             except Exception:
                 plan = ""
             if plan:
+                # the plan reaches teammates ONLY through Artel — it's broadcast as a project
+                # message and lands in their inboxes on turn 1. In-process, only its author
+                # keeps it in context; no side-channel distribution.
                 await _send(self._http, lead, "team", f"TEAM PLAN: {plan}"[:280], [])
-                for tid in self._assign:
-                    self._context[tid] = f"{self._context.get(tid, '')} Team plan: {plan}".strip()
+                self._context[lead_tid] = (
+                    f"{self._context.get(lead_tid, '')} Your team plan (broadcast to the "
+                    f"team): {plan}".strip()
+                )
 
     async def on_end(
         self, won: bool, survivors: set[int], assign: dict[int, dict], events: str = ""
