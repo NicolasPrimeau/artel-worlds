@@ -106,17 +106,19 @@ _GOAL_RULES = (
     "- Energy is health and fuel; 0 = destroyed; no regeneration. A hit deals 12 and refunds "
     "the shooter 2.\n"
     "- Fire = enemy id + power. Power 1: range 3, FREE. Power 2: range 5, costs 2. Power 3: "
-    "range 7, costs 4. No aiming, no missing: everything in your fire-now list is a "
-    "guaranteed hit; anything else is a wasted trigger pull at full cost. The gun draws from "
-    "YOUR energy — a shot that leaves you at 0 destroys you. Ready again next turn. Facing "
-    "never matters for shooting.\n"
+    "range 7, costs 4. BALLISTIC: your shot is aimed at the hex the target stands on when "
+    "you pull the trigger and travels that fixed line — whatever is FIRST on the line takes "
+    "the 12 damage: them, a wall, or a TEAMMATE. A target that moves off the line is MISSED "
+    "(you still pay). To hit a mover, predict: fire_at the hex they are moving INTO. The gun "
+    "draws from YOUR energy — a shot that leaves you at 0 destroys you. Ready again next "
+    "turn. Hull facing never matters for shooting.\n"
     "- A tank standing in the line of fire blocks the shot — friend or foe. Never fire "
     "through a teammate; against a stacked enemy, kill the front one first.\n"
     "- TIMING: you fire from the hex you START the turn on and move after — shoot, then step "
-    "into cover the SAME turn (shoot-and-scoot). Targets resolve where they END: an enemy "
-    "that breaks line of sight or range with its move VOIDS your shot, and you still pay. "
-    "Prefer targets that cannot disengage. A gun trained on a corner pins whoever hides "
-    "behind it; two shooters on different angles make one wall useless — flank.\n"
+    "into cover the SAME turn (shoot-and-scoot). Likewise, when you are EXPOSED, ending "
+    "your move off the enemy's firing line makes their shot miss. Prefer targets that "
+    "cannot disengage; lead the ones that can. A gun trained on a corner pins whoever "
+    "hides behind it; two shooters on different angles make one wall useless — flank.\n"
     "- Cover blocks movement, shots, and sight. Tanks are solid: formation means adjacent "
     "hexes, never the same hex. Fog of war: you see distance 8 with a clear line; teammates "
     "see different things.\n"
@@ -134,8 +136,9 @@ SYSTEM = (
     "2. FORMATION: stay within 2 hexes of a teammate. Their beacon positions are in your "
     "state every turn — out of formation means move_to a hex beside a teammate, now. Ahead "
     "of the unit? Wait for it.\n"
-    "3. FIRE: a ready gun with a target in range always shoots, at the cheapest power that "
-    "reaches. You can move the same turn.\n"
+    "3. FIRE: a ready gun with a clear line shoots, at the cheapest power that reaches — but "
+    "aim at tanks that will still BE there: lead movers with fire_at, and don't feed energy "
+    "to dodges. You can move the same turn.\n"
     "4. SUPPORT: a teammate UNDER FIRE (their beacon says so) outranks everything below — "
     "their attacker IS the unit's focus target: if it's in your fire-now list shoot it NOW, "
     "otherwise move to bring it into range. Not toward the center. A unit that lets its "
@@ -166,8 +169,9 @@ SOLO_SYSTEM = (
     "1. ZONE: outside the safe zone, move toward the center every turn. Never hold there.\n"
     "2. FORMATION: stay within 2 hexes of a teammate YOU CAN SEE when possible — you have no "
     "other way to know where they are.\n"
-    "3. FIRE: a ready gun with a target in range always shoots, at the cheapest power that "
-    "reaches. You can move the same turn.\n"
+    "3. FIRE: a ready gun with a clear line shoots, at the cheapest power that reaches — but "
+    "aim at tanks that will still BE there: lead movers with fire_at, and don't feed energy "
+    "to dodges. You can move the same turn.\n"
     "4. FOCUS: concentrate your fire on one enemy at a time. Never duel a kiter at long "
     "range; close to free-fire range behind cover, or refuse the fight."
 )
@@ -232,6 +236,13 @@ TOOLS = [
         "schema": {
             "type": "object",
             "properties": {
+                "fire_at": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "predictive shot: aim at a HEX [q,r] instead of a tank — "
+                    "fire where a mover is going, not where it is. Overrides fire's aim; "
+                    "still costs the chosen power.",
+                },
                 "move_to": {
                     "type": "array",
                     "items": {"type": "integer"},
@@ -561,7 +572,12 @@ def _perception_text(p: dict) -> str:
         f"- Position ({q},{r}), energy {p['energy']}, cannon facing ({q + fq},{r + frr}) "
         f"[fwd moves there, back moves opposite; facing does not matter for shooting]",
         f"- Gun: {'READY' if p['gun_ready'] else 'reloading (ready next turn)'}"
-        + (f"; you can fire NOW at: {', '.join(can_fire)}" if p["gun_ready"] and can_fire else ""),
+        + (
+            f"; clear line RIGHT NOW to: {', '.join(can_fire)} — a shot is aimed at where "
+            f"they STAND; if they move off the line it misses"
+            if p["gun_ready"] and can_fire
+            else ""
+        ),
         f"- Zone: safe radius {zr} around the arena center; you are {dc} from center — "
         + ("INSIDE the safe zone" if p.get("safe", True) else "OUTSIDE, BLEEDING energy"),
         f"- Enemies in sight: {'; '.join(foes) if foes else 'none'}",
@@ -573,6 +589,19 @@ def _perception_text(p: dict) -> str:
         lines.append(
             "- You CANNOT move into: " + ", ".join(blocked_dirs) + " — pick another direction."
         )
+    threats = [
+        f"#{e['id']} (dist {e['dist']})"
+        for e in p["visible"]
+        if e["kind"] == "enemy" and e.get("clear_shot", True) and e["dist"] <= fr
+    ]
+    if threats:
+        lines.append(
+            "- EXPOSED: these enemies have a clear line on YOU right now: "
+            + ", ".join(threats)
+            + ". Ending your move behind cover or out of their line makes their shot MISS."
+        )
+    if p.get("last_fire"):
+        lines.append(f"- YOUR LAST SHOT: {p['last_fire']}.")
     costs = p.get("power_cost", [0, 2, 4])
     if p["energy"] <= costs[-1]:
         lines.append(
@@ -972,6 +1001,12 @@ async def decide(
                         intent["move_to"] = (int(mt[0]), int(mt[1]))
                     except (TypeError, ValueError):
                         pass
+                fa = inp.get("fire_at")
+                if isinstance(fa, (list, tuple)) and len(fa) == 2:
+                    try:
+                        intent["fire_at"] = (int(fa[0]), int(fa[1]))
+                    except (TypeError, ValueError):
+                        pass
                 plan = str(inp.get("plan", "") or "")[:140]
                 acted = True
                 results.append({"id": c["id"], "output": "ok"})
@@ -1035,16 +1070,32 @@ async def decide(
         and v["dist"] <= p.get("fire_range", 7)
         and v.get("clear_shot", True)
     }
-    if intent.get("fire") and (intent["fire"] not in dist_of or not p.get("gun_ready")):
+    if intent.get("fire_at"):
+        if not p.get("gun_ready"):
+            intent.pop("fire_at", None)
+        else:
+            d_aim = _hexdist(p["q"], p["r"], *intent["fire_at"])
+            if d_aim < 1 or d_aim > powers[-1]:
+                intent.pop("fire_at", None)  # own hex or beyond any gun — a phantom
+            else:
+                need = next(i + 1 for i, rng_ in enumerate(powers) if d_aim <= rng_)
+                intent["power"] = max(int(intent.get("power", 0) or 0), need)
+    if intent.get("fire_at"):
+        intent["fire"] = 0  # the predictive aim IS the shot
+    elif intent.get("fire") and (intent["fire"] not in dist_of or not p.get("gun_ready")):
         intent["fire"] = 0
-    if intent.get("fire"):
+    elif intent.get("fire"):
         need = next(i + 1 for i, rng_ in enumerate(powers) if dist_of[intent["fire"]] <= rng_)
         intent["power"] = max(int(intent.get("power", 0) or 0), need)  # never waste the pull
-    if not intent.get("fire"):
+    if not intent.get("fire") and not intent.get("fire_at"):
         intent["fire"] = rx["fire"]
         if rx.get("power"):
             intent["power"] = rx["power"]
-    if intent.get("move", "hold") == "hold" and not intent.get("fire"):
+    if (
+        intent.get("move", "hold") == "hold"
+        and not intent.get("fire")
+        and not intent.get("fire_at")
+    ):
         intent["turn"], intent["move"] = rx["turn"], rx["move"]
     # drivetrain: the model thinks in destinations; we translate one optimal step. Choosing
     # WHERE to go is entirely the model's; turning mechanics are the tank's transmission.

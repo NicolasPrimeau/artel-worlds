@@ -183,6 +183,7 @@ class Phalanx:
                     "dmg": s.get("dmg", 0),
                     "reward": s.get("reward", 0),
                     "power": s.get("power", 2),
+                    "kind": s.get("kind", "hit"),
                 }
                 for s in a.tracers
             ],

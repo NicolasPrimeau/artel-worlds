@@ -147,6 +147,20 @@ class Arena:
         f = (t - cfg.zone_start) / (cfg.zone_close - cfg.zone_start)
         return full - (full - cfg.zone_min) * f
 
+    def _ray(self, oq: int, orr: int, aim: tuple, max_range: int) -> list:
+        # the fixed firing line: through the aimed cell, extended to the power's range.
+        # Cells ordered by distance from the muzzle; the muzzle's own hex is excluded.
+        dist = max(1, hex_distance(oq, orr, aim[0], aim[1]))
+        scale = max_range / dist
+        ext = (
+            round(oq + (aim[0] - oq) * scale),
+            round(orr + (aim[1] - orr) * scale),
+        )
+        cells = [c for c in hex_line(oq, orr, ext[0], ext[1]) if c != (oq, orr)]
+        cells = [c for c in cells if self._in_bounds(c[0], c[1])]
+        cells.sort(key=lambda c: hex_distance(oq, orr, c[0], c[1]))
+        return [c for c in cells if hex_distance(oq, orr, c[0], c[1]) <= max_range]
+
     def _blocked(
         self,
         aq: int,
@@ -213,6 +227,7 @@ class Arena:
             "energy": round(me.energy),
             "gun_ready": me.cooldown == 0,
             "hit_taken": round(me.hit_taken),
+            "last_fire": me.last_fire,
             "hit_from": me.hit_from,
             "safe": hex_distance(me.q, me.r, cq, cr) <= rad,
             "zone_radius": round(rad, 2),
@@ -281,59 +296,107 @@ class Arena:
             occupied.add((nq, nr))
             winner.energy -= cfg.cost_move
 
-        # 3. fire — each tank shoots AT a chosen enemy; a shot lands if the target
-        # is in range and there's line of sight. No ray to line up: reliable hits.
+        # 3. fire — BALLISTIC. The shooter aims at a CELL: where its chosen enemy stood when
+        # the trigger was pulled (turn start), or an explicit fire_at cell for a predicted
+        # lead. The shot travels that fixed ray from the shooter's start hex out to the
+        # power's range and hits the FIRST thing standing on it after movement resolves —
+        # enemy, teammate, or wall. A target that stepped off the ray is MISSED. Every shot
+        # has a cause-and-effect line on the board; nothing tracks, nothing homes.
         hit_by: dict[int, Tank] = {}  # who landed the (last) hit, for kill attribution
         for t in living:
-            tgt_id = self.pending.get(t.id, {}).get("fire", 0) or 0
+            t.last_fire = ""
+            intent = self.pending.get(t.id, {})
+            tgt_id = intent.get("fire", 0) or 0
             try:
                 tgt_id = int(tgt_id)
             except (TypeError, ValueError):
                 tgt_id = 0
+            fire_at = intent.get("fire_at")
+            aim: tuple[int, int] | None = None
+            if (
+                isinstance(fire_at, (list, tuple))
+                and len(fire_at) == 2
+                and all(isinstance(c, (int, float)) for c in fire_at)
+            ):
+                aim = (int(fire_at[0]), int(fire_at[1]))
             try:
-                power = int(self.pending.get(t.id, {}).get("power", 2) or 2)
+                power = int(intent.get("power", 2) or 2)
             except (TypeError, ValueError):
                 power = 2
             power = max(1, min(len(cfg.power_range), power))
             cost = cfg.power_cost[power - 1]
-            if not tgt_id or t.cooldown > 0 or t.energy <= 0:
+            if (not tgt_id and aim is None) or t.cooldown > 0 or t.energy <= 0:
                 continue
             # a live tank can ALWAYS pull the trigger — but the gun drains its own energy,
             # and a shot that leaves it at 0 destroys it. Desperation is a choice, not a gate.
-            # pulling the trigger ALWAYS costs energy (scaled by power) and starts the
-            # reload — a shot at a target out of range or behind cover is wasted, not free
+            # Pulling the trigger ALWAYS costs energy (scaled by power) and starts the reload.
             t.energy -= cost
             t.cooldown = cfg.gun_cooldown
-            target = self.tanks.get(tgt_id)
-            if target is None or target.id == t.id:
-                continue
-            if target.team == t.team and not cfg.friendly_fire:
-                continue
             oq, orr = origins.get(t.id, (t.q, t.r))
-            if hex_distance(oq, orr, target.q, target.r) > cfg.power_range[power - 1]:
+            if aim is None:
+                target = self.tanks.get(tgt_id)
+                if target is None or target.id == t.id:
+                    continue
+                aim = origins.get(target.id, (target.q, target.r))
+            if aim == (oq, orr):
+                t.last_fire = "misfire (aimed at own hex)"
                 continue
-            if self._blocked(oq, orr, target.q, target.r, tanks_block=True, ignore={(t.q, t.r)}):
+            ray = self._ray(oq, orr, aim, cfg.power_range[power - 1])
+            occ_now = {(o.q, o.r): o for o in living if o.id != t.id and o.energy > 0}
+            victim: Tank | None = None
+            stop: tuple[int, int] | None = None
+            for cell in ray:
+                if cell in self.walls:
+                    stop = cell
+                    break
+                hit = occ_now.get(cell)
+                if hit is not None:
+                    victim = hit
+                    break
+            if victim is None:
+                t.target = 0
+                t.last_fire = "hit cover" if stop else "MISSED — nothing on the line"
+                self.tracers.append(
+                    {
+                        "q": oq,
+                        "r": orr,
+                        "tq": (stop or ray[-1])[0],
+                        "tr": (stop or ray[-1])[1],
+                        "by": t.id,
+                        "tgid": 0,
+                        "team": t.team,
+                        "path": [(oq, orr), *ray[: ray.index(stop) + 1 if stop else len(ray)]],
+                        "dmg": 0,
+                        "reward": 0,
+                        "power": power,
+                        "kind": "wall" if stop else "miss",
+                    }
+                )
                 continue
-            t.target = target.id  # the turret aims here (360°); the hull keeps its facing
-            target.energy -= cfg.shot_damage
-            target.hit_taken += cfg.shot_damage
-            target.hit_from = t.id
-            hit_by[target.id] = t
-            if target.team != t.team:
+            t.target = victim.id  # the turret aims here (360°); the hull keeps its facing
+            victim.energy -= cfg.shot_damage
+            victim.hit_taken += cfg.shot_damage
+            victim.hit_from = t.id
+            hit_by[victim.id] = t
+            if victim.team != t.team:
                 t.energy = min(cfg.max_energy, t.energy + cfg.hit_reward)
+                t.last_fire = f"hit #{victim.id}"
+            else:
+                t.last_fire = f"HIT TEAMMATE #{victim.id} — they were on your line"
             self.tracers.append(
                 {
                     "q": oq,
                     "r": orr,
-                    "tq": target.q,
-                    "tr": target.r,
+                    "tq": victim.q,
+                    "tr": victim.r,
                     "by": t.id,
-                    "tgid": target.id,
+                    "tgid": victim.id,
                     "team": t.team,
-                    "path": hex_line(oq, orr, target.q, target.r),
+                    "path": [(oq, orr), *ray[: ray.index((victim.q, victim.r)) + 1]],
                     "dmg": cfg.shot_damage,
-                    "reward": cfg.hit_reward,
+                    "reward": cfg.hit_reward if victim.team != t.team else 0,
                     "power": power,
+                    "kind": "hit",
                 }
             )
 

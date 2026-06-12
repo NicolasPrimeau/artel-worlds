@@ -315,22 +315,25 @@ function render(now){
     }
   }
   const floatTexts=[];
-  // beams — anchored LIVE to the shooter and target hulls each frame, so the line always
-  // leaves a muzzle and lands on armor no matter how either tank is sliding. The pulse
-  // head travels the segment; where it catches the target IS where the impact fires.
+  // beams — BALLISTIC: the ray is fixed in world space (aimed where the target STOOD).
+  // The pulse travels the fixed line; a hit flashes on armor, a miss fizzles at the end
+  // of the line — visibly different outcomes, because shots can miss now.
   beams=beams.filter(b=>now-b.born<BEAM_MS);
   ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
   for(const b of beams){ if(now<b.born) continue;
     const age=now-b.born, fade=1-age/BEAM_MS, c=teamRGB(b.team);
-    const s0=(b.by&&anim[b.by])?curPos(anim[b.by],now):b.p0;
-    const e1=(b.tgid&&anim[b.tgid])?curPos(anim[b.tgid],now):b.p1;
+    const s0=b.p0, e1=b.p1;
     const hf=Math.min(1,age/TRAVEL_MS);
     const hx=lerp(s0.x,e1.x,hf), hy=lerp(s0.y,e1.y,hf);
     ctx.shadowColor=rgba(c,.9); ctx.shadowBlur=12;
     ctx.beginPath(); ctx.moveTo(s0.x,s0.y); ctx.lineTo(hx,hy);
     const pw=b.pw||2;
-    ctx.strokeStyle=rgba(c,fade*.85); ctx.lineWidth=(1+0.7*pw)+(1.2*pw)*fade*0.8; ctx.stroke();
+    ctx.strokeStyle=rgba(c,fade*(b.kind==='hit'?.85:.5)); ctx.lineWidth=(1+0.7*pw)+(1.2*pw)*fade*0.8; ctx.stroke();
     if(age<TRAVEL_MS){ ctx.beginPath(); ctx.arc(hx,hy,3.2,0,7); ctx.fillStyle='#fff'; ctx.fill(); }
+    else if(b.kind!=='hit'&&age<TRAVEL_MS+260){ // fizzle puff at the end of a missed line
+      const t2=(age-TRAVEL_MS)/260;
+      ctx.beginPath(); ctx.arc(e1.x,e1.y,2+t2*7,0,7);
+      ctx.strokeStyle=rgba(c,(1-t2)*.5); ctx.lineWidth=1.5; ctx.stroke(); }
   }
   ctx.restore();
   // impact: a ring + the damage number rising off the tank that was hit
@@ -427,9 +430,9 @@ function apply(snp){
     const sh=(tc.by&&snp.tank_list.find(t=>t.id===tc.by))||snp.tank_list.find(t=>t.q===tc.q&&t.r===tc.r);
     const b=pix(tc.tq,tc.tr);
     if(sh) aims[sh.id]={x:b.x,y:b.y,until:now+FIRE_AT+BEAM_MS,tg:tg&&tg.id};
-    beams.push({by:sh&&sh.id,tgid:(tg&&tg.id)||tc.tgid,p0:{x:a.x,y:a.y},p1:{x:b.x,y:b.y},team:tc.team,born:now+FIRE_AT,pw:tc.power||2});
+    beams.push({by:sh&&sh.id,tgid:(tg&&tg.id)||tc.tgid,p0:{x:a.x,y:a.y},p1:{x:b.x,y:b.y},team:tc.team,born:now+FIRE_AT,pw:tc.power||2,kind:tc.kind||'hit'});
     const jx=()=> (Math.random()-0.5)*L.size*1.2, jy=()=> (Math.random()-0.5)*L.size*0.7;
-    flashes.push({x:b.x,y:b.y,team:tc.team,born:now+IMPACT_AT,tg:tg&&tg.id,dmg:Math.round(tc.dmg||0),jx:jx(),jy:jy()});
+    if((tc.kind||'hit')==='hit') flashes.push({x:b.x,y:b.y,team:tc.team,born:now+IMPACT_AT,tg:tg&&tg.id,dmg:Math.round(tc.dmg||0),jx:jx(),jy:jy()});
     if(tc.reward) gains.push({x:a.x,y:a.y,tg:sh&&sh.id,amt:Math.round(tc.reward),born:now+IMPACT_AT,jx:jx(),jy:jy()}); }
   // retarget interpolation: glide from current rendered pos to the new hex. Hold the energy
   // display at its pre-volley value until this tick's impacts land.

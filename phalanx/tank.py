@@ -136,5 +136,6 @@ class Tank:
     cooldown: int = 0
     hit_taken: float = 0.0  # damage received in the last resolved step
     hit_from: int = 0  # who landed it (tank id), for 'taking fire' awareness
+    last_fire: str = ""  # what the last trigger pull actually did — the learning signal
     target: int = 0  # last enemy fired at (for the viz tracer/aim)
     controller: str = ""

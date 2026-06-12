@@ -254,3 +254,46 @@ def test_operator_reset_wipes_the_series_but_keeps_spend(tmp_path, monkeypatch):
 
         g2 = server.Phalanx()  # the wipe was persisted, not just in-memory
         assert g2.scores == {} and g2.completed == 0
+
+
+def test_ballistic_miss_when_target_steps_off_the_line():
+    from phalanx.tank import AXIAL_DIRS
+
+    a, shooter, victim = _duel(31)
+    victim.q, victim.r = 8, 5  # straight east of the shooter
+    victim.heading = AXIAL_DIRS.index((0, -1))  # steps off the firing line
+    v0 = victim.energy
+    a.submit(shooter.id, {"fire": victim.id, "power": 2})
+    a.submit(victim.id, {"move": "fwd"})
+    a.step()
+    assert a.tanks[victim.id].energy >= v0 - 1  # missed (only move cost)
+    assert "MISSED" in shooter.last_fire or "cover" in shooter.last_fire
+    assert any(tc.get("kind") != "hit" for tc in a.tracers)  # the miss is visible
+
+
+def test_predictive_fire_at_leads_a_mover():
+    from phalanx.tank import AXIAL_DIRS
+
+    a, shooter, victim = _duel(32)
+    victim.q, victim.r = 8, 5
+    victim.heading = AXIAL_DIRS.index((0, -1))  # will step to (8,4)
+    v0 = victim.energy
+    a.submit(shooter.id, {"fire_at": [8, 4], "power": 2})  # aim where it is GOING
+    a.submit(victim.id, {"move": "fwd"})
+    a.step()
+    assert a.tanks[victim.id].energy <= v0 - DEFAULT.shot_damage + 1
+    assert shooter.last_fire == f"hit #{victim.id}"
+
+
+def test_teammate_on_the_line_eats_the_shot():
+    a, shooter, victim = _duel(33)
+    mate = next(t for t in a.tanks.values() if t.team == shooter.team and t.id != shooter.id)
+    victim.q, victim.r = 8, 5
+    mate.q, mate.r = 6, 5  # parked on the firing line
+    m0, v0 = mate.energy, victim.energy
+    a.submit(shooter.id, {"fire": victim.id, "power": 2})
+    a.step()
+    assert a.tanks[victim.id].energy >= v0 - 1  # screened
+    assert a.tanks[mate.id].energy <= m0 - DEFAULT.shot_damage + 1  # the teammate ate it
+    assert "TEAMMATE" in shooter.last_fire
+    assert shooter.energy < 100  # no reward for friendly hits, cost still paid
