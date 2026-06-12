@@ -7,7 +7,7 @@ import os
 
 import httpx
 
-from .tank import bfs_step
+from .tank import bfs_step, hex_line
 
 log = logging.getLogger("phalanx")
 
@@ -133,9 +133,10 @@ SYSTEM = (
     + _GOAL_RULES
     + "PRIORITIES, in order — when they conflict, the higher one wins:\n"
     "1. ZONE: outside the safe zone, move toward the center every turn. Never hold there.\n"
-    "2. FORMATION: stay within 2 hexes of a teammate. Their beacon positions are in your "
-    "state every turn — out of formation means move_to a hex beside a teammate, now. Ahead "
-    "of the unit? Wait for it.\n"
+    "2. FORMATION: stay within 2 hexes of a teammate, but NEVER on the line between a "
+    "teammate and an enemy — ballistic shots hit the first tank on the line, yours "
+    "included. Their beacon positions are in your state every turn — out of formation means "
+    "move_to a hex beside a teammate, now. Ahead of the unit? Wait for it.\n"
     "3. FIRE: a ready gun with a clear line shoots, at the cheapest power that reaches — but "
     "aim at tanks that will still BE there: lead movers with fire_at, and don't feed energy "
     "to dodges. You can move the same turn.\n"
@@ -1080,6 +1081,29 @@ async def decide(
             else:
                 need = next(i + 1 for i, rng_ in enumerate(powers) if d_aim <= rng_)
                 intent["power"] = max(int(intent.get("power", 0) or 0), need)
+                # friendly-fire floor: a predicted ray that crosses a teammate's CURRENT hex
+                # would hit them first — the engine's line, extended to the gun's range
+                ally_cells = {
+                    (p["q"] + v["dq"], p["r"] + v["dr"])
+                    for v in p["visible"]
+                    if v["kind"] == "ally"
+                }
+                if ally_cells:
+                    aq, ar = intent["fire_at"]
+                    scale = powers[intent["power"] - 1] / d_aim
+                    ext = (
+                        round(p["q"] + (aq - p["q"]) * scale),
+                        round(p["r"] + (ar - p["r"]) * scale),
+                    )
+                    ray = [
+                        c for c in hex_line(p["q"], p["r"], ext[0], ext[1]) if c != (p["q"], p["r"])
+                    ]
+                    for c in ray:
+                        if c in ally_cells:
+                            intent.pop("fire_at", None)  # a teammate is on that line
+                            break
+                        if c == (aq, ar):
+                            break
     if intent.get("fire_at"):
         intent["fire"] = 0  # the predictive aim IS the shot
     elif intent.get("fire") and (intent["fire"] not in dist_of or not p.get("gun_ready")):

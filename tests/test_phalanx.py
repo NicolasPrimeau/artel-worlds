@@ -297,3 +297,51 @@ def test_teammate_on_the_line_eats_the_shot():
     assert a.tanks[mate.id].energy <= m0 - DEFAULT.shot_damage + 1  # the teammate ate it
     assert "TEAMMATE" in shooter.last_fire
     assert shooter.energy < 100  # no reward for friendly hits, cost still paid
+
+
+def test_fire_at_through_a_teammate_is_floored(monkeypatch):
+    import asyncio
+
+    from phalanx import agent as A
+
+    p = {
+        "id": 1,
+        "q": 5,
+        "r": 5,
+        "heading": 0,
+        "energy": 80,
+        "gun_ready": True,
+        "tick": 3,
+        "width": 15,
+        "height": 15,
+        "map_radius": 7,
+        "power_range": [3, 5, 7],
+        "power_cost": [0, 2, 4],
+        "fire_range": 7,
+        "visible": [
+            {"id": 2, "kind": "ally", "dq": 2, "dr": 0, "dist": 2, "dir": 0},
+            {"id": 5, "kind": "enemy", "dq": 4, "dr": 0, "dist": 4, "dir": 0, "clear_shot": False},
+        ],
+        "walls": [],
+        "safe": True,
+        "zone_radius": 14,
+        "dist_center": 2,
+        "to_center": 0,
+        "hit_taken": 0,
+        "last_fire": "",
+    }
+
+    async def fake_chat(http, system, transcript, force=None, toolset=None):
+        return (
+            "",
+            [{"id": "c1", "name": "act", "input": {"fire_at": [9, 5], "power": 3}}],
+            0,
+            0,
+            {"cin": 0.0, "cout": 0.0},
+        )
+
+    monkeypatch.setattr(A, "_chat", fake_chat)
+    intent, cost, plan, inbox, recalled = asyncio.run(
+        A.decide(None, {"id": "t", "key": "k"}, p, [], solo=True)
+    )
+    assert "fire_at" not in intent  # the ray crosses the ally at (7,5) — floored
