@@ -197,13 +197,15 @@ const TEAM = {
 const teamRGB = t => (TEAM[t] || TEAM.red).h;
 const rgba = (c,a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 const esc = s => String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
-const MAXE = 90, ANIM = 900, BEAM_MS = 1000, TRAVEL_MS = 250, FLASH_MS = 900, DEATH_MS = 620;
-// The engine resolves each tick as shoot-AND-scoot: every shot leaves the muzzle from the
-// hex a tank STARTED the turn on, then everyone displaces. Replay it in that order: the
-// volley fires while the hulls hold their old hexes, impacts land on beam arrival, THEN
-// the glide plays, and deaths burst last.
-const FIRE_AT = 80, IMPACT_AT = FIRE_AT + TRAVEL_MS, MOVE_AT = IMPACT_AT + 140, MOVE_MS = 650;
-const DEATH_AT = MOVE_AT + MOVE_MS + 80;  // a killed tank still completes its move; it bursts where it stops
+const MAXE = 90, ANIM = 900, BEAM_MS = 900, TRAVEL_MS = 320, FLASH_MS = 900, DEATH_MS = 620;
+// The engine models one CONTINUOUS turn: every shot is released from the hex a tank
+// started on while everyone displaces simultaneously; a shot lands wherever its target
+// actually is when the pulse catches it (a target that breaks line of sight was never
+// hit — no tracer exists). Replay exactly that: glide begins at once, beams anchor to
+// the LIVE shooter and target as they slide, the impact fires when the pulse arrives,
+// and a killed tank bursts at the spot where the pulse caught it.
+const FIRE_AT = 60, IMPACT_AT = FIRE_AT + TRAVEL_MS, MOVE_AT = 0, MOVE_MS = 800;
+const DEATH_AT = IMPACT_AT + 200;
 
 let snap=null, dpr=1, cssW=0, cssH=0, L=null, hits=[], hoverId=null, winnerTimer=0;
 let anim={}, t0=0, meta={}, prevTick=null; // smooth interpolation + per-tank team/coord
@@ -313,25 +315,22 @@ function render(now){
     }
   }
   const floatTexts=[];
-  // beams — a straight shot from shooter to target with a travelling pulse head (the
-  // engine's hex-line LOS check approximates exactly this segment, so straight is honest)
+  // beams — anchored LIVE to the shooter and target hulls each frame, so the line always
+  // leaves a muzzle and lands on armor no matter how either tank is sliding. The pulse
+  // head travels the segment; where it catches the target IS where the impact fires.
   beams=beams.filter(b=>now-b.born<BEAM_MS);
   ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
   for(const b of beams){ if(now<b.born) continue;
     const age=now-b.born, fade=1-age/BEAM_MS, c=teamRGB(b.team);
-    const pts=b.pts; if(!pts||pts.length<2) continue;
-    const head=Math.min(1,age/TRAVEL_MS)*(pts.length-1);
-    const hi=Math.floor(head), hf=head-hi;
+    const s0=(b.by&&anim[b.by])?curPos(anim[b.by],now):b.p0;
+    const e1=(b.tgid&&anim[b.tgid])?curPos(anim[b.tgid],now):b.p1;
+    const hf=Math.min(1,age/TRAVEL_MS);
+    const hx=lerp(s0.x,e1.x,hf), hy=lerp(s0.y,e1.y,hf);
     ctx.shadowColor=rgba(c,.9); ctx.shadowBlur=12;
-    ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
-    for(let i=1;i<=hi;i++) ctx.lineTo(pts[i][0],pts[i][1]);
-    if(hi<pts.length-1) ctx.lineTo(lerp(pts[hi][0],pts[hi+1][0],hf), lerp(pts[hi][1],pts[hi+1][1],hf));
+    ctx.beginPath(); ctx.moveTo(s0.x,s0.y); ctx.lineTo(hx,hy);
     const pw=b.pw||2;
     ctx.strokeStyle=rgba(c,fade*.85); ctx.lineWidth=(1+0.7*pw)+(1.2*pw)*fade*0.8; ctx.stroke();
-    // bright head while travelling
-    if(age<TRAVEL_MS){ const hx=hi<pts.length-1?lerp(pts[hi][0],pts[hi+1][0],hf):pts[pts.length-1][0];
-      const hy=hi<pts.length-1?lerp(pts[hi][1],pts[hi+1][1],hf):pts[pts.length-1][1];
-      ctx.beginPath(); ctx.arc(hx,hy,3.2,0,7); ctx.fillStyle='#fff'; ctx.fill(); }
+    if(age<TRAVEL_MS){ ctx.beginPath(); ctx.arc(hx,hy,3.2,0,7); ctx.fillStyle='#fff'; ctx.fill(); }
   }
   ctx.restore();
   // impact: a ring + the damage number rising off the tank that was hit
@@ -426,10 +425,9 @@ function apply(snp){
   if(L) for(const tc of (snp.tracer_list||[])){ const a=pix(tc.q,tc.r);
     const tg=(tc.tgid&&snp.tank_list.find(t=>t.id===tc.tgid))||snp.tank_list.find(t=>t.q===tc.tq&&t.r===tc.tr);
     const sh=(tc.by&&snp.tank_list.find(t=>t.id===tc.by))||snp.tank_list.find(t=>t.q===tc.q&&t.r===tc.r);
-    const tga=tg&&anim[tg.id];
-    const b=tga?curPos(tga,now):pix(tc.tq,tc.tr);
-    if(sh) aims[sh.id]={x:b.x,y:b.y,until:now+FIRE_AT+BEAM_MS};
-    beams.push({pts:[[a.x,a.y],[b.x,b.y]],team:tc.team,born:now+FIRE_AT,pw:tc.power||2});
+    const b=pix(tc.tq,tc.tr);
+    if(sh) aims[sh.id]={x:b.x,y:b.y,until:now+FIRE_AT+BEAM_MS,tg:tg&&tg.id};
+    beams.push({by:sh&&sh.id,tgid:(tg&&tg.id)||tc.tgid,p0:{x:a.x,y:a.y},p1:{x:b.x,y:b.y},team:tc.team,born:now+FIRE_AT,pw:tc.power||2});
     const jx=()=> (Math.random()-0.5)*L.size*1.2, jy=()=> (Math.random()-0.5)*L.size*0.7;
     flashes.push({x:b.x,y:b.y,team:tc.team,born:now+IMPACT_AT,tg:tg&&tg.id,dmg:Math.round(tc.dmg||0),jx:jx(),jy:jy()});
     if(tc.reward) gains.push({x:a.x,y:a.y,tg:sh&&sh.id,amt:Math.round(tc.reward),born:now+IMPACT_AT,jx:jx(),jy:jy()}); }
@@ -451,8 +449,10 @@ function apply(snp){
     let dx=p.x, dy=p.y, best=Infinity;
     for(const tc of orphanHits){ const c2=pix(tc.tq,tc.tr); const d=(c2.x-p.x)**2+(c2.y-p.y)**2;
       if(d<best){ best=d; dx=c2.x; dy=c2.y; } }
+    const bf=ease(Math.max(0,Math.min(1,(DEATH_AT-MOVE_AT)/MOVE_MS)));
+    const bx=lerp(p.x,dx,bf), by=lerp(p.y,dy,bf);
     ghosts.push({fromX:p.x,fromY:p.y,toX:dx,toY:dy,team:m.team||'red',coord:m.coord,heading:m.heading||0,aim:m.aim,energy:m.e1||2,until:now+DEATH_AT});
-    deaths.push({x:dx,y:dy,team:m.team||'red',born:now+DEATH_AT}); } }
+    deaths.push({x:bx,y:by,team:m.team||'red',born:now+DEATH_AT}); } }
   prevIds=ids; anim=A; t0=now; snap=snp;
 
   $('s_tick').textContent=snp.tick;
