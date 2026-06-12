@@ -309,10 +309,12 @@ function render(now){
     const e=(f.tg&&anim[f.tg])?curPos(anim[f.tg],now):{x:f.x,y:f.y};
     ctx.beginPath(); ctx.arc(e.x,e.y,3+ease(Math.min(1,t*2.5))*s*0.75,0,7);
     ctx.strokeStyle=rgba(c,a); ctx.lineWidth=2.5; ctx.stroke();
-    if(f.dmg){ ctx.font=`bold ${Math.max(11,Math.round(s*0.5))}px ui-monospace,monospace`;
+    if(f.dmg){ const fs=Math.max(13,Math.round(s*0.55));
+      ctx.font=`bold ${fs}px ui-monospace,monospace`;
       ctx.textAlign='center'; ctx.fillStyle=`rgba(255,235,235,${a})`;
-      ctx.strokeStyle=`rgba(0,0,0,${a*.8})`; ctx.lineWidth=3;
-      // clamp inside the canvas — a "-12" drifting off the edge reads as "-1"
+      // outline must scale with the font and join round — a fixed 3px stroke on a small
+      // font fills the loops of the '2' and "-12" reads as "-1"
+      ctx.strokeStyle=`rgba(0,0,0,${a*.8})`; ctx.lineWidth=Math.max(1.5,fs*0.16); ctx.lineJoin='round';
       const tx=Math.max(16,Math.min(cssW-16,e.x));
       const ty=Math.max(14,Math.min(cssH-6,e.y-s*0.8-t*s*0.9));
       ctx.strokeText(`-${f.dmg}`,tx,ty); ctx.fillText(`-${f.dmg}`,tx,ty); }
