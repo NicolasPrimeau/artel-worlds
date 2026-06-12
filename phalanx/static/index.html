@@ -337,9 +337,9 @@ function render(now){
   }
   ctx.restore();
   // impact: a ring + the damage number rising off the tank that was hit
-  flashes=flashes.filter(f=>now-f.born<FLASH_MS);
+  flashes=flashes.filter(f=>now-f.born<(f.life||FLASH_MS));
   for(const f of flashes){ if(now<f.born) continue;
-    const t=(now-f.born)/FLASH_MS, a=1-t, c=teamRGB(f.team);
+    const t=(now-f.born)/(f.life||FLASH_MS), a=1-t, c=teamRGB(f.team);
     const e=(f.tg&&anim[f.tg])?curPos(anim[f.tg],now):{x:f.x,y:f.y};
     ctx.beginPath(); ctx.arc(e.x,e.y,3+ease(Math.min(1,t*2.5))*s*0.75,0,7);
     ctx.strokeStyle=rgba(c,a); ctx.lineWidth=2.5; ctx.stroke();
@@ -350,9 +350,9 @@ function render(now){
   }
 
   // energy gained by the shooter when a hit lands — the other half of the -12 story
-  gains=gains.filter(g=>now-g.born<FLASH_MS);
+  gains=gains.filter(g=>now-g.born<(g.life||FLASH_MS));
   for(const g of gains){ if(now<g.born) continue;
-    const t=(now-g.born)/FLASH_MS, a=1-t;
+    const t=(now-g.born)/(g.life||FLASH_MS), a=1-t;
     const e=(g.tg&&anim[g.tg])?curPos(anim[g.tg],now):{x:g.x,y:g.y};
     const fs=Math.max(12,Math.round(s*0.45));
     const tx=Math.max(16,Math.min(cssW-16,e.x+(g.jx||0)));
@@ -432,8 +432,9 @@ function apply(snp){
     if(sh) aims[sh.id]={x:b.x,y:b.y,until:now+FIRE_AT+BEAM_MS,tg:tg&&tg.id};
     beams.push({by:sh&&sh.id,tgid:(tg&&tg.id)||tc.tgid,p0:{x:a.x,y:a.y},p1:{x:b.x,y:b.y},team:tc.team,born:now+FIRE_AT,pw:tc.power||2,kind:tc.kind||'hit'});
     const jx=()=> (Math.random()-0.5)*L.size*1.2, jy=()=> (Math.random()-0.5)*L.size*0.7;
-    if((tc.kind||'hit')==='hit') flashes.push({x:b.x,y:b.y,team:tc.team,born:now+IMPACT_AT,tg:tg&&tg.id,dmg:Math.round(tc.dmg||0),jx:jx(),jy:jy()});
-    if(tc.reward) gains.push({x:a.x,y:a.y,tg:sh&&sh.id,amt:Math.round(tc.reward),born:now+IMPACT_AT,jx:jx(),jy:jy()}); }
+    const life=()=> FLASH_MS*(0.65+Math.random()*0.8);
+    if((tc.kind||'hit')==='hit') flashes.push({x:b.x,y:b.y,team:tc.team,born:now+IMPACT_AT,tg:tg&&tg.id,dmg:Math.round(tc.dmg||0),jx:jx(),jy:jy(),life:life()});
+    if(tc.reward) gains.push({x:a.x,y:a.y,tg:sh&&sh.id,amt:Math.round(tc.reward),born:now+IMPACT_AT,jx:jx(),jy:jy(),life:life()}); }
   // retarget interpolation: glide from current rendered pos to the new hex. Hold the energy
   // display at its pre-volley value until this tick's impacts land.
   const A={};
