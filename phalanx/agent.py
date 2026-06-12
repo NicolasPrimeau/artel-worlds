@@ -935,12 +935,22 @@ async def decide(
                         {"id": c["id"], "output": "already your objective — board unchanged"}
                     )
                     continue
+                if objective and p.get("tick", 0) - objective.get("set_tick", -99) < 5:
+                    results.append(
+                        {
+                            "id": c["id"],
+                            "output": "objective locked (changes allowed every 5 turns) — "
+                            "fight the plan you committed to",
+                        }
+                    )
+                    continue
                 tid = await _set_objective(
                     http, agent, txt, mate_ids, (objective or {}).get("task_id", "")
                 )
                 if tid:
                     if objective is not None:
                         objective["task_id"], objective["text"] = tid, txt
+                        objective["set_tick"] = p.get("tick", 0)
                     if claims is not None:
                         claims.append((agent, tid))
                 results.append({"id": c["id"], "output": "posted on the team board"})

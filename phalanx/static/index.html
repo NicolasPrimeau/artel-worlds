@@ -315,8 +315,8 @@ function render(now){
       // outline must scale with the font and join round — a fixed 3px stroke on a small
       // font fills the loops of the '2' and "-12" reads as "-1"
       ctx.strokeStyle=`rgba(0,0,0,${a*.8})`; ctx.lineWidth=Math.max(1.5,fs*0.16); ctx.lineJoin='round';
-      const tx=Math.max(16,Math.min(cssW-16,e.x));
-      const ty=Math.max(14,Math.min(cssH-6,e.y-s*0.8-t*s*0.9));
+      const tx=Math.max(16,Math.min(cssW-16,e.x+(f.jx||0)));
+      const ty=Math.max(14,Math.min(cssH-6,e.y-s*0.8-t*s*0.9+(f.jy||0)));
       ctx.strokeText(`-${f.dmg}`,tx,ty); ctx.fillText(`-${f.dmg}`,tx,ty); }
   }
 
@@ -329,8 +329,8 @@ function render(now){
     ctx.font=`bold ${fs}px ui-monospace,monospace`; ctx.textAlign='center';
     ctx.fillStyle=`rgba(140,240,170,${a})`;
     ctx.strokeStyle=`rgba(0,0,0,${a*.8})`; ctx.lineWidth=Math.max(1.5,fs*0.16); ctx.lineJoin='round';
-    const tx=Math.max(16,Math.min(cssW-16,e.x));
-    const ty=Math.max(14,Math.min(cssH-6,e.y-s*0.8-t*s*0.9));
+    const tx=Math.max(16,Math.min(cssW-16,e.x+(g.jx||0)));
+    const ty=Math.max(14,Math.min(cssH-6,e.y-s*0.8-t*s*0.9+(g.jy||0)));
     ctx.strokeText(`+${g.amt}`,tx,ty); ctx.fillText(`+${g.amt}`,tx,ty);
   }
 
@@ -390,8 +390,9 @@ function apply(snp){
     const tg=snp.tank_list.find(t=>t.q===tc.tq&&t.r===tc.tr);
     const sh=snp.tank_list.find(t=>t.q===tc.q&&t.r===tc.r);
     beams.push({pts:[[a.x,a.y],[b.x,b.y]],team:tc.team,born:now+FIRE_AT,pw:tc.power||2});
-    flashes.push({x:b.x,y:b.y,team:tc.team,born:now+IMPACT_AT,tg:tg&&tg.id,dmg:Math.round(tc.dmg||0)});
-    if(tc.reward) gains.push({x:a.x,y:a.y,tg:sh&&sh.id,amt:Math.round(tc.reward),born:now+IMPACT_AT}); }
+    const jx=()=> (Math.random()-0.5)*L.size*1.2, jy=()=> (Math.random()-0.5)*L.size*0.7;
+    flashes.push({x:b.x,y:b.y,team:tc.team,born:now+IMPACT_AT,tg:tg&&tg.id,dmg:Math.round(tc.dmg||0),jx:jx(),jy:jy()});
+    if(tc.reward) gains.push({x:a.x,y:a.y,tg:sh&&sh.id,amt:Math.round(tc.reward),born:now+IMPACT_AT,jx:jx(),jy:jy()}); }
   // retarget interpolation: glide from current rendered pos to the new hex. Hold the energy
   // display at its pre-volley value until this tick's impacts land.
   const A={};
