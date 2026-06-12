@@ -134,6 +134,17 @@ class Bot:
         if hex_distance(p["q"], p["r"], cq, cr) > zr - ZONE_MARGIN:
             return {**intent, **self._toward(p, wallset, occ, cq, cr, R)}
 
+        # 4a. REPAIR: hurt, nothing in sight, inside the zone — park and recover (+2/turn
+        # while idle, unhit, and not firing). Both teams run this same self-preservation;
+        # the smarter USE of it (rotations, screens) is the commander's job.
+        if (
+            p["energy"] <= LOW_ENERGY
+            and p.get("safe", True)
+            and not any(v["kind"] == "enemy" for v in p.get("visible", []))
+            and not self.orders.get("regroup")
+        ):
+            return {"turn": 0, "move": "hold"}
+
         # 4b. REGROUP order: the commander called a rally — go there now (the gun keeps
         # working on the way); the order clears itself on arrival
         rg = self.orders.get("regroup")

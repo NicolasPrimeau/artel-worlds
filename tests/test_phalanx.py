@@ -464,3 +464,37 @@ def test_coordination_orders_beat_identical_solo_motors():
                 break
         wins[a.winner] += 1
     assert wins["artel"] >= 55, f"coordination edge lost: {dict(wins)}"
+
+
+def test_hurt_bot_parks_to_repair_when_nothing_in_sight():
+    from phalanx.control import Bot
+
+    bot = Bot(1, "artel", "brawler")
+    p = {
+        "q": 7,
+        "r": 7,
+        "heading": 0,
+        "energy": 20,
+        "gun_ready": True,
+        "visible": [],
+        "walls": [],
+        "zone_radius": 14,
+        "safe": True,
+    }
+    out = bot.decide(dict(p), DEFAULT, 5)
+    assert out["move"] == "hold"  # parked: banking +2/turn
+
+    p["visible"] = [
+        {
+            "id": 5,
+            "kind": "enemy",
+            "dq": 2,
+            "dr": 0,
+            "dist": 2,
+            "dir": 0,
+            "clear_shot": True,
+            "energy": 50,
+        }
+    ]
+    out = bot.decide(dict(p), DEFAULT, 6)
+    assert out["move"] != "hold" or out.get("fire")  # contact: fight or fall back, not nap
