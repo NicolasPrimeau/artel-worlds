@@ -98,10 +98,15 @@ class Bot:
 
         # 5. nobody known: sweep toward the enemy half ALONE, each temperament down its own
         #    lane — solo hunters spread; they don't get to march as an accidental phalanx.
+        #    Lane targets get pulled back onto the hexagon (the bounding box's corners are
+        #    not part of the map).
         if not self.board:
             lane = self.traits["lane"]
-            tq = max(0, min(cfg.width - 1, cfg.width - 1 - p["q"] + lane))
-            tr = max(0, min(cfg.height - 1, cfg.height - 1 - p["r"] - lane))
+            tq = 2 * cq - p["q"] + lane
+            tr = 2 * cr - p["r"] - lane
+            while hex_distance(tq, tr, cq, cr) > R:
+                tq += 1 if tq < cq else -1 if tq > cq else 0
+                tr += 1 if tr < cr else -1 if tr > cr else 0
             return {**intent, **self._toward(p, wallset, tq, tr, R)}
 
         # 6. work the enemy this temperament points at
