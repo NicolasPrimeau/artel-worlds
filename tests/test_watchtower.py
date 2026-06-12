@@ -125,3 +125,49 @@ def test_server_boots_without_llm(monkeypatch):
         snap = client.get("/state").json()
         assert len(snap["artel_wall"]) == 10 and len(snap["solo_wall"]) == 10
         assert client.post("/fire").json()["fired"] is False  # disabled: no keys
+
+
+def test_metrics_history_pairs_and_orders():
+    with tempfile.TemporaryDirectory() as d:
+        m = Metrics(os.path.join(d, "t.db"))
+        for seq in range(5):
+            m.record(seq, "traffic_spike", "artel", 100 - seq * 10, 3, True)
+            m.record(seq, "traffic_spike", "solo", 120, 5, True)
+        m.record(9, "bad_deploy", "artel", 50, 2, True)  # unpaired: solo row missing
+
+        hist = m.history()
+        assert [h["seq"] for h in hist] == [0, 1, 2, 3, 4]  # paired only, oldest first
+        assert hist[0]["artel"] == 100 and hist[0]["solo"] == 120
+        assert hist[-1]["artel"] == 60
+        assert all(h["family"] == "traffic_spike" for h in hist)
+        m.close()
+
+
+def test_resolved_incident_always_records_a_runbook():
+    # the resolving action ends the respond() loop before the model's RECORD step — the
+    # post-resolution round (with deterministic fallback) must guarantee a runbook anyway
+    import asyncio
+
+    from watchtower import agent as A
+
+    spec = spec_for(123, 0)
+    inc = _fresh_incident(spec)
+    for action, node in spec.fix:
+        inc.act(action, node)
+    assert inc.resolved
+
+    store = A.SoloStore("solo-test")
+
+    async def boom(http, system, transcript):
+        raise RuntimeError("llm down")
+
+    orig = A._chat
+    A._chat = boom
+    try:
+        asyncio.run(A._record_runbook(None, inc, store, [], None))
+    finally:
+        A._chat = orig
+    assert len(store.notes) == 1
+    assert spec.family in store.notes[0]
+    fix_step = f"{spec.fix[0][0]} {spec.fix[0][1]}"
+    assert fix_step in store.notes[0]

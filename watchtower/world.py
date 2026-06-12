@@ -133,6 +133,10 @@ class World:
         self.metrics.record(
             seq, spec.family, "solo", s_inc.mttr(), len(s_inc.actions), s_inc.resolved
         )
+        if a_inc.resolved:
+            await a_resp.store.close_followups(spec.family)
+        else:
+            await a_resp.store.file_followup(spec.family, seq, spec.title)
         self.cursor += 1
         self.live = None
         await self._broadcast()
@@ -223,6 +227,7 @@ class World:
             "summary": self.metrics.summary(),
             "wedge": self.metrics.wedge(),
             "recent": self.metrics.recent(),
+            "history": self.metrics.history(),
             "per_family": self.metrics.per_family(),
             "war_room": self._feed(),
         }

@@ -131,6 +131,16 @@ class Metrics:
             p[r["fleet"]] = round(r["mttr"], 1)
         return sorted(paired.values(), key=lambda p: p["seq"], reverse=True)[:n]
 
+    def history(self, n: int = 120) -> list[dict]:
+        # every paired head-to-head, oldest first — one bar per incident on the dashboard
+        rows = self._rows("ORDER BY seq DESC LIMIT ?", (n * 2,))
+        paired: dict[int, dict] = {}
+        for r in rows:
+            p = paired.setdefault(r["seq"], {"seq": r["seq"], "family": r["family"]})
+            p[r["fleet"]] = round(r["mttr"], 1)
+        out = [p for p in paired.values() if "artel" in p and "solo" in p]
+        return sorted(out, key=lambda p: p["seq"])
+
     def per_family(self) -> list[dict]:
         rows = self._rows()
         fam: dict[str, dict[str, list]] = {}

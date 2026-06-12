@@ -389,6 +389,43 @@ class ArtelStore:
         except Exception:
             pass
 
+    async def _open_followups(self) -> list[dict]:
+        r = await self.http.get(
+            f"{ARTEL_URL}/tasks",
+            headers=_headers(self.agent),
+            params={"project": WATCHTOWER_PROJECT, "status": "open"},
+        )
+        rows = r.json() if r.status_code < 300 else []
+        return rows if isinstance(rows, list) else []
+
+    async def file_followup(self, family: str, seq: int, title: str) -> None:
+        try:
+            if any(family in (t.get("tags") or []) for t in await self._open_followups()):
+                return
+            await self.http.post(
+                f"{ARTEL_URL}/tasks",
+                headers=_headers(self.agent),
+                json={
+                    "title": f"Unresolved fault: {title}",
+                    "description": f"Incident #{seq} ({family}) closed unresolved. Whoever cracks "
+                    "this family next: record the working fix as a runbook.",
+                    "project": WATCHTOWER_PROJECT,
+                    "tags": [family, "followup"],
+                },
+            )
+        except Exception:
+            pass
+
+    async def close_followups(self, family: str) -> None:
+        try:
+            for t in await self._open_followups():
+                if family in (t.get("tags") or []):
+                    h = _headers(self.agent)
+                    await self.http.post(f"{ARTEL_URL}/tasks/{t['id']}/claim", headers=h)
+                    await self.http.post(f"{ARTEL_URL}/tasks/{t['id']}/complete", headers=h)
+        except Exception:
+            pass
+
     async def notify(self, text: str) -> None:
         if not text:
             return
@@ -444,6 +481,12 @@ class SoloStore:
             self.feed.append({"from": self.agent_id, "text": text[:200]})
             del self.feed[:-40]
 
+    async def file_followup(self, family: str, seq: int, title: str) -> None:
+        return None
+
+    async def close_followups(self, family: str) -> None:
+        return None
+
 
 def _render_incident(inc: Incident) -> str:
     lines = [
@@ -465,6 +508,7 @@ async def respond(http, inc: Incident, store, counts: dict | None = None, on_ste
     # one responder works one incident to resolution (or until the action cap closes it). Returns the
     # USD spent on LLM calls. The store is the only thing that differs between the two fleets.
     cost = 0.0
+    recorded = False
     transcript = [{"role": "user", "text": _render_incident(inc)}]
     for _ in range(MAX_ROUNDS):
         try:
@@ -491,6 +535,7 @@ async def respond(http, inc: Incident, store, counts: dict | None = None, on_ste
                 out = {"runbooks": found} if found else {"runbooks": "none on file — you're first"}
             elif name == "remember":
                 await store.remember(str(inp.get("text", "")))
+                recorded = recorded or bool(inp.get("text"))
                 out = {"result": "runbook saved"}
             elif name == "tell_team":
                 await store.notify(str(inp.get("text", "")))
@@ -504,4 +549,38 @@ async def respond(http, inc: Incident, store, counts: dict | None = None, on_ste
         if inc.resolved or inc.missed:
             break
         transcript.append({"role": "user", "text": _state_note(inc)})
+    if inc.resolved and not recorded:
+        # the resolving action ends the loop before the model's RECORD step would run — without
+        # this round no fleet ever writes a runbook and the whole experiment runs unshared
+        cost += await _record_runbook(http, inc, store, transcript, counts)
+    return cost
+
+
+async def _record_runbook(http, inc: Incident, store, transcript, counts) -> float:
+    transcript.append(
+        {
+            "role": "user",
+            "text": "Resolved. Before you go: ONE remember call — the alert symptoms, the root "
+            "cause, and the exact fix that worked, written so the next responder can apply it "
+            "without diagnosing.",
+        }
+    )
+    cost = 0.0
+    try:
+        text, calls, tin, tout, ep = await _chat(http, SYSTEM, transcript)
+        cost = tin * ep["cin"] + tout * ep["cout"]
+        for c in calls:
+            if c["name"] == "remember":
+                t = str((c.get("input") or {}).get("text", ""))
+                if t:
+                    await store.remember(t)
+                    if counts is not None:
+                        counts["remember"] = counts.get("remember", 0) + 1
+                    return cost
+    except Exception as e:
+        log.warning("watchtower runbook round failed: %s", e)
+    # model skipped it — synthesize the runbook from the fix that actually worked (identical
+    # fallback for both fleets, so fairness holds)
+    steps = " then ".join(f"{a} {n}" for a, n in inc.spec.fix)
+    await store.remember(f"runbook {inc.spec.family}: alert '{inc.spec.alert}'. fix: {steps}.")
     return cost
