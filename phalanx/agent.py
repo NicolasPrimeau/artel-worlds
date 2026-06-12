@@ -106,7 +106,9 @@ SYSTEM = (
     "- Firing is target-based: name an enemy id and the shot automatically hits if that enemy "
     "is within range 6 with a clear line — your facing does NOT matter for shooting, only for "
     "moving. There is no aiming and no missing: every id your state lists under 'you can fire "
-    "NOW at' is a GUARANTEED hit this turn. The gun is ready again the very next turn.\n"
+    "NOW at' is a GUARANTEED hit this turn — and firing at any OTHER id does nothing at all "
+    "(out of range or blocked by cover; the shot is silently wasted). The gun is ready again "
+    "the very next turn.\n"
     "- Cover hexes are impassable and block both shots and sight. You see only what has a "
     "clear line to you within distance 8 — fog of war; your teammates see different things.\n"
     "- The safe zone shrinks toward the arena center as the match goes on. Any tank outside it "
@@ -763,6 +765,16 @@ async def decide(
     # left holding with nothing to shoot, advance (on the nearest enemy, else toward center). The
     # model still drives whenever it makes a real choice; this only covers the turns it idles.
     rx = _reflex(p)
+    # a shot the engine will reject (target out of range / behind cover / gun reloading) is a
+    # PHANTOM: it costs nothing, hits nothing, and must not excuse holding position — tanks
+    # have frozen for whole matches "firing" at an enemy through a wall
+    valid_fire = {
+        v["id"]
+        for v in p["visible"]
+        if v["kind"] == "enemy" and v["dist"] <= p.get("fire_range", 6)
+    }
+    if intent.get("fire") and (intent["fire"] not in valid_fire or not p.get("gun_ready")):
+        intent["fire"] = 0
     if not intent.get("fire"):
         intent["fire"] = rx["fire"]
     if intent.get("move", "hold") == "hold" and not intent.get("fire"):
