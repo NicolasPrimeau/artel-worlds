@@ -105,9 +105,8 @@ SYSTEM = (
     "root cause and the fix in terms of the SYMPTOM PATTERN (kind of node, which dials, the order of "
     "steps), NOT this incident's specific node name or numbers (those change every time). One tight "
     "rule. Skip platitudes you already know.\n"
-    "You may also tell_team a one-line status for the war room, and file_task work that should NOT "
-    "block restoring service (preventive fixes, monitoring gaps, cleanup you noticed). Keep acting "
-    "until the incident reads RESOLVED."
+    "You may also file_task work that should NOT block restoring service (preventive fixes, "
+    "monitoring gaps, cleanup you noticed). Keep acting until the incident reads RESOLVED."
 )
 
 _NODE_PROP = {
@@ -191,16 +190,6 @@ TOOLS = [
             "type": "object",
             "properties": {"task_id": {"type": "string"}},
             "required": ["task_id"],
-        },
-    },
-    {
-        "name": "tell_team",
-        "description": "Post a one-line status to the war-room feed (e.g. 'db-replica lag — failing "
-        "over'). Situational awareness for the fleet; keep it short.",
-        "schema": {
-            "type": "object",
-            "properties": {"text": {"type": "string"}},
-            "required": ["text"],
         },
     },
 ]
@@ -419,6 +408,7 @@ class ArtelStore:
                 headers=_headers(self.agent),
                 json={"content": text[:400], "project": WATCHTOWER_PROJECT, "tags": ["runbook"]},
             )
+            self._activity(f"saved runbook: {text[:90]}")
         except Exception:
             pass
 
@@ -455,6 +445,7 @@ class ArtelStore:
                     "tags": tags or [],
                 },
             )
+            self._activity(f"filed task: {title[:80]}")
         except Exception:
             pass
 
@@ -470,6 +461,8 @@ class ArtelStore:
                 return False
             await self.http.post(f"{ARTEL_URL}/tasks/{full}/claim", headers=h)
             r = await self.http.post(f"{ARTEL_URL}/tasks/{full}/complete", headers=h)
+            if r.status_code < 300:
+                self._activity(f"completed task {task_id[:8]}")
             return r.status_code < 300
         except Exception:
             return False
@@ -493,6 +486,7 @@ class ArtelStore:
                 return None
             tid = r.json().get("id")
             await self.http.post(f"{ARTEL_URL}/tasks/{tid}/claim", headers=h)
+            self._activity(f"claimed incident #{seq}: {title[:70]}")
             return tid
         except Exception:
             return None
@@ -504,11 +498,13 @@ class ArtelStore:
             h = _headers(self.agent)
             if resolved:
                 await self.http.post(f"{ARTEL_URL}/tasks/{task_id}/complete", headers=h)
+                self._activity("resolved — incident task completed")
             else:
                 await self.http.post(
                     f"{ARTEL_URL}/tasks/{task_id}/comments", headers=h, json={"body": note[:300]}
                 )
                 await self.http.post(f"{ARTEL_URL}/tasks/{task_id}/unclaim", headers=h)
+                self._activity("unresolved — left open on the board with a handoff note")
         except Exception:
             pass
 
@@ -553,23 +549,9 @@ class ArtelStore:
             lines += [f"- {m.get('content', '')[:140]}" for m in delta[-4:]]
         return "\n".join(lines)
 
-    async def notify(self, text: str) -> None:
-        if not text:
-            return
+    def _activity(self, text: str) -> None:
         self.feed.append({"from": self.agent["id"], "text": text[:200]})
         del self.feed[:-40]
-        try:
-            await self.http.post(
-                f"{ARTEL_URL}/messages",
-                headers=_headers(self.agent),
-                json={
-                    "to": f"project:{WATCHTOWER_PROJECT}",
-                    "subject": "watchtower",
-                    "body": text[:240],
-                },
-            )
-        except Exception:
-            pass
 
 
 def _tokens(s: str) -> set[str]:
@@ -610,11 +592,6 @@ class SoloStore:
 
     async def handoff(self) -> str:
         return f"your last shift: {self.last_shift}" if self.last_shift else ""
-
-    async def notify(self, text: str) -> None:
-        if text:
-            self.feed.append({"from": self.agent_id, "text": text[:200]})
-            del self.feed[:-40]
 
     async def board(self) -> str:
         return "\n".join(
@@ -712,9 +689,6 @@ async def respond(http, inc: Incident, store, counts: dict | None = None, on_ste
                 await store.remember(str(inp.get("text", "")))
                 recorded = recorded or bool(inp.get("text"))
                 out = {"result": "runbook saved"}
-            elif name == "tell_team":
-                await store.notify(str(inp.get("text", "")))
-                out = {"result": "posted"}
             elif name == "check_board":
                 b = await store.board()
                 out = {"board": b or "board is clear"}

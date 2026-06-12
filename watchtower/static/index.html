@@ -212,10 +212,10 @@
   </section>
 
   <section class="card">
-    <div class="ttl">The war room <span class="qm" data-tip="Live messages between Artel responders — flowing through a real artel.run project. The solo fleet has no channel at all; that's the whole experiment.">?</span></div>
+    <div class="ttl">Shared project activity <span class="qm" data-tip="Real reads and writes against the artel.run project as they happen: incidents claimed, runbooks saved, board tasks completed. Nothing here is staged — every line is an API call you can verify on artel.run.">?</span></div>
     <div class="feeds">
-      <div class="feed" id="feed"><div class="empty">Quiet — chatter appears when an incident fires.</div></div>
-      <div class="silence" data-tip="Same agents, same incidents, no way to share. Every lesson a solo agent learns dies in its own notes.">solo fleet:<br>— no shared channel —</div>
+      <div class="feed" id="feed"><div class="empty">Quiet — activity appears when an incident fires.</div></div>
+      <div class="silence" data-tip="Same agents, same incidents, no shared store to write to. Every lesson a solo agent learns dies in its own notes.">solo fleet:<br>— nothing shared —</div>
     </div>
   </section>
 
@@ -405,7 +405,7 @@ function render(s){
   const feed = s.war_room||[];
   $("feed").innerHTML = feed.length
     ? feed.slice().reverse().map(m=>`<div class="msg"><b>${esc(m.from)}</b> ${esc(m.text)}</div>`).join("")
-    : `<div class="empty">Quiet — chatter appears when an incident fires.</div>`;
+    : `<div class="empty">Quiet — activity appears when an incident fires.</div>`;
 
   const rec = s.recent||[];
   $("recent").innerHTML = rec.length ? rec.slice(0,8).map(r=>{
