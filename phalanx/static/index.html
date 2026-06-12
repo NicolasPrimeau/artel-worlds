@@ -199,12 +199,16 @@ function resize(){
   if(snap){ layout(); for(const id in anim){ const a=anim[id]; const p=pix(a.q,a.r); a.fromX=a.toX=p.x; a.fromY=a.toY=p.y; } }
 }
 function layout(){
+  // TRUE AXIAL projection: every row shifts by r/2, matching the engine's coordinate
+  // system exactly. The old odd-row-offset layout disagreed with the engine about which
+  // hexes are adjacent — tanks appeared to drive and shoot through walls that, on the
+  // engine's grid, they were legally going around. The arena renders as a parallelogram.
   const cols=snap.width, rows=snap.height, pad=26;
-  const size=Math.max(1,Math.min((cssW-pad*2)/(SQRT3*(cols+0.5)), (cssH-pad*2)/(1.5*rows+0.5)));
-  const gw=SQRT3*size*(cols+0.5), gh=(1.5*rows+0.5)*size;
+  const size=Math.max(1,Math.min((cssW-pad*2)/(SQRT3*(cols+rows/2+0.5)), (cssH-pad*2)/(1.5*rows+0.5)));
+  const gw=SQRT3*size*(cols+rows/2+0.5), gh=(1.5*rows+0.5)*size;
   L={ size, offX:(cssW-gw)/2, offY:(cssH-gh)/2 };
 }
-function center(q,r){ return [L.offX+SQRT3*L.size*(q+0.5*(r&1)+0.5), L.offY+L.size*(1.5*r+1)]; }
+function center(q,r){ return [L.offX+SQRT3*L.size*(q+r/2+0.5), L.offY+L.size*(1.5*r+1)]; }
 function pix(q,r){ const c=center(q,r); return {x:c[0], y:c[1]}; }
 function hexPath(x,y,s){ ctx.beginPath(); for(let i=0;i<6;i++){ const a=(Math.PI/180)*(60*i-90); const px=x+s*Math.cos(a), py=y+s*Math.sin(a); i?ctx.lineTo(px,py):ctx.moveTo(px,py);} ctx.closePath(); }
 function curPos(a,now){ const f=ease(Math.min(1,(now-t0)/ANIM)); return { x:lerp(a.fromX,a.toX,f), y:lerp(a.fromY,a.toY,f) }; }
