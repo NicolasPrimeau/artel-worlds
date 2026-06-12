@@ -198,10 +198,12 @@ const teamRGB = t => (TEAM[t] || TEAM.red).h;
 const rgba = (c,a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 const esc = s => String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 const MAXE = 90, ANIM = 900, BEAM_MS = 1000, TRAVEL_MS = 250, FLASH_MS = 900, DEATH_MS = 620;
-// The engine resolves each tick in phases — everyone turns, everyone moves, THEN everyone
-// fires (from post-move cells), then deaths. Replay it in that order: glide first, the
-// volley fires once tanks settle, impacts land on beam arrival, deaths burst last.
-const FIRE_AT = ANIM, IMPACT_AT = ANIM + TRAVEL_MS, DEATH_AT = ANIM + TRAVEL_MS + 200;
+// The engine resolves each tick as shoot-AND-scoot: every shot leaves the muzzle from the
+// hex a tank STARTED the turn on, then everyone displaces. Replay it in that order: the
+// volley fires while the hulls hold their old hexes, impacts land on beam arrival, THEN
+// the glide plays, and deaths burst last.
+const FIRE_AT = 80, IMPACT_AT = FIRE_AT + TRAVEL_MS, MOVE_AT = IMPACT_AT + 140, MOVE_MS = 650;
+const DEATH_AT = MOVE_AT + MOVE_MS + 80;  // a killed tank still completes its move; it bursts where it stops
 
 let snap=null, dpr=1, cssW=0, cssH=0, L=null, hits=[], hoverId=null, winnerTimer=0;
 let anim={}, t0=0, meta={}, prevTick=null; // smooth interpolation + per-tank team/coord
@@ -240,7 +242,7 @@ function layout(){
 function center(q,r){ return [L.offX+SQRT3*L.size*(q+r/2+0.5), L.offY+L.size*(1.5*r+1)]; }
 function pix(q,r){ const c=center(q,r); return {x:c[0], y:c[1]}; }
 function hexPath(x,y,s){ ctx.beginPath(); for(let i=0;i<6;i++){ const a=(Math.PI/180)*(60*i-90); const px=x+s*Math.cos(a), py=y+s*Math.sin(a); i?ctx.lineTo(px,py):ctx.moveTo(px,py);} ctx.closePath(); }
-function curPos(a,now){ const f=ease(Math.min(1,(now-t0)/ANIM)); return { x:lerp(a.fromX,a.toX,f), y:lerp(a.fromY,a.toY,f) }; }
+function curPos(a,now){ const f=ease(Math.max(0,Math.min(1,(now-t0-MOVE_AT)/MOVE_MS))); return { x:lerp(a.fromX,a.toX,f), y:lerp(a.fromY,a.toY,f) }; }
 
 const HEXANG=[0,-Math.PI/3,-2*Math.PI/3,Math.PI,2*Math.PI/3,Math.PI/3];
 function drawTank(x,y,hullDir,aim,energy,team,coord){
@@ -369,7 +371,7 @@ function render(now){
   // ghosts: tanks that died this tick stay on the field — gliding their last move — until
   // the volley lands and their burst fires, so a kill reads as shot -> impact -> gone
   ghosts=ghosts.filter(g=>now<g.until);
-  for(const g of ghosts){ const f=ease(Math.min(1,(now-t0)/ANIM));
+  for(const g of ghosts){ const f=ease(Math.max(0,Math.min(1,(now-t0-MOVE_AT)/MOVE_MS)));
     drawTank(lerp(g.fromX,g.toX,f), lerp(g.fromY,g.toY,f), g.heading, g.aim??(HEXANG[g.heading]??0), g.energy, g.team, g.coord);
   }
 
@@ -416,12 +418,16 @@ function apply(snp){
   // new match: drop every scheduled effect from the old one
   if(prevTick!=null && snp.tick<prevTick){ beams=[]; flashes=[]; deaths=[]; ghosts=[]; gains=[]; anim={}; meta={}; prevIds=new Set(); }
   prevTick=snp.tick;
-  // this tick's volley — scheduled to fire only after the glide settles, because the engine
-  // fires AFTER moves (tracer cells are post-move). Beams track the live tanks regardless.
+  // this tick's volley — fires FIRST, from the hexes tanks started the turn on (the
+  // tracer's origin cells), while the hulls still hold there; the glide follows. The beam
+  // ends where the target is RENDERED at volley time (its old hex); the impact flash
+  // tracks the tank as it slides.
   const aims={};
-  if(L) for(const tc of (snp.tracer_list||[])){ const a=pix(tc.q,tc.r), b=pix(tc.tq,tc.tr);
-    const tg=snp.tank_list.find(t=>t.q===tc.tq&&t.r===tc.tr);
-    const sh=snp.tank_list.find(t=>t.q===tc.q&&t.r===tc.r);
+  if(L) for(const tc of (snp.tracer_list||[])){ const a=pix(tc.q,tc.r);
+    const tg=(tc.tgid&&snp.tank_list.find(t=>t.id===tc.tgid))||snp.tank_list.find(t=>t.q===tc.tq&&t.r===tc.tr);
+    const sh=(tc.by&&snp.tank_list.find(t=>t.id===tc.by))||snp.tank_list.find(t=>t.q===tc.q&&t.r===tc.r);
+    const tga=tg&&anim[tg.id];
+    const b=tga?curPos(tga,now):pix(tc.tq,tc.tr);
     if(sh) aims[sh.id]={x:b.x,y:b.y,until:now+FIRE_AT+BEAM_MS};
     beams.push({pts:[[a.x,a.y],[b.x,b.y]],team:tc.team,born:now+FIRE_AT,pw:tc.power||2});
     const jx=()=> (Math.random()-0.5)*L.size*1.2, jy=()=> (Math.random()-0.5)*L.size*0.7;

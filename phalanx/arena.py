@@ -327,6 +327,8 @@ class Arena:
                     "r": orr,
                     "tq": target.q,
                     "tr": target.r,
+                    "by": t.id,
+                    "tgid": target.id,
                     "team": t.team,
                     "path": hex_line(oq, orr, target.q, target.r),
                     "dmg": cfg.shot_damage,

@@ -176,6 +176,8 @@ class Phalanx:
                     "r": s["r"],
                     "tq": s["tq"],
                     "tr": s["tr"],
+                    "by": s.get("by"),
+                    "tgid": s.get("tgid"),
                     "team": s["team"],
                     "path": s.get("path", []),
                     "dmg": s.get("dmg", 0),
