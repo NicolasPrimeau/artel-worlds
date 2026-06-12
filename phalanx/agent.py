@@ -600,14 +600,14 @@ async def _recall(http: httpx.AsyncClient, agent: dict, query: str) -> str:
         r = await http.get(
             f"{ARTEL_URL}/memory/search",
             headers=_headers(agent),
-            params={"q": query, "project": PHALANX_PROJECT, "limit": 3},
+            params={"q": query, "project": PHALANX_PROJECT, "limit": 5},
         )
         rows = r.json() if r.status_code < 300 else []
     except Exception:
         return ""
     if not isinstance(rows, list):
         return ""
-    return " | ".join(m.get("content", "")[:140] for m in rows if m.get("content"))
+    return " | ".join(m.get("content", "")[:200] for m in rows if m.get("content"))
 
 
 async def _set_objective(
@@ -727,6 +727,23 @@ async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str, events: s
     return await _oneshot(http, sys, f"Match log: {events or 'no kills were recorded'}\nRule:")
 
 
+async def _recent_lessons(http: httpx.AsyncClient, agent: dict, n: int = 8) -> str:
+    # the corpus must CIRCULATE for strategy to emerge: newest lessons first, full enough
+    # to mean something, each carrying the WIN/LOSS tag of the match that taught it
+    try:
+        r = await http.get(
+            f"{ARTEL_URL}/memory",
+            headers=_headers(agent),
+            params={"project": PHALANX_PROJECT, "limit": 30},
+        )
+        rows = r.json() if r.status_code < 300 else []
+    except Exception:
+        return ""
+    if not isinstance(rows, list):
+        return ""
+    return " | ".join(m.get("content", "")[:200] for m in rows[:n] if m.get("content"))
+
+
 async def _rehuddle(http: httpx.AsyncClient, survivors: str, board: str, intel: str) -> str:
     # a teammate just fell — the surviving lead adjusts the plan, and it reaches the team
     # the same way everything does: as an Artel broadcast
@@ -748,13 +765,15 @@ async def _huddle(http: httpx.AsyncClient, mates: str, memory: str) -> str:
     # broadcasts it, so all three tanks enter tick 1 already fighting the same fight.
     sys = (
         "You lead team Artel into a 3v3 hex-arena tank match. The arena center is where the "
-        "shrinking zone forces everyone; enemies start in the opposite corner. In at most two "
-        "short sentences give your team ONE concrete opening plan: where you three push together, "
-        "the rule for choosing the first focus-fire target, and who covers which side. Make it "
-        "actionable this match — no platitudes, no preamble."
+        "shrinking zone forces everyone; enemies start in the opposite corner. Below are your "
+        "team's lessons from recent matches, newest first — each tagged [WIN] or [LOSS] with "
+        "the outcome of the match that taught it. BUILD the plan on what won and refuse to "
+        "repeat what lost. In at most two short sentences give ONE concrete opening plan: "
+        "where you three push together, the rule for choosing the first focus-fire target, "
+        "and who covers which side. Actionable this match — no platitudes, no preamble."
     )
     return await _oneshot(
-        http, sys, f"Teammates: {mates}. Team memory: {memory or 'none yet'}\nPlan:", 90
+        http, sys, f"Teammates: {mates}. Recent lessons: {memory or 'none yet'}\nPlan:", 90
     )
 
 
@@ -810,7 +829,10 @@ async def decide(
     if notes:
         user += f"\n{notes}"
     if memory:
-        user += f"\nTeam memory from past matches: {memory}"
+        user += (
+            f"\nLessons from recent matches (newest first; [WIN]/[LOSS] is the outcome of "
+            f"the match that taught it — trust wins, distrust losses): {memory}"
+        )
     if inbox:
         user += f"\nNEW team reports this turn: {inbox}"
     system = SYSTEM.format(mates=" and ".join(mate_ids) or "your team")
@@ -1040,11 +1062,7 @@ class Squad:
             if agent["id"] not in self._joined:
                 await self._ensure_member(agent)
                 self._joined.add(agent["id"])
-            self._context[tid] = await _recall(
-                self._http,
-                agent,
-                "phalanx tactics: positioning, focus fire, the closing zone, beating the enemy team",
-            )
+            self._context[tid] = await _recent_lessons(self._http, agent)
         # pre-match huddle: the lead agent sets one concrete team plan from memory and
         # broadcasts it over Artel — every tank starts the match already coordinated
         if self._assign:
@@ -1124,7 +1142,7 @@ class Squad:
         except Exception:
             lesson = ""
         if lesson:
-            await _remember(self._http, agent, lesson)
+            await _remember(self._http, agent, f"[{'WIN' if won else 'LOSS'}] {lesson}")
 
     async def _ensure_member(self, agent: dict) -> None:
         # an agent must belong to the project to broadcast to teammates and receive their
