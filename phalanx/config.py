@@ -24,8 +24,10 @@ class Config:
     # is permanent, so fights resolve by attrition instead of stalemating.
     start_energy: int = 80
     max_energy: int = 90
-    cost_move: float = 0.4
-    regen: float = 0.0  # damage sticks
+    cost_move: float = 0.0  # mobility is life: a wounded tank must always be able to maneuver
+    repair: float = (
+        2.0  # recovered per turn spent holding still, not firing, untouched, in the zone
+    )
 
     # Guns — fire AT a target at a chosen POWER; a shot lands if the target is within
     # that power's range with line of sight. Power buys reach, not damage: long-range

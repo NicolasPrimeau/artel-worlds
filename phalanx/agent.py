@@ -114,6 +114,9 @@ _GOAL_RULES = (
     "hexes, never shared ones. Fog of war: sight 8 with a clear line; teammates see "
     "different things.\n"
     "- The safe zone shrinks toward the arena center; outside it you bleed every turn.\n"
+    "- REPAIR: hold still, don't fire, take no hit, inside the zone — recover 2 energy that "
+    "turn. Wounded? Fall back behind cover or teammates and repair; pressure a wounded "
+    "enemy so it never can.\n"
 )
 
 SYSTEM = (
@@ -660,6 +663,11 @@ def _priority(p: dict, beacons: dict, self_id: str, has_objective: bool, solo: b
             f"PRIORITY: close on #{near['id']} at "
             f"({p['q'] + near['dq']},{p['r'] + near['dr']}) through cover and bring it "
             f"into range."
+        )
+    if p.get("energy", 99) <= 30 and p.get("safe", True):
+        return (
+            "PRIORITY: you are wounded with no contact — hold still behind cover and REPAIR "
+            "(+2/turn); ask the team to screen you."
         )
     if zr is not None and zr - dc <= 2:
         return f"PRIORITY: the zone is at your heels — drift toward ({cq},{crr}) as you fight."

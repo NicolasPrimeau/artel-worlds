@@ -400,15 +400,26 @@ class Arena:
                 }
             )
 
-        # 4. cooldown + the closing zone (outside the safe radius = bleed energy)
+        # 4. cooldown + the closing zone (outside the safe radius = bleed energy) + REPAIR:
+        # a tank that held still, didn't pull the trigger, and took no hit recovers a little —
+        # so a wounded tank that disengages behind its teammates' screen comes back into the
+        # fight instead of being functionally dead. Pressure denies repair; the zone ends camping.
         cq, cr = cfg.width // 2, cfg.height // 2
         rad = self.safe_radius()
+        moved_ids = {t.id for t in living if origins.get(t.id) != (t.q, t.r)}
+        fired_ids = {t.id for t in living if t.last_fire}
         for t in self.tanks.values():
-            t.energy = min(cfg.max_energy, t.energy + cfg.regen)
             if t.cooldown > 0:
                 t.cooldown -= 1
             if hex_distance(t.q, t.r, cq, cr) > rad:
                 t.energy -= cfg.zone_damage
+            elif (
+                t.id not in moved_ids
+                and t.id not in fired_ids
+                and t.hit_taken == 0
+                and 0 < t.energy < cfg.max_energy
+            ):
+                t.energy = min(cfg.max_energy, t.energy + cfg.repair)
 
         # 5. deaths — logged with attribution AND how far the nearest ally stood, so
         # after-action lessons can measure cohesion failures instead of guessing at them

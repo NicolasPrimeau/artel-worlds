@@ -508,3 +508,27 @@ def test_burnout_floor_blocks_suicide_unless_finisher():
         {"turn": 0, "move": "hold", "fire": 5, "power": 2}, finisher, {}, "me", True
     )
     assert out.get("fire") == 5  # trading yourself for a kill stays a legal choice
+
+
+def test_repair_only_when_idle_untouched_and_inside():
+    a, shooter, victim = _duel(41)
+    victim.q, victim.r = 9, 5
+    shooter.energy = 50.0
+    shooter.cooldown = 1  # not firing this turn
+    a.step()  # everyone idle
+    assert shooter.energy == 52.0  # idle, untouched, inside: +2
+
+    e0 = a.tanks[victim.id].energy
+    from phalanx.tank import AXIAL_DIRS
+
+    victim.heading = AXIAL_DIRS.index((1, 0))
+    a.submit(victim.id, {"move": "fwd"})
+    a.step()
+    assert a.tanks[victim.id].energy == e0  # moved: no repair (and moving is free now)
+
+    shooter.cooldown = 0
+    shooter.energy = 50.0
+    a.submit(shooter.id, {"fire": victim.id, "power": 3})
+    a.step()
+    # fired: cost 4, hit refund +2, and NO +2 repair on top
+    assert a.tanks[shooter.id].energy == 48.0
