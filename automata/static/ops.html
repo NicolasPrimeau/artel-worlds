@@ -34,6 +34,7 @@
   .top{display:flex;align-items:center;gap:11px;flex-wrap:wrap;}
   .nm{font-size:15px;font-weight:800;color:#fff;letter-spacing:1px;}
   .tag{color:var(--dim);font-size:11.5px;}
+  .tag .fb{opacity:.75;}
   .st{margin-left:auto;font-size:11px;padding:3px 10px;border-radius:20px;display:inline-flex;align-items:center;gap:6px;}
   .st::before{content:"";width:7px;height:7px;border-radius:50%;}
   .st.live{color:var(--green);background:rgba(110,231,168,.12);}.st.live::before{background:var(--green);box-shadow:0 0 8px var(--green);}
@@ -188,7 +189,7 @@ function card(w){
     <div class="w${w.key === "watchtower" ? " wide" : ""}">
       <div class="top">
         <span class="nm"><a href="${w.url||'#'}" style="color:#fff" target="_blank" rel="noopener">${w.name}</a></span>
-        <span class="tag">${w.model || ""}${w.fallback ? " → " + w.fallback : ""}</span>
+        <span class="tag">${w.model || ""}${w.fallback ? `<span class="fb"> · falls back to ${w.fallback}</span>` : ""}</span>
         <span class="st ${w.status||'idle'}">${w.status||'idle'}</span>
       </div>
       ${body}
