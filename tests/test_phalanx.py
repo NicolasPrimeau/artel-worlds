@@ -582,9 +582,16 @@ def test_auto_lead_converts_id_shot_on_a_mover():
     out = _sanitize_intent(
         {"turn": 0, "move": "hold", "fire": 5, "power": 1}, dict(p), {}, "me", True
     )
-    assert out.get("fire_at") == (9, 5)  # aimed where the mover is GOING
+    # RADIAL mover (fleeing along the ray): the extended line already covers it — id shot stands
+    assert out.get("fire") == 5
+    assert not out.get("fire_at")
+
+    p["visible"][0]["step"] = [0, 1]  # TANGENTIAL: stepping off the ray — lead it
+    out = _sanitize_intent(
+        {"turn": 0, "move": "hold", "fire": 5, "power": 1}, dict(p), {}, "me", True
+    )
+    assert out.get("fire_at") == (8, 6)
     assert not out.get("fire")
-    assert out.get("power") >= 2  # bumped to reach the lead cell at dist 4
 
     p["visible"][0]["step"] = [0, 0]
     out = _sanitize_intent(

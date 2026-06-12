@@ -1149,16 +1149,29 @@ def _sanitize_intent(intent: dict, p: dict, beacons: dict | None, self_id: str, 
             else:
                 intent["fire"] = 0
                 intent.pop("fire_at", None)
-    # AUTO-LEAD: an id-shot at a tank that moved last turn aims at a hex it is leaving —
-    # convert it to a predictive shot at its next hex (same line family, real chance to land).
-    # The model can always lead differently with its own fire_at.
+    # AUTO-LEAD — but only for TANGENTIAL movers. The ray extends through the aim cell to
+    # full range, so a current-cell shot already covers anything moving ALONG the line
+    # (closing brawlers, straight-kiting rangers). Converting those to side-hex leads is
+    # what collapsed blue's kill rate; only a mover stepping OFF the ray needs leading.
     if intent.get("fire") and intent["fire"] in dist_of and not intent.get("fire_at"):
         tgt = next(v for v in p["visible"] if v["kind"] == "enemy" and v["id"] == intent["fire"])
         step = tgt.get("step") or [0, 0]
         if step[0] or step[1]:
-            lead = (p["q"] + tgt["dq"] + step[0], p["r"] + tgt["dr"] + step[1])
+            t_cell = (p["q"] + tgt["dq"], p["r"] + tgt["dr"])
+            lead = (t_cell[0] + step[0], t_cell[1] + step[1])
+            d_t = max(1, tgt["dist"])
+            scale = powers[-1] / d_t
+            ext = (
+                round(p["q"] + (t_cell[0] - p["q"]) * scale),
+                round(p["r"] + (t_cell[1] - p["r"]) * scale),
+            )
+            ray = set(hex_line(p["q"], p["r"], ext[0], ext[1]))
             d_lead = _hexdist(p["q"], p["r"], lead[0], lead[1])
-            if 1 <= d_lead <= powers[-1] and _on_map(p, lead[0], lead[1]):
+            if (
+                lead not in ray  # radial movers are already on the line — keep the id shot
+                and 1 <= d_lead <= powers[-1]
+                and _on_map(p, lead[0], lead[1])
+            ):
                 need = next(i + 1 for i, rng_ in enumerate(powers) if d_lead <= rng_)
                 need = max(int(intent.get("power", 0) or 0), need)
                 costs = p.get("power_cost", [0, 2, 4])
