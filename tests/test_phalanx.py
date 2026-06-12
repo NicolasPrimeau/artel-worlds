@@ -432,3 +432,79 @@ async def _noop_board(http, agent):
 
 async def _noop_send(http, agent, to, text, parents, subject=""):
     return None
+
+
+def test_crossfire_floor_holds_the_shot_when_an_ally_hugs_the_line():
+    from phalanx.agent import _sanitize_intent
+
+    p = {
+        "id": 1,
+        "q": 5,
+        "r": 5,
+        "heading": 0,
+        "energy": 60,
+        "gun_ready": True,
+        "power_range": [3, 5, 7],
+        "power_cost": [0, 2, 4],
+        "fire_range": 7,
+        "visible": [
+            {"id": 2, "kind": "ally", "dq": 2, "dr": -1, "dist": 2, "dir": 1},  # beside the line
+            {
+                "id": 5,
+                "kind": "enemy",
+                "dq": 4,
+                "dr": 0,
+                "dist": 4,
+                "dir": 0,
+                "clear_shot": True,
+                "energy": 60,
+            },
+        ],
+        "walls": [],
+        "safe": True,
+        "dist_center": 2,
+        "to_center": 0,
+    }
+    intent = _sanitize_intent({"turn": 0, "move": "hold", "fire": 5, "power": 2}, p, {}, "me", True)
+    assert not intent.get("fire")  # ally one step from the firing line, closer than the target
+
+
+def test_burnout_floor_blocks_suicide_unless_finisher():
+    from phalanx.agent import _sanitize_intent
+
+    base = {
+        "id": 1,
+        "q": 5,
+        "r": 5,
+        "heading": 0,
+        "energy": 2,
+        "gun_ready": True,
+        "power_range": [3, 5, 7],
+        "power_cost": [0, 2, 4],
+        "fire_range": 7,
+        "visible": [
+            {
+                "id": 5,
+                "kind": "enemy",
+                "dq": 4,
+                "dr": 0,
+                "dist": 4,
+                "dir": 0,
+                "clear_shot": True,
+                "energy": 60,
+            }
+        ],
+        "walls": [],
+        "safe": True,
+        "dist_center": 2,
+        "to_center": 0,
+    }
+    out = _sanitize_intent({"turn": 0, "move": "hold", "fire": 5, "power": 2}, base, {}, "me", True)
+    assert not out.get("fire")  # power 2 costs 4 = death for nothing; power 1 cannot reach
+
+    finisher = dict(base)
+    finisher["visible"] = [dict(base["visible"][0], energy=10)]
+    out = _sanitize_intent(
+        {"turn": 0, "move": "hold", "fire": 5, "power": 2}, finisher, {}, "me", True
+    )
+    assert out.get("fire") == 5  # trading yourself for a kill stays a legal choice

@@ -1087,6 +1087,57 @@ def _sanitize_intent(intent: dict, p: dict, beacons: dict | None, self_id: str, 
         intent["fire"] = rx["fire"]  # a clear shot the model ignored is still taken
         if rx.get("power"):
             intent["power"] = rx["power"]
+    # crossfire floor: the line is clear at trigger time, but an ally standing BESIDE it and
+    # nearer than the target steps onto it in the same simultaneous turn — the kill logs are
+    # full of blue killing blue exactly this way. Hold the shot when a closer ally hugs the line.
+    if intent.get("fire") and intent["fire"] in dist_of:
+        tgt = next(v for v in p["visible"] if v["kind"] == "enemy" and v["id"] == intent["fire"])
+        t_cell = (p["q"] + tgt["dq"], p["r"] + tgt["dr"])
+        ray = [
+            c
+            for c in hex_line(p["q"], p["r"], t_cell[0], t_cell[1])
+            if c not in ((p["q"], p["r"]), t_cell)
+        ]
+        for v in p["visible"]:
+            if v["kind"] != "ally" or v["dist"] >= tgt["dist"]:
+                continue
+            a_cell = (p["q"] + v["dq"], p["r"] + v["dr"])
+            if any(
+                _hexdist(a_cell[0], a_cell[1], c[0], c[1]) <= 1
+                for c in ray
+                if _hexdist(p["q"], p["r"], c[0], c[1]) > 1
+            ):
+                intent["fire"] = 0  # crossfire risk — reposition instead of gambling an ally
+                break
+    # burnout floor: a shot that drains you to 0 destroys you — allowed only as a finisher
+    # on a target you can see dying (energy <= damage). Two tanks suicided in six matches.
+    shot = intent.get("fire") or intent.get("fire_at")
+    if (
+        shot
+        and p.get("energy", 0)
+        - p.get("power_cost", [0, 2, 4])[max(1, min(3, int(intent.get("power", 1) or 1))) - 1]
+        <= 0
+    ):
+        tgt_e = None
+        if intent.get("fire"):
+            seen = next(
+                (v for v in p["visible"] if v["kind"] == "enemy" and v["id"] == intent["fire"]),
+                None,
+            )
+            tgt_e = seen.get("energy") if seen else None
+        if tgt_e is None or tgt_e > 12:
+            costs = p.get("power_cost", [0, 2, 4])
+            alive = [i + 1 for i in range(len(costs)) if p.get("energy", 0) - costs[i] > 0]
+            if intent.get("fire") and alive:
+                need_d = dist_of.get(intent["fire"], 99)
+                ok = [pw for pw in alive if powers[pw - 1] >= need_d]
+                if ok:
+                    intent["power"] = ok[0]
+                else:
+                    intent["fire"] = 0
+            else:
+                intent["fire"] = 0
+                intent.pop("fire_at", None)
     idle = (
         intent.get("move", "hold") == "hold"
         and not intent.get("move_to")
