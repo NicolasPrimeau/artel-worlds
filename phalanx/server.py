@@ -78,6 +78,7 @@ class Phalanx:
             **a.stats(),
             "width": a.cfg.width,
             "height": a.cfg.height,
+            "map_radius": a.cfg.map_radius,
             "scores": self.scores,
             "coordinated": list(COORDINATED),
             "zone": {
@@ -108,6 +109,7 @@ class Phalanx:
                     "team": s["team"],
                     "path": s.get("path", []),
                     "dmg": s.get("dmg", 0),
+                    "power": s.get("power", 2),
                 }
                 for s in a.tracers
             ],
@@ -126,6 +128,7 @@ class Intent(BaseModel):
     turn: int = 0
     move: str = "hold"
     fire: int = 0  # enemy tank id to shoot at (0 = hold fire)
+    power: int = 2  # shot power 1-3: range 3/5/7 hexes for 1/2/4 energy
 
 
 class TeamIntent(BaseModel):

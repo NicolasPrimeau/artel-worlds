@@ -103,12 +103,13 @@ SYSTEM = (
     "facings), move one hex (fwd/back along your facing), AND fire — all together.\n"
     "- Energy is health and fuel in one number; at 0 your tank is destroyed; it never "
     "regenerates. A hit costs the target 12 energy; landing a hit refunds the shooter 2.\n"
-    "- Firing is target-based: name an enemy id and the shot automatically hits if that enemy "
-    "is within range 6 with a clear line — your facing does NOT matter for shooting, only for "
-    "moving. There is no aiming and no missing: every id your state lists under 'you can fire "
-    "NOW at' is a GUARANTEED hit this turn — and firing at any OTHER id WASTES the shot: you "
-    "still pay the energy and the reload, but hit nothing (out of range or blocked by cover). "
-    "The gun is ready again the very next turn.\n"
+    "- Firing is target-based: name an enemy id AND a power. Power buys range, not damage: "
+    "power 1 reaches 3 hexes for 1 energy, power 2 reaches 5 for 2, power 3 reaches 7 for 4. "
+    "Damage is always 12. Your facing does NOT matter for shooting, only for moving. There is "
+    "no aiming and no missing: every entry your state lists under 'you can fire NOW at' is a "
+    "GUARANTEED hit at the stated power — and any other shot WASTES the trigger pull: you "
+    "still pay that power's energy and the reload, but hit nothing. The gun is ready again "
+    "the very next turn. Long pokes are expensive; closing in is cheap.\n"
     "- Cover hexes are impassable and block both shots and sight. You see only what has a "
     "clear line to you within distance 8 — fog of war; your teammates see different things.\n"
     "- The safe zone shrinks toward the arena center as the match goes on. Any tank outside it "
@@ -216,6 +217,11 @@ TOOLS = [
                     "type": "integer",
                     "description": "enemy tank id to shoot at, or 0 to hold fire",
                 },
+                "power": {
+                    "type": "integer",
+                    "description": "shot power 1-3 when firing: range 3/5/7 hexes for "
+                    "1/2/4 energy; use the smallest power that reaches your target",
+                },
                 "plan": {
                     "type": "string",
                     "description": "optional: one short line on what you intend over the next "
@@ -232,6 +238,18 @@ TOOLS = [
 # (toward the tank's port side) is +1, and RIGHT is -1. These were mirrored for a long
 # time, which made every steering decision come out backwards.
 _TURN = {"left": 1, "right": -1, "none": 0}
+
+
+def _hexdist(aq: int, ar: int, bq: int, br: int) -> int:
+    dq, dr = aq - bq, ar - br
+    return (abs(dq) + abs(dq + dr) + abs(dr)) // 2
+
+
+def _on_map(p: dict, q: int, r: int) -> bool:
+    R = p.get("map_radius", (p.get("width", 15) - 1) // 2)
+    return _hexdist(q, r, R, R) <= R
+
+
 # Pointy-top hex axial directions, index == heading 0..5 (same convention as the arena).
 AXIAL_DIRS = ((1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))
 
@@ -448,7 +466,8 @@ def _perception_text(p: dict) -> str:
     # the agent's FULL state, every turn: itself (position, energy, cannon, gun), the zone,
     # everything it can see (enemies, teammates, cover) in absolute hex coordinates, and what
     # it can shoot right now. Decisions can only be as good as the state they rest on.
-    fr = p.get("fire_range", 6)
+    fr = p.get("fire_range", 7)
+    powers = p.get("power_range", [3, 5, 7])
     q, r, hd = p["q"], p["r"], p["heading"]
     foes, can_fire = [], []
     for e in p["visible"]:
@@ -456,10 +475,11 @@ def _perception_text(p: dict) -> str:
             continue
         rel = _REL[(e["dir"] - hd) % 6]
         in_range = e["dist"] <= fr
+        need = next((i + 1 for i, rng_ in enumerate(powers) if e["dist"] <= rng_), 0)
         if in_range:
-            can_fire.append(str(e["id"]))
+            can_fire.append(f"#{e['id']} (power {need})")
         energy = f", energy {e['energy']}" if "energy" in e else ""
-        tag = "IN RANGE" if in_range else f"out of range (>{fr})"
+        tag = f"hit with power {need}+" if in_range else f"out of range (>{fr})"
         foes.append(
             f"#{e['id']} at ({q + e['dq']},{r + e['dr']}) dist {e['dist']} {rel} [{tag}]{energy}"
         )
@@ -475,20 +495,20 @@ def _perception_text(p: dict) -> str:
     zr = p.get("zone_radius")
     dc = p.get("dist_center", 0)
 
-    w, h = p.get("width", 16), p.get("height", 12)
+    w, h = p.get("width", 15), p.get("height", 15)
     wallset = {(w_["dq"], w_["dr"]) for w_ in p.get("walls", [])}
     blocked_dirs = []
     for d in range(6):
         dq, dr = AXIAL_DIRS[d]
         nq, nr = q + dq, r + dr
-        if not (0 <= nq < w and 0 <= nr < h):
+        if not _on_map(p, nq, nr):
             blocked_dirs.append(f"({nq},{nr}) [MAP EDGE]")
         elif (dq, dr) in wallset:
             blocked_dirs.append(f"({nq},{nr}) [cover]")
     lines = [
         f"STATE — turn {p.get('tick', '?')}, you are tank #{p['id']}:",
-        f"- Arena: hexes q 0-{w - 1}, r 0-{h - 1}; center ({w // 2},{h // 2}). Moving past an "
-        f"edge is impossible.",
+        f"- Arena: a HEXAGON of radius {(w - 1) // 2} around the center ({w // 2},{h // 2}) "
+        f"(axial coords). Moving past its edge is impossible.",
         f"- Position ({q},{r}), energy {p['energy']}, cannon facing ({q + fq},{r + frr}) "
         f"[fwd moves there, back moves opposite; facing does not matter for shooting]",
         f"- Gun: {'READY' if p['gun_ready'] else 'reloading (ready next turn)'}"
@@ -719,27 +739,31 @@ def _reflex(p: dict) -> dict:
     # a competent never-idle move computed from perception alone — used to fill gaps the model
     # leaves and as the fallback when a decision errors or runs past the deadline. Fire the
     # nearest in-range enemy; otherwise advance on the nearest enemy seen, else toward center.
-    fr = p.get("fire_range", 6)
+    fr = p.get("fire_range", 7)
+    powers = p.get("power_range", [3, 5, 7])
     seen = [v for v in p["visible"] if v["kind"] == "enemy"]
     in_range = [v for v in seen if v["dist"] <= fr]
-    fire = min(in_range, key=lambda v: v["dist"])["id"] if (p.get("gun_ready") and in_range) else 0
+    fire, power = 0, 0
+    if p.get("gun_ready") and in_range:
+        near = min(in_range, key=lambda v: v["dist"])
+        fire = near["id"]
+        power = next(i + 1 for i, rng_ in enumerate(powers) if near["dist"] <= rng_)
     tdir = None
     if seen:
         tdir = min(seen, key=lambda v: v["dist"])["dir"]
     elif p.get("dist_center", 0) > 1:
         tdir = p.get("to_center")
     if tdir is None:
-        return {"turn": 0, "move": "hold", "fire": fire}
+        return {"turn": 0, "move": "hold", "fire": fire, "power": power}
     blocked = {(w["dq"], w["dr"]) for w in p.get("walls", [])}
-    bw, bh = p.get("width", 16), p.get("height", 12)
     for dd in range(6):
         dq, dr = AXIAL_DIRS[dd]
-        if not (0 <= p["q"] + dq < bw and 0 <= p["r"] + dr < bh):
+        if not _on_map(p, p["q"] + dq, p["r"] + dr):
             blocked.add((dq, dr))  # the map edge is as impassable as cover
     d = _open_dir(blocked, tdir)
     h = p["heading"]
     turn = 0 if h == d else (1 if (d - h) % 6 <= 3 else -1)
-    return {"turn": turn, "move": "fwd", "fire": fire}
+    return {"turn": turn, "move": "fwd", "fire": fire, "power": power}
 
 
 async def decide(
@@ -789,6 +813,7 @@ async def decide(
                     "turn": _TURN.get(inp.get("turn", "none"), 0),
                     "move": inp.get("move", "hold"),
                     "fire": int(inp.get("fire", 0) or 0),
+                    "power": int(inp.get("power", 0) or 0),
                 }
                 plan = str(inp.get("plan", "") or "")[:140]
                 acted = True
@@ -829,28 +854,32 @@ async def decide(
     # a shot the engine will reject (target out of range / behind cover / gun reloading) is a
     # PHANTOM: it costs nothing, hits nothing, and must not excuse holding position — tanks
     # have frozen for whole matches "firing" at an enemy through a wall
-    valid_fire = {
-        v["id"]
+    powers = p.get("power_range", [3, 5, 7])
+    dist_of = {
+        v["id"]: v["dist"]
         for v in p["visible"]
-        if v["kind"] == "enemy" and v["dist"] <= p.get("fire_range", 6)
+        if v["kind"] == "enemy" and v["dist"] <= p.get("fire_range", 7)
     }
-    if intent.get("fire") and (intent["fire"] not in valid_fire or not p.get("gun_ready")):
+    if intent.get("fire") and (intent["fire"] not in dist_of or not p.get("gun_ready")):
         intent["fire"] = 0
+    if intent.get("fire"):
+        need = next(i + 1 for i, rng_ in enumerate(powers) if dist_of[intent["fire"]] <= rng_)
+        intent["power"] = max(int(intent.get("power", 0) or 0), need)  # never waste the pull
     if not intent.get("fire"):
         intent["fire"] = rx["fire"]
+        if rx.get("power"):
+            intent["power"] = rx["power"]
     if intent.get("move", "hold") == "hold" and not intent.get("fire"):
         intent["turn"], intent["move"] = rx["turn"], rx["move"]
     # phantom-MOVE floor: a step into cover or off the map is silently rejected by the
     # engine — tanks have shoved a map edge for whole matches. Deflect toward the nearest
     # open direction (rotating first if the hull can't face it within one turn).
     if intent.get("move") in ("fwd", "back"):
-        bw, bh = p.get("width", 16), p.get("height", 12)
         wallset = {(w_["dq"], w_["dr"]) for w_ in p.get("walls", [])}
 
         def _open(d: int) -> bool:
             dq, dr = AXIAL_DIRS[d]
-            nq, nr = p["q"] + dq, p["r"] + dr
-            return 0 <= nq < bw and 0 <= nr < bh and (dq, dr) not in wallset
+            return _on_map(p, p["q"] + dq, p["r"] + dr) and (dq, dr) not in wallset
 
         newh = (p["heading"] + intent.get("turn", 0)) % 6
         tdir = newh if intent["move"] == "fwd" else (newh + 3) % 6

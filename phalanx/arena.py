@@ -25,13 +25,17 @@ class Arena:
         self._scatter_walls()
 
     # --- setup ---
-    def _free_connected(self) -> bool:
-        free = {
+    def cells(self) -> list[tuple[int, int]]:
+        R = self.cfg.map_radius
+        return [
             (q, r)
             for q in range(self.cfg.width)
             for r in range(self.cfg.height)
-            if (q, r) not in self.walls
-        }
+            if hex_distance(q, r, R, R) <= R
+        ]
+
+    def _free_connected(self) -> bool:
+        free = {c for c in self.cells() if c not in self.walls}
         if not free:
             return False
         start = next(iter(free))
@@ -49,12 +53,13 @@ class Arena:
     def _scatter_walls(self) -> None:
         # Place cover one block at a time, keeping only blocks that leave the open space
         # fully connected — so a wall line can never split the arena into sealed halves.
-        target = int(self.cfg.width * self.cfg.height * self.cfg.obstacle_density)
+        R = self.cfg.map_radius
+        interior = [c for c in self.cells() if hex_distance(c[0], c[1], R, R) <= R - 2]
+        target = int(len(self.cells()) * self.cfg.obstacle_density)
         attempts = 0
         while len(self.walls) < target and attempts < target * 25:
             attempts += 1
-            q = self.rng.randint(2, self.cfg.width - 3)
-            r = self.rng.randint(2, self.cfg.height - 3)
+            q, r = self.rng.choice(interior)
             if (q, r) in self.walls:
                 continue
             self.walls.add((q, r))
@@ -62,19 +67,19 @@ class Arena:
                 self.walls.discard((q, r))  # would wall off part of the map — reject
 
     def _in_bounds(self, q: int, r: int) -> bool:
-        return 0 <= q < self.cfg.width and 0 <= r < self.cfg.height
+        R = self.cfg.map_radius
+        return hex_distance(q, r, R, R) <= R  # the arena is a hexagon, not a box
 
     def _free_cell(self, near: tuple[int, int] | None = None) -> tuple[int, int]:
         for _ in range(200):
             if near is not None:
-                q = min(self.cfg.width - 1, max(0, near[0] + self.rng.randint(-3, 3)))
-                r = min(self.cfg.height - 1, max(0, near[1] + self.rng.randint(-3, 3)))
+                q = near[0] + self.rng.randint(-3, 3)
+                r = near[1] + self.rng.randint(-3, 3)
             else:
-                q = self.rng.randint(0, self.cfg.width - 1)
-                r = self.rng.randint(0, self.cfg.height - 1)
-            if (q, r) not in self.walls and not self._tank_at(q, r):
+                q, r = self.rng.choice(self.cells())
+            if self._in_bounds(q, r) and (q, r) not in self.walls and not self._tank_at(q, r):
                 return (q, r)
-        return (self.rng.randint(0, self.cfg.width - 1), self.rng.randint(0, self.cfg.height - 1))
+        return self.rng.choice([c for c in self.cells() if c not in self.walls])
 
     def add_team(self, team: str, controller: str, anchor: tuple[int, int]) -> list[int]:
         self.team_kind[team] = controller
@@ -104,10 +109,10 @@ class Arena:
         # Artel as the only systematic variable across the series.
         cq, cr = self.cfg.width // 2, self.cfg.height // 2
         corners = [
-            (cq - 5, cr - 3),
-            (cq + 5, cr + 3),
-            (cq + 5, cr - 3),
-            (cq - 5, cr + 3),
+            (cq - 3, cr - 3),
+            (cq + 3, cr + 3),
+            (cq + 6, cr - 3),
+            (cq - 6, cr + 3),
         ]
         if flip:
             corners[0], corners[1] = corners[1], corners[0]
@@ -196,6 +201,8 @@ class Arena:
             "safe": hex_distance(me.q, me.r, cq, cr) <= rad,
             "zone_radius": round(rad, 2),
             "fire_range": self.cfg.fire_range,
+            "power_range": list(self.cfg.power_range),
+            "map_radius": self.cfg.map_radius,
             "to_center": dir_toward(me.q, me.r, cq, cr),
             "dist_center": hex_distance(me.q, me.r, cq, cr),
             "visible": visible,
@@ -258,18 +265,24 @@ class Arena:
                 tgt_id = int(tgt_id)
             except (TypeError, ValueError):
                 tgt_id = 0
-            if not tgt_id or t.cooldown > 0 or t.energy <= cfg.shot_cost:
+            try:
+                power = int(self.pending.get(t.id, {}).get("power", 2) or 2)
+            except (TypeError, ValueError):
+                power = 2
+            power = max(1, min(len(cfg.power_range), power))
+            cost = cfg.power_cost[power - 1]
+            if not tgt_id or t.cooldown > 0 or t.energy <= cost:
                 continue
-            # pulling the trigger ALWAYS costs energy and starts the reload — a shot at a
-            # target out of range or behind cover is wasted, not free
-            t.energy -= cfg.shot_cost
+            # pulling the trigger ALWAYS costs energy (scaled by power) and starts the
+            # reload — a shot at a target out of range or behind cover is wasted, not free
+            t.energy -= cost
             t.cooldown = cfg.gun_cooldown
             target = self.tanks.get(tgt_id)
             if target is None or target.id == t.id:
                 continue
             if target.team == t.team and not cfg.friendly_fire:
                 continue
-            if hex_distance(t.q, t.r, target.q, target.r) > cfg.fire_range:
+            if hex_distance(t.q, t.r, target.q, target.r) > cfg.power_range[power - 1]:
                 continue
             if self._blocked(t.q, t.r, target.q, target.r):
                 continue
@@ -287,6 +300,7 @@ class Arena:
                     "team": t.team,
                     "path": hex_line(t.q, t.r, target.q, target.r),
                     "dmg": cfg.shot_damage,
+                    "power": power,
                 }
             )
 

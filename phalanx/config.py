@@ -3,11 +3,18 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Config:
-    # Arena (bounded axial hex grid, 6 directions). Kept small so the teams are
-    # forced into contact — no running off to a corner to heal in peace.
-    width: int = 16  # q extent
-    height: int = 12  # r extent
+    # Arena: a HEXAGON-shaped axial hex grid — every cell within map_radius of the center
+    # cell (map_radius, map_radius). Kept small so the teams are forced into contact.
+    map_radius: int = 7  # 169 cells
     obstacle_density: float = 0.11  # fraction of cells that are cover/walls
+
+    @property
+    def width(self) -> int:  # bounding box extent, for layouts and iteration
+        return 2 * self.map_radius + 1
+
+    @property
+    def height(self) -> int:
+        return 2 * self.map_radius + 1
 
     # Teams
     house_teams: int = 2
@@ -20,12 +27,22 @@ class Config:
     cost_move: float = 0.4
     regen: float = 0.0  # damage sticks
 
-    # Guns — fire AT a target; a shot lands if it's in range with line of sight.
-    # Reliable hits mean the fight is decided by WHO you shoot, not whether you
-    # can line up a ray — which is exactly the coordination (focus-fire) story.
-    fire_range: int = 6  # max hex distance a shot carries
-    shot_cost: float = 2.0  # energy spent per shot
+    # Guns — fire AT a target at a chosen POWER; a shot lands if the target is within
+    # that power's range with line of sight. Power buys reach, not damage: long-range
+    # poking is expensive, closing in is cheap — and the fight is still decided by WHO
+    # you shoot, which is exactly the coordination (focus-fire) story.
+    power_range: tuple = (3, 5, 7)  # max hex distance for power 1 / 2 / 3
+    power_cost: tuple = (1.0, 2.0, 4.0)  # energy per trigger pull at power 1 / 2 / 3
     shot_damage: float = 12.0
+
+    @property
+    def fire_range(self) -> int:  # absolute max reach (highest power)
+        return self.power_range[-1]
+
+    @property
+    def shot_cost(self) -> float:  # default-power cost, for back-compat math
+        return self.power_cost[1]
+
     hit_reward: float = 2.0  # small sustain for landing hits (rewards focused fire)
     gun_cooldown: int = (
         1  # a ready gun fires every tick — anything slower reads as idle at 2.5s/tick

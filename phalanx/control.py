@@ -44,19 +44,22 @@ class Bot:
         self.traits = _TRAITS[self.strategy]
         self.board: dict[int, dict] = {}  # eid -> {q, r, energy, seen}; private to this tank
 
-    def _toward(self, p: dict, wallset: set, tq: int, tr: int) -> dict:
-        """A wall-smoothed step toward (tq, tr): aim at it, but if the cell ahead is cover,
-        deflect to the nearest open direction so we slide along walls instead of nosing in."""
+    def _toward(self, p: dict, wallset: set, tq: int, tr: int, R: int) -> dict:
+        """A wall-smoothed step toward (tq, tr): aim at it, but if the cell ahead is cover
+        or off the hexagon, deflect to the nearest open direction so we slide along edges
+        instead of nosing in."""
         want = dir_toward(p["q"], p["r"], tq, tr)
         for off in (0, 1, -1, 2, -2, 3):
             d = (want + off) % 6
             dq, dr = AXIAL_DIRS[d]
-            if (p["q"] + dq, p["r"] + dr) not in wallset:
+            nq, nr = p["q"] + dq, p["r"] + dr
+            if (nq, nr) not in wallset and hex_distance(nq, nr, R, R) <= R:
                 return {"turn": _step_toward(p["heading"], d), "move": "fwd"}
         return {"turn": _step_toward(p["heading"], want), "move": "fwd"}
 
     def decide(self, p: dict, cfg: Config, tick: int) -> dict:
         cq, cr = cfg.width // 2, cfg.height // 2
+        R = cfg.map_radius
         wallset = {(p["q"] + w["dq"], p["r"] + w["dr"]) for w in p.get("walls", [])}
 
         # 1. fold what I personally see this tick into my private board
@@ -79,18 +82,19 @@ class Bot:
         in_range = [e for e in visible if visible[e]["dist"] <= cfg.fire_range]
         if p["gun_ready"] and in_range:
             if self.traits["pick"] == "weak":
-                intent["fire"] = min(
-                    in_range, key=lambda e: (self.board[e]["energy"], visible[e]["dist"])
-                )
+                tgt = min(in_range, key=lambda e: (self.board[e]["energy"], visible[e]["dist"]))
             else:
-                intent["fire"] = min(in_range, key=lambda e: visible[e]["dist"])
+                tgt = min(in_range, key=lambda e: visible[e]["dist"])
+            intent["fire"] = tgt
+            d = visible[tgt]["dist"]
+            intent["power"] = next(i + 1 for i, rng_ in enumerate(cfg.power_range) if d <= rng_)
 
         # 4. the closing zone bleeds energy outside the safe radius — get back inside it,
         #    keeping a margin so we don't loiter on the bleeding edge. No trade is worth
         #    dying to the map.
         zr = p.get("zone_radius", float(cfg.width))
         if hex_distance(p["q"], p["r"], cq, cr) > zr - ZONE_MARGIN:
-            return {**intent, **self._toward(p, wallset, cq, cr)}
+            return {**intent, **self._toward(p, wallset, cq, cr, R)}
 
         # 5. nobody known: sweep toward the enemy half ALONE, each temperament down its own
         #    lane — solo hunters spread; they don't get to march as an accidental phalanx.
@@ -98,7 +102,7 @@ class Bot:
             lane = self.traits["lane"]
             tq = max(0, min(cfg.width - 1, cfg.width - 1 - p["q"] + lane))
             tr = max(0, min(cfg.height - 1, cfg.height - 1 - p["r"] - lane))
-            return {**intent, **self._toward(p, wallset, tq, tr)}
+            return {**intent, **self._toward(p, wallset, tq, tr, R)}
 
         # 6. work the enemy this temperament points at
         if self.traits["pick"] == "weak":
@@ -121,7 +125,7 @@ class Bot:
         if seen and p["energy"] <= LOW_ENERGY:
             return {
                 **intent,
-                **self._toward(p, wallset, 2 * p["q"] - rec["q"], 2 * p["r"] - rec["r"]),
+                **self._toward(p, wallset, 2 * p["q"] - rec["q"], 2 * p["r"] - rec["r"], R),
             }
 
         if seen:
@@ -130,7 +134,7 @@ class Bot:
                 # closer than this temperament likes: open the gap while the gun keeps working
                 return {
                     **intent,
-                    **self._toward(p, wallset, 2 * p["q"] - rec["q"], 2 * p["r"] - rec["r"]),
+                    **self._toward(p, wallset, 2 * p["q"] - rec["q"], 2 * p["r"] - rec["r"], R),
                 }
             if d <= self.traits["max_d"]:
                 # in the comfort band: face it and HOLD — a parked tank that can see its
@@ -142,7 +146,7 @@ class Bot:
                 }
 
         # otherwise close on its last-known cell to gain range and line of sight
-        step = self._toward(p, wallset, rec["q"], rec["r"])
+        step = self._toward(p, wallset, rec["q"], rec["r"], R)
         if not seen and hex_distance(p["q"], p["r"], rec["q"], rec["r"]) <= 1:
             self.board.pop(focus, None)  # arrived at an empty spot — drop the stale sighting
         return {**intent, **step}
