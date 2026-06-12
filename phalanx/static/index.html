@@ -224,10 +224,18 @@ function onMap(q,r){ const R=mapR(); return hexDist(q,r,R,R)<=R; }
 function layout(){
   // TRUE AXIAL projection (every row shifts r/2), and the arena itself is a HEXAGON of
   // radius R: x spans from R/2 to 2.5R in cell units, so the screen extent is 2R+1 cells.
+  // On narrow screens the scoreboard and hud overlays span the full width, so the map centers
+  // in the band BETWEEN them instead of hiding underneath.
   const rows=snap.height, R=Math.floor((rows-1)/2), pad=26;
-  const size=Math.max(1,Math.min((cssW-pad*2)/(SQRT3*(2*R+1.5)), (cssH-pad*2)/(1.5*rows+0.5)));
+  let top=pad, bot=pad;
+  if (cssW <= 640){
+    top = ($('score')?.offsetHeight||0) + 24;
+    bot = ($('hud')?.offsetHeight||0) + 24;
+  }
+  const availH = Math.max(80, cssH - top - bot);
+  const size=Math.max(1,Math.min((cssW-pad*2)/(SQRT3*(2*R+1.5)), availH/(1.5*rows+0.5)));
   const gw=SQRT3*size*(2*R+1.5), gh=(1.5*rows+0.5)*size;
-  L={ size, offX:(cssW-gw)/2 - SQRT3*size*(R/2), offY:(cssH-gh)/2 };
+  L={ size, offX:(cssW-gw)/2 - SQRT3*size*(R/2), offY: top + (availH-gh)/2 };
 }
 function center(q,r){ return [L.offX+SQRT3*L.size*(q+r/2+0.5), L.offY+L.size*(1.5*r+1)]; }
 function pix(q,r){ const c=center(q,r); return {x:c[0], y:c[1]}; }
