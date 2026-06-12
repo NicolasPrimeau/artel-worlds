@@ -118,8 +118,9 @@ SYSTEM = (
     "turn.\n"
     "PRIORITIES, in order — when they conflict, the higher one wins:\n"
     "1. ZONE: outside the safe zone, move toward the center every turn. Never hold there.\n"
-    "2. FORMATION: stay within 2 hexes of a teammate. Out of formation? Converge on the "
-    "latest position ping or a teammate's board objective. Ahead of the unit? Wait for it.\n"
+    "2. FORMATION: stay within 2 hexes of a teammate. Their beacon positions are in your "
+    "state every turn — out of formation means move_to a hex beside a teammate, now. Ahead "
+    "of the unit? Wait for it.\n"
     "3. FIRE: a ready gun with a target in range always shoots, at the cheapest power that "
     "reaches. You can move the same turn.\n"
     "4. FOCUS: pour the unit's fire into ONE enemy — the one the team called. Never duel a "
@@ -569,25 +570,39 @@ def _perception_text(p: dict) -> str:
     return "\n".join(lines)
 
 
-async def _consume_inbox(http: httpx.AsyncClient, agent: dict) -> str:
+async def _consume_inbox(http: httpx.AsyncClient, agent: dict) -> tuple[str, dict]:
+    # returns (reports, beacons): position beacons are telemetry, not conversation — they
+    # fold into one teammate-positions line instead of flooding the report log
     try:
         r = await http.post(f"{ARTEL_URL}/messages/inbox/consume", headers=_headers(agent), json={})
         msgs = r.json() if r.status_code < 300 else []
     except Exception:
-        return ""
-    lines = [f"{m.get('from_agent', '?')}: {m.get('body', '')}" for m in msgs if m.get("body")]
-    return " | ".join(lines)
+        return "", {}
+    lines, beacons = [], {}
+    for m in msgs:
+        body = m.get("body") or ""
+        sender = m.get("from_agent", "?")
+        if body.startswith("POS "):
+            beacons[sender] = body[4:].strip()
+        elif body:
+            lines.append(f"{sender}: {body}")
+    return " | ".join(lines), beacons
 
 
 async def _send(
-    http: httpx.AsyncClient, agent: dict, to: str, text: str, mate_ids: list[str]
+    http: httpx.AsyncClient,
+    agent: dict,
+    to: str,
+    text: str,
+    mate_ids: list[str],
+    subject: str = "phalanx",
 ) -> None:
     target = to if to in mate_ids else f"project:{PHALANX_PROJECT}"
     try:
         await http.post(
             f"{ARTEL_URL}/messages",
             headers=_headers(agent),
-            json={"to": target, "subject": "phalanx", "body": text[:280]},
+            json={"to": target, "subject": subject, "body": text[:280]},
         )
     except Exception:
         pass
@@ -837,10 +852,17 @@ async def decide(
     claims: list | None = None,
     counts: dict | None = None,
     objective: dict | None = None,
+    beacons: dict | None = None,
 ) -> tuple[dict, float, str, str]:
-    inbox = await _consume_inbox(http, agent)
+    inbox, fresh_beacons = await _consume_inbox(http, agent)
+    if beacons is not None:
+        beacons.update(fresh_beacons)
     board = await _board(http, agent)
     user = _perception_text(p)
+    if beacons:
+        user += "\nTEAMMATE POSITIONS (Artel beacons, ~1 turn old): " + "; ".join(
+            f"{k} at {v}" for k, v in beacons.items() if k != agent["id"]
+        )
     if board:
         user += f"\nTEAM BOARD — current objectives: {board}"
     if objective and not objective.get("task_id"):
@@ -1029,6 +1051,7 @@ class Squad:
         self._intel: dict[int, list[str]] = {}  # per-tank log of teammate reports (via Artel)
         self._recalled: dict[int, str] = {}  # per-tank latest recall result — persists all match
         self._seen_ids: dict[int, set] = {}  # per-tank enemy ids seen last turn (own eyes only)
+        self._beacons: dict[int, dict] = {}  # per-tank latest teammate beacons (via Artel)
         self._objectives: dict[int, dict] = {}  # per-tank current board objective (Artel task)
         self._claims: list[tuple[dict, str]] = []  # (agent, task id) opened this match
         self.tool_counts: dict[str, int] = {}  # Artel tool usage this match, for /debug
@@ -1106,6 +1129,7 @@ class Squad:
                     self._claims,
                     self.tool_counts,
                     self._objectives.setdefault(tank_id, {}),
+                    self._beacons.setdefault(tank_id, {}),
                 ),
                 timeout=DECIDE_DEADLINE,
             )
@@ -1119,6 +1143,18 @@ class Squad:
             self._plans[tank_id] = plan
         if recalled:
             self._recalled[tank_id] = recalled[:300]
+        # transponder: broadcast position over Artel every turn — equipment, not strategy.
+        # Teammates read it from their inboxes; formation becomes actionable every turn.
+        asyncio.create_task(
+            _send(
+                self._http,
+                agent,
+                "team",
+                f"POS ({p['q']},{p['r']}) t{p.get('tick', '?')}",
+                [],
+                "beacon",
+            )
+        )
         if inbox:
             log_ = self._intel.setdefault(tank_id, [])
             for line in inbox.split(" | "):
@@ -1153,6 +1189,7 @@ class Squad:
         self._intel = {}
         self._recalled = {}
         self._seen_ids = {}
+        self._beacons = {}
         self._objectives = {}
         self._claims = []
         self.tool_counts = {}
