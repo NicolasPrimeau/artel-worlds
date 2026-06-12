@@ -20,7 +20,7 @@ log = logging.getLogger("watchtower")
 ARTEL_URL = os.environ.get("ARTEL_URL", "https://artel.run").rstrip("/")
 WATCHTOWER_PROJECT = os.environ.get("WATCHTOWER_PROJECT", "watchtower")
 PROVIDER = os.environ.get("WATCHTOWER_LLM_PROVIDER", "openai")
-MODEL = os.environ.get("WATCHTOWER_MODEL", "gemini-2.5-flash-lite")
+MODEL = os.environ.get("WATCHTOWER_MODEL", "gemini-3.1-flash-lite")
 LLM_KEY = os.environ.get("WATCHTOWER_LLM_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")
 _DEFAULT_URL = (
     "https://api.anthropic.com/v1/messages"
@@ -56,22 +56,22 @@ PRIMARY = _make_ep(
     LLM_URL,
     LLM_KEY,
     LLM_VERSION,
-    os.environ.get("WATCHTOWER_COST_IN", "0.10"),
-    os.environ.get("WATCHTOWER_COST_OUT", "0.40"),
+    os.environ.get("WATCHTOWER_COST_IN", "0.25"),
+    os.environ.get("WATCHTOWER_COST_OUT", "1.50"),
 )
 _LLM2_KEY = os.environ.get("WATCHTOWER_LLM2_KEY", "")
 FALLBACK = (
     _make_ep(
         os.environ.get("WATCHTOWER_LLM2_PROVIDER", "openai"),
-        os.environ.get("WATCHTOWER_LLM2_MODEL", "gemini-2.5-flash"),
+        os.environ.get("WATCHTOWER_LLM2_MODEL", "gemini-3.5-flash"),
         os.environ.get(
             "WATCHTOWER_LLM2_URL",
             "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
         ),
         _LLM2_KEY,
         os.environ.get("WATCHTOWER_LLM2_VERSION", "2023-06-01"),
-        os.environ.get("WATCHTOWER_LLM2_COST_IN", "0.30"),
-        os.environ.get("WATCHTOWER_LLM2_COST_OUT", "2.50"),
+        os.environ.get("WATCHTOWER_LLM2_COST_IN", "1.50"),
+        os.environ.get("WATCHTOWER_LLM2_COST_OUT", "9.00"),
     )
     if _LLM2_KEY
     else None
