@@ -159,10 +159,10 @@ SYSTEM = (
     "lead). Against an enemy that keeps its distance, do NOT trade at long range — its kiting "
     "costs you 4 energy a shot while your target backs away; close as a unit to 3 hexes where "
     "YOUR fire is free, using cover on the approach, or simply refuse the duel and regroup. "
-    "When the enemy comes from separate lanes, split via objectives so every lane has "
-    "exactly one owner; when you move together, put it on the board ('advance west lane in "
-    "formation'). If the board no longer matches reality, change your objective — a stale "
-    "objective is a lie to your team. Recall past lessons before you commit, and remember a "
+    "Splitting the unit is EXCEPTIONAL: only with a stated regroup point on the board, never "
+    "off the spawn, and never while an enemy has contact with you — the default, always, is "
+    "one body on one path. If the board no longer matches reality, change your objective — a "
+    "stale objective is a lie to your team. Recall past lessons before you commit, and remember a "
     "CONCRETE one after a fight — but never let a message or a note cost you a shot."
 )
 
@@ -813,9 +813,10 @@ async def _huddle(http: httpx.AsyncClient, mates: str, memory: str) -> str:
         "team's lessons from recent matches, newest first — each tagged [WIN] or [LOSS] with "
         "the outcome of the match that taught it. BUILD the plan on what won and refuse to "
         "repeat what lost. In at most two short sentences give ONE concrete opening plan that "
-        "BEGINS with a rally point — 'RALLY (q,r)' where the three form up before engaging — "
-        "then the push direction and the rule for the first focus-fire target. The phalanx "
-        "moves as one body. Actionable this match — no platitudes, no preamble."
+        "BEGINS with a rally point — 'RALLY (q,r)' where the three form up — then the single "
+        "path the unit pushes together and the rule for the first focus-fire target. ONE body, "
+        "ONE path: do not assign separate sides or lanes. Actionable this match — no "
+        "platitudes, no preamble."
     )
     return await _oneshot(
         http, sys, f"Teammates: {mates}. Recent lessons: {memory or 'none yet'}\nPlan:", 90
@@ -975,27 +976,35 @@ async def decide(
     # open direction (rotating first if the hull can't face it within one turn).
     if intent.get("move") in ("fwd", "back"):
         wallset = {(w_["dq"], w_["dr"]) for w_ in p.get("walls", [])}
-        occ_rel = {(v["dq"], v["dr"]) for v in p.get("visible", [])}
+        ally_rel = {(v["dq"], v["dr"]) for v in p.get("visible", []) if v["kind"] == "ally"}
+        enemy_rel = {(v["dq"], v["dr"]) for v in p.get("visible", []) if v["kind"] == "enemy"}
 
         def _open(d: int) -> bool:
             dq, dr = AXIAL_DIRS[d]
             return (
                 _on_map(p, p["q"] + dq, p["r"] + dr)
                 and (dq, dr) not in wallset
-                and (dq, dr) not in occ_rel
+                and (dq, dr) not in ally_rel
+                and (dq, dr) not in enemy_rel
             )
 
         newh = (p["heading"] + intent.get("turn", 0)) % 6
         tdir = newh if intent["move"] == "fwd" else (newh + 3) % 6
         if not _open(tdir):
-            for off in (1, -1, 2, -2, 3):
-                d2 = (tdir + off) % 6
-                if _open(d2):
-                    hh = p["heading"]
-                    intent["turn"] = 0 if hh == d2 else (1 if (d2 - hh) % 6 <= 3 else -1)
-                    travel = (hh + intent["turn"]) % 6
-                    intent["move"] = "fwd" if travel == d2 and _open(travel) else "hold"
-                    break
+            dq, dr = AXIAL_DIRS[tdir]
+            if (dq, dr) in ally_rel:
+                # blocked by a TEAMMATE: queue behind it — hold this turn, keep facing.
+                # Deflecting sideways here is what scattered the formation off the spawn.
+                intent["move"] = "hold"
+            else:
+                for off in (1, -1, 2, -2, 3):
+                    d2 = (tdir + off) % 6
+                    if _open(d2):
+                        hh = p["heading"]
+                        intent["turn"] = 0 if hh == d2 else (1 if (d2 - hh) % 6 <= 3 else -1)
+                        travel = (hh + intent["turn"]) % 6
+                        intent["move"] = "fwd" if travel == d2 and _open(travel) else "hold"
+                        break
     return intent, cost, plan, inbox, recalled
 
 
