@@ -639,6 +639,28 @@ async def favicon():
     return FileResponse(STATIC / "favicon.ico")
 
 
+_WT_CACHE: dict = {"ts": 0.0, "data": None}
+
+
+@app.get("/hub/watchtower.json", include_in_schema=False)
+async def hub_watchtower():
+    # the hub card draws Watchtower's REAL live graph; proxied server-side (no CORS) and
+    # cached so the landing page can't hammer the world
+    now = time.time()
+    if _WT_CACHE["data"] is None or now - _WT_CACHE["ts"] > 60:
+        async with httpx.AsyncClient() as client:
+            state = await _fetch_json(client, f"{WATCHTOWER_DEBUG}/state")
+        if state:
+            _WT_CACHE["data"] = {
+                "wedge": state.get("wedge") or [],
+                "summary": state.get("summary") or {},
+            }
+            _WT_CACHE["ts"] = now
+    if _WT_CACHE["data"] is None:
+        raise HTTPException(status_code=503, detail="watchtower unreachable")
+    return JSONResponse(_WT_CACHE["data"], headers={"Cache-Control": "public, max-age=60"})
+
+
 @app.get("/thumbs/{name}.webp", include_in_schema=False)
 async def thumb(name: str):
     safe = "".join(c for c in name if c.isalnum() or c in "-_")
