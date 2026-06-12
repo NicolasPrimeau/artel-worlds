@@ -396,20 +396,22 @@ function apply(snp){
 
   $('s_tick').textContent=snp.tick;
   const a=(snp.scores&&snp.scores.artel)||0, rd=(snp.scores&&snp.scores.red)||0, tot=a+rd||1;
-  $('sc_artel').textContent=a; $('sc_red').textContent=rd;
-  $('t_artel').querySelector('.bar i').style.width=(100*a/tot)+'%';
-  $('t_red').querySelector('.bar i').style.width=(100*rd/tot)+'%';
+  const setScore=()=>{
+    $('sc_artel').textContent=a; $('sc_red').textContent=rd;
+    $('t_artel').querySelector('.bar i').style.width=(100*a/tot)+'%';
+    $('t_red').querySelector('.bar i').style.width=(100*rd/tot)+'%';
+  };
   const w=$('winner');
   clearTimeout(winnerTimer);
   if(snp.winner){
-    // hold the announcement until the final volley, impact, and death burst have played
-    // out — calling it while the losing tank is still standing spoils the kill
+    // hold the announcement AND the score tick until the final volley, impact, and death
+    // burst have played out — updating either while the losing tank still stands spoils it
     winnerTimer=setTimeout(()=>{ const c=TEAM[snp.winner]||TEAM.red;
       $('winner_txt').textContent=snp.winner.toUpperCase()+' WINS';
       w.querySelector('.dot').style.background=c.solid;
       w.querySelector('#winner_txt').style.color=c.soft;
-      w.classList.add('show'); }, DEATH_AT+DEATH_MS*0.6);
-  } else w.classList.remove('show');
+      w.classList.add('show'); setScore(); }, DEATH_AT+DEATH_MS*0.6);
+  } else { w.classList.remove('show'); setScore(); }
 }
 
 function pick(px,py){ let best=null,bd=Infinity; for(const h of hits){ const dx=px-h.x,dy=py-h.y,d=dx*dx+dy*dy,reach=Math.max(h.r+5,14);
