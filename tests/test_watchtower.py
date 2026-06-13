@@ -527,3 +527,39 @@ def test_sdk_incident_session_sends_only_the_delta(monkeypatch):
     assert "[tool result] db slow" in sent_prompts[1]
     assert "state: open" in sent_prompts[1]
     assert "artel:7" not in S._sessions
+
+
+def test_repeated_no_effect_remediations_trigger_rediagnosis_nudge(monkeypatch):
+    # a stale/wrong runbook applied twice must NOT be allowed to flail to the cap: after two
+    # no-effect remediations the loop tells the responder to stop and re-diagnose
+    import asyncio
+
+    from watchtower import agent as A
+
+    spec = spec_for(11, 0)  # a real family with a definite fix
+    wrong = ("rollback", "web") if spec.fix[0] != ("rollback", "web") else ("restart", "cache")
+    inc = _fresh_incident(spec)
+    store = A.SoloStore("solo-nudge")
+
+    seen = {"nudged": False}
+    step = {"n": 0}
+
+    async def scripted(http, system, transcript, session=""):
+        # the loop feeds the running transcript back; catch the nudge when it appears
+        if any(
+            "STOP applying fixes" in m.get("text", "") for m in transcript if m["role"] == "user"
+        ):
+            seen["nudged"] = True
+            return "", [], 0, 0, {"cin": 0.0, "cout": 0.0}  # end the incident
+        step["n"] += 1
+        call = {
+            "id": f"c{step['n']}",
+            "name": "remediate",
+            "input": {"action": wrong[0], "node": wrong[1]},
+        }
+        return "", [call], 0, 0, {"cin": 0.0, "cout": 0.0}
+
+    monkeypatch.setattr(A, "_chat_patient", scripted)
+    asyncio.run(A.respond(None, inc, store))
+    assert seen["nudged"], "two no-effect remediations did not trigger the re-diagnosis nudge"
+    assert step["n"] == 2, "nudge should fire right after the SECOND dud, not later"

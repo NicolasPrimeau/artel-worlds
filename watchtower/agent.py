@@ -100,8 +100,12 @@ SYSTEM = (
     "sick too — the loudest alarm is usually a symptom, not the cause. Find the real root before "
     "you remediate.\n"
     "YOUR LOOP, in order:\n"
-    "1. RECALL FIRST: call recall with the symptoms. If a past runbook matches, follow it — that is "
-    "the entire point of having one. Do not re-derive what you already know.\n"
+    "1. RECALL FIRST: call recall with the symptoms. A runbook is a HINT from a past responder, "
+    "not an order — it may be the exact fix, it may be stale, it may be for a DIFFERENT incident "
+    "that only shares words with yours. Infrastructure drifts and fixes rot. Treat a hit as a "
+    "hypothesis: read whether its symptom pattern truly matches THIS page, then confirm with one "
+    "cheap inspect before you commit to its fix. A strong match earns trust and skips re-derivation; "
+    "a loose one earns a look, not a remediation. You keep the judgment — the runbook only advises.\n"
     "1b. CHECK THE BOARD: call check_board once — an open task may be a past UNRESOLVED incident of "
     "this same fault with notes from whoever tried before. If your fix cracks an open board item, "
     "close_task it.\n"
@@ -728,6 +732,7 @@ async def respond(http, inc: Incident, store, counts: dict | None = None, on_ste
     if handoff:
         intro += "\nShift context:\n" + handoff
     transcript = [{"role": "user", "text": intro}]
+    dud_streak = 0  # consecutive remediations that changed nothing
     for _ in range(MAX_ROUNDS):
         try:
             text, calls, tin, tout, ep = await _chat_patient(
@@ -748,6 +753,10 @@ async def respond(http, inc: Incident, store, counts: dict | None = None, on_ste
                 counts[name] = counts.get(name, 0) + 1
             if name == "remediate":
                 out = inc.act(str(inp.get("action", "")), str(inp.get("node", "")))
+                if isinstance(out, dict) and "no effect" in str(out.get("result", "")):
+                    dud_streak += 1
+                elif isinstance(out, dict) and (out.get("resolved") or "applied" in str(out)):
+                    dud_streak = 0
             elif name in ("inspect", "read_logs"):
                 out = inc.act(name, str(inp.get("node", "")))
             elif name == "recall":
@@ -774,7 +783,17 @@ async def respond(http, inc: Incident, store, counts: dict | None = None, on_ste
             await on_step()
         if inc.resolved or inc.missed:
             break
-        transcript.append({"role": "user", "text": _state_note(inc)})
+        note = _state_note(inc)
+        if dud_streak >= 2:
+            # repeated remediations that changed nothing: the working hypothesis (often a
+            # recalled runbook that doesn't really fit) is wrong. Stop guessing fixes and
+            # go back to the evidence — this is what keeps a stale hint from running to the cap.
+            note += (
+                " Two remediations in a row changed nothing. STOP applying fixes — your "
+                "current theory (or the runbook you trusted) does not fit this incident. "
+                "Re-diagnose from the nodes' own logs and metrics before any further action."
+            )
+        transcript.append({"role": "user", "text": note})
     if inc.resolved and not recorded:
         # the resolving action ends the loop before the model's RECORD step would run — without
         # this round no fleet ever writes a runbook and the whole experiment runs unshared
