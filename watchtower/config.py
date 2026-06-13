@@ -35,28 +35,32 @@ DIAGNOSTIC_ACTIONS = ("inspect", "read_logs")
 REMEDIATION_ACTIONS = ("restart", "scale", "rollback", "clear_queue", "failover", "rotate")
 ACTIONS = DIAGNOSTIC_ACTIONS + REMEDIATION_ACTIONS
 
+# Action costs in seconds, scaled to the order of magnitude a real on-call shift sees: a
+# diagnostic is a minute, a remediation several. The RATIOS (rollback slowest, diagnostics
+# cheapest) are what drive the Artel-vs-solo dynamics; the absolute scale is just so the
+# numbers read like a real incident — minutes, not seconds — instead of a toy.
 ACTION_SECONDS: dict[str, float] = {
-    "inspect": 8.0,
-    "read_logs": 8.0,
-    "restart": 30.0,
-    "scale": 45.0,
-    "rollback": 60.0,
-    "clear_queue": 25.0,
-    "failover": 50.0,
-    "rotate": 40.0,
+    "inspect": 45.0,
+    "read_logs": 45.0,
+    "restart": 180.0,
+    "scale": 270.0,
+    "rollback": 360.0,
+    "clear_queue": 150.0,
+    "failover": 300.0,
+    "rotate": 240.0,
 }
 
 # A remediation aimed at the wrong node or of the wrong kind doesn't fix anything and burns this
 # much extra on top of its base cost (rollback that didn't help, a needless restart). Blind
 # flailing is how a solo responder's MTTR balloons; a recalled runbook skips straight past it.
-WRONG_ACTION_PENALTY = 15.0
+WRONG_ACTION_PENALTY = 90.0
 
 # Every incident carries a fixed detection lead before a responder can act, plus a hard ceiling
 # on how many actions one responder may take — past it the incident is logged as a miss at a
 # punishing MTTR so a flailing responder can't stall the stream or hide a failure.
-DETECTION_SECONDS = 10.0
+DETECTION_SECONDS = 60.0
 MAX_ACTIONS_PER_INCIDENT = 14
-UNRESOLVED_MTTR = 900.0
+UNRESOLVED_MTTR = 5400.0
 
 
 @dataclass(frozen=True)
