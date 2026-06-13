@@ -468,13 +468,19 @@ function apply(snp){
   };
   const w=$('winner');
   clearTimeout(winnerTimer);
-  if(snp.winner){
+  if(snp.winner||snp.draw){
     // hold the announcement AND the score tick until the final volley, impact, and death
     // burst have played out — updating either while the losing tank still stands spoils it
-    winnerTimer=setTimeout(()=>{ const c=TEAM[snp.winner]||TEAM.red;
-      $('winner_txt').textContent=snp.winner.toUpperCase()+' WINS';
-      w.querySelector('.dot').style.background=c.solid;
-      w.querySelector('#winner_txt').style.color=c.soft;
+    winnerTimer=setTimeout(()=>{
+      if(snp.winner){ const c=TEAM[snp.winner]||TEAM.red;
+        $('winner_txt').textContent=snp.winner.toUpperCase()+' WINS';
+        w.querySelector('.dot').style.background=c.solid;
+        w.querySelector('#winner_txt').style.color=c.soft;
+      } else { // mutual wipeout: nobody's color, nobody's point
+        $('winner_txt').textContent='DRAW';
+        w.querySelector('.dot').style.background='#8b93a3';
+        w.querySelector('#winner_txt').style.color='#aeb6c4';
+      }
       w.classList.add('show'); setScore(); }, DEATH_AT+DEATH_MS*0.6);
   } else { w.classList.remove('show'); setScore(); }
 }

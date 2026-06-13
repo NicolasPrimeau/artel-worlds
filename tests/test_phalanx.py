@@ -539,6 +539,28 @@ def test_recalled_lessons_join_search_hits():
     assert out == "[WIN] hold the corner | [LOSS] strung out"
 
 
+def test_mutual_wipeout_is_a_draw_not_a_win():
+    a = Arena(DEFAULT, seed=11)
+    a.add_team("artel", "house:artel", (5, 5))
+    a.add_team("red", "house:red", (5, 5))
+    blue = next(t for t in a.tanks.values() if t.team == "artel")
+    foe = next(t for t in a.tanks.values() if t.team == "red")
+    a.walls.clear()
+    for t in list(a.tanks.values()):  # only the duelists remain
+        if t.id not in (blue.id, foe.id):
+            del a.tanks[t.id]
+    # red's desperation shot kills blue but burns red out (power 3 costs 4, refund only
+    # gives 2 back) — both fall in the same step, the case seen live and scored as a win
+    blue.q, blue.r, blue.cooldown, blue.energy = 5, 5, 0, 5
+    foe.q, foe.r, foe.cooldown, foe.energy = 7, 5, 0, 2
+    a.submit(foe.id, {"fire": blue.id, "power": 3})
+    a.step()
+    assert not a.tanks  # both fell this step
+    assert a.winner is None
+    assert a.draw
+    assert a.stats()["draw"] is True
+
+
 def test_reflect_writes_nothing_when_the_lesson_is_already_known(monkeypatch):
     import asyncio
 

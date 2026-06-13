@@ -22,6 +22,7 @@ class Arena:
         self.pending: dict[int, dict] = {}
         self.walls: set[tuple[int, int]] = set()
         self.winner: str | None = None
+        self.draw = False
         self._scatter_walls()
 
     # --- setup ---
@@ -257,11 +258,6 @@ class Arena:
         for t in living:
             t.hit_taken = 0.0
             t.hit_from = 0
-        # team standing going into this step — used to break a mutual wipeout so a
-        # match never ends in a draw: whoever was ahead when both fell takes it.
-        pre_energy: dict[str, float] = {}
-        for t in living:
-            pre_energy[t.team] = pre_energy.get(t.team, 0.0) + t.energy
 
         # 1. turns
         for t in living:
@@ -456,9 +452,10 @@ class Arena:
         alive_teams = self.teams_alive()
         if len(alive_teams) == 1:
             self.winner = next(iter(alive_teams))
-        elif len(alive_teams) == 0 and pre_energy:
-            # mutual wipeout this step — no draw: the team that was ahead wins
-            self.winner = max(pre_energy, key=lambda k: pre_energy[k])
+        elif len(alive_teams) == 0:
+            # mutual wipeout this step — nobody outlived the volley: a draw, not a win
+            # for whoever happened to be ahead on energy when both shells were in the air
+            self.draw = True
         if self.winner is None and self.tick_count >= cfg.match_max_ticks:
             # hard cap: never let a match stall — the team with the most tanks (then energy) wins
             standing: dict[str, tuple[int, float]] = {}
@@ -477,5 +474,6 @@ class Arena:
             "tanks": len(self.tanks),
             "shots": len(self.tracers),
             "winner": self.winner,
+            "draw": self.draw,
             "team_counts": {team: len(self.team_tanks(team)) for team in alive},
         }

@@ -305,7 +305,7 @@ async def _tick_loop():
                         {
                             "match": G.match_no,
                             "seed": G.seed,
-                            "winner": a.winner,
+                            "winner": "draw" if a.draw else a.winner,
                             "ticks": a.tick_count,
                             "live_artel": live_artel,
                             "kills": list(a.events),
@@ -316,7 +316,8 @@ async def _tick_loop():
                     del G.history[:-10]
                     G.ledger_spend()
                     G.persist_state()
-                    if live_artel:
+                    if live_artel and not a.draw:
+                        # a draw teaches neither a [WIN] nor a [LOSS] — no after-action lesson
                         survivors = {t.id for t in a.tanks.values() if t.team in COORDINATED}
                         asyncio.create_task(
                             G.squad.on_end(
