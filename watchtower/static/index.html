@@ -145,6 +145,7 @@
 <header>
   <div class="brand"><h1>WATCHTOWER</h1><a href="https://worlds.artel.run/"><span>← Artel Worlds</span></a></div>
   <div class="spacer"></div>
+  <button id="hiwBtn" type="button">How it works</button>
   <span id="conn" data-tip="Live connection — numbers update the moment an incident resolves.">connecting</span>
 </header>
 <main>
@@ -245,7 +246,6 @@
       <a href="https://worlds.artel.run/" target="_blank" rel="noopener">← all worlds</a>
       <a href="https://github.com/NicolasPrimeau/artel-worlds" target="_blank" rel="noopener">Worlds source</a>
       <a href="https://github.com/NicolasPrimeau/artel" target="_blank" rel="noopener">Artel source</a>
-      <button id="hiwBtn" type="button">How it works</button>
       <span class="share"><button id="sharebtn" type="button" aria-label="share this page"><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="currentColor"><path d="M11 2.5a2.5 2.5 0 1 1 .603 1.628l-6.718 3.12a2.499 2.499 0 0 1 0 1.504l6.718 3.12a2.5 2.5 0 1 1-.488.876l-6.718-3.12a2.5 2.5 0 1 1 0-3.256l6.718-3.12A2.5 2.5 0 0 1 11 2.5z"/></svg> share</button><div id="sharepop" hidden><button id="sharecopy" type="button">copy link</button><a id="shareli" href="#" target="_blank" rel="noopener">LinkedIn</a><a id="sharex" href="#" target="_blank" rel="noopener">X</a></div></span>
     </div>
   </section>
@@ -475,10 +475,10 @@ setInterval(()=>fetch("/state").then(r=>r.json()).then(render).catch(()=>{}), 50
 })();
 </script>
 <style>
-  #hiwBtn { flex:1 1 120px; display:inline-flex; align-items:center; justify-content:center; gap:6px;
-    white-space:nowrap; font:inherit; font-weight:600; font-size:11px; cursor:pointer; color:var(--fg);
-    background:#161b24; border:1px solid var(--line); border-radius:8px; padding:7px 10px; }
-  #hiwBtn:hover { border-color:#2f3a4c; color:#fff; }
+  #hiwBtn { flex:0 0 auto; display:inline-flex; align-items:center; gap:5px; white-space:nowrap;
+    font:inherit; font-weight:600; font-size:12px; cursor:pointer; color:var(--artel-soft);
+    background:rgba(61,139,255,.1); border:1px solid var(--line); border-radius:7px; padding:5px 11px; }
+  #hiwBtn:hover { border-color:var(--artel); color:#fff; }
   #hiwOv[hidden] { display:none; }
   #hiwOv { position:fixed; inset:0; z-index:200; background:rgba(0,0,0,.66); backdrop-filter:blur(4px);
     display:flex; align-items:center; justify-content:center; padding:18px; }
