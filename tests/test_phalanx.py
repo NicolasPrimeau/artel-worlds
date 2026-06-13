@@ -561,6 +561,32 @@ def test_mutual_wipeout_is_a_draw_not_a_win():
     assert a.stats()["draw"] is True
 
 
+def test_match_stats_measure_the_lesson_families():
+    a = Arena(DEFAULT, seed=12)
+    a.add_team("artel", "house:artel", (5, 5))
+    a.add_team("red", "house:red", (5, 5))
+    blue = next(t for t in a.tanks.values() if t.team == "artel")
+    foe = next(t for t in a.tanks.values() if t.team == "red")
+    a.walls.clear()
+    for i, o in enumerate(t for t in a.tanks.values() if t.id not in (blue.id, foe.id)):
+        o.q, o.r = 1 + i, 12
+    blue.q, blue.r, blue.cooldown, blue.energy = 5, 5, 0, 50
+    foe.q, foe.r, foe.energy = 7, 5, 50
+    a.submit(blue.id, {"fire": foe.id})
+    a.step()
+    s = a.match_stats["artel"]
+    assert s["shots"] == 1 and s["shots_hit"] == 1 and s["trigger_energy"] > 0
+
+    blue.cooldown = 0
+    a.submit(blue.id, {"fire_at": [5, 9]})  # nothing on that line
+    a.step()
+    assert a.match_stats["artel"]["shots_missed"] == 1
+
+    summary = a.stats_summary()
+    assert "artel: 2 shots (1 hit, 1 missed" in summary
+    assert "red: 0 shots" in summary  # red never fired but its repair economy still shows
+
+
 def test_reflect_writes_nothing_when_the_lesson_is_already_known(monkeypatch):
     import asyncio
 

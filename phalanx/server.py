@@ -319,12 +319,16 @@ async def _tick_loop():
                     if live_artel and not a.draw:
                         # a draw teaches neither a [WIN] nor a [LOSS] — no after-action lesson
                         survivors = {t.id for t in a.tanks.values() if t.team in COORDINATED}
+                        log = "; ".join(a.events[-12:])
+                        ms = a.stats_summary()
+                        if ms:
+                            log = f"{log}. Match stats — {ms}" if log else f"Match stats — {ms}"
                         asyncio.create_task(
                             G.squad.on_end(
                                 a.winner == "artel",
                                 survivors,
                                 G.squad.current_assignment(),
-                                "; ".join(a.events[-12:]),
+                                log,
                             )
                         )
                 snap = G.snapshot()

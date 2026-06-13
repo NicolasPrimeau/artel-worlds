@@ -23,6 +23,9 @@ class Arena:
         self.walls: set[tuple[int, int]] = set()
         self.winner: str | None = None
         self.draw = False
+        # per-team match counters — every measured fact here is a family of after-action
+        # rules the reflector can legitimately derive; an unmeasured one cannot exist
+        self.match_stats: dict[str, dict[str, float]] = {}
         self._scatter_walls()
 
     # --- setup ---
@@ -338,6 +341,8 @@ class Arena:
             if aim == (oq, orr):
                 t.last_fire = "misfire (aimed at own hex)"
                 continue
+            self._stat(t.team, "shots")
+            self._stat(t.team, "trigger_energy", cost)
             ray = self._ray(oq, orr, aim, cfg.power_range[power - 1])
             occ_now = {(o.q, o.r): o for o in living if o.id != t.id and o.energy > 0}
             victim: Tank | None = None
@@ -353,6 +358,7 @@ class Arena:
             if victim is None:
                 t.target = 0
                 t.last_fire = "hit cover" if stop else "MISSED — nothing on the line"
+                self._stat(t.team, "shots_into_cover" if stop else "shots_missed")
                 self.tracers.append(
                     {
                         "q": oq,
@@ -378,8 +384,10 @@ class Arena:
             if victim.team != t.team:
                 t.energy = min(cfg.max_energy, t.energy + cfg.hit_reward)
                 t.last_fire = f"hit #{victim.id}"
+                self._stat(t.team, "shots_hit")
             else:
                 t.last_fire = f"HIT TEAMMATE #{victim.id} — they were on your line"
+                self._stat(t.team, "teammates_hit")
             self.tracers.append(
                 {
                     "q": oq,
@@ -413,13 +421,16 @@ class Arena:
                 t.cooldown -= 1
             if hex_distance(t.q, t.r, cq, cr) > rad:
                 t.energy -= cfg.zone_damage
+                self._stat(t.team, "zone_bleed", cfg.zone_damage)
             elif (
                 t.id not in moved_ids
                 and t.id not in fired_ids
                 and t.hit_taken == 0
                 and 0 < t.energy < cfg.max_energy
             ):
-                t.energy = min(cfg.max_energy, t.energy + cfg.repair)
+                gained = min(cfg.max_energy, t.energy + cfg.repair) - t.energy
+                t.energy += gained
+                self._stat(t.team, "repaired", gained)
 
         # 5. deaths — logged with attribution AND how far the nearest ally stood, so
         # after-action lessons can measure cohesion failures instead of guessing at them
@@ -465,6 +476,27 @@ class Arena:
             if standing:
                 self.winner = max(standing, key=lambda k: standing[k])
         return self.stats()
+
+    def _stat(self, team: str, key: str, n: float = 1) -> None:
+        d = self.match_stats.setdefault(team, {})
+        d[key] = d.get(key, 0) + n
+
+    def stats_summary(self) -> str:
+        # the after-action facts beyond the kill log: accuracy, friendly fire, cover wasted
+        # shots, energy economics, zone discipline — each one a lesson family
+        parts = []
+        for team, s in sorted(self.match_stats.items()):
+            shots = int(s.get("shots", 0))
+            parts.append(
+                f"{team}: {shots} shots ({int(s.get('shots_hit', 0))} hit, "
+                f"{int(s.get('shots_missed', 0))} missed, "
+                f"{int(s.get('shots_into_cover', 0))} absorbed by cover, "
+                f"{int(s.get('teammates_hit', 0))} hit a TEAMMATE), "
+                f"spent {int(s.get('trigger_energy', 0))} energy firing, "
+                f"repaired {int(s.get('repaired', 0))} standing still, "
+                f"bled {int(s.get('zone_bleed', 0))} to the zone"
+            )
+        return "; ".join(parts)
 
     def stats(self) -> dict:
         alive = self.teams_alive()
