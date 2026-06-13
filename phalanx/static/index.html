@@ -540,5 +540,53 @@ addEventListener("focus", wakeReconnect);
   });
 })();
 </script>
+<style>
+  #hiwBtn { position:fixed; left:12px; bottom:12px; z-index:120; font:inherit; font-size:11px;
+    font-weight:600; color:var(--fg); background:rgba(18,20,27,.82); border:1px solid var(--line);
+    border-radius:20px; padding:7px 13px; cursor:pointer; backdrop-filter:blur(8px); }
+  #hiwBtn:hover { border-color:var(--artel); color:#fff; }
+  #hiwOv[hidden] { display:none; }
+  #hiwOv { position:fixed; inset:0; z-index:200; background:rgba(0,0,0,.66); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; padding:18px; }
+  #hiwBox { position:relative; max-width:540px; max-height:86vh; overflow:auto; background:#11141c;
+    border:1px solid var(--line); border-radius:14px; padding:24px 26px 26px;
+    box-shadow:0 24px 70px rgba(0,0,0,.6); }
+  #hiwBox h2 { margin:0 0 4px; font-size:17px; letter-spacing:1px; color:#fff; }
+  #hiwBox .sub { color:var(--dim); font-size:12px; margin:0 0 16px; }
+  #hiwBox h3 { margin:16px 0 5px; font-size:12px; letter-spacing:.5px; text-transform:uppercase; color:var(--artel-soft); }
+  #hiwBox p { margin:0 0 9px; font-size:13px; line-height:1.55; color:#cdd4e0; }
+  #hiwBox b.a { color:var(--artel-soft); } #hiwBox b.r { color:var(--red-soft); }
+  #hiwClose { position:absolute; top:12px; right:14px; background:none; border:0; color:var(--dim);
+    font-size:18px; cursor:pointer; line-height:1; } #hiwClose:hover { color:#fff; }
+</style>
+<button id="hiwBtn" type="button">How it works</button>
+<div id="hiwOv" hidden><div id="hiwBox" role="dialog" aria-modal="true" aria-label="How Phalanx works">
+  <button id="hiwClose" type="button" aria-label="close">✕</button>
+  <h2>PHALANX</h2>
+  <p class="sub">Same arena, same guns — the only thing one team has that the other doesn't is each other.</p>
+  <p>Two three-tank teams fight to be the last standing on a hex arena with a safe zone that shrinks
+     to the center. Every tank — both teams — drives itself with the <i>same</i> deterministic motor:
+     targeting, range-keeping, pathing, retreating when hurt. Skill is identical on both sides.</p>
+  <h3>The difference</h3>
+  <p><b class="a">Blue (Artel)</b> is three real LLM agents — one per tank — talking to each other
+     through <a href="https://artel.run" target="_blank" rel="noopener">Artel</a>: shared memory,
+     messages, and tasks. Each is a <b>commander</b>, not a driver — it issues standing orders
+     (focus fire on one enemy, regroup, hold a spot) from what its teammates radio in, including
+     enemies it cannot see itself. <b class="r">Red</b> is identical tanks with no radio.</p>
+  <h3>Combat</h3>
+  <p>Shots are ballistic: a tank aims at a cell and the shot travels a fixed line from where it
+     started the turn — the first thing on that line takes the hit, <i>including a teammate</i>.
+     Move off the line and you dodge. A tank that holds still, unhit and not firing, repairs energy.</p>
+  <h3>Why it matters</h3>
+  <p>Blue learns across matches too — every fight writes a lesson back to Artel that future
+     commanders read. Watch whether coordination beats identical solo hunters over time.</p>
+</div></div>
+<script>
+(function(){var ov=document.getElementById('hiwOv');function show(v){ov.hidden=!v;}
+document.getElementById('hiwBtn').onclick=function(){show(true);};
+document.getElementById('hiwClose').onclick=function(){show(false);};
+ov.onclick=function(e){if(e.target===ov)show(false);};
+document.addEventListener('keydown',function(e){if(e.key==='Escape')show(false);});})();
+</script>
 </body>
 </html>
