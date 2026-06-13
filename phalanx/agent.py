@@ -910,6 +910,7 @@ async def command(
     )
     cost = ep.get("flat_cost", tin * ep["cin"] + tout * ep["cout"])
     plan = ""
+    comms: list[dict] = []
     cmd = next((c for c in calls if c["name"] == "command"), None)
     if cmd:
         inp = cmd["input"]
@@ -941,7 +942,41 @@ async def command(
         plan = str(inp.get("plan", "") or "")[:140]
         if not solo:
             await _artel_ops(http, agent, inp, p, mate_ids, objective, claims, counts)
-    return cost, plan, inbox
+            comms = _comms_from(inp, bot, p)
+    return cost, plan, inbox, comms
+
+
+def _comms_from(inp: dict, bot, p: dict) -> list[dict]:
+    # the squad's radio, as watchable events: the spoken report plus the standing orders it
+    # set. focus_at carries the hunted cell so a viewer can SEE a tank vectored onto an enemy
+    # it never spotted itself — the Artel edge, made visible.
+    out: list[dict] = []
+    tank = getattr(bot, "id", None)
+    tick = p.get("tick", 0)
+    orders = getattr(bot, "orders", {}) or {}
+
+    def add(kind, text, cell=None):
+        e = {"t": tick, "tank": tank, "kind": kind, "text": text[:120]}
+        if cell is not None:
+            e["cell"] = [int(cell[0]), int(cell[1])]
+        out.append(e)
+
+    say = str(inp.get("say", "") or "").strip()
+    if say:
+        add("say", say)
+    foc = orders.get("focus")
+    fa = orders.get("focus_at")
+    if foc and fa:
+        add("intel", f"VECTOR #{foc} → ({fa[0]},{fa[1]})", cell=fa)
+    elif foc and inp.get("focus"):
+        add("focus", f"FOCUS #{foc}")
+    rg = inp.get("regroup")
+    if isinstance(rg, (list, tuple)) and len(rg) == 2:
+        try:
+            add("rally", f"RALLY ({int(rg[0])},{int(rg[1])})", cell=rg)
+        except (TypeError, ValueError):
+            pass
+    return out
 
 
 async def _artel_ops(http, agent, inp, p, mate_ids, objective, claims, counts) -> None:
@@ -1009,6 +1044,7 @@ class Squad:
         self._objectives: dict[int, dict] = {}  # per-tank current board objective (Artel task)
         self._claims: list[tuple[dict, str]] = []  # (agent, task id) opened this match
         self.tool_counts: dict[str, int] = {}  # Artel tool usage this match, for /debug
+        self._comms: list[dict] = []  # recent radio for the live comms feed (newest last)
 
     @staticmethod
     def _load_agents() -> list[dict]:
@@ -1176,7 +1212,7 @@ class Squad:
 
     async def _run_command(self, tank_id, agent, p, bot, mate_ids, notes, distress) -> None:
         try:
-            cost, plan, inbox = await asyncio.wait_for(
+            cost, plan, inbox, comms = await asyncio.wait_for(
                 command(
                     self._http,
                     agent,
@@ -1197,6 +1233,10 @@ class Squad:
             self.spent += cost
             self.month_spent += cost
             self.last_error = None
+            for e in comms:
+                e["who"] = agent["id"]
+                self._comms.append(e)
+            del self._comms[:-14]  # keep the feed bounded to the recent tail
             if plan:
                 self._plans[tank_id] = plan
             if inbox:
@@ -1230,6 +1270,7 @@ class Squad:
             self._claims = []
             self._walls = {}
             self.tool_counts = {}
+            self._comms = []
             await reset_sessions()
             if self._http is None:
                 self._http = httpx.AsyncClient(timeout=httpx.Timeout(LLM_TIMEOUT))
@@ -1251,6 +1292,7 @@ class Squad:
         self._claims = []
         self._walls = {}
         self.tool_counts = {}
+        self._comms = []
         await reset_sessions()
         for tid, agent in self._assign.items():
             if agent["id"] not in self._joined:

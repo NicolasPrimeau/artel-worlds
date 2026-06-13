@@ -769,3 +769,32 @@ def test_sdk_sessions_reuse_drop_and_reset(monkeypatch):
         assert all(not c.connected for c in FakeClient.instances)
 
     asyncio.run(run())
+
+
+def test_comms_from_emits_radio_events_with_intel_cells():
+    from phalanx.agent import _comms_from
+
+    class B:
+        id = 2
+        orders = {"focus": 5, "focus_at": (7, 4)}
+
+    p = {"tick": 12}
+    out = _comms_from({"say": "SPOTTED #5 (7,4)", "focus": 5, "focus_at": [7, 4]}, B(), p)
+    kinds = {e["kind"]: e for e in out}
+    assert "say" in kinds and kinds["say"]["text"] == "SPOTTED #5 (7,4)"
+    # focus_at present -> a VECTOR intel event carrying the hunted cell (the ping)
+    assert "intel" in kinds and kinds["intel"]["cell"] == [7, 4]
+    assert all(e["tank"] == 2 and e["t"] == 12 for e in out)
+
+    # plain focus (no focus_at) is a focus event, no cell
+    class B2:
+        id = 3
+        orders = {"focus": 9}
+
+    out2 = _comms_from({"focus": 9, "regroup": [8, 6]}, B2(), {"tick": 3})
+    k2 = {e["kind"]: e for e in out2}
+    assert k2["focus"]["text"] == "FOCUS #9" and "cell" not in k2["focus"]
+    assert k2["rally"]["cell"] == [8, 6]
+
+    # empty command this call -> nothing on the feed, even if the bot holds prior orders
+    assert _comms_from({}, B2(), {"tick": 1}) == []

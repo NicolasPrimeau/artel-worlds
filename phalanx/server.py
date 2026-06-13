@@ -155,6 +155,7 @@ class Phalanx:
             "map_radius": a.cfg.map_radius,
             "scores": self.scores,
             "coordinated": list(COORDINATED),
+            "comms": list(self.squad._comms),
             "zone": {
                 "q": a.cfg.width // 2,
                 "r": a.cfg.height // 2,
