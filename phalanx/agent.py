@@ -9,7 +9,7 @@ import os
 import httpx
 
 from .config import DEFAULT
-from .control import STRATEGIES, Bot
+from .control import LOW_ENERGY, STRATEGIES, Bot
 
 log = logging.getLogger("phalanx")
 
@@ -696,6 +696,42 @@ async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str, events: s
     return await _oneshot(http, sys, f"Match log: {events or 'no kills were recorded'}\nRule:")
 
 
+def _recall_query(p: dict, bot, distress: dict | None) -> str:
+    # the situation, as search terms: hybrid retrieval ranks the corpus by relevance,
+    # confidence and circulation — so the lesson that matters NOW surfaces even if it
+    # was learned fifty matches ago
+    bits = []
+    if p.get("hit_taken"):
+        bits.append("under fire taking damage")
+    if distress:
+        bits.append("ally under fire needs support")
+    if bot is not None and bot.board:
+        bits.append("enemy contact focus fire engagement")
+    else:
+        bits.append("no contact hunting positioning")
+    if p.get("energy", 100) <= LOW_ENERGY:
+        bits.append("low energy repair retreat")
+    if not p.get("safe", True):
+        bits.append("outside zone closing reposition")
+    return " ".join(bits)
+
+
+async def _recall_lessons(http: httpx.AsyncClient, agent: dict, query: str, n: int = 4) -> str:
+    # situational memory: search the whole corpus instead of skimming the newest entries
+    try:
+        r = await http.get(
+            f"{ARTEL_URL}/memory/search",
+            headers=_headers(agent),
+            params={"q": query, "project": PHALANX_PROJECT, "limit": n},
+        )
+        rows = r.json() if r.status_code < 300 else []
+    except Exception:
+        return ""
+    if not isinstance(rows, list):
+        return ""
+    return " | ".join(m.get("content", "")[:160] for m in rows if m.get("content"))
+
+
 async def _recent_lessons(http: httpx.AsyncClient, agent: dict, n: int = 6) -> str:
     # the corpus must CIRCULATE for strategy to emerge: newest lessons first, full enough
     # to mean something, each carrying the WIN/LOSS tag of the match that taught it
@@ -770,11 +806,15 @@ async def command(
     if solo:
         inbox, board = "", ""
     else:
-        (inbox, fresh_beacons), board = await asyncio.gather(
-            _consume_inbox(http, agent), _board(http, agent)
+        (inbox, fresh_beacons), board, recalled = await asyncio.gather(
+            _consume_inbox(http, agent),
+            _board(http, agent),
+            _recall_lessons(http, agent, _recall_query(p, bot, distress)),
         )
         if beacons is not None:
             beacons.update(fresh_beacons)
+        if recalled:
+            memory = recalled
     view = dict(beacons or {})
     if distress and distress.get("victim") != agent["id"]:
         view[distress["victim"]] = distress["body"]
@@ -804,8 +844,9 @@ async def command(
         user += f"\n{notes}"
     if memory:
         user += (
-            f"\nLessons from recent matches (newest first; [WIN]/[LOSS] is the outcome of "
-            f"the match that taught it — trust wins, distrust losses): {memory}"
+            f"\nLessons from past matches, most relevant to your situation first "
+            f"([WIN]/[LOSS] is the outcome of the match that taught it — trust wins, "
+            f"distrust losses): {memory}"
         )
     if inbox:
         user += f"\nNEW team reports: {inbox}"

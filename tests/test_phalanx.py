@@ -500,6 +500,45 @@ def test_hurt_bot_parks_to_repair_when_nothing_in_sight():
     assert out["move"] != "hold" or out.get("fire")  # contact: fight or fall back, not nap
 
 
+def test_recall_query_reflects_the_situation():
+    from phalanx.agent import _recall_query
+
+    class Engaged:
+        board = {"e1": {"q": 1, "r": 1}}
+
+    q = _recall_query({"hit_taken": True, "energy": 20, "safe": False}, Engaged(), {"victim": "t2"})
+    assert "under fire" in q
+    assert "ally under fire" in q
+    assert "low energy" in q
+    assert "zone" in q
+    assert "focus fire" in q
+
+    quiet = _recall_query({"energy": 100, "safe": True}, None, None)
+    assert "hunting" in quiet
+    assert "fire" not in quiet
+
+
+def test_recalled_lessons_join_search_hits():
+    import asyncio
+
+    from phalanx.agent import _recall_lessons
+
+    class Resp:
+        status_code = 200
+
+        def json(self):
+            return [{"content": "[WIN] hold the corner"}, {"content": "[LOSS] strung out"}]
+
+    class Http:
+        async def get(self, url, headers=None, params=None):
+            assert url.endswith("/memory/search")
+            assert params["q"] and params["project"]
+            return Resp()
+
+    out = asyncio.run(_recall_lessons(Http(), {"id": "a", "key": "k"}, "under fire"))
+    assert out == "[WIN] hold the corner | [LOSS] strung out"
+
+
 def test_spend_cap_is_monthly(monkeypatch):
     from phalanx import agent as A
     from phalanx.agent import SPEND_CAP_USD, Squad
