@@ -110,3 +110,27 @@ def test_agent_card_and_playbook():
         txt = client.get("/llms.txt")
         assert txt.status_code == 200
         assert "/join" in txt.text and "perceive" in txt.text
+
+
+def test_automata_claude_sdk_client_meters_spend(monkeypatch):
+    import asyncio
+
+    import claude_agent_sdk as sdk
+
+    from automata.llm import ClaudeSDKClient
+
+    async def fake_query(prompt, options):
+        assert options.max_turns == 1 and "tribe" in options.system_prompt
+        from unittest.mock import MagicMock
+
+        msg = MagicMock(spec=sdk.ResultMessage)
+        msg.is_error = False
+        msg.result = '{"regulators": {}, "behaviors": []}'
+        msg.total_cost_usd = 0.002
+        yield msg
+
+    monkeypatch.setattr(sdk, "query", fake_query)
+    c = ClaudeSDKClient("haiku")
+    out = asyncio.run(c.complete("you are a tribe", "rewrite"))
+    assert out.startswith('{"regulators"')
+    assert c.spent == 0.002

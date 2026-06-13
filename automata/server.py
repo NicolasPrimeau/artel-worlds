@@ -26,7 +26,7 @@ from pydantic import BaseModel
 from .agent import HeuristicAgent
 from .config import DEFAULT
 from .genome import TARGETS, VARIABLES, VERBS, random_genome, to_dict
-from .llm import PERSONAS, AnthropicClient, author_genome
+from .llm import PERSONAS, AnthropicClient, ClaudeSDKClient, author_genome
 from .tick import step
 from .world import World
 
@@ -38,8 +38,15 @@ STATIC = Path(__file__).parent / "static"
 # models with LLM_MODEL; the CA fills in anything the LLM doesn't return.
 # The genome persists and the CA runs it every tick, so the LLM re-authors only
 # every LLM_INTERVAL ticks (cheap). Only fires while watched (see the tick loop).
-LLM_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-LLM_MODEL = os.environ.get("LLM_MODEL", "claude-haiku-4-5-20251001")
+LLM_PROVIDER = os.environ.get("AUTOMATA_LLM_PROVIDER", "anthropic")
+# claude-sdk: subscription OAuth (monthly Agent SDK credit); the CLI reads the token from
+# the environment — the key only needs to be truthy to enable the LLM tribes
+LLM_KEY = os.environ.get("ANTHROPIC_API_KEY", "") or (
+    os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "") if LLM_PROVIDER == "claude-sdk" else ""
+)
+LLM_MODEL = os.environ.get(
+    "LLM_MODEL", "haiku" if LLM_PROVIDER == "claude-sdk" else "claude-haiku-4-5-20251001"
+)
 LLM_TRIBES = int(os.environ.get("LLM_TRIBES", "2"))
 LLM_INTERVAL = max(1, int(os.environ.get("LLM_INTERVAL", "20")))
 LLM_ENABLED = bool(LLM_KEY) and LLM_TRIBES > 0
@@ -124,7 +131,15 @@ class Automata:
         self.lock = asyncio.Lock()
         self.viewers: set[WebSocket] = set()
         self.tokens: dict[int, str] = {}  # lineage -> secret; proves a player owns the tribe
-        self.llm = AnthropicClient(LLM_KEY, LLM_MODEL) if LLM_ENABLED else None
+        self.llm = (
+            (
+                ClaudeSDKClient(LLM_MODEL)
+                if LLM_PROVIDER == "claude-sdk"
+                else AnthropicClient(LLM_KEY, LLM_MODEL)
+            )
+            if LLM_ENABLED
+            else None
+        )
         self._assign_llm_tribes()
 
     def reset(self):
@@ -818,7 +833,8 @@ async def ui_stats(request: Request):
             "url": "https://automata.artel.run",
             "status": "live",
             "model": LLM_MODEL if LLM_ENABLED else "heuristic CA (no LLM)",
-            "spend": None,  # automata's house-tribe LLM spend is not metered
+            "spend": round(getattr(G.llm, "spent", 0.0), 4) if G.llm else None,
+            "spend_label": "since boot",
             "cap": None,
             "facts": {"tick": a.get("tick"), "population": a.get("population")},
         }

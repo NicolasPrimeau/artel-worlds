@@ -11,7 +11,16 @@ COPY automata/ automata/
 
 ENV PATH="/app/.venv/bin:$PATH"
 
-RUN useradd --no-create-home --uid 1000 app && chown -R app /app
+# Claude Code CLI (native binary) for the claude-sdk provider; no token in the image,
+# inert unless AUTOMATA_LLM_PROVIDER=claude-sdk
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && curl -fsSL https://claude.ai/install.sh | bash \
+    && install -m 0755 /root/.local/bin/claude /usr/local/bin/claude \
+    && apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+
+ENV DISABLE_AUTOUPDATER=1
+
+RUN useradd --create-home --uid 1000 app && chown -R app /app
 USER app
 
 EXPOSE 8000

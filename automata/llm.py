@@ -70,6 +70,37 @@ class ModelClient(Protocol):
     ) -> str: ...
 
 
+class ClaudeSDKClient:
+    # Claude Agent SDK on the subscription OAuth token (CLAUDE_CODE_OAUTH_TOKEN read by
+    # the CLI from the environment) — genome authoring draws the plan's monthly credit
+    # and PAUSES at exhaustion; an authoring failure just keeps the tribe's current DNA.
+    # Spend is metered at standard API rates from the SDK's own per-call figure.
+    def __init__(self, model: str):
+        self.model = model
+        self.spent = 0.0
+
+    async def complete(
+        self, system: str, user: str, max_tokens: int = 900, temperature: float = 1.0
+    ) -> str:
+        from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
+
+        opts = ClaudeAgentOptions(
+            model=self.model,
+            system_prompt=system,
+            max_turns=1,
+            allowed_tools=[],
+            tools=[],
+        )
+        result = None
+        async for msg in query(prompt=user, options=opts):
+            if isinstance(msg, ResultMessage):
+                result = msg
+        if result is None or getattr(result, "is_error", False):
+            raise RuntimeError(f"claude-sdk: {getattr(result, 'result', 'no result')}")
+        self.spent += float(result.total_cost_usd or 0.0)
+        return result.result or ""
+
+
 class AnthropicClient:
     def __init__(self, api_key: str, model: str):
         self.api_key = api_key
