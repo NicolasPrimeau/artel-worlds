@@ -8,7 +8,7 @@ import os
 import httpx
 
 from .incidents import Incident
-from .sdkchat import sdk_chat
+from .sdkchat import drop_session, sdk_chat
 
 log = logging.getLogger("watchtower")
 
@@ -349,13 +349,13 @@ def _live_endpoints():
     return eps or [ep for ep in _ENDPOINTS if ep["key"]]
 
 
-async def _chat(http, system, transcript):
+async def _chat(http, system, transcript, session: str = ""):
     last = None
     sdk_err = None
     for ep in _live_endpoints():
         if ep["provider"] == "claude-sdk":
             try:
-                return await sdk_chat(ep, system, transcript, TOOLS)
+                return await sdk_chat(ep, system, transcript, TOOLS, session)
             except Exception as e:
                 # paused credit or SDK failure: bench it long, roll to the next provider
                 _mark_throttled(ep, "per day")
@@ -701,13 +701,15 @@ def _state_note(inc: Incident) -> str:
     return f"[board: {board}] [actions so far: {len(inc.actions)}] incident is {status}."
 
 
-async def _chat_patient(http, system, transcript, attempts: int = 4, delay: float = 20.0):
+async def _chat_patient(
+    http, system, transcript, attempts: int = 4, delay: float = 20.0, session: str = ""
+):
     # ride out 429 windows and transient failures instead of abandoning the incident: the
     # MTTR clock is simulated, so waiting in real time is free and identical for both fleets
     last = None
     for i in range(attempts):
         try:
-            return await _chat(http, system, transcript)
+            return await _chat(http, system, transcript, session)
         except Exception as e:
             last = e
             if i < attempts - 1:
@@ -720,6 +722,7 @@ async def respond(http, inc: Incident, store, counts: dict | None = None, on_ste
     # USD spent on LLM calls. The store is the only thing that differs between the two fleets.
     cost = 0.0
     recorded = False
+    session = f"{inc.fleet}:{inc.seq}"
     intro = _render_incident(inc)
     handoff = await store.handoff()
     if handoff:
@@ -727,7 +730,9 @@ async def respond(http, inc: Incident, store, counts: dict | None = None, on_ste
     transcript = [{"role": "user", "text": intro}]
     for _ in range(MAX_ROUNDS):
         try:
-            text, calls, tin, tout, ep = await _chat_patient(http, SYSTEM, transcript)
+            text, calls, tin, tout, ep = await _chat_patient(
+                http, SYSTEM, transcript, session=session
+            )
         except Exception as e:
             log.warning("watchtower responder %s llm failed: %s", inc.fleet, e)
             break
@@ -773,11 +778,12 @@ async def respond(http, inc: Incident, store, counts: dict | None = None, on_ste
     if inc.resolved and not recorded:
         # the resolving action ends the loop before the model's RECORD step would run — without
         # this round no fleet ever writes a runbook and the whole experiment runs unshared
-        cost += await _record_runbook(http, inc, store, transcript, counts)
+        cost += await _record_runbook(http, inc, store, transcript, counts, session)
+    await drop_session(session)
     return cost
 
 
-async def _record_runbook(http, inc: Incident, store, transcript, counts) -> float:
+async def _record_runbook(http, inc: Incident, store, transcript, counts, session="") -> float:
     transcript.append(
         {
             "role": "user",
@@ -788,7 +794,7 @@ async def _record_runbook(http, inc: Incident, store, transcript, counts) -> flo
     )
     cost = 0.0
     try:
-        text, calls, tin, tout, ep = await _chat(http, SYSTEM, transcript)
+        text, calls, tin, tout, ep = await _chat(http, SYSTEM, transcript, session)
         cost = ep.get("flat_cost", tin * ep["cin"] + tout * ep["cout"])
         for c in calls:
             if c["name"] == "remember":

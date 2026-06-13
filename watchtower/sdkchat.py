@@ -66,28 +66,75 @@ def extract_tool_call(text: str, tools: list | None) -> tuple[str, list[dict]]:
     return "", [{"id": f"sdk{next(_ids)}", "name": name, "input": args}]
 
 
-async def sdk_chat(
-    ep: dict, system: str, transcript: list[dict], tools: list | None
-) -> tuple[str, list[dict], int, int, dict]:
-    from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
+# One resident CLI session per INCIDENT: the SDK conversation IS the incident transcript,
+# so each round sends only what's new (tool results, state notes) instead of re-flattening
+# the whole history — spawn paid once, tokens linear instead of quadratic. A broken session
+# is dropped; the next round rebuilds from the full transcript.
+_sessions: dict[str, tuple[object, int]] = {}
 
-    opts = ClaudeAgentOptions(
-        model=ep["model"],
-        system_prompt=f"{system}\n{tools_catalog(tools)}",
-        max_turns=1,
-        allowed_tools=[],
-        tools=[],
-    )
-    result = None
-    async for msg in query(prompt=flatten(transcript), options=opts):
-        if isinstance(msg, ResultMessage):
-            result = msg
+
+async def drop_session(key: str) -> None:
+    client, _ = _sessions.pop(key, (None, 0))
+    if client is not None:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+
+
+def _read_result(result, tools):
     if result is None or getattr(result, "is_error", False):
         raise RuntimeError(f"claude-sdk: {getattr(result, 'result', 'no result')}")
     usage = result.usage or {}
     tin = int(usage.get("input_tokens", 0)) + int(usage.get("cache_read_input_tokens", 0))
     tout = int(usage.get("output_tokens", 0))
     text, calls = extract_tool_call(result.result or "", tools)
+    return text, calls, tin, tout, float(result.total_cost_usd or 0.0)
+
+
+async def sdk_chat(
+    ep: dict, system: str, transcript: list[dict], tools: list | None, session: str = ""
+) -> tuple[str, list[dict], int, int, dict]:
+    from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, ResultMessage, query
+
+    sysprompt = f"{system}\n{tools_catalog(tools)}"
+
+    if session:
+        client, sent = _sessions.get(session, (None, 0))
+        try:
+            if client is None:
+                # tools=[] forbids an agentic loop; no max_turns — it counts across the
+                # session and would starve every round after the first
+                opts = ClaudeAgentOptions(
+                    model=ep["model"], system_prompt=sysprompt, allowed_tools=[], tools=[]
+                )
+                client = ClaudeSDKClient(opts)
+                await client.connect()
+                sent = 0
+            await client.query(flatten(transcript[sent:]))
+            result = None
+            async for msg in client.receive_response():
+                if isinstance(msg, ResultMessage):
+                    result = msg
+            text, calls, tin, tout, cost = _read_result(result, tools)
+            _sessions[session] = (client, len(transcript))
+        except Exception:
+            await drop_session(session)
+            raise
+    else:
+        opts = ClaudeAgentOptions(
+            model=ep["model"],
+            system_prompt=sysprompt,
+            max_turns=1,
+            allowed_tools=[],
+            tools=[],
+        )
+        result = None
+        async for msg in query(prompt=flatten(transcript), options=opts):
+            if isinstance(msg, ResultMessage):
+                result = msg
+        text, calls, tin, tout, cost = _read_result(result, tools)
+
     out_ep = dict(ep)
-    out_ep["flat_cost"] = float(result.total_cost_usd or 0.0)
+    out_ep["flat_cost"] = cost
     return text, calls, tin, tout, out_ep

@@ -422,7 +422,7 @@ def test_llm_outage_is_ridden_out_not_booked_as_a_miss(monkeypatch):
     store = A.SoloStore("solo-test")
     calls = {"n": 0}
 
-    async def flaky(http, system, transcript):
+    async def flaky(http, system, transcript, session=""):
         calls["n"] += 1
         if calls["n"] < 3:
             raise RuntimeError("429 simulated")
@@ -469,3 +469,61 @@ def test_sdk_tool_pick_parses_and_rejects_unknown():
     assert "incident on api-3" in flat
     assert '[you called] inspect({"node": "api-3"})' in flat
     assert "[tool result] cpu pegged" in flat
+
+
+def test_sdk_incident_session_sends_only_the_delta(monkeypatch):
+    import asyncio
+    from unittest.mock import MagicMock
+
+    import claude_agent_sdk as sdk
+
+    from watchtower import sdkchat as S
+    from watchtower.agent import TOOLS
+
+    sent_prompts = []
+
+    class FakeClient:
+        def __init__(self, opts):
+            self.opts = opts
+
+        async def connect(self):
+            pass
+
+        async def disconnect(self):
+            pass
+
+        async def query(self, prompt):
+            sent_prompts.append(prompt)
+
+        async def receive_response(self):
+            msg = MagicMock(spec=sdk.ResultMessage)
+            msg.is_error = False
+            msg.result = '{"tool": "inspect", "args": {"node": "db"}}'
+            msg.usage = {"input_tokens": 5, "output_tokens": 3}
+            msg.total_cost_usd = 0.001
+            yield msg
+
+    monkeypatch.setattr(sdk, "ClaudeSDKClient", FakeClient)
+    ep = {"provider": "claude-sdk", "model": "haiku"}
+
+    async def run():
+        transcript = [{"role": "user", "text": "incident: api latency"}]
+        await S.sdk_chat(ep, "sys", transcript, TOOLS, session="artel:7")
+        transcript.append(
+            {
+                "role": "assistant",
+                "text": "",
+                "calls": [{"name": "inspect", "input": {"node": "db"}}],
+            }
+        )
+        transcript.append({"role": "tool", "results": [{"id": "x", "output": "db slow"}]})
+        transcript.append({"role": "user", "text": "state: open"})
+        await S.sdk_chat(ep, "sys", transcript, TOOLS, session="artel:7")
+        await S.drop_session("artel:7")
+
+    asyncio.run(run())
+    assert sent_prompts[0] == "incident: api latency"
+    assert "incident: api latency" not in sent_prompts[1]  # history not re-sent
+    assert "[tool result] db slow" in sent_prompts[1]
+    assert "state: open" in sent_prompts[1]
+    assert "artel:7" not in S._sessions
