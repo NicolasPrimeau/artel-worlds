@@ -518,7 +518,7 @@ function apply(snp){
       const msg=document.createElement('span'); msg.className='msg'; msg.textContent=e.text||'';
       li.appendChild(chip); li.appendChild(msg); clog.appendChild(li);
     }
-    for(const e of comms){ if(!e.cell) continue;
+    for(const e of comms){ if(e.kind!=='rally' || !e.cell) continue;  // only rally draws a map ping
       const key=e.t+'|'+(e.who||'')+'|'+e.kind+'|'+e.text;
       if(seenComms.has(key)) continue; seenComms.add(key);
       const c=pix(e.cell[0],e.cell[1]); const src=snp.tank_list.find(t=>t.id===e.tank);
