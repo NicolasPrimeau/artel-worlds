@@ -99,7 +99,9 @@ class Infra:
         if s is None:
             return {"error": f"no node named {name}"}
         node = self.cfg.node_by_name[name]
-        hot = {k: round(v, 1) for k, v in s.metrics.items() if v != BASELINE[k]}
+        # fault-only dials (rps_x_baseline, conn_table_pct, stale_keys_pct) have no resting
+        # value — their mere presence is the anomaly, so a missing baseline reads as "hot"
+        hot = {k: round(v, 1) for k, v in s.metrics.items() if v != BASELINE.get(k)}
         return {
             "node": s.name,
             "kind": s.kind,

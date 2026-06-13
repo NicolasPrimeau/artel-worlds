@@ -566,3 +566,17 @@ def test_repeated_no_effect_remediations_trigger_rediagnosis_nudge(monkeypatch):
     asyncio.run(A.respond(None, inc, store))
     assert seen["nudged"], "two no-effect remediations did not trigger the re-diagnosis nudge"
     assert step["n"] == 2, "nudge should fire right after the SECOND dud, not later"
+
+
+def test_inspect_never_crashes_on_fault_only_metrics():
+    # every fault family must be inspectable: fault-only dials (rps_x_baseline, conn_table_pct,
+    # stale_keys_pct) are absent from BASELINE and once KeyError'd inspect(), stalling the loop
+    for fault in FAMILIES:
+        for epoch in (0, 1, 2):
+            for seed in range(8):  # cover the random root branches within each family
+                infra = Infra(DEFAULT)
+                spec = fault.spawn(random.Random(f"{seed}"), epoch)
+                spec.apply(infra)
+                for node in infra.nodes:
+                    out = infra.inspect(node)  # must not raise
+                    assert "metrics" in out or "error" in out
