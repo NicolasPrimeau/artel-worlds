@@ -640,7 +640,7 @@ def test_chat_routes_claude_sdk_and_fails_over(monkeypatch):
     monkeypatch.setattr(A, "_ENDPOINTS", [sdk_ep, gem_ep])
     monkeypatch.setattr(A, "_down_until", {})
 
-    async def fake_sdk(ep, system, transcript, tools):
+    async def fake_sdk(ep, system, transcript, tools, session=""):
         return "", [{"name": "command", "input": {"focus": 7}}], 10, 5, dict(ep, flat_cost=0.004)
 
     monkeypatch.setattr(A, "sdk_chat", fake_sdk)
@@ -650,7 +650,7 @@ def test_chat_routes_claude_sdk_and_fails_over(monkeypatch):
     assert calls[0]["input"]["focus"] == 7
     assert ep["flat_cost"] == 0.004  # SDK-reported credit cost wins over token math
 
-    async def broken_sdk(ep, system, transcript, tools):
+    async def broken_sdk(ep, system, transcript, tools, session=""):
         raise RuntimeError("credit exhausted")
 
     posted = {}
@@ -692,3 +692,80 @@ def test_spend_cap_is_monthly(monkeypatch):
         __import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m")
     )
     assert not sq.enabled
+
+
+def test_sdk_sessions_reuse_drop_and_reset(monkeypatch):
+    import asyncio
+
+    from phalanx import sdkchat as S
+
+    class FakeResult:
+        is_error = False
+        result = '{"focus": 2}'
+        usage = {"input_tokens": 10, "output_tokens": 5}
+        total_cost_usd = 0.001
+
+    class FakeClient:
+        instances = []
+
+        def __init__(self, opts):
+            self.opts = opts
+            self.queries = 0
+            self.connected = False
+            self.broken = False
+            FakeClient.instances.append(self)
+
+        async def connect(self):
+            self.connected = True
+
+        async def disconnect(self):
+            self.connected = False
+
+        async def query(self, prompt):
+            if self.broken:
+                raise RuntimeError("session died")
+            self.queries += 1
+
+        async def receive_response(self):
+            from claude_agent_sdk import ResultMessage
+            from unittest.mock import MagicMock
+
+            msg = MagicMock(spec=ResultMessage)
+            msg.is_error = False
+            msg.result = '{"focus": 2}'
+            msg.usage = {"input_tokens": 10, "output_tokens": 5}
+            msg.total_cost_usd = 0.001
+            yield msg
+
+    import claude_agent_sdk as sdk
+
+    monkeypatch.setattr(sdk, "ClaudeSDKClient", FakeClient)
+    asyncio.run(S.reset_sessions())
+    FakeClient.instances.clear()
+
+    ep = {"provider": "claude-sdk", "model": "haiku"}
+    from phalanx.agent import TOOLS
+
+    async def run():
+        # two commands on the same session: ONE client, spawn paid once
+        await S.sdk_chat(ep, "sys", [{"text": "brief 1"}], TOOLS, session="blue-1")
+        await S.sdk_chat(ep, "sys", [{"text": "brief 2"}], TOOLS, session="blue-1")
+        assert len(FakeClient.instances) == 1
+        assert FakeClient.instances[0].queries == 2
+
+        # a broken session is dropped, never reused
+        FakeClient.instances[0].broken = True
+        try:
+            await S.sdk_chat(ep, "sys", [{"text": "brief 3"}], TOOLS, session="blue-1")
+        except RuntimeError:
+            pass
+        assert "blue-1" not in S._sessions
+
+        # match reset tears everything down
+        await S.sdk_chat(ep, "sys", [{"text": "brief 4"}], TOOLS, session="blue-2")
+        assert S._sessions
+        await S.reset_sessions()
+        assert not S._sessions
+        assert all(not c.connected for c in FakeClient.instances)
+
+    asyncio.run(run())

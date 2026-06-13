@@ -43,30 +43,85 @@ def extract_call(text: str, tools: list | None) -> tuple[str, list[dict]]:
     return "", [{"name": tools[0]["name"], "input": args}]
 
 
-async def sdk_chat(
-    ep: dict, system: str, transcript: list[dict], tools: list | None
-) -> tuple[str, list[dict], int, int, dict]:
-    from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
+# One resident CLI session per commander per match: process spawn (~7s) is paid once at
+# the first command, then each call is just the model round-trip. The session's growing
+# conversation IS the commander's match memory — and it's torn down at match end.
+_sessions: dict[str, object] = {}
 
-    prompt = "\n".join(m.get("text", "") for m in transcript)
-    opts = ClaudeAgentOptions(
-        model=ep["model"],
-        system_prompt=f"{system}\n{tool_instruction(tools)}",
-        max_turns=1,
-        allowed_tools=[],
-        tools=[],
-    )
-    result = None
-    async for msg in query(prompt=prompt, options=opts):
-        if isinstance(msg, ResultMessage):
-            result = msg
+
+async def reset_sessions() -> None:
+    global _sessions
+    doomed, _sessions = _sessions, {}
+    for client in doomed.values():
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+
+
+async def _drop_session(key: str) -> None:
+    client = _sessions.pop(key, None)
+    if client is not None:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+
+
+def _read_result(result, tools):
     if result is None or getattr(result, "is_error", False):
         raise RuntimeError(f"claude-sdk: {getattr(result, 'result', 'no result')}")
     usage = result.usage or {}
     tin = int(usage.get("input_tokens", 0)) + int(usage.get("cache_read_input_tokens", 0))
     tout = int(usage.get("output_tokens", 0))
     text, calls = extract_call(result.result or "", tools)
+    return text, calls, tin, tout, float(result.total_cost_usd or 0.0)
+
+
+async def sdk_chat(
+    ep: dict, system: str, transcript: list[dict], tools: list | None, session: str = ""
+) -> tuple[str, list[dict], int, int, dict]:
+    from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, ResultMessage, query
+
+    prompt = "\n".join(m.get("text", "") for m in transcript)
+    sysprompt = f"{system}\n{tool_instruction(tools)}"
+
+    if session:
+        client = _sessions.get(session)
+        try:
+            if client is None:
+                # tools=[] already forbids an agentic loop, so no max_turns here — it would
+                # count across the session and starve the second command
+                opts = ClaudeAgentOptions(
+                    model=ep["model"], system_prompt=sysprompt, allowed_tools=[], tools=[]
+                )
+                client = ClaudeSDKClient(opts)
+                await client.connect()
+                _sessions[session] = client
+            await client.query(prompt)
+            result = None
+            async for msg in client.receive_response():
+                if isinstance(msg, ResultMessage):
+                    result = msg
+            text, calls, tin, tout, cost = _read_result(result, tools)
+        except Exception:
+            await _drop_session(session)  # a broken session never gets reused
+            raise
+    else:
+        opts = ClaudeAgentOptions(
+            model=ep["model"],
+            system_prompt=sysprompt,
+            max_turns=1,
+            allowed_tools=[],
+            tools=[],
+        )
+        result = None
+        async for msg in query(prompt=prompt, options=opts):
+            if isinstance(msg, ResultMessage):
+                result = msg
+        text, calls, tin, tout, cost = _read_result(result, tools)
+
     out_ep = dict(ep)
     # the CLI reports the authoritative per-call cost (credit-side dollars at API rates)
-    out_ep["flat_cost"] = float(result.total_cost_usd or 0.0)
+    out_ep["flat_cost"] = cost
     return text, calls, tin, tout, out_ep

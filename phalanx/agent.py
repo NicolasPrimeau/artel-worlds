@@ -10,7 +10,7 @@ import httpx
 
 from .config import DEFAULT
 from .control import LOW_ENERGY, STRATEGIES, Bot
-from .sdkchat import sdk_chat
+from .sdkchat import reset_sessions, sdk_chat
 
 log = logging.getLogger("phalanx")
 
@@ -410,6 +410,7 @@ async def _chat(
     transcript: list[dict],
     force_act: bool = False,
     tools: list | None = None,
+    session: str = "",
 ) -> tuple[str, list[dict], int, int, dict]:
     # ask the first live provider; on a rate-limit/error fail the SAME turn over to the next
     # IMMEDIATELY — no retry-backoff against a dead quota. Raises only when all are exhausted.
@@ -418,7 +419,7 @@ async def _chat(
     for ep in _live_endpoints():
         if ep["provider"] == "claude-sdk":
             try:
-                return await sdk_chat(ep, system, transcript, tools)
+                return await sdk_chat(ep, system, transcript, tools, session)
             except Exception as e:
                 # a paused credit or SDK failure rolls straight to the next provider; back
                 # off long so every call doesn't pay the spawn cost against a dead credit
@@ -905,7 +906,7 @@ async def command(
     toolset = TOOLS_SOLO if solo else TOOLS
 
     text, calls, tin, tout, ep = await _chat(
-        http, system, [{"role": "user", "text": user}], True, toolset
+        http, system, [{"role": "user", "text": user}], True, toolset, session=agent["id"]
     )
     cost = ep.get("flat_cost", tin * ep["cin"] + tout * ep["cout"])
     plan = ""
@@ -1229,6 +1230,7 @@ class Squad:
             self._claims = []
             self._walls = {}
             self.tool_counts = {}
+            await reset_sessions()
             if self._http is None:
                 self._http = httpx.AsyncClient(timeout=httpx.Timeout(LLM_TIMEOUT))
             return
@@ -1249,6 +1251,7 @@ class Squad:
         self._claims = []
         self._walls = {}
         self.tool_counts = {}
+        await reset_sessions()
         for tid, agent in self._assign.items():
             if agent["id"] not in self._joined:
                 await self._ensure_member(agent)
