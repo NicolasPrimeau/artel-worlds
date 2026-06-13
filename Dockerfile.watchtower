@@ -12,7 +12,16 @@ COPY watchtower/ watchtower/
 ENV PATH="/app/.venv/bin:$PATH"
 ENV WATCHTOWER_DB=/data/watchtower.db
 
-RUN useradd --no-create-home --uid 1000 app && mkdir -p /data && chown -R app /app /data
+# Claude Code CLI (native binary) for the claude-sdk provider; no token in the image,
+# inert unless WATCHTOWER_LLM_PROVIDER=claude-sdk
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && curl -fsSL https://claude.ai/install.sh | bash \
+    && install -m 0755 /root/.local/bin/claude /usr/local/bin/claude \
+    && apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+
+ENV DISABLE_AUTOUPDATER=1
+
+RUN useradd --create-home --uid 1000 app && mkdir -p /data && chown -R app /app /data
 USER app
 
 EXPOSE 8000

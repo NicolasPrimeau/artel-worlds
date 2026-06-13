@@ -8,6 +8,7 @@ import os
 import httpx
 
 from .incidents import Incident
+from .sdkchat import sdk_chat
 
 log = logging.getLogger("watchtower")
 
@@ -20,8 +21,16 @@ log = logging.getLogger("watchtower")
 ARTEL_URL = os.environ.get("ARTEL_URL", "https://artel.run").rstrip("/")
 WATCHTOWER_PROJECT = os.environ.get("WATCHTOWER_PROJECT", "watchtower")
 PROVIDER = os.environ.get("WATCHTOWER_LLM_PROVIDER", "openai")
-MODEL = os.environ.get("WATCHTOWER_MODEL", "gemini-3.1-flash-lite")
-LLM_KEY = os.environ.get("WATCHTOWER_LLM_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+MODEL = os.environ.get(
+    "WATCHTOWER_MODEL", "haiku" if PROVIDER == "claude-sdk" else "gemini-3.1-flash-lite"
+)
+# claude-sdk runs on the subscription OAuth token (monthly Agent SDK credit) — the CLI
+# reads the token from the environment; the key only needs to be truthy to arm the endpoint
+LLM_KEY = (
+    os.environ.get("WATCHTOWER_LLM_KEY", "")
+    or os.environ.get("ANTHROPIC_API_KEY", "")
+    or (os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "") if PROVIDER == "claude-sdk" else "")
+)
 _DEFAULT_URL = (
     "https://api.anthropic.com/v1/messages"
     if PROVIDER == "anthropic"
@@ -342,7 +351,17 @@ def _live_endpoints():
 
 async def _chat(http, system, transcript):
     last = None
+    sdk_err = None
     for ep in _live_endpoints():
+        if ep["provider"] == "claude-sdk":
+            try:
+                return await sdk_chat(ep, system, transcript, TOOLS)
+            except Exception as e:
+                # paused credit or SDK failure: bench it long, roll to the next provider
+                _mark_throttled(ep, "per day")
+                log.warning("claude-sdk failed: %s", str(e)[:200])
+                sdk_err = e
+                continue
         url, payload, headers = _build_payload(ep, system, transcript)
         r = await http.post(url, headers=headers, json=payload)
         if r.status_code < 300:
@@ -353,6 +372,8 @@ async def _chat(http, system, transcript):
         log.warning("LLM %s HTTP %s: %s", ep["model"], r.status_code, r.text[:200])
         last = (ep, r)
     if last is None:
+        if sdk_err is not None:
+            raise RuntimeError(f"claude-sdk: {sdk_err}")
         raise RuntimeError("no llm endpoint configured")
     raise RuntimeError(f"llm http {last[1].status_code}")
 
@@ -710,7 +731,7 @@ async def respond(http, inc: Incident, store, counts: dict | None = None, on_ste
         except Exception as e:
             log.warning("watchtower responder %s llm failed: %s", inc.fleet, e)
             break
-        cost += tin * ep["cin"] + tout * ep["cout"]
+        cost += ep.get("flat_cost", tin * ep["cin"] + tout * ep["cout"])
         if not calls:
             break
         transcript.append({"role": "assistant", "text": text, "calls": calls})
@@ -768,7 +789,7 @@ async def _record_runbook(http, inc: Incident, store, transcript, counts) -> flo
     cost = 0.0
     try:
         text, calls, tin, tout, ep = await _chat(http, SYSTEM, transcript)
-        cost = tin * ep["cin"] + tout * ep["cout"]
+        cost = ep.get("flat_cost", tin * ep["cin"] + tout * ep["cout"])
         for c in calls:
             if c["name"] == "remember":
                 t = str((c.get("input") or {}).get("text", ""))

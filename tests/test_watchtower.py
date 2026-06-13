@@ -435,3 +435,37 @@ def test_llm_outage_is_ridden_out_not_booked_as_a_miss(monkeypatch):
     monkeypatch.setattr(A.asyncio, "sleep", nosleep)
     asyncio.run(A.respond(None, inc, store))
     assert calls["n"] == 3  # two failures absorbed, the third answered
+
+
+def test_sdk_tool_pick_parses_and_rejects_unknown():
+    from watchtower.agent import TOOLS
+    from watchtower.sdkchat import extract_tool_call, flatten, tools_catalog
+
+    text, calls = extract_tool_call('{"tool": "inspect", "args": {"node": "db-primary"}}', TOOLS)
+    assert text == "" and calls[0]["name"] == "inspect"
+    assert calls[0]["input"] == {"node": "db-primary"}
+    assert calls[0]["id"].startswith("sdk")
+
+    text, calls = extract_tool_call('{"tool": "rm_rf", "args": {}}', TOOLS)
+    assert calls == []  # unknown tool name -> treated as plain text
+
+    text, calls = extract_tool_call("All clear, resolved.", TOOLS)
+    assert calls == [] and text == "All clear, resolved."
+
+    cat = tools_catalog(TOOLS)
+    assert "- recall(" in cat and "- remediate(" in cat and "ONE tool" in cat
+
+    flat = flatten(
+        [
+            {"role": "user", "text": "incident on api-3"},
+            {
+                "role": "assistant",
+                "text": "checking",
+                "calls": [{"name": "inspect", "input": {"node": "api-3"}}],
+            },
+            {"role": "tool", "results": [{"id": "x", "output": "cpu pegged"}]},
+        ]
+    )
+    assert "incident on api-3" in flat
+    assert '[you called] inspect({"node": "api-3"})' in flat
+    assert "[tool result] cpu pegged" in flat
