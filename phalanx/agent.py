@@ -552,6 +552,14 @@ def _command_brief(p: dict, bot) -> str:
     if known:
         lines.append(f"- On its board (stale sightings): {'; '.join(known)}")
     lines.append(f"- Teammates in sight: {'; '.join(allies) if allies else 'none'}")
+    walls = p.get("walls") or []
+    if walls:
+        near = sorted(walls, key=lambda w: abs(w["dq"]) + abs(w["dr"]))[:6]
+        cover = "; ".join(f"({q + w['dq']},{r + w['dr']})" for w in near)
+        lines.append(
+            f"- Cover (obstacles) you can see: {cover} — a rally point ADJACENT to cover, "
+            f"astride the enemy's approach, beats the open center; pick real ground, not ({cq},{cr})."
+        )
     if p.get("last_fire"):
         lines.append(f"- Its last shot: {p['last_fire']}")
     if p.get("hit_taken"):

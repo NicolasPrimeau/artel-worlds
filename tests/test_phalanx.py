@@ -798,3 +798,37 @@ def test_comms_from_emits_radio_events_with_intel_cells():
 
     # empty command this call -> nothing on the feed, even if the bot holds prior orders
     assert _comms_from({}, B2(), {"tick": 1}) == []
+
+
+def test_command_brief_surfaces_cover_so_rally_isnt_just_center():
+    from phalanx.agent import _command_brief
+
+    class B:
+        id = 1
+        strategy = "brawler"
+        board = {}
+        orders = {}
+
+    p = {
+        "id": 1,
+        "q": 5,
+        "r": 5,
+        "tick": 4,
+        "energy": 80,
+        "gun_ready": True,
+        "width": 15,
+        "height": 15,
+        "zone_radius": 6,
+        "dist_center": 2,
+        "safe": True,
+        "visible": [],
+        "walls": [{"dq": 1, "dr": 0}, {"dq": -2, "dr": 1}, {"dq": 4, "dr": 4}],
+    }
+    brief = _command_brief(p, B())
+    assert "Cover (obstacles) you can see:" in brief
+    assert "(6,5)" in brief and "(3,6)" in brief  # absolute cover cells
+    assert "not (7,7)" in brief  # explicitly steers off the bare center
+
+    # no walls in sight -> no cover line (don't fabricate ground)
+    p2 = dict(p, walls=[])
+    assert "Cover (obstacles)" not in _command_brief(p2, B())
