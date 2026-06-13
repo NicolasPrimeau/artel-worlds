@@ -124,8 +124,9 @@ SYSTEM = (
     "('SPOTTED #5 (7,4) energy 40', 'FOCUS #5', 'RALLY (8,6)'); teammates' reports are real "
     "positions you cannot see. objective: your ONE medium-term commitment on the team "
     "board; change it only when reality breaks it. lesson: save one concrete lesson when a "
-    "call clearly won or lost a fight; [WIN]/[LOSS] lessons from past matches arrive in "
-    "your context — trust wins.\n"
+    "call clearly won or lost a fight — but only if it is NOT already covered by a lesson in "
+    "your context; the team's memory needs new rules, not echoes. [WIN]/[LOSS] lessons from "
+    "past matches arrive in your context — trust wins.\n"
     "No orders needed? Send none — your tank fights fine alone; orders are for making three "
     "tanks fight as ONE."
 )
@@ -181,7 +182,10 @@ TOOLS = [
                 },
                 "lesson": {
                     "type": "string",
-                    "description": "optional: one lesson that will still be true next match",
+                    "description": (
+                        "optional: one lesson that will still be true next match — ONLY if it "
+                        "contradicts or adds to the lessons you were shown; never restate one"
+                    ),
                 },
                 "plan": {
                     "type": "string",
@@ -676,9 +680,13 @@ async def _oneshot(http: httpx.AsyncClient, sys: str, user: str, max_tokens: int
     return ""
 
 
-async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str, events: str) -> str:
+async def _reflect(
+    http: httpx.AsyncClient, agent: dict, outcome: str, events: str, known: str = ""
+) -> str:
     # The lesson must rest on the match's REAL kill log — given no facts, a model invents
     # plausible-sounding fiction, which poisons the team's memory instead of teaching it.
+    # And it must say something the team does not already know: shown the existing corpus
+    # and given a NONE escape, or every match re-derives the same cohesion rule forever.
     sys = (
         "You are an AI that just played a match of Phalanx, a simple turn-based tank game (hex "
         "grid, 3v3 tanks, cover cells, energy, ranged auto-hit shots, a zone shrinking to "
@@ -687,13 +695,21 @@ async def _reflect(http: httpx.AsyncClient, agent: dict, outcome: str, events: s
         "happens, do Y' — that this match's events actually justify, stated only in terms of "
         "the game's real pieces. If the log lists the team's objectives, judge them: name the "
         "kind of objective that won or lost this match (held an area, advanced in formation, "
-        "split across lanes). The log records how far the nearest ally stood at each death — "
-        "dying far from every ally is a cohesion failure worth a rule. Tank ids, coordinates, "
-        "and kill order change every match: do "
+        "split across lanes). The log records how far the nearest ally stood at each death. "
+        "Tank ids, coordinates, and kill order change every match: do "
         "not retell them, generalize from them. Use ONLY the log; never invent. Do NOT write "
-        "platitudes like 'focus fire more'. ONE short sentence, no preamble."
+        "platitudes like 'focus fire more'. The team ALREADY KNOWS the rules listed below — "
+        "if the log only re-confirms one of them, or teaches nothing new, answer exactly "
+        "NONE. A rule about a situation the known rules do not cover (energy, the zone, "
+        "cover, reloads, objectives) beats a sharper restatement of cohesion. "
+        "ONE short sentence or NONE, no preamble."
     )
-    return await _oneshot(http, sys, f"Match log: {events or 'no kills were recorded'}\nRule:")
+    user = (
+        f"Known rules: {known or 'none yet'}\n"
+        f"Match log: {events or 'no kills were recorded'}\nRule:"
+    )
+    rule = await _oneshot(http, sys, user)
+    return "" if rule.strip().upper().startswith("NONE") else rule
 
 
 def _recall_query(p: dict, bot, distress: dict | None) -> str:
@@ -1287,7 +1303,8 @@ class Squad:
         if objs:
             events = f"{events}. Team objectives this match: {objs}" if events else objs
         try:
-            lesson = await _reflect(self._http, agent, outcome, events)
+            known = await _recent_lessons(self._http, agent, n=10)
+            lesson = await _reflect(self._http, agent, outcome, events, known)
         except Exception:
             lesson = ""
         if lesson:

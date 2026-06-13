@@ -539,6 +539,30 @@ def test_recalled_lessons_join_search_hits():
     assert out == "[WIN] hold the corner | [LOSS] strung out"
 
 
+def test_reflect_writes_nothing_when_the_lesson_is_already_known(monkeypatch):
+    import asyncio
+
+    from phalanx import agent as A
+
+    seen = {}
+
+    async def fake_oneshot(http, sys, user, *a, **k):
+        seen["user"] = user
+        return "NONE"
+
+    monkeypatch.setattr(A, "_oneshot", fake_oneshot)
+    out = asyncio.run(A._reflect(None, {}, "Your team WON.", "kill log", "[WIN] stick together"))
+    assert out == ""
+    assert "[WIN] stick together" in seen["user"]  # the corpus was shown to the model
+
+    async def fake_novel(http, sys, user, *a, **k):
+        return "When reloading, break line of sight."
+
+    monkeypatch.setattr(A, "_oneshot", fake_novel)
+    out = asyncio.run(A._reflect(None, {}, "Your team WON.", "kill log"))
+    assert out == "When reloading, break line of sight."
+
+
 def test_spend_cap_is_monthly(monkeypatch):
     from phalanx import agent as A
     from phalanx.agent import SPEND_CAP_USD, Squad
