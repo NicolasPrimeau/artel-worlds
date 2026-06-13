@@ -120,13 +120,17 @@ SYSTEM = (
     "- focus: concentrate the unit's fire on ONE enemy id (pass focus_at [q,r] from a "
     "teammate's report and your tank will hunt a target it has never seen — that is the "
     "whole point of the radio).\n"
-    "- regroup [q,r]: rally there now. Use it to mass the unit, rescue a teammate under "
-    "fire, or collapse on a kill.\n"
+    "- regroup [q,r]: pull the unit onto ONE piece of ground to FIGHT FROM — cover, a "
+    "chokepoint, a flank that takes the enemy from the side, the lane it must cross. Pick "
+    "the tactical POSITION; do NOT default to the map center — the zone forces center on "
+    "its own, late. Use it to mass for a fight, rescue a teammate, or seize strong ground.\n"
     "- post [q,r]: where to hold when it has no contact (ambush corners, cover the zone).\n"
     "- clear_orders: release your tank back to its own instincts.\n"
     "DOCTRINE, in order: a teammate UNDER FIRE outranks everything — focus their attacker "
-    "and converge; mass fire on ONE enemy (a 3v1 wins, three 1v1s lose); fight INSIDE the "
-    "shrinking zone, near cover, never strung out alone. A tank that holds still — not "
+    "and converge; mass fire on ONE enemy (a 3v1 wins, three 1v1s lose); hold TACTICAL "
+    "ground — cover and firing angles, a chokepoint, the lane the enemy must cross — never "
+    "the bare center until the zone actually squeezes you, never strung out alone. A tank "
+    "that holds still — not "
     "firing, untouched, in the zone — REPAIRS +2 energy per turn: post a hurt tank behind "
     "cover to recover while the others screen it, and keep pressure on hurt enemies so "
     "they never can.\n"
@@ -170,7 +174,9 @@ TOOLS = [
                 "regroup": {
                     "type": "array",
                     "items": {"type": "integer"},
-                    "description": "[q,r] rally point: the tank moves there now, then resumes",
+                    "description": "[q,r] rally point — a TACTICAL position to fight from "
+                    "(cover, chokepoint, flank, the lane the enemy must cross); the unit "
+                    "moves there now. Not the map center unless the closing zone demands it.",
                 },
                 "post": {
                     "type": "array",
@@ -822,15 +828,17 @@ async def _huddle(http: httpx.AsyncClient, mates: str, memory: str) -> str:
     # Pre-match huddle: the lead turns team memory into ONE concrete opening plan and
     # broadcasts it, so all three tanks enter tick 1 already fighting the same fight.
     sys = (
-        "You lead team Artel into a 3v3 hex-arena tank match. The arena center is where the "
-        "shrinking zone forces everyone; enemies start in the opposite corner. Below are your "
-        "team's lessons from recent matches, newest first — each tagged [WIN] or [LOSS] with "
-        "the outcome of the match that taught it. BUILD the plan on what won and refuse to "
-        "repeat what lost. In at most two short sentences give ONE concrete opening plan that "
-        "BEGINS with a rally point — 'RALLY (q,r)' where the three form up — then the single "
-        "path the unit pushes together and the rule for the first focus-fire target. ONE body, "
-        "ONE path: do not assign separate sides or lanes. Actionable this match — no "
-        "platitudes, no preamble."
+        "You lead team Artel into a 3v3 hex-arena tank match. Enemies start in the opposite "
+        "corner; the zone does NOT squeeze to center until late, so OPEN by seizing strong "
+        "ground — cover and firing angles on the lane the enemy must cross — not the bare "
+        "center. Below are your team's lessons from recent matches, newest first — each "
+        "tagged [WIN] or [LOSS] with the outcome of the match that taught it. BUILD the plan "
+        "on what won and refuse to repeat what lost. In at most two short sentences give ONE "
+        "concrete opening plan that BEGINS with a rally point — 'RALLY (q,r)' on tactical "
+        "ground (cover or a chokepoint) where the three form up — then the single path the "
+        "unit pushes together and the rule for the first focus-fire target. ONE body, ONE "
+        "path: do not assign separate sides or lanes. Actionable this match — no platitudes, "
+        "no preamble."
     )
     return await _oneshot(
         http, sys, f"Teammates: {mates}. Recent lessons: {memory or 'none yet'}\nPlan:", 90
