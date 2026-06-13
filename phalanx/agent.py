@@ -10,6 +10,7 @@ import httpx
 
 from .config import DEFAULT
 from .control import LOW_ENERGY, STRATEGIES, Bot
+from .sdkchat import sdk_chat
 
 log = logging.getLogger("phalanx")
 
@@ -32,8 +33,17 @@ PHALANX_PROJECT = os.environ.get("PHALANX_PROJECT", "phalanx")
 # (+ ANTHROPIC_API_KEY) for Claude, or point PHALANX_LLM_URL / PHALANX_MODEL / PHALANX_LLM_KEY
 # at any other OpenAI-compatible provider.
 PROVIDER = os.environ.get("PHALANX_LLM_PROVIDER", "openai")
-MODEL = os.environ.get("PHALANX_MODEL", "gemini-3.1-flash-lite")
-LLM_KEY = os.environ.get("PHALANX_LLM_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+MODEL = os.environ.get(
+    "PHALANX_MODEL", "haiku" if PROVIDER == "claude-sdk" else "gemini-3.1-flash-lite"
+)
+# claude-sdk runs on the subscription OAuth token (monthly Agent SDK credit, pauses when
+# spent) — the token itself is read by the CLI from the environment; here it only needs
+# to be truthy so the endpoint counts as armed.
+LLM_KEY = (
+    os.environ.get("PHALANX_LLM_KEY", "")
+    or os.environ.get("ANTHROPIC_API_KEY", "")
+    or (os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "") if PROVIDER == "claude-sdk" else "")
+)
 _DEFAULT_URL = (
     "https://api.anthropic.com/v1/messages"
     if PROVIDER == "anthropic"
@@ -404,7 +414,18 @@ async def _chat(
     # ask the first live provider; on a rate-limit/error fail the SAME turn over to the next
     # IMMEDIATELY — no retry-backoff against a dead quota. Raises only when all are exhausted.
     last: tuple[dict, httpx.Response] | None = None
+    sdk_err: Exception | None = None
     for ep in _live_endpoints():
+        if ep["provider"] == "claude-sdk":
+            try:
+                return await sdk_chat(ep, system, transcript, tools)
+            except Exception as e:
+                # a paused credit or SDK failure rolls straight to the next provider; back
+                # off long so every call doesn't pay the spawn cost against a dead credit
+                _mark_throttled(ep, "per day")
+                log.warning("claude-sdk failed: %s", str(e)[:200])
+                sdk_err = e
+                continue
         url, payload, headers = _build_payload(ep, system, transcript, force_act, tools)
         r = await http.post(url, headers=headers, json=payload)
         if r.status_code < 300:
@@ -415,6 +436,8 @@ async def _chat(
         log.warning("LLM %s HTTP %s: %s", ep["model"], r.status_code, r.text[:200])
         last = (ep, r)
     if last is None:
+        if sdk_err is not None:
+            raise RuntimeError(f"claude-sdk: {sdk_err}")
         raise RuntimeError("no llm endpoint configured")
     raise RuntimeError(f"llm http {last[1].status_code}")
 
@@ -639,6 +662,14 @@ async def _board(http: httpx.AsyncClient, agent: dict) -> str:
 
 async def _oneshot(http: httpx.AsyncClient, sys: str, user: str, max_tokens: int = 60) -> str:
     for ep in _live_endpoints():
+        if ep["provider"] == "claude-sdk":
+            try:
+                text, _, _, _, _ = await sdk_chat(ep, sys, [{"role": "user", "text": user}], None)
+                return text.strip()
+            except Exception as e:
+                _mark_throttled(ep, "per day")
+                log.warning("claude-sdk oneshot failed: %s", str(e)[:200])
+                continue
         if ep["provider"] == "anthropic":
             payload = {
                 "model": ep["model"],
@@ -876,7 +907,7 @@ async def command(
     text, calls, tin, tout, ep = await _chat(
         http, system, [{"role": "user", "text": user}], True, toolset
     )
-    cost = tin * ep["cin"] + tout * ep["cout"]
+    cost = ep.get("flat_cost", tin * ep["cin"] + tout * ep["cout"])
     plan = ""
     cmd = next((c for c in calls if c["name"] == "command"), None)
     if cmd:

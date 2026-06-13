@@ -611,6 +611,72 @@ def test_reflect_writes_nothing_when_the_lesson_is_already_known(monkeypatch):
     assert out == "When reloading, break line of sight."
 
 
+def test_sdk_extract_call_parses_json_orders():
+    from phalanx.agent import TOOLS
+    from phalanx.sdkchat import extract_call, tool_instruction
+
+    text, calls = extract_call('Sure! ```json\n{"focus": 4, "say": "FOCUS #4"}\n```', TOOLS)
+    assert text == ""
+    assert calls == [{"name": "command", "input": {"focus": 4, "say": "FOCUS #4"}}]
+
+    text, calls = extract_call("no json here", TOOLS)
+    assert calls == [] and text == "no json here"
+
+    text, calls = extract_call("[1, 2]", TOOLS)  # JSON but not an object
+    assert calls == []
+
+    inst = tool_instruction(TOOLS)
+    assert "'command'" in inst and '"focus"' in inst and "code fences" in inst
+    assert tool_instruction(None) == "Reply with plain text only."
+
+
+def test_chat_routes_claude_sdk_and_fails_over(monkeypatch):
+    import asyncio
+
+    from phalanx import agent as A
+
+    sdk_ep = {"provider": "claude-sdk", "model": "haiku", "key": "tok", "cin": 0, "cout": 0}
+    gem_ep = dict(A.PRIMARY, key="gk")
+    monkeypatch.setattr(A, "_ENDPOINTS", [sdk_ep, gem_ep])
+    monkeypatch.setattr(A, "_down_until", {})
+
+    async def fake_sdk(ep, system, transcript, tools):
+        return "", [{"name": "command", "input": {"focus": 7}}], 10, 5, dict(ep, flat_cost=0.004)
+
+    monkeypatch.setattr(A, "sdk_chat", fake_sdk)
+    text, calls, tin, tout, ep = asyncio.run(
+        A._chat(None, "sys", [{"role": "user", "text": "brief"}], True, A.TOOLS)
+    )
+    assert calls[0]["input"]["focus"] == 7
+    assert ep["flat_cost"] == 0.004  # SDK-reported credit cost wins over token math
+
+    async def broken_sdk(ep, system, transcript, tools):
+        raise RuntimeError("credit exhausted")
+
+    posted = {}
+
+    async def fake_post(url, headers=None, json=None):
+        posted["url"] = url
+
+        class R:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {"choices": [{"message": {"content": "ok"}}], "usage": {}}
+
+        return R()
+
+    class H:
+        post = staticmethod(fake_post)
+
+    monkeypatch.setattr(A, "sdk_chat", broken_sdk)
+    monkeypatch.setattr(A, "_down_until", {})
+    asyncio.run(A._chat(H(), "sys", [{"role": "user", "text": "brief"}], True, A.TOOLS))
+    assert posted["url"] == gem_ep["url"]  # failed SDK rolled to the Gemini endpoint
+    assert A._down_until.get("haiku", 0) > 0  # and the SDK endpoint was benched
+
+
 def test_spend_cap_is_monthly(monkeypatch):
     from phalanx import agent as A
     from phalanx.agent import SPEND_CAP_USD, Squad
