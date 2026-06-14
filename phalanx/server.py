@@ -36,7 +36,7 @@ def _state_path() -> Path:
 STATIC = Path(__file__).parent / "static"
 MATCH_END_LINGER = 4.0  # seconds to hold on the final positions before starting the next match
 TICK_INTERVAL = float(
-    os.environ.get("PHALANX_TICK_INTERVAL", "2.0")
+    os.environ.get("PHALANX_TICK_INTERVAL", "1.5")
 )  # MINIMUM seconds per tick — the commander runs async, so the tick clock never waits on a model
 # (one paid decision per agent per tick, so a slower tick means proportionally fewer calls).
 # It does NOT add think-time: the tick already waits for each model's answer (up to LLM_TIMEOUT),

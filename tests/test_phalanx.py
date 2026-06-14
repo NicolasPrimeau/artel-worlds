@@ -791,10 +791,15 @@ def test_comms_from_emits_radio_events_with_intel_cells():
         id = 3
         orders = {"focus": 9}
 
-    out2 = _comms_from({"focus": 9, "regroup": [8, 6]}, B2(), {"tick": 3})
+    # rally only appears when actually (re)set this call — passed in as rally_cell
+    out2 = _comms_from({"focus": 9}, B2(), {"tick": 3}, rally_cell=(8, 6))
     k2 = {e["kind"]: e for e in out2}
     assert k2["focus"]["text"] == "FOCUS #9" and "cell" not in k2["focus"]
     assert k2["rally"]["cell"] == [8, 6]
+
+    # a deduped re-issue (rally_cell None) keeps the feed quiet even with regroup in inp
+    out3 = _comms_from({"focus": 9, "regroup": [8, 6]}, B2(), {"tick": 3})
+    assert not any(e["kind"] == "rally" for e in out3)
 
     # empty command this call -> nothing on the feed, even if the bot holds prior orders
     assert _comms_from({}, B2(), {"tick": 1}) == []

@@ -123,7 +123,9 @@ SYSTEM = (
     "- regroup [q,r]: pull the unit onto ONE piece of ground to FIGHT FROM — cover, a "
     "chokepoint, a flank that takes the enemy from the side, the lane it must cross. Pick "
     "the tactical POSITION; do NOT default to the map center — the zone forces center on "
-    "its own, late. Use it to mass for a fight, rescue a teammate, or seize strong ground.\n"
+    "its own, late. A rally is a STANDING commitment, not a per-turn nudge: set it once and "
+    "let the unit hold that ground — re-issue ONLY when the position or the fight actually "
+    "changes. Use it to mass for a fight, rescue a teammate, or seize strong ground.\n"
     "- post [q,r]: where to hold when it has no contact (ambush corners, cover the zone).\n"
     "- clear_orders: release your tank back to its own instincts.\n"
     "DOCTRINE, in order: a teammate UNDER FIRE outranks everything — focus their attacker "
@@ -176,7 +178,9 @@ TOOLS = [
                     "items": {"type": "integer"},
                     "description": "[q,r] rally point — a TACTICAL position to fight from "
                     "(cover, chokepoint, flank, the lane the enemy must cross); the unit "
-                    "moves there now. Not the map center unless the closing zone demands it.",
+                    "moves there now. Not the map center unless the closing zone demands it. "
+                    "It persists until reached — set it sparingly, re-issue only when the "
+                    "tactical picture changes.",
                 },
                 "post": {
                     "type": "array",
@@ -946,6 +950,7 @@ async def command(
                     bot.orders["focus_at"] = (int(fa[0]), int(fa[1]))
                 except (TypeError, ValueError):
                     pass
+        rally_cell = None
         for key in ("regroup", "post"):
             v = inp.get(key)
             if isinstance(v, (list, tuple)) and len(v) == 2:
@@ -953,16 +958,24 @@ async def command(
                     cell = (int(v[0]), int(v[1]))
                 except (TypeError, ValueError):
                     continue
-                if _on_map(p, cell[0], cell[1]):
-                    bot.orders[key] = cell
+                if not _on_map(p, cell[0], cell[1]):
+                    continue
+                if key == "regroup":
+                    # a rally is a standing tactical commitment, not a per-turn nudge:
+                    # ignore a re-issue that just jitters the ground the unit already holds
+                    cur = bot.orders.get("regroup")
+                    if cur and _hexdist(cur[0], cur[1], cell[0], cell[1]) <= 2:
+                        continue
+                    rally_cell = cell
+                bot.orders[key] = cell
         plan = str(inp.get("plan", "") or "")[:140]
         if not solo:
             await _artel_ops(http, agent, inp, p, mate_ids, objective, claims, counts)
-            comms = _comms_from(inp, bot, p)
+            comms = _comms_from(inp, bot, p, rally_cell)
     return cost, plan, inbox, comms
 
 
-def _comms_from(inp: dict, bot, p: dict) -> list[dict]:
+def _comms_from(inp: dict, bot, p: dict, rally_cell=None) -> list[dict]:
     # the squad's radio, as watchable events: the spoken report plus the standing orders it
     # set. focus_at carries the hunted cell so a viewer can SEE a tank vectored onto an enemy
     # it never spotted itself — the Artel edge, made visible.
@@ -986,12 +999,10 @@ def _comms_from(inp: dict, bot, p: dict) -> list[dict]:
         add("intel", f"VECTOR #{foc} → ({fa[0]},{fa[1]})", cell=fa)
     elif foc and inp.get("focus"):
         add("focus", f"FOCUS #{foc}")
-    rg = inp.get("regroup")
-    if isinstance(rg, (list, tuple)) and len(rg) == 2:
-        try:
-            add("rally", f"RALLY ({int(rg[0])},{int(rg[1])})", cell=rg)
-        except (TypeError, ValueError):
-            pass
+    # rally only hits the feed when it was actually (re)set this call — a deduped re-issue
+    # of ground the unit already holds is silent
+    if rally_cell:
+        add("rally", f"RALLY ({rally_cell[0]},{rally_cell[1]})", cell=rally_cell)
     return out
 
 
