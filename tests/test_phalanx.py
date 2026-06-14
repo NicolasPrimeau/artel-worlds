@@ -832,3 +832,54 @@ def test_command_brief_surfaces_cover_so_rally_isnt_just_center():
     # no walls in sight -> no cover line (don't fabricate ground)
     p2 = dict(p, walls=[])
     assert "Cover (obstacles)" not in _command_brief(p2, B())
+
+
+def test_regroup_onto_cover_routes_to_an_open_cell_not_a_dead_loop():
+    # the commander rallied ONTO an obstacle; the tank must head for an open cell beside it,
+    # not circle the unreachable wall forever (which read as "ignoring the rally point")
+    from phalanx.control import Bot
+
+    bot = Bot(1, "artel", "brawler")
+    p = {
+        "q": 3,
+        "r": 7,
+        "heading": 0,
+        "energy": 80,
+        "gun_ready": True,
+        "visible": [],
+        "zone_radius": 14,
+        "walls": [{"dq": 4, "dr": 0}],  # wall at (7,7) — the rally cell itself
+    }
+    bot.orders["regroup"] = (7, 7)
+    out = bot.decide(dict(p), DEFAULT, 1)
+    assert out.get("move") == "fwd"  # moving toward the open neighbour, not stuck
+    assert "regroup" in bot.orders  # not cleared — it hasn't arrived yet
+
+    # standing next to the wall-rally counts as arrived (nearest open neighbour reached)
+    beside = dict(p, q=6, r=7)
+    bot.decide(beside, DEFAULT, 2)
+    assert "regroup" not in bot.orders
+
+
+def test_regroup_outside_the_shrunk_zone_is_pulled_inside():
+    # a rally cell the closing zone has since swallowed gets snapped inside, so the tank
+    # doesn't fight the zone-escape against its own order
+    from phalanx.control import Bot
+
+    bot = Bot(1, "artel", "ranger")
+    # the zone has shrunk to r3 around center (7,7); (13,13) snaps to ~(8,8). A tank sitting
+    # on that snapped cell counts as arrived — proving the order was pulled inside the storm
+    # edge instead of marching the tank out to (13,13) to bleed.
+    p = {
+        "q": 8,
+        "r": 8,
+        "heading": 0,
+        "energy": 80,
+        "gun_ready": True,
+        "visible": [],
+        "walls": [],
+        "zone_radius": 3,
+    }
+    bot.orders["regroup"] = (13, 13)  # far outside the safe radius
+    bot.decide(dict(p), DEFAULT, 1)
+    assert "regroup" not in bot.orders  # snapped target reached; not chasing (13,13)

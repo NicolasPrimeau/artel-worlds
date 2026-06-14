@@ -158,13 +158,26 @@ class Bot:
             return {"turn": 0, "move": "hold"}
 
         # 4b. REGROUP order: the commander called a rally — go there now (the gun keeps
-        # working on the way); the order clears itself on arrival
+        # working on the way). The cell is snapped inside the closing zone, and if the
+        # commander rallied onto cover itself (a wall) the tank heads for the nearest open
+        # cell beside it instead of circling an unreachable hex forever — which read as the
+        # tank "ignoring" the order. Clears on arrival.
         rg = self.orders.get("regroup")
         if rg:
-            if hex_distance(p["q"], p["r"], rg[0], rg[1]) <= 1:
+            tq, tr = self._inside_zone(p, int(rg[0]), int(rg[1]), cq, cr)
+            if (tq, tr) in wallset:
+                opens = [
+                    (tq + dq, tr + dr)
+                    for dq, dr in AXIAL_DIRS
+                    if (tq + dq, tr + dr) not in wallset
+                    and hex_distance(tq + dq, tr + dr, cq, cr) <= R
+                ]
+                if opens:
+                    tq, tr = min(opens, key=lambda c: hex_distance(p["q"], p["r"], c[0], c[1]))
+            if hex_distance(p["q"], p["r"], tq, tr) <= 1:
                 self.orders.pop("regroup", None)
             else:
-                return {**intent, **self._toward(p, wallset, occ, rg[0], rg[1], R)}
+                return {**intent, **self._toward(p, wallset, occ, tq, tr, R)}
 
         # 5. nobody known: sweep toward the enemy half ALONE, each temperament down its own
         #    lane — solo hunters spread; they don't get to march as an accidental phalanx.
