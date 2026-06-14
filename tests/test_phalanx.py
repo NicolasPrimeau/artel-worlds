@@ -888,3 +888,30 @@ def test_regroup_outside_the_shrunk_zone_is_pulled_inside():
     bot.orders["regroup"] = (13, 13)  # far outside the safe radius
     bot.decide(dict(p), DEFAULT, 1)
     assert "regroup" not in bot.orders  # snapped target reached; not chasing (13,13)
+
+
+def test_rally_is_a_commitment_not_a_per_tick_order():
+    from phalanx.agent import RALLY_COOLDOWN, _accept_rally
+
+    class Bot:
+        def __init__(self):
+            self.orders = {}
+
+    bot = Bot()
+    # first rally of the match: accepted
+    assert _accept_rally(bot, (8, 6), 10)
+    bot._rally = (10, (8, 6))
+    bot.orders["regroup"] = (8, 6)
+
+    # same ground while the order still stands: rejected (jitter dedup)
+    assert not _accept_rally(bot, (9, 6), 11)
+
+    # order cleared on arrival, but re-rallying the same area within cooldown: rejected
+    bot.orders.pop("regroup")
+    assert not _accept_rally(bot, (8, 7), 10 + RALLY_COOLDOWN - 1)
+
+    # genuinely new ground (far) is always allowed — repositioning isn't churn
+    assert _accept_rally(bot, (2, 12), 12)
+
+    # same area but after the cooldown: allowed again
+    assert _accept_rally(bot, (8, 6), 10 + RALLY_COOLDOWN)

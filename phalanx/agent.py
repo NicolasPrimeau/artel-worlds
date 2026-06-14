@@ -106,6 +106,9 @@ LLM_TIMEOUT = float(os.environ.get("PHALANX_LLM_TIMEOUT", "12"))
 # Concise. Names the teammates, says coordinate through Artel — and stops there. No
 # instructions on HOW to use Artel: the coordination has to emerge, not be scripted.
 COMMAND_EVERY = int(os.environ.get("PHALANX_COMMAND_EVERY", "4"))  # ticks between routine orders
+RALLY_COOLDOWN = int(
+    os.environ.get("PHALANX_RALLY_COOLDOWN", "8")
+)  # min ticks before the unit can be re-rallied to the same area — a rally is a commitment
 
 # The commander layer: each tank's MOTOR is the same deterministic Bot red uses (targeting,
 # range bands, pathing, prudence — identical competence on both sides). The LLM agent COMMANDS
@@ -961,11 +964,9 @@ async def command(
                 if not _on_map(p, cell[0], cell[1]):
                     continue
                 if key == "regroup":
-                    # a rally is a standing tactical commitment, not a per-turn nudge:
-                    # ignore a re-issue that just jitters the ground the unit already holds
-                    cur = bot.orders.get("regroup")
-                    if cur and _hexdist(cur[0], cur[1], cell[0], cell[1]) <= 2:
+                    if not _accept_rally(bot, cell, p.get("tick", 0)):
                         continue
+                    bot._rally = (p.get("tick", 0), cell)
                     rally_cell = cell
                 bot.orders[key] = cell
         plan = str(inp.get("plan", "") or "")[:140]
@@ -973,6 +974,24 @@ async def command(
             await _artel_ops(http, agent, inp, p, mate_ids, objective, claims, counts)
             comms = _comms_from(inp, bot, p, rally_cell)
     return cost, plan, inbox, comms
+
+
+def _accept_rally(bot, cell, tick: int) -> bool:
+    # a rally is a STANDING tactical commitment, not a per-turn order. Reject a re-issue that
+    # only jitters the ground the unit already holds, and reject re-rallying the same area
+    # within the cooldown (the order clears on arrival, so distance-vs-current alone would let
+    # a fresh rally to the same spot through every command).
+    cur = bot.orders.get("regroup")
+    if cur and _hexdist(cur[0], cur[1], cell[0], cell[1]) <= 2:
+        return False
+    last = getattr(bot, "_rally", None)
+    if (
+        last
+        and tick - last[0] < RALLY_COOLDOWN
+        and _hexdist(last[1][0], last[1][1], cell[0], cell[1]) <= 3
+    ):
+        return False
+    return True
 
 
 def _comms_from(inp: dict, bot, p: dict, rally_cell=None) -> list[dict]:
