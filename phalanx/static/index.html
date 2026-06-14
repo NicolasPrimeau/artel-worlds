@@ -136,13 +136,14 @@
     #hud { left:10px; right:10px; bottom:calc(8px + env(safe-area-inset-bottom)); max-width:none;
       padding:9px 11px; }
     #hud .leg { display:none; }
+    #hud .cta a.gh { display:none; }  /* source links live on desktop; phones get the map */
     #hud .cta { gap:6px; }
     #hud .cta a, #hiwBtn, .share button#sharebtn { font-size:10.5px; padding:5px 7px; }
     #hud .cta a.primary { padding:7px 8px; }
-    #comms .ch { font-size:8.5px; margin-bottom:3px; }
-    #commslog { max-height:none; gap:2px; }
-    #commslog li { font-size:10.5px; line-height:1.25; }
-    #commslog li .who { font-size:9px; }
+    #comms .ch { font-size:8px; margin-bottom:2px; }
+    #commslog { max-height:none; gap:1px; }
+    #commslog li { font-size:10px; line-height:1.2; }
+    #commslog li .who { font-size:8.5px; padding:0 4px; }
     #winner { font-size:17px; padding:11px 18px; }
   }
   #tip {
@@ -510,7 +511,7 @@ function apply(snp){
   // team comms: the squad's live Artel radio, plus intel/rally pings drawn on the map
   const comms=snp.comms||[], cm=$('comms'), clog=$('commslog');
   if(comms.length){ cm.hidden=false; clog.innerHTML='';
-    const nLines = window.innerWidth<=640 ? 3 : 5;  // keep the map clear on phones
+    const nLines = window.innerWidth<=640 ? 2 : 5;  // keep the map clear on phones
     for(const e of comms.slice(-nLines)){
       const li=document.createElement('li'); li.className='k-'+(e.kind||'say');
       const who=String(e.who||'').split('-').pop()||'?';
