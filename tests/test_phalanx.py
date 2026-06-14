@@ -915,3 +915,55 @@ def test_rally_is_a_commitment_not_a_per_tick_order():
 
     # same area but after the cooldown: allowed again
     assert _accept_rally(bot, (8, 6), 10 + RALLY_COOLDOWN)
+
+
+def test_focus_and_rally_are_mutually_exclusive_per_command():
+    import asyncio
+
+    from phalanx import agent as A
+
+    class FakeBot:
+        def __init__(self):
+            self.orders = {}
+            self.strategy = "brawler"
+            self.board = {}
+            self.id = 1
+
+    async def run(visible, inp):
+        bot = FakeBot()
+
+        async def fake_chat(http, system, transcript, force, tools, session=""):
+            return (
+                "",
+                [{"name": "command", "input": inp}],
+                1,
+                1,
+                {"flat_cost": 0.0, "cin": 0.0, "cout": 0.0},
+            )
+
+        A._chat = fake_chat
+        p = {
+            "id": 1,
+            "q": 5,
+            "r": 5,
+            "tick": 7,
+            "energy": 80,
+            "gun_ready": True,
+            "width": 15,
+            "height": 15,
+            "fire_range": 7,
+            "visible": visible,
+            "walls": [],
+        }
+        # solo=True skips Artel I/O; the order resolution is identical
+        await A.command(None, {"id": "a", "key": "k"}, p, bot, [], solo=True)
+        return bot.orders
+
+    enemy_in_range = [{"kind": "enemy", "id": 5, "dq": 2, "dr": 0, "dist": 2, "clear_shot": True}]
+    # both ordered, enemy in range -> the FIGHT wins: focus kept, rally dropped
+    o1 = asyncio.run(run(enemy_in_range, {"focus": 5, "regroup": [9, 9]}))
+    assert o1.get("focus") == 5 and "regroup" not in o1
+
+    # both ordered, no enemy in range -> REPOSITION wins: rally kept, focus dropped
+    o2 = asyncio.run(run([], {"focus": 5, "focus_at": [9, 1], "regroup": [9, 9]}))
+    assert o2.get("regroup") == (9, 9) and "focus" not in o2 and "focus_at" not in o2

@@ -146,6 +146,8 @@ SYSTEM = (
     "call clearly won or lost a fight — but only if it is NOT already covered by a lesson in "
     "your context; the team's memory needs new rules, not echoes. [WIN]/[LOSS] lessons from "
     "past matches arrive in your context — trust wins.\n"
+    "ONE order per command: EITHER focus (bring the unit's fire onto a target you can engage) "
+    "OR regroup (reposition when you can't) — they are opposing intents, never both at once.\n"
     "No orders needed? Send none — your tank fights fine alone; orders are for making three "
     "tanks fight as ONE."
 )
@@ -964,6 +966,19 @@ async def command(
                 if not _on_map(p, cell[0], cell[1]):
                     continue
                 if key == "regroup":
+                    # rally and focus-fire are OPPOSING intents — one per command. If the
+                    # commander also called a focus this turn, the fight wins when an enemy
+                    # is actually in range; otherwise reposition and drop the focus.
+                    if focus:
+                        engaged = any(
+                            e["kind"] == "enemy" and e["dist"] <= p.get("fire_range", 7)
+                            for e in p.get("visible", [])
+                        )
+                        if engaged:
+                            continue  # focusing the fight — ignore the rally
+                        bot.orders.pop("focus", None)
+                        bot.orders.pop("focus_at", None)
+                        focus = 0
                     if not _accept_rally(bot, cell, p.get("tick", 0)):
                         continue
                     bot._rally = (p.get("tick", 0), cell)
