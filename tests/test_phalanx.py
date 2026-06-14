@@ -782,8 +782,9 @@ def test_comms_from_emits_radio_events_with_intel_cells():
     out = _comms_from({"say": "SPOTTED #5 (7,4)", "focus": 5, "focus_at": [7, 4]}, B(), p)
     kinds = {e["kind"]: e for e in out}
     assert "say" in kinds and kinds["say"]["text"] == "SPOTTED #5 (7,4)"
-    # focus_at present -> a VECTOR intel event carrying the hunted cell (the ping)
-    assert "intel" in kinds and kinds["intel"]["cell"] == [7, 4]
+    # focus is shown; the VECTOR/intel line is no longer in the feed
+    assert "intel" not in kinds
+    assert kinds["focus"]["text"] == "FOCUS #5"
     assert all(e["tank"] == 2 and e["t"] == 12 for e in out)
 
     # plain focus (no focus_at) is a focus event, no cell

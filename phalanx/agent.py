@@ -1010,9 +1010,7 @@ def _accept_rally(bot, cell, tick: int) -> bool:
 
 
 def _comms_from(inp: dict, bot, p: dict, rally_cell=None) -> list[dict]:
-    # the squad's radio, as watchable events: the spoken report plus the standing orders it
-    # set. focus_at carries the hunted cell so a viewer can SEE a tank vectored onto an enemy
-    # it never spotted itself — the Artel edge, made visible.
+    # the squad's radio, as watchable events: the spoken report plus the orders it set.
     out: list[dict] = []
     tank = getattr(bot, "id", None)
     tick = p.get("tick", 0)
@@ -1027,12 +1025,8 @@ def _comms_from(inp: dict, bot, p: dict, rally_cell=None) -> list[dict]:
     say = str(inp.get("say", "") or "").strip()
     if say:
         add("say", say)
-    foc = orders.get("focus")
-    fa = orders.get("focus_at")
-    if foc and fa:
-        add("intel", f"VECTOR #{foc} → ({fa[0]},{fa[1]})", cell=fa)
-    elif foc and inp.get("focus"):
-        add("focus", f"FOCUS #{foc}")
+    if orders.get("focus") and inp.get("focus"):
+        add("focus", f"FOCUS #{orders['focus']}")
     # rally only hits the feed when it was actually (re)set this call — a deduped re-issue
     # of ground the unit already holds is silent
     if rally_cell:
