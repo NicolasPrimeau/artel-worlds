@@ -139,9 +139,11 @@ SYSTEM = (
     "firing, untouched, in the zone — REPAIRS +2 energy per turn: post a hurt tank behind "
     "cover to recover while the others screen it, and keep pressure on hurt enemies so "
     "they never can.\n"
-    "ARTEL, in the same call — say: report only NEW actionable facts with coordinates "
-    "('SPOTTED #5 (7,4) energy 40', 'FOCUS #5', 'RALLY (8,6)'); teammates' reports are real "
-    "positions you cannot see. objective: your ONE medium-term commitment on the team "
+    "ARTEL, in the same call — say: talk to your crew on the radio like a person would — "
+    "PLAIN words, no coordinates or #numbers (your tank shares its position automatically). "
+    "'They're weak on the left, push!', 'I'm pinned — need help', 'fall back to the rocks', "
+    "'nice, stay on that one'. Your teammates' calls tell you what they can see and you "
+    "can't. objective: your ONE medium-term commitment on the team "
     "board; change it only when reality breaks it. lesson: save one concrete lesson when a "
     "call clearly won or lost a fight — but only if it is NOT already covered by a lesson in "
     "your context; the team's memory needs new rules, not echoes. [WIN]/[LOSS] lessons from "
@@ -991,6 +993,17 @@ async def command(
     return cost, plan, inbox, comms
 
 
+_SAY_STRIP = re.compile(r"#\d+|\(-?\d+\s*,\s*-?\d+\)|energy\s+\d+", re.I)
+
+
+def _humanize_say(text: str) -> str:
+    # the feed should read like a crew talking, not a debug log: strip any coordinates,
+    # #ids, or energy numbers a commander slipped into its radio call
+    t = _SAY_STRIP.sub("", text)
+    t = re.sub(r"\s{2,}", " ", t).strip(" ,;:—-")
+    return t
+
+
 def _accept_rally(bot, cell, tick: int) -> bool:
     # a rally is a STANDING tactical commitment, not a per-turn order. Reject a re-issue that
     # only jitters the ground the unit already holds, and reject re-rallying the same area
@@ -1022,15 +1035,15 @@ def _comms_from(inp: dict, bot, p: dict, rally_cell=None) -> list[dict]:
             e["cell"] = [int(cell[0]), int(cell[1])]
         out.append(e)
 
-    say = str(inp.get("say", "") or "").strip()
+    say = _humanize_say(str(inp.get("say", "") or "").strip())
     if say:
         add("say", say)
     if orders.get("focus") and inp.get("focus"):
-        add("focus", f"FOCUS #{orders['focus']}")
+        add("focus", "Focus fire — all on one")
     # rally only hits the feed when it was actually (re)set this call — a deduped re-issue
     # of ground the unit already holds is silent
     if rally_cell:
-        add("rally", f"RALLY ({rally_cell[0]},{rally_cell[1]})", cell=rally_cell)
+        add("rally", "Form up here", cell=rally_cell)
     return out
 
 
@@ -1166,7 +1179,7 @@ class Squad:
             )
             notes += (
                 f"\nNEW CONTACT — only YOU can see this; the team has no report of it: "
-                f"{sights}. Report it (SPOTTED) so the unit can act."
+                f"{sights}. Call it out to the crew (in plain words) so they can react."
             )
         self._seen_ids[tank_id] = set(cur_enemies)
         intel = self._intel.get(tank_id) or []
