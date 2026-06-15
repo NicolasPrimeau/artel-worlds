@@ -49,6 +49,7 @@ COORDINATED = {"artel"}
 # PHALANX_RED=llm turns the match into the REAL ablation demo: red is driven by the same
 # LLM mind as blue with every Artel channel removed — Artel becomes the only variable.
 RED_LLM = os.environ.get("PHALANX_RED", "bots").lower() == "llm"
+_ADMIN_TOKEN = os.environ.get("WORLDS_ADMIN_TOKEN", "")
 
 
 class Phalanx:
@@ -65,8 +66,13 @@ class Phalanx:
         self.completed = 0  # matches that actually finished — match_no also counts restarts
         self.spend_days: dict[str, float] = {}  # iso day -> usd, the cost-per-day ledger
         self._ledgered = 0.0  # spend already attributed to a day
+        self.paused = False  # operator toggle (ops page): freezes the match loop, page stays up
         self._restore_state()
         self._new_match()
+
+    def set_paused(self, value: bool) -> None:
+        self.paused = bool(value)
+        self.persist_state()
 
     def _restore_state(self) -> None:
         try:
@@ -80,6 +86,7 @@ class Phalanx:
         self.squad.spent = float(raw.get("squad_spent", 0.0))
         self.squad.month = str(raw.get("squad_month", ""))
         self.squad.month_spent = float(raw.get("squad_month_spent", 0.0))
+        self.paused = bool(raw.get("paused", False))
         if self.red_squad is not None:
             self.red_squad.spent = float(raw.get("red_spent", 0.0))
         self.spend_days = {k: float(v) for k, v in (raw.get("spend_days") or {}).items()}
@@ -109,6 +116,7 @@ class Phalanx:
                         "history": self.history,
                         "match_no": self.match_no,
                         "completed": self.completed,
+                        "paused": self.paused,
                         "squad_spent": round(self.squad.spent, 6),
                         "squad_month": self.squad.month,
                         "squad_month_spent": round(self.squad.month_spent, 6),
@@ -257,7 +265,7 @@ async def _tick_loop():
     loop = asyncio.get_running_loop()
     while True:
         start = loop.time()
-        if bool(G.viewers) or G.has_players():
+        if not G.paused and (bool(G.viewers) or G.has_players()):
             async with G.lock:
                 a = G.arena
                 _manage_squad()
@@ -377,6 +385,7 @@ async def debug():
     return {
         "tick": a.tick_count,
         "match": G.match_no,
+        "paused": G.paused,
         "viewers": len(G.viewers),
         "live_artel": G.squad.enabled and G._squad_match == G.match_no,
         "red_mode": "llm-solo" if G.red_squad is not None else "bots",
@@ -459,6 +468,17 @@ async def health():
 async def state():
     async with G.lock:
         return JSONResponse(G.snapshot())
+
+
+@app.post("/admin/pause")
+async def admin_pause(request: Request):
+    # operator toggle from the ops page (shared-token auth; the ops server proxies it)
+    if not _ADMIN_TOKEN or request.headers.get("x-admin-token") != _ADMIN_TOKEN:
+        raise HTTPException(status_code=403, detail="forbidden")
+    body = await request.json()
+    async with G.lock:
+        G.set_paused(bool(body.get("paused")))
+    return {"paused": G.paused}
 
 
 @app.post("/reset")

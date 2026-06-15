@@ -130,6 +130,7 @@ class Automata:
         self.agent = HeuristicAgent()
         self.lock = asyncio.Lock()
         self.viewers: set[WebSocket] = set()
+        self.paused = False  # operator toggle (ops page): freezes the world, page stays up
         self.tokens: dict[int, str] = {}  # lineage -> secret; proves a player owns the tribe
         self.llm = (
             (
@@ -287,7 +288,7 @@ async def _broadcast(snap: dict):
 
 async def _tick_loop():
     while True:
-        if bool(G.viewers) or G.has_remote_agents():
+        if not G.paused and (bool(G.viewers) or G.has_remote_agents()):
             async with G.lock:
                 if LLM_ENABLED and G.world.tick_count % LLM_INTERVAL == 0:
                     await G.llm_author()
@@ -734,6 +735,7 @@ PHALANX_DEBUG = os.environ.get("PHALANX_DEBUG_URL", "https://phalanx.artel.run")
 WATCHTOWER_DEBUG = os.environ.get("WATCHTOWER_DEBUG_URL", "https://watchtower.artel.run").rstrip(
     "/"
 )
+ADMIN_TOKEN = os.environ.get("WORLDS_ADMIN_TOKEN", "")
 
 _LOGIN_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Artel Worlds · sign in</title>
@@ -832,6 +834,7 @@ async def ui_stats(request: Request):
             "world": 1,
             "url": "https://automata.artel.run",
             "status": "live",
+            "paused": G.paused,
             "model": LLM_MODEL if LLM_ENABLED else "heuristic CA (no LLM)",
             "spend": round(getattr(G.llm, "spent", 0.0), 4) if G.llm else None,
             "spend_label": "since boot",
@@ -850,6 +853,7 @@ async def ui_stats(request: Request):
                 "world": 2,
                 "url": "https://phalanx.artel.run",
                 "status": "live" if ph.get("live_artel") else "idle",
+                "paused": ph.get("paused", False),
                 "model": sq.get("model"),
                 "fallback": sq.get("fallback_model"),
                 "spend": round(spend, 4),
@@ -900,6 +904,7 @@ async def ui_stats(request: Request):
                 "world": 3,
                 "url": "https://watchtower.artel.run",
                 "status": "live" if wt.get("enabled") else "idle",
+                "paused": wt.get("paused", False),
                 "model": wt.get("model"),
                 "fallback": wt.get("fallback_model"),
                 "spend": wt.get("spent_total", wt.get("spent_today")),
@@ -944,6 +949,45 @@ async def ui_stats(request: Request):
         "spend_series": series,
         "ts": int(time.time()),
     }
+
+
+@app.post("/admin/pause", include_in_schema=False)
+async def admin_pause(request: Request):
+    if not ADMIN_TOKEN or request.headers.get("x-admin-token") != ADMIN_TOKEN:
+        raise HTTPException(status_code=403, detail="forbidden")
+    body = await request.json()
+    G.paused = bool(body.get("paused"))
+    return {"paused": G.paused}
+
+
+@app.post("/ui/pause", include_in_schema=False)
+async def ui_pause(request: Request, world: str = "", paused: int = 1):
+    # operator pause/resume for any world, proxied server-side (token stays here, no CORS).
+    if UI_PASSWORD and not _authed(request):
+        raise HTTPException(status_code=401, detail="sign in")
+    want = bool(paused)
+    if world == "automata":
+        G.paused = want
+        return {"ok": True, "world": "automata", "paused": want}
+    target = {"phalanx": PHALANX_DEBUG, "watchtower": WATCHTOWER_DEBUG}.get(world)
+    if not target:
+        raise HTTPException(status_code=400, detail="unknown world")
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(
+                f"{target}/admin/pause",
+                json={"paused": want},
+                headers={"x-admin-token": ADMIN_TOKEN},
+                timeout=15,
+            )
+            return {
+                "ok": r.status_code < 300,
+                "world": world,
+                "paused": want,
+                "status": r.status_code,
+            }
+        except Exception as e:
+            return {"ok": False, "world": world, "error": str(e)}
 
 
 @app.post("/ui/reset", include_in_schema=False)

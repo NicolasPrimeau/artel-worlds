@@ -4,15 +4,17 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 
 from .world import World
 
 log = logging.getLogger("watchtower")
 STATIC = Path(__file__).parent / "static"
+ADMIN_TOKEN = os.environ.get("WORLDS_ADMIN_TOKEN", "")
 
 G = World()
 
@@ -55,6 +57,17 @@ async def metrics():
         "per_family": G.metrics.per_family(),
         "recent": G.metrics.recent(40),
     }
+
+
+@app.post("/admin/pause")
+async def admin_pause(request: Request):
+    # operator toggle from the ops page: pause/resume firing. Shared-token auth so the
+    # ops server can proxy it without exposing anything to the browser.
+    if not ADMIN_TOKEN or request.headers.get("x-admin-token") != ADMIN_TOKEN:
+        raise HTTPException(status_code=403, detail="forbidden")
+    body = await request.json()
+    G.set_paused(bool(body.get("paused")))
+    return {"paused": G.paused}
 
 
 @app.post("/reset")

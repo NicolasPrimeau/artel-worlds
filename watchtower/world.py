@@ -55,6 +55,7 @@ class World:
         self.viewers: set = set()
         self._joined = False
         self.last_error: str | None = None
+        self.paused = False  # operator toggle (ops page): halts firing/spend, page stays up
 
     @staticmethod
     def _load_artel_agents() -> list[dict]:
@@ -120,8 +121,16 @@ class World:
                 self.spend_days = {k: float(v) for k, v in (sp.get("days") or {}).items()}
                 if sp.get("day") == self._utc_day():
                     self.spent_today = float(sp.get("today", 0.0))
+            self.paused = self.metrics.kv_get("paused") == "1"
         except Exception as e:
             log.warning("watchtower state restore failed: %s", e)
+
+    def set_paused(self, value: bool) -> None:
+        self.paused = bool(value)
+        try:
+            self.metrics.kv_set("paused", "1" if self.paused else "0")
+        except Exception as e:
+            log.warning("watchtower pause persist failed: %s", e)
 
     def _persist_state(self) -> None:
         try:
@@ -259,7 +268,7 @@ class World:
     async def loop(self) -> None:
         await asyncio.sleep(WARMUP_SECONDS)
         while True:
-            if self.enabled and self._budget_ok():
+            if self.enabled and not self.paused and self._budget_ok():
                 try:
                     await self.fire()
                 except Exception as e:
@@ -303,6 +312,7 @@ class World:
             }
         return {
             "enabled": self.enabled,
+            "paused": self.paused,
             "model": A.MODEL,
             "fleet_size": len(self.artel),
             "cursor": self.cursor,
@@ -324,6 +334,7 @@ class World:
     def status(self) -> dict:
         return {
             "enabled": self.enabled,
+            "paused": self.paused,
             "model": A.MODEL,
             "fallback_model": A.FALLBACK["model"] if A.FALLBACK else None,
             "llm_key_set": bool(A.LLM_KEY),
