@@ -19,7 +19,7 @@ primary_region = "yyz"
     soft_limit = 150
 
 [[vm]]
-  size = "shared-cpu-1x"
+  size = "shared-cpu-2x"  # 2 shared vCPUs cut the Claude CLI cold-start / warmup window
   memory = "1024mb"  # 3 resident Claude CLI commander sessions (claude-sdk provider)
 
 [checks]
