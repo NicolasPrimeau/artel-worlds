@@ -20,7 +20,7 @@ primary_region = "yyz"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "256mb"
+  memory = "1024mb"  # 3 resident Claude CLI commander sessions (claude-sdk provider)
 
 [checks]
   [checks.health]
