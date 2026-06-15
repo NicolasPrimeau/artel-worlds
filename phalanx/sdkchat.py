@@ -5,11 +5,16 @@
 # output mode here: one turn, ~12x cheaper, and the command parser already tolerates junk.
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
 
 SDK_TOKEN = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
+# the CLI cold-start (~20s on shared CPU) is a ONE-TIME cost: a resident session pays it
+# once on connect, then every query is ~1s. Recycle a session after this many queries so its
+# conversation can't grow unbounded across matches.
+RECYCLE_AFTER = int(os.environ.get("PHALANX_SDK_RECYCLE", "60"))
 
 _JSON_RE = re.compile(r"\{.*\}", re.S)
 
@@ -43,29 +48,41 @@ def extract_call(text: str, tools: list | None) -> tuple[str, list[dict]]:
     return "", [{"name": tools[0]["name"], "input": args}]
 
 
-# One resident CLI session per commander per match: process spawn (~7s) is paid once at
-# the first command, then each call is just the model round-trip. The session's growing
-# conversation IS the commander's match memory — and it's torn down at match end.
-_sessions: dict[str, object] = {}
+# One resident CLI session per commander, kept WARM ACROSS MATCHES so the ~20s cold-start
+# is paid once for the life of the process, not once per match. Each holds its client, the
+# (shielded) connect task, and a query counter for recycling.
+class _Session:
+    __slots__ = ("client", "connect", "count")
+
+    def __init__(self, client, connect):
+        self.client = client
+        self.connect = connect
+        self.count = 0
+
+
+_sessions: dict[str, _Session] = {}
+
+
+async def _quiet_disconnect(client) -> None:
+    try:
+        await client.disconnect()
+    except Exception:
+        pass
 
 
 async def reset_sessions() -> None:
+    # full teardown — NOT called between matches (warm sessions must survive); only on
+    # process-level reset. Per-match state is the conversation, bounded by RECYCLE_AFTER.
     global _sessions
     doomed, _sessions = _sessions, {}
-    for client in doomed.values():
-        try:
-            await client.disconnect()
-        except Exception:
-            pass
+    for s in doomed.values():
+        await _quiet_disconnect(s.client)
 
 
 async def _drop_session(key: str) -> None:
-    client = _sessions.pop(key, None)
-    if client is not None:
-        try:
-            await client.disconnect()
-        except Exception:
-            pass
+    s = _sessions.pop(key, None)
+    if s is not None:
+        await _quiet_disconnect(s.client)
 
 
 def _read_result(result, tools):
@@ -87,23 +104,37 @@ async def sdk_chat(
     sysprompt = f"{system}\n{tool_instruction(tools)}"
 
     if session:
-        client = _sessions.get(session)
+        s = _sessions.get(session)
         try:
-            if client is None:
+            if s is None:
                 # tools=[] already forbids an agentic loop, so no max_turns here — it would
-                # count across the session and starve the second command
+                # count across the session and starve the second command. connect() runs as
+                # its own task so a command-deadline cancellation SHIELDS it: the cold-start
+                # finishes in the background and the next command finds a warm session,
+                # instead of every call re-paying (and re-cancelling) the ~20s spawn.
                 opts = ClaudeAgentOptions(
                     model=ep["model"], system_prompt=sysprompt, allowed_tools=[], tools=[]
                 )
                 client = ClaudeSDKClient(opts)
-                await client.connect()
-                _sessions[session] = client
-            await client.query(prompt)
+                s = _Session(client, asyncio.ensure_future(client.connect()))
+                _sessions[session] = s
+            if not s.connect.done():
+                # shield: if THIS command times out, the connect keeps running for next time.
+                # CancelledError (the timeout) is a BaseException — it bypasses the except
+                # Exception below, so a warming session is never torn down.
+                await asyncio.shield(s.connect)
+            if s.connect.cancelled() or s.connect.exception() is not None:
+                raise RuntimeError("claude-sdk connect failed")
+            await s.client.query(prompt)
             result = None
-            async for msg in client.receive_response():
+            async for msg in s.client.receive_response():
                 if isinstance(msg, ResultMessage):
                     result = msg
             text, calls, tin, tout, cost = _read_result(result, tools)
+            s.count += 1
+            if s.count >= RECYCLE_AFTER:  # bound conversation growth: retire this session
+                _sessions.pop(session, None)
+                asyncio.ensure_future(_quiet_disconnect(s.client))
         except Exception:
             await _drop_session(session)  # a broken session never gets reused
             raise

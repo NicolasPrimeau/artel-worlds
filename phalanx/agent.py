@@ -10,7 +10,7 @@ import httpx
 
 from .config import DEFAULT
 from .control import LOW_ENERGY, STRATEGIES, Bot
-from .sdkchat import reset_sessions, sdk_chat
+from .sdkchat import sdk_chat
 
 log = logging.getLogger("phalanx")
 
@@ -1339,7 +1339,8 @@ class Squad:
             self._walls = {}
             self.tool_counts = {}
             self._comms = []
-            await reset_sessions()
+            # NB: claude-sdk sessions are deliberately NOT reset here — they stay warm across
+            # matches so the ~20s CLI cold-start is paid once per process, not every match.
             if self._http is None:
                 self._http = httpx.AsyncClient(timeout=httpx.Timeout(LLM_TIMEOUT))
             return
@@ -1361,7 +1362,7 @@ class Squad:
         self._walls = {}
         self.tool_counts = {}
         self._comms = []
-        await reset_sessions()
+        # claude-sdk sessions stay warm across matches (see note above) — not reset here.
         for tid, agent in self._assign.items():
             if agent["id"] not in self._joined:
                 await self._ensure_member(agent)
