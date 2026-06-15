@@ -61,6 +61,14 @@ class _Session:
 
 
 _sessions: dict[str, _Session] = {}
+# only ONE CLI may cold-start at a time: three concurrent ~20s spawns peg a shared vCPU
+# hard enough to fail health checks. Serialized, the machine stays responsive.
+_connect_lock = asyncio.Lock()
+
+
+async def _locked_connect(client) -> None:
+    async with _connect_lock:
+        await client.connect()
 
 
 async def _quiet_disconnect(client) -> None:
@@ -116,7 +124,7 @@ async def sdk_chat(
                     model=ep["model"], system_prompt=sysprompt, allowed_tools=[], tools=[]
                 )
                 client = ClaudeSDKClient(opts)
-                s = _Session(client, asyncio.ensure_future(client.connect()))
+                s = _Session(client, asyncio.ensure_future(_locked_connect(client)))
                 _sessions[session] = s
             if not s.connect.done():
                 # shield: if THIS command times out, the connect keeps running for next time.

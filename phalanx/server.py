@@ -344,15 +344,25 @@ async def _tick_loop():
         await asyncio.sleep(max(0.0, TICK_INTERVAL - (loop.time() - start)))
 
 
+async def _warm_loop():
+    # warm the claude-sdk commander sessions OFF-CAMERA: wait for the server to come up
+    # healthy, then establish/keep the CLI sessions so a watched match starts warm. No-op
+    # unless the provider is claude-sdk (Squad.warm guards that).
+    await asyncio.sleep(20)
+    await G.squad.keepalive()
+
+
 @contextlib.asynccontextmanager
 async def _lifespan(app: FastAPI):
     tick = asyncio.create_task(_tick_loop())
+    warm = asyncio.create_task(_warm_loop())
     try:
         yield
     finally:
-        tick.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await tick
+        for t in (tick, warm):
+            t.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await t
         G.persist_state()
         await G.squad.aclose()
 

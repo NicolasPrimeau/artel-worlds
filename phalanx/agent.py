@@ -109,6 +109,9 @@ COMMAND_EVERY = int(os.environ.get("PHALANX_COMMAND_EVERY", "4"))  # ticks betwe
 RALLY_COOLDOWN = int(
     os.environ.get("PHALANX_RALLY_COOLDOWN", "8")
 )  # min ticks before the unit can be re-rallied to the same area — a rally is a commitment
+WARM_KEEPALIVE = float(
+    os.environ.get("PHALANX_WARM_KEEPALIVE", "300")
+)  # seconds between keepalive pings that hold the claude-sdk CLI sessions warm through idle
 
 # The commander layer: each tank's MOTOR is the same deterministic Bot red uses (targeting,
 # range bands, pathing, prudence — identical competence on both sides). The LLM agent COMMANDS
@@ -1315,6 +1318,35 @@ class Squad:
         except Exception as e:
             self.last_error = f"{type(e).__name__}: {e}"
             log.warning("phalanx commander %s skipped a beat: %s", agent["id"], self.last_error)
+
+    async def warm(self) -> None:
+        """Pre-establish each commander's claude-sdk CLI session (serialized cold-starts via
+        sdkchat's connect lock) so a match begins with warm, fast sessions — instead of three
+        ~20s spawns colliding when a viewer arrives and pegging the shared CPU. No-op unless
+        the live provider is claude-sdk."""
+        if self.solo or PROVIDER != "claude-sdk" or not self.enabled:
+            return
+        if self._http is None:
+            self._http = httpx.AsyncClient(timeout=httpx.Timeout(LLM_TIMEOUT))
+        for a in self.agents:
+            mate_ids = [x["id"] for x in self.agents if x["id"] != a["id"]]
+            system = SYSTEM.format(mates=" and ".join(mate_ids) or "your team")
+            try:
+                await sdk_chat(
+                    PRIMARY, system, [{"role": "user", "text": "Reply READY."}], TOOLS, a["id"]
+                )
+            except Exception as e:
+                log.warning("phalanx warm %s: %s", a["id"], str(e)[:160])
+
+    async def keepalive(self) -> None:
+        """Hold the warm sessions open through idle (and silently reconnect drops) so phalanx
+        is ready before anyone watches — the whole point of keeping the CLI warm off-camera."""
+        while True:
+            try:
+                await self.warm()
+            except Exception:
+                pass
+            await asyncio.sleep(WARM_KEEPALIVE)
 
     def current_assignment(self) -> dict[int, dict]:
         return dict(self._assign)
