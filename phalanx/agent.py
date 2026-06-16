@@ -131,7 +131,9 @@ SYSTEM = (
     "a second target in parallel. Massed fire through the radio is how the unit wins.\n"
     "- regroup [q,r]: rally onto strong ground to fight FROM — cover, a chokepoint, the lane "
     "the enemy must cross; NOT the bare center (the zone forces that late). A rally is a "
-    "commitment: set it once, re-issue only when the position or fight truly changes.\n"
+    "commitment: set it once, re-issue only when the position or fight truly changes. When a "
+    "teammate radios a RALLY call, ADOPT it — regroup to that same cell and maneuver as one "
+    "unit, unless you are winning a fight right where you stand.\n"
     "- post [q,r]: hold here with no contact. clear_orders: release to instinct.\n"
     "Priority: a teammate UNDER FIRE outranks all — focus their attacker and converge. Hold "
     "cover and angles, never strung out alone. A still, unhit tank in the zone repairs — let "
@@ -597,17 +599,18 @@ def _command_brief(p: dict, bot) -> str:
     return "\n".join(lines)
 
 
-async def _consume_inbox(http: httpx.AsyncClient, agent: dict) -> tuple[str, dict, str]:
-    # returns (reports, beacons, focus_call): position beacons are telemetry, not conversation
-    # — they fold into one teammate-positions line. A FOCUS call is the unit's massed-fire
-    # signal, surfaced on its own prominent line so the LLM converges on it.
+async def _consume_inbox(http: httpx.AsyncClient, agent: dict) -> tuple[str, dict, str, str]:
+    # returns (reports, beacons, focus_call, rally_call): position beacons are telemetry, not
+    # conversation — they fold into one teammate-positions line. A FOCUS call (mass fire) and
+    # a RALLY call (maneuver together) are the unit's coordination signals, each surfaced on
+    # its own prominent line so the LLM converges on it.
     try:
         r = await http.post(f"{ARTEL_URL}/messages/inbox/consume", headers=_headers(agent), json={})
         msgs = r.json() if r.status_code < 300 else []
     except Exception:
-        return "", {}, ""
+        return "", {}, "", ""
     me = agent.get("id")
-    lines, beacons, focus_call = [], {}, ""
+    lines, beacons, focus_call, rally_call = [], {}, "", ""
     for m in msgs:
         body = m.get("body") or ""
         sender = m.get("from_agent", "?")
@@ -618,9 +621,12 @@ async def _consume_inbox(http: httpx.AsyncClient, agent: dict) -> tuple[str, dic
         elif body.startswith("FOCUS "):
             focus_call = f"{sender}: {body}"  # freshest team focus call wins
             lines.append(f"{sender}: {body}")  # keep in the log too so it persists a few turns
+        elif body.startswith("RALLY "):
+            rally_call = f"{sender}: {body}"  # freshest team rally call wins
+            lines.append(f"{sender}: {body}")
         elif body:
             lines.append(f"{sender}: {body}")
-    return " | ".join(lines)[:600], beacons, focus_call
+    return " | ".join(lines)[:600], beacons, focus_call, rally_call
 
 
 async def _send(
@@ -910,11 +916,11 @@ async def command(
     # ONE commander call: read the Artel picture, set standing orders on the bot, do the
     # Artel traffic. The bot drives every tick regardless — a failed or skipped command
     # call costs nothing but staleness.
-    focus_call = ""
+    focus_call = rally_call = ""
     if solo:
         inbox, board = "", ""
     else:
-        (inbox, fresh_beacons, focus_call), board, recalled = await asyncio.gather(
+        (inbox, fresh_beacons, focus_call, rally_call), board, recalled = await asyncio.gather(
             _consume_inbox(http, agent),
             _board(http, agent),
             _recall_lessons(http, agent, _recall_query(p, bot, distress)),
@@ -942,6 +948,12 @@ async def command(
             f"\nTEAM FOCUS CALL — {focus_call}. Converge: focus that SAME enemy id (carry "
             f"focus_at so your tank can hunt it) and mass the unit's guns on it, unless you "
             f"hold a clearly stronger target right now."
+        )
+    if rally_call:
+        user += (
+            f"\nTEAM RALLY CALL — {rally_call}. Form up: regroup to that SAME cell and "
+            f"maneuver onto the called ground with the unit, unless you are winning a fight "
+            f"right where you stand."
         )
     if board:
         user += f"\nTEAM BOARD — current objectives: {board}"
@@ -1059,6 +1071,20 @@ async def command(
                         continue
                     bot._rally = (p.get("tick", 0), cell)
                     rally_cell = cell
+                    # broadcast the rally OVER ARTEL so teammates HEAR it and choose to form
+                    # up — the unit MANEUVERS together because the other LLMs decide to move
+                    # onto the called ground, not because the server marched their tanks
+                    if not solo:
+                        asyncio.create_task(
+                            _send(
+                                http,
+                                agent,
+                                "team",
+                                f"RALLY ({cell[0]},{cell[1]}) — form up here",
+                                mate_ids,
+                                "rally",
+                            )
+                        )
                 bot.orders[key] = cell
         plan = str(inp.get("plan", "") or "")[:140]
         if not solo:
