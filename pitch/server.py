@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -19,6 +20,9 @@ STATIC = Path(__file__).parent / "static"
 TICK_INTERVAL = float(os.environ.get("PITCH_TICK_INTERVAL", "0.08"))  # sim+broadcast rate
 FULLTIME_HOLD = float(os.environ.get("PITCH_FULLTIME_HOLD", "6"))  # pause on the final whistle
 COORD_INTERVAL = float(os.environ.get("PITCH_COORD_INTERVAL", "1.2"))  # Artel coach decision window
+# a fresh random base each boot, so a restart draws a brand-new field of clubs/players instead of
+# replaying the same edition-1 draw every time
+BOOT_SEED = secrets.randbelow(10**9)
 
 
 def _rate(mult: float) -> int:
@@ -40,7 +44,7 @@ class Game:
 
     def _new_edition(self) -> None:
         self.edition += 1
-        self.tour = Tournament(edition=self.edition, seed=1000 + self.edition)
+        self.tour = Tournament(edition=self.edition, seed=BOOT_SEED + self.edition)
 
     def _new_match(self) -> None:
         tie = self.tour.current()
