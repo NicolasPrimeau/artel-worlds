@@ -210,7 +210,7 @@ class Pitch:
         sprint = intent.get("sprint")
         cap = (c.keeper_speed if p.role == "GK" else c.player_speed) * p.pace
         if self.possessor == p.id:
-            cap *= 0.9  # running WITH the ball is slightly slower — defenders can close down
+            cap *= 0.82  # running WITH the ball is slower — defenders can close down and tackle
         dx, dy = tx - p.x, ty - p.y
         dist = _len(dx, dy)
         ux, uy = _unit(dx, dy)

@@ -71,6 +71,27 @@ def _pursuit_cost(pitch: Pitch, q: Player, b) -> float:
     return _len(q.x - b.x, q.y - b.y) + abs(ball_zone - ROLE_ZONE.get(q.role, 1)) * 20.0
 
 
+def _mark_target(pitch: Pitch, p: Player) -> tuple[float, float]:
+    # when the opponent has the ball, don't just hold a zone — pick up the nearest attacker in our
+    # area and sit just goal-side of them, denying the easy pass. This is what forces the ball into
+    # tight spaces where passes get read and intercepted. Blended with shape so we don't over-commit.
+    c = pitch.cfg
+    base = _formation_target(pitch, p)
+    foes = [o for o in pitch.opponents(p) if o.role != "GK"]
+    if not foes:
+        return base
+    foe = min(foes, key=lambda o: _len(o.x - p.x, o.y - p.y))
+    if _len(foe.x - p.x, foe.y - p.y) > 18.0:  # nobody near enough to mark — just hold shape
+        return base
+    own_goal_x = 0.0 if p.team == "home" else c.length
+    ux, uy = _unit(own_goal_x - foe.x, c.width / 2 - foe.y)
+    mx, my = foe.x + ux * 2.4, foe.y + uy * 2.4  # tuck just goal-side of the man
+    return (
+        _clamp(mx * 0.7 + base[0] * 0.3, 6.0, c.length - 6.0),
+        _clamp(my * 0.7 + base[1] * 0.3, 6.0, c.width - 6.0),
+    )
+
+
 def _formation_target(pitch: Pitch, p: Player) -> tuple[float, float]:
     c = pitch.cfg
     b = pitch.ball
@@ -152,18 +173,21 @@ def decide(pitch: Pitch, p: Player) -> dict:
         # short, completable ball beats a hopeful long one); a little forward progress is a bonus.
         # This is what makes the build-up actually connect instead of breaking down on attack.
         mates = [q for q in outfield if q.id != p.id]
-        opts = [q for q in mates if _open(pitch, q) > 5.0 and (q.x - p.x) * fwd > -8]
+        opts = [q for q in mates if _open(pitch, q) > 3.5 and (q.x - p.x) * fwd > -8]
         pressured = mine_open < 6.5
         if opts and (pressured or len(opts) >= 2 or rng.random() < 0.6):
             tgt = max(
                 opts,
                 key=lambda q: (
-                    _open(pitch, q) * 0.8
+                    _open(pitch, q) * 0.7
                     + (q.x - p.x) * fwd * 0.35
-                    - _len(q.x - p.x, q.y - p.y) * 0.3
+                    - _len(q.x - p.x, q.y - p.y) * 0.2
                 ),
             )
-            return _kick(p, tgt.x + c.pass_lead * fwd, tgt.y, c.pass_speed, 0.05, rng)
+            # mostly accurate, but a tighter ball through traffic can be misplaced or read and cut
+            # out by a defender in the lane — like real soccer. scatter grows when the lane is snug.
+            noise = 0.08 + max(0.0, 8.0 - _open(pitch, tgt)) * 0.012
+            return _kick(p, tgt.x + c.pass_lead * fwd, tgt.y, c.pass_speed, noise, rng)
         # carry: drive at goal via the more open flank — NO kick, so the engine eases the ball ahead
         # of the carrier (a smooth dribble) and they jink around defenders on the way.
         return {"move": _attack_target(pitch, p)}
@@ -172,9 +196,16 @@ def decide(pitch: Pitch, p: Player) -> dict:
         # a teammate has the ball — don't chase our own player; hold shape and offer support
         return {"move": _formation_target(pitch, p), "kick": None}
 
-    # loose ball or the opponent has it — only the role-appropriate nearest player presses; the
-    # rest hold their line. A defender wins it in our third, a forward leads the press up high.
-    pursuer = min(outfield, key=lambda q: _pursuit_cost(pitch, q, b))
-    if pursuer.id == p.id:
+    # loose ball or the opponent has it — the role-appropriate nearest presses, and a SECOND player
+    # closes down if they're near (a real press unit that actually wins the ball / cuts out passes),
+    # while the rest hold their line. Two pressers, not a swarm.
+    ranked = sorted(outfield, key=lambda q: _pursuit_cost(pitch, q, b))
+    pressers = {ranked[0].id}
+    if len(ranked) > 1 and _len(ranked[1].x - b.x, ranked[1].y - b.y) < 20.0:
+        pressers.add(ranked[1].id)
+    if p.id in pressers:
         return {"move": (b.x, b.y), "sprint": True}
-    return {"move": _formation_target(pitch, p), "kick": None}
+    # not pressing: mark a man if the opponent has the ball, else just hold shape (loose ball)
+    opponent_has_it = pitch.possessor is not None and pitch.possessor not in teammate_ids
+    target = _mark_target(pitch, p) if opponent_has_it else _formation_target(pitch, p)
+    return {"move": target, "kick": None}
