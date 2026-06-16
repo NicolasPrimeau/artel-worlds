@@ -75,8 +75,18 @@ def decide(pitch: Pitch, p: Player) -> dict:
             ty = c.width * (0.28 if rng.random() < 0.5 else 0.72)
             return _kick(p, tx, ty, c.shot_speed * 0.92, 0.18, rng)
         keep_x = own_x + (7.0 if p.team == "home" else -7.0)
-        keep_y = _clamp(b.y, c.width / 2 - c.goal_width / 2, c.width / 2 + c.goal_width / 2)
-        return {"move": (keep_x, keep_y), "kick": None}
+        # ANTICIPATE the shot: slide to where the ball will cross the keeper's line, not just to
+        # the ball's current y — a keeper that's actually in the way of the shot. Sprint when the
+        # ball is in our third so we get there in time and gather it (a save).
+        ty = b.y
+        toward = (b.vx < -0.05) if p.team == "home" else (b.vx > 0.05)
+        if toward:
+            t = (keep_x - b.x) / b.vx
+            if 0 < t < 60:
+                ty = b.y + b.vy * t
+        ty = _clamp(ty, c.width / 2 - c.goal_width / 2, c.width / 2 + c.goal_width / 2)
+        threat = (b.x < c.length * 0.34) if p.team == "home" else (b.x > c.length * 0.66)
+        return {"move": (keep_x, ty), "sprint": threat}
 
     outfield = [q for q in pitch.teammates(p) if q.role != "GK"]
     pursuer = min(outfield, key=lambda q: _len(q.x - b.x, q.y - b.y))
@@ -84,8 +94,8 @@ def decide(pitch: Pitch, p: Player) -> dict:
     if pursuer.id != p.id:  # not my ball — hold shape
         return {"move": _formation_target(pitch, p), "kick": None}
 
-    if pitch.possessor != p.id:  # chase / intercept
-        return {"move": (b.x, b.y), "kick": None}
+    if pitch.possessor != p.id:  # chase / intercept — sprint to win the ball
+        return {"move": (b.x, b.y), "sprint": True}
 
     # on the ball: shoot, pass, or carry
     dist_goal = _len(gx - p.x, gy - p.y)

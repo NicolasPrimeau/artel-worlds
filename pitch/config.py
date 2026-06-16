@@ -16,13 +16,16 @@ class Config:
 
     team_size: int = 5  # includes the keeper
 
-    player_speed: float = 1.15  # max outfield move per tick
-    keeper_speed: float = 1.30  # keepers cover the mouth a touch faster
-    accel: float = 0.35  # how fast a player reaches top speed (no teleporting)
+    player_speed: float = 0.92  # max outfield move per tick (a touch slower — calmer pace)
+    keeper_speed: float = 1.05
+    accel: float = 0.16  # gentler ramp to top speed — players glide and arc, not snap
+    arrive_radius: float = (
+        4.0  # ease to a stop within this of a POSITIONING target (not when chasing)
+    )
 
-    ball_friction: float = 0.96  # ball velocity retained per tick when loose
-    shot_speed: float = 4.2
-    pass_speed: float = 3.0
+    ball_friction: float = 0.965  # ball velocity retained per tick when loose
+    shot_speed: float = 3.3
+    pass_speed: float = 2.4
     dribble_speed: float = 1.9  # a carried ball is nudged forward at ~player pace
     control_radius: float = 2.4  # within this of the ball, a player is "on" it
     tackle_radius: float = 2.2  # an opponent this close can contest possession

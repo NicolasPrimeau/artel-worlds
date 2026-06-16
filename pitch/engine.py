@@ -159,16 +159,17 @@ class Pitch:
         tx, ty = intent.get("move", (p.x, p.y))
         cap = c.keeper_speed if p.role == "GK" else c.player_speed
         dx, dy = tx - p.x, ty - p.y
+        dist = _len(dx, dy)
         ux, uy = _unit(dx, dy)
-        # accelerate toward the target heading rather than snapping — keeps motion smooth/legible
-        p.vx += (ux * cap - p.vx) * c.accel
-        p.vy += (uy * cap - p.vy) * c.accel
+        # ARRIVE for positioning (ease to a stop, no jitter); SPRINT for ball-chasing (full pace,
+        # so defenders actually close down). With the gentle accel both read as a real runner —
+        # accelerating, gliding, arcing into turns.
+        desired = cap if intent.get("sprint") else cap * min(1.0, dist / c.arrive_radius)
+        p.vx += (ux * desired - p.vx) * c.accel
+        p.vy += (uy * desired - p.vy) * c.accel
         sp = _len(p.vx, p.vy)
         if sp > cap:
             p.vx, p.vy = p.vx / sp * cap, p.vy / sp * cap
-        # don't overshoot a near target (a keeper settling on a spot)
-        if _len(dx, dy) < sp:
-            p.vx, p.vy = dx, dy
         p.x = _clamp(p.x + p.vx, 0.0, c.length)
         p.y = _clamp(p.y + p.vy, 0.0, c.width)
 

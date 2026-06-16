@@ -90,7 +90,7 @@ const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d');
 let world = { length:120, width:80, goal_width:24 };
 let prev = null, cur = null, recvAt = 0, interval = 70, lastRecv = 0;
-let view = null, ballTrail = [];
+let view = null, ballTrail = [], selected = null;
 
 function resize() {
   const dpr = Math.min(2, window.devicePixelRatio || 1), r = cv.getBoundingClientRect();
@@ -111,6 +111,21 @@ function S(wx, wy) {
 }
 addEventListener('resize', resize);
 addEventListener('orientationchange', () => setTimeout(resize, 250));
+
+function screenToWorld(sx, sy) {
+  if (!view) return [0, 0];
+  return view.rot ? [(sy - view.oy) / view.scale, (sx - view.ox) / view.scale]
+                  : [(sx - view.ox) / view.scale, (sy - view.oy) / view.scale];
+}
+cv.addEventListener('click', e => {  // tap a player to reveal their name; tap elsewhere to clear
+  if (!cur) return;
+  const r = cv.getBoundingClientRect();
+  const [wx, wy] = screenToWorld((e.clientX - r.left) * (cv.width / r.width),
+                                 (e.clientY - r.top) * (cv.height / r.height));
+  let best = null, bd = 4.0;
+  for (const p of cur.players) { const d = Math.hypot(p.x - wx, p.y - wy); if (d < bd) { bd = d; best = p.id; } }
+  selected = best;
+});
 
 function line(pts) { ctx.beginPath(); pts.forEach(([wx, wy], i) => {
   const [px, py] = S(wx, wy); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }); ctx.stroke(); }
@@ -186,6 +201,28 @@ function render() {
       ctx.beginPath(); ctx.arc(px, py, Math.max(2.6, s*0.85), 0, 7);
       ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = '#1a1a1a'; ctx.stroke();
     }
+    if (selected != null) {                       // tapped player: ring + name label above
+      const p = players.find(q => q.id === selected);
+      if (!p) { selected = null; }
+      else {
+        const [px, py] = S(p.x, p.y), col = p.team === 'home' ? '#3d8bff' : '#ff6a3d';
+        ctx.beginPath(); ctx.arc(px, py, pr + 4, 0, 7); ctx.strokeStyle = col;
+        ctx.lineWidth = Math.max(1.5, s * 0.3); ctx.stroke();
+        const fs = Math.max(12, s * 1.5); ctx.font = `700 ${fs}px -apple-system,sans-serif`;
+        const w = ctx.measureText(p.name).width, padX = 8, h = fs + 10;
+        let lx = px - w / 2 - padX, ly = py - pr - 8 - h;
+        lx = Math.max(2, Math.min(cv.width - w - padX * 2 - 2, lx));
+        if (ly < 2) ly = py + pr + 8;             // flip below if no room above
+        ctx.fillStyle = 'rgba(10,15,10,.92)';
+        if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(lx, ly, w + padX * 2, h, 6); ctx.fill(); }
+        else ctx.fillRect(lx, ly, w + padX * 2, h);
+        ctx.strokeStyle = col; ctx.lineWidth = 1.2;
+        if (ctx.roundRect) ctx.stroke();
+        ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(p.name, lx + padX, ly + h / 2);
+        ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+      }
+    }
   }
   requestAnimationFrame(render);
 }
@@ -224,7 +261,7 @@ function apply(s) {
     if (apply._restartShown !== s.restart + ':' + s.match_no) { setToast(labels[s.restart] || ''); }
   }
   apply._restartShown = s.restart ? s.restart + ':' + s.match_no : null;
-  if (cur && prev && cur.match_no !== prev.match_no) ballTrail = [];
+  if (cur && prev && cur.match_no !== prev.match_no) { ballTrail = []; selected = null; }
 }
 
 let ws, retry = 0;
