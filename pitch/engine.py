@@ -40,6 +40,7 @@ class Player:
     y: float
     home_x: float  # formation anchor — where this role lives when the ball is at midfield
     home_y: float
+    number: int = 0  # shirt number, drawn on the dot so players are tellable apart
     vx: float = 0.0
     vy: float = 0.0
     # per-player attributes (multipliers around 1.0) — each one rolls a slightly different player,
@@ -101,9 +102,10 @@ class Pitch:
         self.players = []
         pid = 0
         r = self._rng
+        numbers = [1, 2, 3, 8, 9]  # GK, DEF, DEF, MID, FWD — reads like real shirt numbers
         for team, names in (("home", home_names), ("away", away_names)):
-            for (role, hx, hy), name in zip(self._formation(team), names):
-                p = Player(pid, team, name, role, hx, hy, hx, hy)
+            for slot, ((role, hx, hy), name) in enumerate(zip(self._formation(team), names)):
+                p = Player(pid, team, name, role, hx, hy, hx, hy, numbers[slot])
                 p.pace = round(r.uniform(0.9, 1.12), 3)
                 p.acc = round(r.uniform(0.85, 1.15), 3)
                 p.control = round(r.uniform(0.92, 1.1), 3)

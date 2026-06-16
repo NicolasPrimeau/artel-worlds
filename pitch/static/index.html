@@ -43,8 +43,11 @@
   #round { font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:#cdebd7; font-weight:800; }
   #upnext { font-size:10px; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     max-width:74vw; }
-  #conn { font-size:11px; color:var(--dim); justify-self:end;
-    display:inline-flex; align-items:center; gap:5px; justify-content:flex-end; }
+  /* connection status: a small pill in the top-right corner, consistent in both orientations */
+  #conn { position:absolute; z-index:7; top:calc(6px + env(safe-area-inset-top));
+    right:calc(10px + env(safe-area-inset-right)); font-size:10px; color:var(--dim); white-space:nowrap;
+    display:inline-flex; align-items:center; gap:5px; background:#0a0f0acc; padding:3px 8px;
+    border-radius:20px; }
   #conn::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--dim); }
   #conn.live { color:var(--green); } #conn.live::before { background:var(--green); box-shadow:0 0 8px var(--green); }
   #conn.paused { color:#d4af37; } #conn.paused::before { background:#d4af37; }
@@ -131,7 +134,6 @@
     .side { flex-direction:row; align-items:stretch; }
     .side .stack { flex:1; align-items:flex-start; }
     #score { justify-content:center; padding:6px 0; border-top:1px solid #000; }
-    #conn { position:static; justify-self:auto; align-self:center; }
     #round { text-align:center; }
     #upnext { text-align:center; white-space:normal; max-width:100%; }
     /* RIGHT RAIL — the footer links, stacked */
@@ -327,11 +329,19 @@ function render() {
       ctx.beginPath(); ctx.arc(px, py, pr, 0, 7); ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.fill();
     }
     for (const p of players) {
-      const [px, py] = S(p.x, p.y);
+      const [px, py] = S(p.x, p.y), gk = p.role === 'GK';
       ctx.beginPath(); ctx.arc(px, py, pr, 0, 7);
-      ctx.fillStyle = p.team === 'home' ? '#3d8bff' : '#ff6a3d'; ctx.fill();
-      ctx.lineWidth = Math.max(1, s*0.22); ctx.strokeStyle = 'rgba(255,255,255,.65)'; ctx.stroke();
-      if (p.role === 'GK') { ctx.fillStyle = '#0a0f0a'; ctx.beginPath(); ctx.arc(px, py, pr*0.4, 0, 7); ctx.fill(); }
+      // keepers wear a distinct shade of the team colour so they read at a glance
+      ctx.fillStyle = gk ? (p.team === 'home' ? '#0c2f6b' : '#7a2a14')
+                         : (p.team === 'home' ? '#3d8bff' : '#ff6a3d'); ctx.fill();
+      ctx.lineWidth = Math.max(1, s*0.22); ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.stroke();
+      if (p.num != null && pr >= 6) {            // shirt number on the dot
+        const nf = Math.max(8, pr * 1.05);
+        ctx.font = `800 ${nf}px -apple-system,sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'rgba(255,255,255,.95)'; ctx.fillText(p.num, px, py + nf * 0.06);
+        ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+      }
     }
     if (ball) {
       if (ball.teleport) ballTrail.length = 0;  // don't streak the trail across a reposition
@@ -428,7 +438,7 @@ function connect() {
   ws = new WebSocket(`${proto}://${location.host}/stream`);
   ws.onopen = () => { retry = 0; $('conn').className = 'live'; $('conn').textContent = 'live'; };
   ws.onmessage = e => { try { const s = JSON.parse(e.data); applyConn(s); apply(s); } catch (_) {} };
-  ws.onclose = () => { $('conn').className = 'down'; $('conn').textContent = 'reconnecting';
+  ws.onclose = () => { $('conn').className = 'down'; $('conn').textContent = 'offline';
     setTimeout(connect, Math.min(3000, 400 * 2 ** retry++)); };
   ws.onerror = () => ws.close();
 }

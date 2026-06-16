@@ -147,6 +147,7 @@ class Game:
                     "team": p.team,
                     "name": p.name,
                     "role": p.role,
+                    "num": p.number,
                     "x": round(p.x, 2),
                     "y": round(p.y, 2),
                     "pac": _rate(p.pace),
