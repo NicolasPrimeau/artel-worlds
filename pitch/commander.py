@@ -1,16 +1,29 @@
 from __future__ import annotations
 
+import os
+import time
 from dataclasses import dataclass
 
-from . import artel_client, bot
+from . import artel_client, bot, llm
 from .engine import Pitch, Player, _clamp
+
+LLM_EVERY = float(os.environ.get("PITCH_LLM_EVERY", "6"))  # seconds between coach LLM calls
+
+COACH_SYSTEM = (
+    "You are the head coach of an AI soccer team in a live 2D match. Read the situation and set the "
+    "game plan. Reply with ONLY a JSON object, no prose: "
+    '{"overload":"left|right|center","commit":0-3,"low_block":true|false}. '
+    "overload = which flank to attack; commit = how many midfielders to push forward (more when "
+    "chasing a deficit); low_block = sit deep to protect a lead. Be decisive and adapt to the score, "
+    "the clock, and the opponent's weak side."
+)
 
 # The Artel team's coach. The baseline brain is good but STATIC — it plays the same way at 0-0 and
 # 1-0 with five minutes left, and it never targets a specific opponent's weakness. The coach reads
 # the live game every window and re-throws the plan: attack the opponent's weakest channel, and
 # commit or hold numbers by the scoreline and clock. That adaptation is the edge a fixed team can't
-# answer. (Step 1 computes the plan deterministically; step 2 routes it + per-player marking claims
-# through the real Artel server; step 3 swaps this deterministic coach for an LLM that reads more.)
+# answer. The plan is authored by an LLM coach when one is configured (PITCH_LLM_KEY), else by the
+# proven heuristic; either way the plan + line pieces are published to and read back from Artel.
 
 
 @dataclass
@@ -106,6 +119,41 @@ def make_brain(artel_team: str | None):
     return brain
 
 
+def _state_prompt(pitch: Pitch, team: str) -> str:
+    c = pitch.cfg
+    other = "away" if team == "home" else "home"
+    base = plan_for(pitch, team)  # reuse the heuristic read of the weak flank
+    secs = int(pitch.tick / c.match_ticks * 5400)
+    weak = "left" if base.overload_y < c.width / 2 else "right"
+    ours = "-".join(map(str, pitch.shapes.get(team, ())))
+    theirs = "-".join(map(str, pitch.shapes.get(other, ())))
+    return (
+        f"Score: us {pitch.score[team]}, them {pitch.score[other]}. "
+        f"Clock {secs // 60}:{secs % 60:02d} of 90 (half {pitch.half}). "
+        f"Our shape {ours}, their shape {theirs}. "
+        f"Their weaker defensive flank looks {weak}. Set the plan."
+    )
+
+
+async def author_plan_llm(pitch: Pitch, team: str) -> Plan:
+    fallback = plan_for(pitch, team)
+    out = llm.parse_json(await llm.complete(COACH_SYSTEM, _state_prompt(pitch, team)))
+    if not out:
+        return fallback
+    c = pitch.cfg
+    lanes = {"left": c.width * 0.27, "right": c.width * 0.73, "center": c.width * 0.5}
+    overload_y = lanes.get(str(out.get("overload", "")).lower(), fallback.overload_y)
+    try:
+        commit = max(0, min(3, int(out.get("commit", fallback.commit))))
+    except (TypeError, ValueError):
+        commit = fallback.commit
+    return Plan(
+        overload_y=overload_y,
+        commit=commit,
+        low_block=bool(out.get("low_block", fallback.low_block)),
+    )
+
+
 def _parse_plan(mid_rows: list, fwd_rows: list, fallback: Plan) -> Plan:
     # reassemble the Plan from what the line agents posted to Artel memory
     p = Plan(fallback.overload_y, fallback.commit, fallback.low_block)
@@ -135,6 +183,25 @@ class Coordinator:
         self._last = Plan(overload_y=-1, commit=-1, low_block=False)
         self._artel = artel_client.Artel() if artel_client.configured() else None
         self.live = self._artel is not None  # genuinely talking to Artel this match
+        self.llm = llm.enabled()  # the coach is an LLM (else the deterministic heuristic)
+        self._llm_at = 0.0
+        self._llm_plan: Plan | None = None
+        self._llm_busy = False
+
+    async def _author(self, pitch: Pitch) -> Plan:
+        # the coach's plan: an LLM authors it on a slow cadence (one call in flight, deterministic
+        # fallback); without an LLM it's the proven heuristic, recomputed every window.
+        if not self.llm:
+            return plan_for(pitch, self.team)
+        now = time.monotonic()
+        if not self._llm_busy and now - self._llm_at >= LLM_EVERY:
+            self._llm_busy = True
+            self._llm_at = now
+            try:
+                self._llm_plan = await author_plan_llm(pitch, self.team)
+            finally:
+                self._llm_busy = False
+        return self._llm_plan or plan_for(pitch, self.team)
 
     def optimize(self, pitch: Pitch) -> None:
         # captain's team-sheet — must run before the first tick, so it's synchronous
@@ -150,7 +217,7 @@ class Coordinator:
             )
 
     async def refresh(self, pitch: Pitch) -> None:
-        base = plan_for(pitch, self.team)  # the proven adaptive computation
+        base = await self._author(pitch)  # LLM coach if configured, else the proven heuristic
         if self._artel is None:
             self.plan = base
             return
