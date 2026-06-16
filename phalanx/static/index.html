@@ -390,13 +390,14 @@ function render(now){
   // called target + a pulsing reticle that tracks it as it moves. The "all guns on this one".
   const FOCUS_MS=2200, FCOL=[255,150,80];
   focusMarks=focusMarks.filter(f=>now-f.born<FOCUS_MS);
+  const _tl = (snap && snap.tank_list) || [];  // draw loop's snapshot is `snap`, not `snp`
   const _coord = new Set(snap && snap.coordinated ? snap.coordinated : ['artel']);
   for(const f of focusMarks){ const age=(now-f.born)/FOCUS_MS, a=1-age;
-    const tgt = snp.tank_list.find(t=>t.id===f.tid);
+    const tgt = _tl.find(t=>t.id===f.tid);
     if(!tgt) continue;
     const tp = anim[f.tid]?curPos(anim[f.tid],now):pix(tgt.q,tgt.r);
     ctx.save(); ctx.setLineDash([3,5]); ctx.lineDashOffset=-now/28;
-    for(const t of snp.tank_list){ if(!_coord.has(t.team)) continue;
+    for(const t of _tl){ if(!_coord.has(t.team)) continue;
       const sp = anim[t.id]?curPos(anim[t.id],now):pix(t.q,t.r);
       ctx.beginPath(); ctx.moveTo(sp.x,sp.y); ctx.lineTo(tp.x,tp.y);
       ctx.strokeStyle=rgba(FCOL,a*0.45); ctx.lineWidth=1.4; ctx.stroke(); }
