@@ -145,11 +145,8 @@ SYSTEM = (
     "move with them. When a teammate radios a FOLLOW call, fall in — set follow on them and "
     "maneuver as one, unless you are the one leading or winning a fight where you stand.\n"
     "- post [q,r]: hold here with no contact. clear_orders: release to instinct.\n"
-    "PRIORITY #1 — KEEP THE UNIT TOGETHER. A tank that fights more than ~2 hexes from a "
-    "teammate gets killed alone, and a unit picked off one at a time loses. If you or an ally "
-    "is strung out, CONCENTRATE first (follow_me / follow / rally) before pushing — do not "
-    "advance into the enemy ahead of your team. A teammate UNDER FIRE outranks all else: "
-    "converge on them and focus their attacker. A still, unhit tank in the zone repairs — let "
+    "Priority: a teammate UNDER FIRE outranks all — focus their attacker and converge. Hold "
+    "cover and angles, never strung out alone. A still, unhit tank in the zone repairs — let "
     "hurt tanks recover behind a screen, keep pressure on hurt enemies.\n"
     "ONE move order per command: focus (when you can engage) OR exactly one of regroup / "
     "follow_me / follow (when you must move the unit) — regroup to hold fixed ground, "
@@ -984,9 +981,8 @@ async def command(
             nearest = min(_hexdist(p["q"], p["r"], mq, mr) for mq, mr in mates)
             if nearest > COHESION_HEXES:
                 user += (
-                    f"\nYOU ARE STRUNG OUT — {nearest} hexes from your nearest teammate. Close "
-                    f"up NOW (follow a teammate or rally the unit); do NOT push further out, or "
-                    f"you get killed alone."
+                    f"\nYour nearest teammate is {nearest} hexes away — you are out on your "
+                    f"own, no ally in supporting range."
                 )
         sc = _support_call(p, view, agent["id"])
         if sc:
