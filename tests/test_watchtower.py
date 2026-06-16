@@ -142,6 +142,34 @@ def test_storm_wave_cycles_with_a_real_surge():
     assert max(STORM_WAVE) >= 4  # the wave really surges, it isn't a flat drip
 
 
+def test_cascade_symptom_clears_only_when_root_is_fixed():
+    from watchtower.config import DEFAULT
+    from watchtower.incidents import Incident, cascade_root_spec, symptom_spec
+    from watchtower.infra import Infra
+
+    infra = Infra(DEFAULT)
+    root_spec = cascade_root_spec(123, 0)
+    root = Incident(root_spec, 0, infra, "artel")
+    root_node = root_spec.fix[-1][1]
+    syms = [
+        n for n, s in infra.nodes.items() if n != root_node and s.status in ("degraded", "down")
+    ]
+    assert syms, "the root fault should degrade at least one dependent"
+    sym = Incident(symptom_spec(root_spec, syms[0]), 1, infra, "artel", cascade_root=root)
+    # remediating the symptom's OWN node does nothing — the cure is upstream
+    out = sym.act("restart", syms[0])
+    assert "no effect" in out["result"] and not sym.resolved
+    # the root fix (the symptom's fix IS the root fix) clears the symptom AND heals the root
+    act, node = root_spec.fix[0]
+    out = sym.act(act, node)
+    assert out.get("resolved") and sym.resolved
+    assert infra.nodes[root_node].status not in ("degraded", "down")
+    # a second symptom now auto-resolves: a teammate already fixed the shared root
+    sym2 = Incident(symptom_spec(root_spec, syms[0]), 2, infra, "artel", cascade_root=root)
+    out = sym2.act("inspect", syms[0])
+    assert out.get("resolved") and sym2.resolved
+
+
 def test_fleet_board_counts_backlog_states():
     from watchtower.config import DEFAULT
     from watchtower.incidents import Incident, spec_for

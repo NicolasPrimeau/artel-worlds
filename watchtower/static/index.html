@@ -412,7 +412,7 @@ function render(s){
   const storm = s.storm;
   $("storm").classList.toggle("on", !!storm);
   if (storm){
-    $("storm-size").textContent = storm.size>1 ? `${storm.size} at once` : "";
+    $("storm-size").textContent = storm.cascade ? `cascade — ${storm.size} alarms, 1 root` : (storm.size>1 ? `${storm.size} at once` : "");
     const lastAct = inc => { const l=(inc.actions||[]).slice(-1)[0]; return l?`${l.action} ${l.node}`:"triaging…"; };
     for (const [fleet, col] of [["artel","a"],["solo","s"]]){
       const b = storm[fleet];

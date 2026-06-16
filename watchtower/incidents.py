@@ -51,17 +51,55 @@ def storm_for(seed: int, seq: int, k: int) -> list[IncidentSpec]:
     return out or [spec_for(seed, seq)]
 
 
+# Cascade roots: single-step faults on a DEEP node whose failure ripples UP into its dependents.
+# A cascade fires one of these, then pages each degraded dependent as its OWN symptom ticket.
+CASCADE_ROOT_FAMILIES = ("dependency_crash", "cache_down")
+
+
+def cascade_root_spec(seed: int, seq: int) -> IncidentSpec:
+    # deterministic single-step root fault on a deep node, for a cascade storm
+    rng = Random(f"cascade:{seed}:{seq}")
+    key = rng.choice(CASCADE_ROOT_FAMILIES)
+    fam = next(f for f in FAMILIES if f.key == key)
+    return fam.spawn(rng, seq // EPOCH_INCIDENTS)
+
+
+def symptom_spec(root_spec: IncidentSpec, symptom_node: str) -> IncidentSpec:
+    # a symptom of a cascade: it alarms on a dependent node, but the real fix is the ROOT's fix.
+    # apply is a no-op — the root ticket already perturbed the shared infra this ticket rides.
+    return IncidentSpec(
+        family=root_spec.family,
+        title=f"{symptom_node} failing — upstream dependency unhealthy",
+        root=root_spec.root,
+        alert=f"PAGE: {symptom_node} erroring/slow — an upstream dependency looks unhealthy",
+        fix=list(root_spec.fix),
+        apply=lambda _infra: None,
+    )
+
+
 class Incident:
     """One fleet's live handling of one incident. Holds that fleet's infra (already perturbed into
     the failed state), tracks the responder's actions, and accrues the simulated clock. MTTR is the
     sum of action times: a responder who recalls the runbook spends it on the fix; one who doesn't
     spends it inspecting the wrong (loud) node and trying remediations that don't take."""
 
-    def __init__(self, spec: IncidentSpec, seq: int, infra: Infra, fleet: str):
+    def __init__(
+        self,
+        spec: IncidentSpec,
+        seq: int,
+        infra: Infra,
+        fleet: str,
+        cascade_root: "Incident | None" = None,
+    ):
         self.spec = spec
         self.seq = seq
         self.infra = infra
         self.fleet = fleet
+        # cascade_root set => this is a SYMPTOM ticket: it alarms on a dependent node but can only
+        # be cleared by fixing the shared ROOT, and it clears the instant the root recovers (a
+        # teammate may have fixed it). The root ticket alone perturbs the infra; symptoms ride it.
+        self.cascade_root = cascade_root
+        self.root_node = cascade_root.spec.fix[-1][1] if cascade_root is not None else None
         self.actions: list[dict] = []
         self.elapsed = 0.0
         self.step_i = 0
@@ -72,7 +110,8 @@ class Incident:
         # fleets draw from identical distributions, so the noise is unbiased between arms.
         self._rng = Random(f"time:{seq}:{fleet}:{spec.family}")
         self._detection = self._cost(DETECTION_SECONDS)
-        spec.apply(infra)
+        if cascade_root is None:
+            spec.apply(infra)
 
     def _cost(self, base: float) -> float:
         return round(min(base * 2.0, max(base * 0.5, self._rng.gauss(base, base * 0.25))), 1)
@@ -87,11 +126,56 @@ class Incident:
                 self.infra.heal(name)
         self.infra.propagate()
 
+    def _symptom_act(self, action: str, node: str) -> dict:
+        # a SYMPTOM ticket in a cascade. It clears only when the ROOT recovers — whether THIS
+        # responder fixed it or a teammate did. Remediating the symptom's own node does nothing;
+        # the cure is the root fix on the root node, which a responder finds by tracing the
+        # dependency from an inspect. Whoever heals the root clears every symptom at once.
+        rn = self.root_node
+        if self.infra.nodes[rn].status not in ("degraded", "down"):  # root already fixed
+            self.resolved = True
+            self._record(action or "observe", node or rn, "root recovered")
+            return {"result": f"upstream {rn} recovered — this symptom cleared", "resolved": True}
+        if action in DIAGNOSTIC_ACTIONS:
+            self.elapsed += self._cost(ACTION_SECONDS[action])
+            out = self.infra.inspect(node) if action == "inspect" else self.infra.read_logs(node)
+            self._record(action, node, "ok")
+            return out
+        if action not in REMEDIATION_ACTIONS:
+            self.elapsed += self._cost(5.0)
+            self._record(action, node, "unknown action")
+            return {"error": f"unknown action '{action}'", "valid": list(ACTION_SECONDS)}
+        if node not in self.infra.nodes:
+            self.elapsed += self._cost(5.0)
+            self._record(action, node, "no such node")
+            return {"error": f"no node named '{node}'"}
+        want_action, want_node = self.spec.fix[0]  # the symptom's fix IS the root fix
+        if (
+            action == want_action == "failover"
+            and want_node == "db"
+            and node in ("db", "db-replica")
+        ):
+            node = want_node
+        if action == want_action and node == want_node:
+            self.elapsed += self._cost(ACTION_SECONDS[action])
+            self.cascade_root._heal_all()  # heal the shared root -> every symptom on it clears
+            self.resolved = True
+            self._record(action, node, "applied")
+            return {
+                "result": f"{action} on {node} fixed the upstream root — symptom RESOLVED",
+                "resolved": True,
+            }
+        self.elapsed += self._cost(ACTION_SECONDS[action]) + self._cost(WRONG_ACTION_PENALTY)
+        self._record(action, node, "no effect")
+        return {"result": f"{action} on {node} had no effect — symptoms persist"}
+
     def act(self, action: str, node: str) -> dict:
         if self.resolved or self.missed:
             return {"error": "incident already closed"}
         action = (action or "").strip()
         node = (node or "").strip()
+        if self.cascade_root is not None:
+            return self._symptom_act(action, node)
         if action in DIAGNOSTIC_ACTIONS:
             self.elapsed += self._cost(ACTION_SECONDS[action])
             out = self.infra.inspect(node) if action == "inspect" else self.infra.read_logs(node)

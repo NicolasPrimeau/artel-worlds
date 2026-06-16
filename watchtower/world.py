@@ -11,7 +11,7 @@ import httpx
 
 from . import agent as A
 from .config import DEFAULT, Config
-from .incidents import Incident, storm_for
+from .incidents import Incident, cascade_root_spec, storm_for, symptom_spec
 from .infra import Infra
 from .metrics import Metrics
 
@@ -179,21 +179,53 @@ class World:
         # flat drip. Deterministic off the storm counter, no wall-clock randomness.
         return STORM_WAVE[self.storm_no % len(STORM_WAVE)]
 
+    def _is_cascade(self) -> bool:
+        # every other storm is a single-root CASCADE — one deep fault pages many symptom tickets,
+        # and the fleet that shares the root (vs flailing on symptoms) drains it far cheaper. The
+        # rest are independent bursts, for variety in the load.
+        return self.storm_no % 2 == 1
+
+    def _build_fleet(self, seq: int, infra, fleet: str, cascade: bool) -> list:
+        if not cascade:
+            specs = storm_for(self.seed, seq, self._storm_size())
+            return [Incident(s, seq + i, infra, fleet) for i, s in enumerate(specs)]
+        # cascade: one root fault, then a symptom ticket per dependent the propagation degraded
+        root_spec = cascade_root_spec(self.seed, seq)
+        root = Incident(root_spec, seq, infra, fleet)
+        root_node = root_spec.fix[-1][1]
+        syms = [
+            n
+            for n, st in infra.nodes.items()
+            if n != root_node and st.status in ("degraded", "down")
+        ][:3]
+        tickets = [
+            Incident(symptom_spec(root_spec, sym), seq + 1 + i, infra, fleet, cascade_root=root)
+            for i, sym in enumerate(syms)
+        ]
+        return [root, *tickets]
+
     async def fire_storm(self) -> None:
-        # Fire a BURST of k incidents into both fleets at once. Each fleet's fleet_size responders
-        # pull from a shared backlog and work ONE incident at a time — so concurrent LLM work is
-        # capped at fleet_size per fleet no matter how big the burst, and the queued incidents
-        # cost nothing while they wait. The backlog draining is the live theatre.
+        # Fire a STORM into both fleets at once — a burst of independent incidents, or a single-root
+        # CASCADE. Each fleet's fleet_size responders pull from a shared backlog and work ONE
+        # incident at a time, so concurrent LLM work is capped at fleet_size no matter the burst
+        # size and queued incidents cost nothing. The backlog draining is the live theatre; on a
+        # cascade, the wedge is the wasted actions a solo fleet burns flailing on symptoms.
         await self._ensure()
         seq = self.cursor
-        k = self._storm_size()
-        specs = storm_for(self.seed, seq, k)
-        a_incs = [Incident(s, seq + i, self.artel_infra, "artel") for i, s in enumerate(specs)]
-        s_incs = [Incident(s, seq + i, self.solo_infra, "solo") for i, s in enumerate(specs)]
+        cascade = self._is_cascade()
+        a_incs = self._build_fleet(seq, self.artel_infra, "artel", cascade)
+        s_incs = self._build_fleet(seq, self.solo_infra, "solo", cascade)
+        k = len(a_incs)
         for inc in (*a_incs, *s_incs):
             inc.state = "pending"
             inc.by = None
-        self.storm = {"seq": seq, "size": len(specs), "artel": a_incs, "solo": s_incs}
+        self.storm = {
+            "seq": seq,
+            "size": k,
+            "cascade": cascade,
+            "artel": a_incs,
+            "solo": s_incs,
+        }
         await self._broadcast()
         try:
             ca, cs = await asyncio.gather(
@@ -365,6 +397,7 @@ class World:
             storm = {
                 "seq": self.storm["seq"],
                 "size": self.storm["size"],
+                "cascade": self.storm.get("cascade", False),
                 "artel": self._fleet_board(self.storm["artel"]),
                 "solo": self._fleet_board(self.storm["solo"]),
             }
