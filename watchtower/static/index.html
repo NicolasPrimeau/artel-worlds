@@ -66,20 +66,27 @@
   .legend { display:flex; flex-wrap:wrap; gap:14px; font-size:11px; color:var(--dim); margin-top:6px; }
   .legend span { cursor:help; }
   .legend i { display:inline-block; width:14px; height:3px; vertical-align:middle; margin-right:5px; border-radius:2px; }
-  /* live race */
-  #live { display:none; border-color:rgba(255,180,84,.45); }
-  #live.on { display:block; }
-  .alert { color:var(--amber); font-weight:700; margin-bottom:10px; }
-  .race { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-  .lane { background:#0e1016; border:1px solid var(--line); border-radius:9px; padding:10px 12px; cursor:help; min-width:0; }
-  .lane.a { border-color:rgba(61,139,255,.4); } .lane.s { border-color:rgba(255,174,66,.4); }
-  .lane .who { font-size:11px; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .lane .who b.a { color:var(--artel-soft);} .lane .who b.s{color:var(--solo-soft);}
-  .lane .clk { font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; color:#fff; }
-  .lane .badge { font-size:10px; padding:1px 6px; border-radius:5px; margin-left:6px; }
+  /* incident storm */
+  #storm { display:none; border-color:rgba(255,180,84,.45); }
+  #storm.on { display:block; }
+  .bk { font-size:11px; font-weight:600; color:var(--dim); }
+  .storm-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .stormcol { background:#0e1016; border:1px solid var(--line); border-radius:9px; padding:10px 12px; cursor:help; min-width:0; }
+  .stormcol.a { border-color:rgba(61,139,255,.4); } .stormcol.s { border-color:rgba(255,174,66,.4); }
+  .stormcol .who { font-size:11px; color:var(--dim); margin-bottom:7px; display:flex; gap:8px; align-items:baseline; }
+  .stormcol .who b.a { color:var(--artel-soft);} .stormcol .who b.s{color:var(--solo-soft);}
+  .incs { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px; }
+  .inc { display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-size:11px; padding:4px 7px; border-radius:6px; background:#12141b; border-left:3px solid var(--line); min-width:0; }
+  .inc .fam { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .inc .imt { color:var(--dim); font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:0 1 auto; }
+  .inc.st-pending { opacity:.55; border-left-color:#555; }
+  .inc.st-active { border-left-color:var(--amber); background:#1a1710; animation:incpulse 1.3s ease-in-out infinite; }
+  .inc.st-resolved { border-left-color:var(--green); }
+  .inc.st-missed { border-left-color:var(--red); }
+  @keyframes incpulse { 0%,100%{ border-left-color:var(--amber);} 50%{ border-left-color:rgba(255,180,84,.35);} }
+  .badge { font-size:10px; padding:1px 6px; border-radius:5px; }
   .badge.ok { background:rgba(110,231,168,.15); color:var(--green); }
   .badge.miss { background:rgba(255,93,93,.15); color:var(--red); }
-  .lane .act { font-size:11px; color:var(--dim); margin-top:5px; min-height:16px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   /* status strips */
   .strip { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:4px 0; }
   .strip .nm { width:96px; color:var(--dim); font-size:11px; cursor:help; flex:0 0 auto; }
@@ -200,17 +207,16 @@
     </div>
   </section>
 
-  <section class="card" id="live">
-    <div class="ttl">⚡ Live race <span class="qm" data-tip="The same fault just hit both infrastructures. Both fleets are working it independently right now — first to the fix wins the round.">?</span></div>
-    <div class="alert" id="live-alert"></div>
-    <div class="race">
-      <div class="lane a" data-tip="This responder can recall the team's shared runbooks — if any teammate has solved this fault family before, it skips straight to the fix.">
-        <div class="who"><b class="a">Artel</b> · <span id="la-by"></span></div>
-        <div class="clk" id="la-clk">0s</div><div class="act" id="la-act"></div>
+  <section class="card" id="storm">
+    <div class="ttl">⚡ Incident storm <span id="storm-size" class="bk"></span> <span class="qm" data-tip="A BURST of faults just hit both infrastructures at once. Each fleet's responders work the backlog in parallel — at most one incident per responder, the rest queue. Watch which fleet drains its queue faster.">?</span></div>
+    <div class="storm-grid">
+      <div class="stormcol a" data-tip="Three responders sharing one runbook library and one backlog — they spread across the storm and reuse each other's fixes.">
+        <div class="who"><b class="a">Artel</b> <span class="bk" id="a-backlog"></span></div>
+        <ul class="incs" id="a-incs"></ul>
       </div>
-      <div class="lane s" data-tip="This responder has only its own notes. If it hasn't personally seen this fault, it diagnoses from scratch.">
-        <div class="who"><b class="s">Solo</b> · <span id="ls-by"></span></div>
-        <div class="clk" id="ls-clk">0s</div><div class="act" id="ls-act"></div>
+      <div class="stormcol s" data-tip="Three responders with private notes. Same backlog of faults, no shared library and no pooled diagnosis.">
+        <div class="who"><b class="s">Solo</b> <span class="bk" id="s-backlog"></span></div>
+        <ul class="incs" id="s-incs"></ul>
       </div>
     </div>
   </section>
@@ -403,16 +409,25 @@ function render(s){
   wall($("wall-artel"), s.artel_wall||[]);
   wall($("wall-solo"), s.solo_wall||[]);
 
-  const live = s.live;
-  $("live").classList.toggle("on", !!live);
-  if (live){
-    $("live-alert").textContent = `#${live.seq} · ${live.title} — ${live.alert}`;
-    $("la-by").textContent = live.artel.by || "";
-    $("ls-by").textContent = live.solo.by || "";
-    $("la-clk").innerHTML = fmt(live.artel.mttr) + (live.artel.resolved?` <span class="badge ok">resolved</span>`:live.artel.missed?` <span class="badge miss">gave up</span>`:"");
-    $("ls-clk").innerHTML = fmt(live.solo.mttr) + (live.solo.resolved?` <span class="badge ok">resolved</span>`:live.solo.missed?` <span class="badge miss">gave up</span>`:"");
-    const last = p => { const l=(p.actions||[]).slice(-1)[0]; return l?`${l.action} ${l.node} — ${l.result}`:"triaging…"; };
-    $("la-act").textContent = last(live.artel); $("ls-act").textContent = last(live.solo);
+  const storm = s.storm;
+  $("storm").classList.toggle("on", !!storm);
+  if (storm){
+    $("storm-size").textContent = storm.size>1 ? `${storm.size} at once` : "";
+    const lastAct = inc => { const l=(inc.actions||[]).slice(-1)[0]; return l?`${l.action} ${l.node}`:"triaging…"; };
+    for (const [fleet, col] of [["artel","a"],["solo","s"]]){
+      const b = storm[fleet];
+      $(col+"-backlog").textContent = `${b.open} open · ${b.resolved} fixed` + (b.missed?` · ${b.missed} missed`:"");
+      const ul = $(col+"-incs"); ul.innerHTML = "";
+      for (const inc of b.incidents){
+        const li = document.createElement("li"); li.className = "inc st-"+inc.state;
+        const right = inc.state==="resolved" ? `<span class="badge ok">${fmt(inc.mttr)}</span>`
+          : inc.state==="missed" ? `<span class="badge miss">gave up</span>`
+          : inc.state==="active" ? `<span class="imt">${esc(inc.by||"")}: ${esc(lastAct(inc))}</span>`
+          : `<span class="imt">queued</span>`;
+        li.innerHTML = `<span class="fam">#${inc.seq} ${esc(inc.family)}</span>${right}`;
+        ul.appendChild(li);
+      }
+    }
   }
 
   const feed = s.war_room||[];

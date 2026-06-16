@@ -35,6 +35,22 @@ def make_stream(seed: int, length: int) -> list[IncidentSpec]:
     return [spec_for(seed, i) for i in range(length)]
 
 
+def storm_for(seed: int, seq: int, k: int) -> list[IncidentSpec]:
+    # A STORM is up to k node-disjoint incidents drawn from k consecutive seqs — deterministic and
+    # resumable exactly like the single stream, just consumed k-at-a-time. Disjoint fix targets so
+    # each incident owns its node and resolves independently on the one shared infra a fleet holds.
+    out: list[IncidentSpec] = []
+    taken: set[str] = set()
+    for i in range(max(1, k)):
+        spec = spec_for(seed, seq + i)
+        nodes = {n for _, n in spec.fix}
+        if nodes & taken:
+            continue
+        taken |= nodes
+        out.append(spec)
+    return out or [spec_for(seed, seq)]
+
+
 class Incident:
     """One fleet's live handling of one incident. Holds that fleet's infra (already perturbed into
     the failed state), tracks the responder's actions, and accrues the simulated clock. MTTR is the

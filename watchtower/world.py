@@ -11,7 +11,7 @@ import httpx
 
 from . import agent as A
 from .config import DEFAULT, Config
-from .incidents import Incident, spec_for
+from .incidents import Incident, storm_for
 from .infra import Infra
 from .metrics import Metrics
 
@@ -19,6 +19,16 @@ log = logging.getLogger("watchtower")
 
 SEED = int(os.environ.get("WATCHTOWER_SEED", "20260612"))
 WARMUP_SECONDS = float(os.environ.get("WATCHTOWER_WARMUP_SECONDS", "20"))
+# Storm scheduling. Incidents now arrive in BURSTS, and only while someone is watching — brisk
+# enough to be live theatre, with a wave that surges and recedes instead of a flat metronome.
+# Cost is bounded three ways: ≤ fleet_size responders work at once (the backlog is free), firing
+# only when viewers are present, and the hard daily spend cap as the backstop.
+STORM_INTERVAL = float(
+    os.environ.get("WATCHTOWER_STORM_INTERVAL", "40")
+)  # real secs between storms
+STORM_JITTER = float(os.environ.get("WATCHTOWER_STORM_JITTER", "12"))
+IDLE_POLL = float(os.environ.get("WATCHTOWER_IDLE_POLL", "3"))  # cheap poll for a viewer when idle
+STORM_WAVE = (1, 2, 2, 3, 5, 3, 2, 1)  # burst sizes cycled per storm — calm -> surge -> recede
 
 
 class Responder:
@@ -51,7 +61,8 @@ class World:
         self.spent_total = 0.0
         self.spend_days: dict[str, float] = {}
         self._day = self._utc_day()
-        self.live: dict | None = None  # the incident in flight, for the race clocks
+        self.storm: dict | None = None  # the burst in flight: both fleets' live + backlog incidents
+        self.storm_no = 0  # counter driving the wave rhythm of burst sizes
         self.viewers: set = set()
         self._joined = False
         self.last_error: str | None = None
@@ -163,75 +174,98 @@ class World:
         except Exception as e:
             log.warning("watchtower state persist failed: %s", e)
 
-    async def fire(self) -> None:
+    def _storm_size(self) -> int:
+        # the wave: burst sizes cycle calm -> surge -> recede so load arrives in swells, not a
+        # flat drip. Deterministic off the storm counter, no wall-clock randomness.
+        return STORM_WAVE[self.storm_no % len(STORM_WAVE)]
+
+    async def fire_storm(self) -> None:
+        # Fire a BURST of k incidents into both fleets at once. Each fleet's fleet_size responders
+        # pull from a shared backlog and work ONE incident at a time — so concurrent LLM work is
+        # capped at fleet_size per fleet no matter how big the burst, and the queued incidents
+        # cost nothing while they wait. The backlog draining is the live theatre.
         await self._ensure()
         seq = self.cursor
-        spec = spec_for(self.seed, seq)
-        n = len(self.artel)
-        a_resp, s_resp = self.artel[seq % n], self.solo[seq % n]
-        a_inc = Incident(spec, seq, self.artel_infra, "artel")
-        s_inc = Incident(spec, seq, self.solo_infra, "solo")
-        self.live = {
-            "seq": seq,
-            "spec": spec,
-            "artel": a_inc,
-            "solo": s_inc,
-            "artel_by": a_resp.id,
-            "solo_by": s_resp.id,
-        }
-        a_task = await a_resp.store.open_incident(seq, spec.title, spec.family, spec.alert)
-        s_task = await s_resp.store.open_incident(seq, spec.title, spec.family, spec.alert)
+        k = self._storm_size()
+        specs = storm_for(self.seed, seq, k)
+        a_incs = [Incident(s, seq + i, self.artel_infra, "artel") for i, s in enumerate(specs)]
+        s_incs = [Incident(s, seq + i, self.solo_infra, "solo") for i, s in enumerate(specs)]
+        for inc in (*a_incs, *s_incs):
+            inc.state = "pending"
+            inc.by = None
+        self.storm = {"seq": seq, "size": len(specs), "artel": a_incs, "solo": s_incs}
         await self._broadcast()
-
-        async def step():
-            await self._broadcast()
-
         try:
             ca, cs = await asyncio.gather(
-                A.respond(self._http, a_inc, a_resp.store, on_step=step),
-                A.respond(self._http, s_inc, s_resp.store, on_step=step),
+                self._work_fleet(self.artel, a_incs),
+                self._work_fleet(self.solo, s_incs),
             )
             self.spent_today += ca + cs
             self.spent_total += ca + cs
             day = self._utc_day()
             self.spend_days[day] = round(self.spend_days.get(day, 0.0) + ca + cs, 6)
-            for k in sorted(self.spend_days)[:-30]:
-                del self.spend_days[k]
+            for kk in sorted(self.spend_days)[:-30]:
+                del self.spend_days[kk]
             self.last_error = None
         except Exception as e:
             self.last_error = f"{type(e).__name__}: {e}"
-            log.warning("watchtower fire seq=%s failed: %s", seq, self.last_error)
-        a_inc.finalize()  # heal the world + book a miss if the responder stopped short of resolving
-        s_inc.finalize()
-        self.metrics.record(
-            seq, spec.family, "artel", a_inc.mttr(), len(a_inc.actions), a_inc.resolved
-        )
-        self.metrics.record(
-            seq, spec.family, "solo", s_inc.mttr(), len(s_inc.actions), s_inc.resolved
-        )
-        miss_note = (
-            f"Closed UNRESOLVED after {len(a_inc.actions)} actions; MTTR booked at the cap. "
-            "Next responder on this family: crack it and record the runbook."
-        )
-        await a_resp.store.close_incident(a_task, a_inc.resolved, miss_note)
-        await s_resp.store.close_incident(s_task, s_inc.resolved, miss_note)
-        if a_inc.resolved:
-            await a_resp.store.sweep_family(spec.family)
-        if s_inc.resolved:
-            await s_resp.store.sweep_family(spec.family)
-
-        def _shift_note(inc) -> str:
-            outcome = (
-                f"resolved in {inc.mttr():.0f}s" if inc.resolved else "went UNRESOLVED (capped)"
-            )
-            return f"incident #{seq} ({spec.family}): {outcome} after {len(inc.actions)} actions."
-
-        await a_resp.store.save_handoff(_shift_note(a_inc))
-        await s_resp.store.save_handoff(_shift_note(s_inc))
-        self.cursor += 1
-        self.live = None
+            log.warning("watchtower storm seq=%s failed: %s", seq, self.last_error)
+        self.cursor += k  # k seqs consumed, resolved or not — the stream stays deterministic
+        self.storm_no += 1
+        self.storm = None
         self._persist_state()
         await self._broadcast()
+
+    async def _work_fleet(self, responders: list, incidents: list) -> float:
+        # one fleet's responders draining its backlog: a shared queue means no two responders work
+        # the same incident, and at most fleet_size run concurrently. Returns the fleet's LLM cost.
+        queue: asyncio.Queue = asyncio.Queue()
+        for inc in incidents:
+            queue.put_nowait(inc)
+        total = 0.0
+
+        async def step() -> None:
+            await self._broadcast()
+
+        async def worker(resp) -> None:
+            nonlocal total
+            while True:
+                try:
+                    inc = queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    return
+                inc.state, inc.by = "active", resp.id
+                await self._broadcast()
+                task = await resp.store.open_incident(
+                    inc.seq, inc.spec.title, inc.family, inc.spec.alert
+                )
+                try:
+                    total += await A.respond(self._http, inc, resp.store, on_step=step)
+                except Exception as e:
+                    self.last_error = f"{type(e).__name__}: {e}"
+                    log.warning("watchtower responder %s failed: %s", resp.id, self.last_error)
+                inc.finalize()  # heal + book a miss if the responder stopped short
+                inc.state = "resolved" if inc.resolved else "missed"
+                self.metrics.record(
+                    inc.seq, inc.family, inc.fleet, inc.mttr(), len(inc.actions), inc.resolved
+                )
+                miss_note = (
+                    f"Closed UNRESOLVED after {len(inc.actions)} actions; MTTR booked at the cap. "
+                    "Next responder on this family: crack it and record the runbook."
+                )
+                await resp.store.close_incident(task, inc.resolved, miss_note)
+                if inc.resolved:
+                    await resp.store.sweep_family(inc.family)
+                outcome = (
+                    f"resolved in {inc.mttr():.0f}s" if inc.resolved else "went UNRESOLVED (capped)"
+                )
+                await resp.store.save_handoff(
+                    f"incident #{inc.seq} ({inc.family}): {outcome} after {len(inc.actions)} actions."
+                )
+                await self._broadcast()
+
+        await asyncio.gather(*(worker(r) for r in responders))
+        return total
 
     async def reset(self) -> None:
         # operator reset: wipe the curve and restart the A/B from zero. Clears persisted metrics,
@@ -244,7 +278,8 @@ class World:
         self.spent_today = 0.0
         self.artel_infra.reset()
         self.solo_infra.reset()
-        self.live = None
+        self.storm = None
+        self.storm_no = 0
         for r in self.solo:
             r.store.notes.clear()
             r.store.tasks.clear()
@@ -268,17 +303,23 @@ class World:
     async def loop(self) -> None:
         await asyncio.sleep(WARMUP_SECONDS)
         while True:
-            if self.enabled and not self.paused and self._budget_ok():
+            # VIEWER-GATED: storms (and the spend they cost) only fire while someone is watching.
+            # Unwatched, the loop just polls cheaply for a viewer — the page still serves the
+            # accumulated curve, but nothing burns. An in-flight storm always finishes.
+            if self.enabled and not self.paused and self._budget_ok() and self.viewers:
                 try:
-                    await self.fire()
+                    await self.fire_storm()
                 except Exception as e:
                     log.warning("watchtower loop error: %s", e)
-            await asyncio.sleep(self._interval())
+                await asyncio.sleep(self._interval())
+            else:
+                await asyncio.sleep(IDLE_POLL)
 
     def _interval(self) -> float:
-        # deterministic jitter off the cursor so the cadence varies without wall-clock randomness
+        # brisk, with deterministic jitter off the cursor so the cadence varies without wall-clock
+        # randomness — storms arrive every ~STORM_INTERVAL seconds while watched
         j = ((self.cursor * 2654435761) % 1000) / 1000.0
-        return self.cfg.incident_interval + (j - 0.5) * 2 * self.cfg.incident_jitter
+        return STORM_INTERVAL + (j - 0.5) * 2 * STORM_JITTER
 
     async def _broadcast(self) -> None:
         if not self.viewers:
@@ -298,17 +339,34 @@ class World:
             out.extend(r.store.feed)
         return out[-24:]
 
+    @staticmethod
+    def _inc_card(inc) -> dict:
+        return {
+            **inc.view(),
+            "state": getattr(inc, "state", "pending"),
+            "by": getattr(inc, "by", None),
+        }
+
+    @staticmethod
+    def _fleet_board(incs: list) -> dict:
+        cards = [World._inc_card(i) for i in incs]
+        return {
+            "incidents": cards,
+            "pending": sum(1 for c in cards if c["state"] == "pending"),
+            "active": sum(1 for c in cards if c["state"] == "active"),
+            "open": sum(1 for c in cards if c["state"] in ("pending", "active")),
+            "resolved": sum(1 for c in cards if c["state"] == "resolved"),
+            "missed": sum(1 for c in cards if c["state"] == "missed"),
+        }
+
     def snapshot(self) -> dict:
-        live = None
-        if self.live:
-            a, s = self.live["artel"], self.live["solo"]
-            live = {
-                "seq": self.live["seq"],
-                "family": self.live["spec"].family,
-                "title": self.live["spec"].title,
-                "alert": self.live["spec"].alert,
-                "artel": {"by": self.live["artel_by"], **a.view()},
-                "solo": {"by": self.live["solo_by"], **s.view()},
+        storm = None
+        if self.storm:
+            storm = {
+                "seq": self.storm["seq"],
+                "size": self.storm["size"],
+                "artel": self._fleet_board(self.storm["artel"]),
+                "solo": self._fleet_board(self.storm["solo"]),
             }
         return {
             "enabled": self.enabled,
@@ -322,7 +380,7 @@ class World:
             "cap_daily": A.SPEND_CAP_DAILY_USD,
             "artel_wall": self.artel_infra.status_wall(),
             "solo_wall": self.solo_infra.status_wall(),
-            "live": live,
+            "storm": storm,
             "summary": self.metrics.summary(),
             "wedge": self.metrics.wedge(),
             "recent": self.metrics.recent(),

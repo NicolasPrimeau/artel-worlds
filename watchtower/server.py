@@ -79,10 +79,10 @@ async def reset():
 
 @app.post("/fire")
 async def fire():
-    # force the next incident immediately — for demos and the smoke test; the loop fires on its own
+    # force the next storm immediately — for demos and the smoke test; the loop fires on its own
     if not G.enabled:
         return {"fired": False, "reason": "world disabled (no llm or no artel agents)"}
-    asyncio.create_task(G.fire())
+    asyncio.create_task(G.fire_storm())
     return {"fired": True, "seq": G.cursor}
 
 

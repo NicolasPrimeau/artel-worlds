@@ -114,6 +114,49 @@ def test_families_count():
     assert len(set(family_keys())) == 12
 
 
+def test_storm_for_is_disjoint_deterministic_and_resumable():
+    from watchtower.incidents import spec_for, storm_for
+
+    s1 = storm_for(42, 0, 5)
+    s2 = storm_for(42, 0, 5)
+    assert [x.family for x in s1] == [x.family for x in s2]  # deterministic
+    assert len(s1) >= 1  # a storm always has at least one incident
+    seen: set = set()
+    for spec in s1:  # node-disjoint fix targets so each incident owns its node on one infra
+        nodes = {n for _, n in spec.fix}
+        assert not (nodes & seen)
+        seen |= nodes
+    assert s1[0].family == spec_for(42, 0).family  # resumable: same seq -> same spec as the stream
+
+
+def test_storm_wave_cycles_with_a_real_surge():
+    from watchtower.world import STORM_WAVE, World
+
+    w = World.__new__(World)
+    w.storm_no = 0
+    sizes = []
+    for _ in range(len(STORM_WAVE)):
+        sizes.append(w._storm_size())
+        w.storm_no += 1
+    assert sizes == list(STORM_WAVE)
+    assert max(STORM_WAVE) >= 4  # the wave really surges, it isn't a flat drip
+
+
+def test_fleet_board_counts_backlog_states():
+    from watchtower.config import DEFAULT
+    from watchtower.incidents import Incident, spec_for
+    from watchtower.infra import Infra
+    from watchtower.world import World
+
+    infra = Infra(DEFAULT)
+    incs = [Incident(spec_for(7, i), i, infra, "artel") for i in range(3)]
+    incs[0].state, incs[0].by = "active", "a1"
+    incs[1].state = "pending"
+    incs[2].state = "resolved"
+    board = World._fleet_board(incs)
+    assert (board["active"], board["pending"], board["resolved"], board["open"]) == (1, 1, 1, 2)
+
+
 def test_server_boots_without_llm(monkeypatch):
     monkeypatch.setenv("WATCHTOWER_DB", tempfile.mktemp(suffix=".db"))
     from fastapi.testclient import TestClient
