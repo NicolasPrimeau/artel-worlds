@@ -90,6 +90,7 @@
   #commslog li .who { flex:0 0 auto; font-weight:700; font-size:9.5px; color:#cfe2ff;
     background:rgba(61,139,255,.16); border-radius:4px; padding:1px 5px; }
   #commslog li .msg { color:var(--fg); }
+  #commslog li.quiet .msg { color:var(--dim); font-style:italic; }
   #commslog li.k-intel .msg { color:#7fe0ff; }
   #commslog li.k-focus .msg { color:#ffb37f; }
   #commslog li.k-rally .msg { color:#9be8a8; }
@@ -212,7 +213,7 @@
       <span><i class="sw zone"></i> closing zone</span>
     </div>
     <div class="cta">
-      <div id="comms" hidden><div class="ch"><span class="dot"></span> Team comms — live Artel radio</div><ul id="commslog"></ul></div>
+      <div id="comms"><div class="ch"><span class="dot"></span> Team comms — live Artel radio</div><ul id="commslog" data-empty="1"><li class="quiet"><span class="msg">— standing by —</span></li></ul></div>
       <a class="primary" href="https://artel.run/ui?project=phalanx#dashboard" target="_blank" rel="noopener">Watch the team coordinate, live → <b>artel.run</b></a>
       <a class="gh" href="https://github.com/NicolasPrimeau/artel" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.5 7.5 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg> Artel source</a>
       <a class="gh" href="https://github.com/NicolasPrimeau/artel-worlds" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.5 7.5 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg> Worlds source</a>
@@ -531,10 +532,13 @@ function apply(snp){
     deaths.push({x:bx,y:by,team:m.team||'red',born:now+DEATH_AT}); } }
   prevIds=ids; anim=A; t0=now; snap=snp;
 
-  // team comms: the squad's live Artel radio, plus intel/rally pings drawn on the map
+  // team comms: the squad's live Artel radio — always shown (a quiet placeholder before the
+  // first call) so the feature reads from the start; pings/reticles spawn from new events.
   const comms=snp.comms||[], cm=$('comms'), clog=$('commslog');
-  if(comms.length){ cm.hidden=false; clog.innerHTML='';
+  cm.hidden=false;
+  if(comms.length){ clog.dataset.empty='';
     const nLines = window.innerWidth<=640 ? 2 : 5;  // keep the map clear on phones
+    clog.innerHTML='';
     for(const e of comms.slice(-nLines)){
       const li=document.createElement('li'); li.className='k-'+(e.kind||'say');
       const who=String(e.who||'').split('-').pop()||'?';
@@ -554,7 +558,10 @@ function apply(snp){
       }
     }
     if(seenComms.size>400) seenComms.clear();
-  } else cm.hidden=true;
+  } else if(clog.dataset.empty!=='1'){  // render the quiet placeholder once
+    clog.innerHTML='<li class="quiet"><span class="msg">— standing by —</span></li>';
+    clog.dataset.empty='1';
+  }
 
   $('s_tick').textContent=snp.tick;
   const a=(snp.scores&&snp.scores.artel)||0, rd=(snp.scores&&snp.scores.red)||0, tot=a+rd||1;
