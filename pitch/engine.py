@@ -78,6 +78,8 @@ class Pitch:
     restart_kind: str | None = None  # "corner" | "goal-kick" | "throw-in" — for the feed
     _concede_to: str = "home"  # who kicks off after the celebration
     shapes: dict[str, tuple[int, int, int]] = field(default_factory=dict)  # team -> (def, mid, fwd)
+    _offside: set[int] = field(default_factory=set)  # ids flagged offside at the last pass
+    _offside_team: str | None = None
     _rng: Random = field(default_factory=lambda: Random(0))
 
     def __post_init__(self) -> None:
@@ -144,6 +146,7 @@ class Pitch:
         self.possessor = None
         self.celebrate = self.restart = 0
         self.scorer = self.goal_team = self.restart_kind = None
+        self._offside, self._offside_team = set(), None
         for p in self.players:
             p.x, p.y, p.vx, p.vy = p.home_x, p.home_y, 0.0, 0.0
 
@@ -184,6 +187,39 @@ class Pitch:
             self._move(p, intents[p.id])
         self._advance_ball(intents)
 
+    def _adv(self, team: str, x: float) -> float:
+        # how far up the attacking direction: 0 = own goal line, length = the goal we attack
+        return x if team == "home" else self.cfg.length - x
+
+    def _in_box(self, x: float, y: float, defending: str) -> bool:
+        # is (x, y) inside the penalty area defended by `defending` (16 deep, 40 wide)
+        c = self.cfg
+        deep = x <= 16.0 if defending == "home" else x >= c.length - 16.0
+        return deep and abs(y - c.width / 2) <= 20.0
+
+    def _offside_line(self, team: str) -> float:
+        # the second-to-last defender's advanced-coordinate — an attacker beyond it is offside
+        opp = sorted((self._adv(team, o.x) for o in self.players if o.team != team), reverse=True)
+        return opp[1] if len(opp) >= 2 else (opp[0] if opp else self.cfg.length)
+
+    def _flag_offside(self, kicker: Player) -> None:
+        # at the moment the ball is played, flag teammates beyond the offside line, ahead of the
+        # ball, in the attacking half. If one of them next receives it, it's offside.
+        limit = (
+            max(
+                self._offside_line(kicker.team),
+                self._adv(kicker.team, self.ball.x),
+                self.cfg.length / 2,
+            )
+            + 0.5
+        )
+        self._offside_team = kicker.team
+        self._offside = {
+            q.id
+            for q in self.players
+            if q.team == kicker.team and q.id != kicker.id and self._adv(q.team, q.x) > limit
+        }
+
     def _resolve_possession(self) -> None:
         # a player controls the ball when it's within their reach; the keeper's reach is larger
         # (a dive/parry), so on-target shots get gathered instead of trickling in. Closest
@@ -202,7 +238,38 @@ class Pitch:
                 reach = c.control_radius * p.control  # collecting a loose or own ball
             if d <= reach and d < bd:
                 best, bd = p, d
+        if best is not None and best.id in self._offside and best.team == self._offside_team:
+            # a flagged attacker received the ball — OFFSIDE, indirect free kick to the defenders
+            self._offside, self._offside_team = set(), None
+            defend = "away" if best.team == "home" else "home"
+            self.possessor = None
+            self._dead_ball(
+                _clamp(best.x, 6.0, c.length - 6.0),
+                _clamp(best.y, 6.0, c.width - 6.0),
+                defend,
+                "offside",
+            )
+            return
+        if best is not None and prev is not None and best.team != prev:
+            # a tackle/dispossession — mistimed challenges are fouls (clumsier tacklers foul more)
+            pfoul = _clamp(0.2 - (best.strength - 1.0) * 0.5, 0.04, 0.4)
+            if self._rng.random() < pfoul:
+                self.possessor = None
+                if self._in_box(b.x, b.y, best.team):  # foul in the box — penalty
+                    spot = 11.0 if best.team == "home" else c.length - 11.0
+                    self._dead_ball(spot, c.width / 2, prev, "penalty")
+                else:
+                    self._dead_ball(
+                        _clamp(b.x, 4.0, c.length - 4.0),
+                        _clamp(b.y, 4.0, c.width - 4.0),
+                        prev,
+                        "free-kick",
+                    )
+                self.events.append(f"t{self.tick}: foul by {best.team}")
+                return
         self.possessor = best.id if best else None
+        if best is not None:  # the phase resolved with an onside touch — clear the flags
+            self._offside, self._offside_team = set(), None
 
     def _move(self, p: Player, intent: dict) -> None:
         c = self.cfg
@@ -261,6 +328,7 @@ class Pitch:
                 b.y += b.vy
                 b.last_kicker = owner.id
                 self.possessor = None
+                self._flag_offside(owner)
             else:
                 # CARRY — the ball eases to a spot just ahead of the carrier instead of being
                 # re-kicked every tick. Velocity is real (target-tracking), so it reads as a
@@ -324,6 +392,7 @@ class Pitch:
         # place a dead ball and pause briefly so the restart reads, then play resumes
         self.ball = Ball(x, y, last_touch=("away" if to_team == "home" else "home"))
         self.possessor = None
+        self._offside, self._offside_team = set(), None
         self.restart = self.cfg.restart_ticks
         self.restart_kind = kind
 

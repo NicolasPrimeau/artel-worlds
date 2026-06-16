@@ -428,7 +428,8 @@ function apply(s) {
   lastTour = s.tournament;
   if (!$('cup').hidden) renderTour(lastTour);
   if (s.restart && apply._lastRestart !== s.tick - (s.tick % 1)) {
-    const labels = { corner: 'Corner', 'goal-kick': 'Goal kick', 'throw-in': 'Throw-in' };
+    const labels = { corner: 'Corner', 'goal-kick': 'Goal kick', 'throw-in': 'Throw-in',
+      offside: 'Offside ▶', 'free-kick': 'Free kick', penalty: 'Penalty!' };
     if (apply._restartShown !== s.restart + ':' + s.match_no) { setToast(labels[s.restart] || ''); }
   }
   apply._restartShown = s.restart ? s.restart + ':' + s.match_no : null;
