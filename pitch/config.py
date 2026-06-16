@@ -32,7 +32,7 @@ class Config:
     gk_reach: float = 3.9  # a keeper gathers (saves) the ball within this — bigger than control
 
     shoot_range: float = 31.0  # shoot only when genuinely close — forces build-up, not blasts
-    pass_lead: float = 4.5  # lead a moving teammate by this much
+    pass_lead: float = 2.5  # lead a teammate by this much — small, so the ball arrives to feet
     carry_ahead: float = 1.6  # a dribbled ball rides this far ahead of the carrier's feet
     carry_ease: float = (
         0.5  # how snappily the carried ball tracks that spot (0..1) — smooth, not glued

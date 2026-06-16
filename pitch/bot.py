@@ -148,14 +148,20 @@ def decide(pitch: Pitch, p: Player) -> dict:
             ax, ay = _shoot_aim(pitch, p)
             # scatter grows with range — long shots fly wide, so goals come from working it close
             return _kick(p, ax, ay, c.shot_speed, 0.22 + dist_goal / 130.0, rng, skill=p.finishing)
-        # PASS is the default — keep it moving. Favour an advanced, open teammate (a forward making
-        # the run up top), so the ball travels through the team and reaches the attackers.
+        # PASS is the default — keep it moving. Favour a teammate who is OPEN and REACHABLE (a
+        # short, completable ball beats a hopeful long one); a little forward progress is a bonus.
+        # This is what makes the build-up actually connect instead of breaking down on attack.
         mates = [q for q in outfield if q.id != p.id]
-        opts = [q for q in mates if _open(pitch, q) > 5.5 and (q.x - p.x) * fwd > -10]
+        opts = [q for q in mates if _open(pitch, q) > 5.0 and (q.x - p.x) * fwd > -8]
         pressured = mine_open < 6.5
         if opts and (pressured or len(opts) >= 2 or rng.random() < 0.6):
-            tgt = max(opts, key=lambda q: q.x * fwd + _open(pitch, q) * 0.5)
-            return _kick(p, tgt.x + c.pass_lead * fwd, tgt.y, c.pass_speed, 0.08, rng)
+            tgt = max(
+                opts,
+                key=lambda q: _open(pitch, q) * 0.8
+                + (q.x - p.x) * fwd * 0.35
+                - _len(q.x - p.x, q.y - p.y) * 0.3,
+            )
+            return _kick(p, tgt.x + c.pass_lead * fwd, tgt.y, c.pass_speed, 0.05, rng)
         # carry: drive at goal via the more open flank — NO kick, so the engine eases the ball ahead
         # of the carrier (a smooth dribble) and they jink around defenders on the way.
         return {"move": _attack_target(pitch, p)}

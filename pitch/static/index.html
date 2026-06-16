@@ -60,9 +60,11 @@
   #banner .big { font-weight:900; letter-spacing:3px; font-size:clamp(40px,13vw,96px);
     text-shadow:0 2px 36px rgba(0,0,0,.7); }
   #banner .sub { font-weight:700; font-size:clamp(14px,4vw,22px); color:#fff; text-shadow:0 2px 14px rgba(0,0,0,.7); }
-  #toast { position:absolute; left:50%; bottom:10px; transform:translateX(-50%);
-    font-size:11px; color:var(--dim); background:#0a0f0acc; padding:3px 10px; border-radius:20px;
-    opacity:0; transition:opacity .2s; pointer-events:none; }
+  /* restart label (throw-in / corner / goal kick) — top-centre of the field, clear of the goals */
+  #toast { position:absolute; left:50%; top:12px; transform:translateX(-50%);
+    font-size:12px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:#eafff0;
+    background:#0a0f0ae6; border:1px solid #2f3a30; padding:5px 14px; border-radius:20px;
+    box-shadow:0 2px 12px rgba(0,0,0,.5); opacity:0; transition:opacity .2s; pointer-events:none; }
   #toast.show { opacity:1; }
   #foot { flex:0 0 auto; display:flex; gap:12px; justify-content:center; align-items:center; flex-wrap:wrap;
     padding:6px 12px calc(6px + env(safe-area-inset-bottom)); font-size:11px; color:var(--dim); }
