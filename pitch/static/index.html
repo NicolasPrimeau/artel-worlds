@@ -67,14 +67,16 @@
     background:#0a0f0ae6; border:1px solid #2f3a30; padding:5px 14px; border-radius:20px;
     box-shadow:0 2px 12px rgba(0,0,0,.5); opacity:0; transition:opacity .2s; pointer-events:none; }
   #toast.show { opacity:1; }
-  #foot { flex:0 0 auto; display:flex; gap:12px; justify-content:center; align-items:center; flex-wrap:wrap;
-    padding:6px 12px calc(6px + env(safe-area-inset-bottom)); font-size:11px; color:var(--dim); }
-  #foot a { color:var(--green); text-decoration:none; }
-  #foot .gh { color:var(--dim); display:inline-flex; align-items:center; gap:4px; }
+  /* footer — one tidy row: brand, then evenly-styled links + share, all dim with a green hover */
+  #foot { flex:0 0 auto; display:flex; gap:18px; justify-content:center; align-items:center; flex-wrap:wrap;
+    padding:7px 14px calc(7px + env(safe-area-inset-bottom)); font-size:11px; color:var(--dim); }
+  #foot .brand { white-space:nowrap; letter-spacing:.2px; }
+  #foot .brand b { color:#cdebd7; font-weight:700; }
+  #foot a, .share button { color:var(--dim); text-decoration:none; background:none; border:0; padding:0;
+    font:inherit; cursor:pointer; white-space:nowrap; display:inline-flex; align-items:center; gap:5px;
+    transition:color .15s; }
+  #foot a:hover, .share button:hover { color:var(--green); }
   .share { position:relative; }
-  .share button { background:#10160f; border:1px solid #20271f; color:var(--dim); border-radius:7px;
-    padding:4px 9px; font-size:11px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; }
-  .share button:hover { border-color:#2f3a30; color:#fff; }
   #sharepop[hidden] { display:none; }
   #sharepop { position:absolute; bottom:130%; left:50%; transform:translateX(-50%); display:flex;
     flex-direction:column; background:#10160f; border:1px solid #20271f; border-radius:8px; overflow:hidden; }
@@ -168,12 +170,12 @@
     <div id="toast"></div>
   </div>
   <div id="foot">
-    <span>⚽ Pitch — <b>Artel Worlds</b></span>
-    <a href="https://artel.run/ui?project=pitch#dashboard" target="_blank" rel="noopener">Artel ↗</a>
-    <a class="gh" href="https://github.com/NicolasPrimeau/artel-worlds" target="_blank" rel="noopener">source ↗</a>
-    <a href="https://worlds.artel.run/worlds" target="_blank" rel="noopener">all worlds →</a>
+    <span class="brand">⚽ <b>Pitch</b></span>
+    <a href="https://artel.run/ui?project=pitch#dashboard" target="_blank" rel="noopener">Artel</a>
+    <a href="https://github.com/NicolasPrimeau/artel-worlds" target="_blank" rel="noopener">Source</a>
+    <a href="https://worlds.artel.run/worlds" target="_blank" rel="noopener">All worlds</a>
     <span class="share"><button id="sharebtn" type="button" aria-label="share">
-      <svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor"><path d="M11 2.5a2.5 2.5 0 1 1 .603 1.628l-6.718 3.12a2.499 2.499 0 0 1 0 1.504l6.718 3.12a2.5 2.5 0 1 1-.488.876l-6.718-3.12a2.5 2.5 0 1 1 0-3.256l6.718-3.12A2.5 2.5 0 0 1 11 2.5z"/></svg> share</button>
+      <svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor"><path d="M11 2.5a2.5 2.5 0 1 1 .603 1.628l-6.718 3.12a2.499 2.499 0 0 1 0 1.504l6.718 3.12a2.5 2.5 0 1 1-.488.876l-6.718-3.12a2.5 2.5 0 1 1 0-3.256l6.718-3.12A2.5 2.5 0 0 1 11 2.5z"/></svg> Share</button>
       <div id="sharepop" hidden><button id="sharecopy" type="button">copy link</button>
         <a id="shareli" target="_blank" rel="noopener">LinkedIn</a><a id="sharex" target="_blank" rel="noopener">X</a></div></span>
   </div>
