@@ -60,7 +60,7 @@ class Game:
         self.coords: dict[str, commander.Coordinator] = {}
         for side, club in (("home", tie.a), ("away", tie.b)):
             if club in self.tour.artel_clubs:
-                co = commander.Coordinator(side)
+                co = commander.Coordinator(side, club)
                 co.optimize(self.pitch)  # stat-optimal lineup before kickoff
                 self.coords[side] = co
         self._coord_at = 0.0

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from dataclasses import dataclass
 
@@ -164,19 +165,38 @@ async def author_plan_llm(pitch: Pitch, team: str) -> Plan:
     )
 
 
-def _parse_plan(mid_rows: list, fwd_rows: list, fallback: Plan) -> Plan:
-    # reassemble the Plan from what the line agents posted to Artel memory
+def _say_mid(club: str, commit: int, low_block: bool) -> str:
+    if low_block:
+        return f"{club} midfield: sitting in a low block to protect the lead."
+    if commit >= 2:
+        return f"{club} midfield: committing {commit} runners forward — chasing the game."
+    if commit == 1:
+        return f"{club} midfield: pushing 1 runner forward."
+    return f"{club} midfield: holding shape, controlling the middle."
+
+
+def _say_fwd(club: str, side: str) -> str:
+    return f"{club} attack: overloading the {side} flank — the opponent's weakest side."
+
+
+def _parse_plan(rows: list, fallback: Plan, width: float) -> Plan:
+    # reassemble the Plan from the line agents' (natural-language) Artel posts
     p = Plan(fallback.overload_y, fallback.commit, fallback.low_block)
-    for row in mid_rows:
-        for tok in str(row.get("content", "")).split(";"):
-            if tok.startswith("commit="):
-                p.commit = int(tok.split("=")[1])
-            elif tok.startswith("low_block="):
-                p.low_block = tok.split("=")[1] == "1"
-    for row in fwd_rows:
-        for tok in str(row.get("content", "")).split(";"):
-            if tok.startswith("overload_y="):
-                p.overload_y = float(tok.split("=")[1])
+    for row in rows:
+        t = str(row.get("content", "")).lower()
+        m = re.search(r"committing (\d+)", t)
+        if m:
+            p.commit = int(m.group(1))
+        elif "holding shape" in t:
+            p.commit = 0
+        elif "pushing 1" in t:
+            p.commit = 1
+        if "low block" in t:
+            p.low_block, p.commit = True, 0
+        if "overloading the left" in t:
+            p.overload_y = width * 0.27
+        elif "overloading the right" in t:
+            p.overload_y = width * 0.73
     return p
 
 
@@ -187,8 +207,9 @@ class Coordinator:
     the coordination genuinely flows through the server. Falls back to a local plan if Artel is
     unconfigured or unreachable, so a match never depends on the network."""
 
-    def __init__(self, team: str) -> None:
+    def __init__(self, team: str, club: str = "") -> None:
         self.team = team
+        self.club = club or team
         self.plan = Plan(overload_y=40.0, commit=0, low_block=False)
         self._last = Plan(overload_y=-1, commit=-1, low_block=False)
         self._artel = artel_client.Artel() if artel_client.configured() else None
@@ -218,47 +239,84 @@ class Coordinator:
         optimize_lineup([p for p in pitch.players if p.team == self.team])
 
     async def announce(self) -> None:
-        # captain posts the match plan to Artel shared memory (best-effort)
-        if self._artel:
-            await self._artel.write_memory(
-                "captain",
-                "match plan: attack the opponent's weak channel; commit when behind, sit on a lead",
-                ["pitch", "plan", "match"],
+        # the captain sets the match up in Artel: posts the plan to shared memory, broadcasts it to
+        # the squad, and creates a standing assignment per line which that line agent then CLAIMS —
+        # so the project shows real coordination (a plan, a team message, claimed tasks).
+        if not self._artel:
+            return
+        a, tag = self._artel, f"team:{self.team}"
+        await a.write_memory(
+            "captain",
+            f"{self.club} game plan: attack the opponent's weak flank, commit numbers when chasing, "
+            f"protect a lead. Press as a unit and hold the line.",
+            ["pitch", "plan", tag],
+        )
+        await a.send_message(
+            "captain",
+            f"project:{artel_client.PITCH_PROJECT}",
+            f"{self.club} — game plan",
+            "Attack their weak flank, press as a unit, commit when behind and see out a lead.",
+        )
+        for role, title in (
+            ("def", "hold the line and cover the channels"),
+            ("mid", "win the second balls and feed the attack"),
+            ("fwd", "overload the opponent's weak flank"),
+        ):
+            t = await a.create_task(
+                "captain", f"{self.club} {role.upper()}: {title}", ["pitch", tag]
             )
+            tid = (t or {}).get("id")
+            if tid:
+                await a.claim_task(role, tid)  # the line agent claims its assignment
 
     async def refresh(self, pitch: Pitch) -> None:
         base = await self._author(pitch)  # LLM coach if configured, else the proven heuristic
         if self._artel is None:
             self.plan = base
             return
-        # line agents publish their piece to Artel, tagged by this team so two coordinators in an
-        # Artel-vs-Artel tie don't read each other's plan (only on change, to keep traffic light).
-        tag = f"team:{self.team}"
+        a, tag = self._artel, f"team:{self.team}"
+        side = "left" if base.overload_y < pitch.cfg.width / 2 else "right"
+        # the midfield agent posts its call and tells the defence what cover it needs
         if base.commit != self._last.commit or base.low_block != self._last.low_block:
-            await self._artel.write_memory(
-                "mid",
-                f"commit={base.commit};low_block={int(base.low_block)}",
-                ["pitch", "line", tag],
+            await a.write_memory(
+                "mid", _say_mid(self.club, base.commit, base.low_block), ["pitch", "line", tag]
             )
+            if base.low_block:
+                await a.send_message(
+                    "mid",
+                    "pitch-def",
+                    f"{self.club} shape",
+                    "Dropping into a low block — stay compact, protect the lead.",
+                )
+            elif base.commit >= 2:
+                await a.send_message(
+                    "mid",
+                    "pitch-def",
+                    f"{self.club} shape",
+                    f"Committing {base.commit} forward to chase it — drop and cover behind me.",
+                )
+        # the attack agent posts its target and asks the midfield to feed that channel
         if round(base.overload_y) != round(self._last.overload_y):
-            await self._artel.write_memory(
-                "fwd", f"overload_y={base.overload_y}", ["pitch", "line", tag]
+            await a.write_memory("fwd", _say_fwd(self.club, side), ["pitch", "line", tag])
+            await a.send_message(
+                "fwd",
+                "pitch-mid",
+                f"{self.club} attack",
+                f"Overloading the {side} flank — feed me in that channel.",
             )
-            await self._artel.emit_event(
-                "fwd", "overload", {"team": self.team, "y": round(base.overload_y)}
-            )
+            await a.emit_event("fwd", "overload", {"team": self.team, "side": side})
         self._last = base
-        # the team executes the plan as read BACK from Artel — the line agents read each other's
-        # posts (filtered to our team) and reassemble the plan: genuine coordination through Artel
-        rows = await self._artel.search_memory("def", "commit overload", tag=tag, limit=4)
-        self.plan = _parse_plan(rows, rows, base)
+        # the team executes the plan as read BACK from Artel (the line agents read each other's
+        # posts, filtered to our team, and reassemble it) — genuine coordination through the server
+        rows = await a.search_memory("def", "midfield attack plan", tag=tag, limit=4)
+        self.plan = _parse_plan(rows, base, pitch.cfg.width)
 
     async def finish(self, summary: str) -> None:
-        # at full time: record the result as a persistent event (the global pitch record), then wipe
-        # this match's ephemeral coordination memory so the project doesn't accumulate line chatter.
+        # at full time: record the result as a persistent EVENT (the durable pitch record), then wipe
+        # this match's ephemeral coordination (memory, messages, tasks) so the project stays clean.
         if self._artel:
             await self._artel.emit_event("captain", "pitch.result", {"result": summary})
-            await self._artel.clear_memory("captain")
+            await self._artel.clear_project("captain")
 
     async def aclose(self) -> None:
         if self._artel:

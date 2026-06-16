@@ -66,6 +66,11 @@ class Artel:
     async def emit_event(self, role: str, etype: str, payload: dict) -> dict | None:
         return await self._req(role, "POST", "/events", json={"type": etype, "payload": payload})
 
+    async def send_message(self, role: str, to: str, subject: str, body: str) -> dict | None:
+        return await self._req(
+            role, "POST", "/messages", json={"to": to, "subject": subject, "body": body}
+        )
+
     async def create_task(self, role: str, title: str, tags: list[str]) -> dict | None:
         return await self._req(
             role,
@@ -83,12 +88,12 @@ class Artel:
             params["tag"] = tag
         return await self._req(role, "GET", "/tasks", params=params) or []
 
-    async def clear_memory(self, role: str) -> None:
-        # wipe the project's ephemeral coordination memory (owner-only). Result events are NOT
-        # cleared, so the match record persists while the per-game line chatter is swept.
+    async def clear_project(self, role: str) -> None:
+        # wipe the match's ephemeral coordination (memory, messages, tasks) — owner only. Result
+        # EVENTS are not cleared, so the durable match record survives while the chatter is swept.
         await self._req(
             role,
             "POST",
             f"/projects/{PITCH_PROJECT}/clear",
-            json={"memory": True, "messages": True},
+            json={"memory": True, "messages": True, "tasks": True},
         )
