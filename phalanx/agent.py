@@ -1054,7 +1054,6 @@ def _comms_from(inp: dict, bot, p: dict, rally_cell=None, focus_set=False) -> li
     out: list[dict] = []
     tank = getattr(bot, "id", None)
     tick = p.get("tick", 0)
-    orders = getattr(bot, "orders", {}) or {}
 
     def add(kind, text, cell=None):
         e = {"t": tick, "tank": tank, "kind": kind, "text": text[:120]}
