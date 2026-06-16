@@ -47,14 +47,12 @@ class Tournament:
         self._draw()
 
     def _draw(self) -> None:
-        # build 8 club names by pairing a unique prefix (a soccer city or classic club word) with a
-        # unique AI/ML suffix — no prefix and no suffix repeats within an edition, so you never get
-        # two "...Median" sides. Huge combinatorial variety, fresh field every tournament.
-        pre = list(CLUB_PREFIXES)
+        # build 8 club names by pairing a prefix (a soccer city or classic club word) with an AI/ML
+        # suffix. The SUFFIX is unique within an edition — you never get two "...Median" sides — but
+        # cities may repeat (a city naturally fields more than one club). Fresh field each tournament.
         suf = list(AI_SUFFIXES)
-        self._rng.shuffle(pre)
         self._rng.shuffle(suf)
-        c = [f"{pre[i]} {suf[i]}" for i in range(8)]
+        c = [f"{self._rng.choice(CLUB_PREFIXES)} {suf[i]}" for i in range(8)]
         self.clubs = c
         names = list(NAME_POOL)
         self._rng.shuffle(names)
