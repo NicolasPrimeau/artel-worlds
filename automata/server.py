@@ -1004,6 +1004,7 @@ async def ui_stats(request: Request):
         )
     if pi:
         h, aw = pi.get("home") or {}, pi.get("away") or {}
+        co = pi.get("coach") or {}
         worlds.append(
             {
                 "key": "pitch",
@@ -1012,15 +1013,20 @@ async def ui_stats(request: Request):
                 "url": "https://pitch.artel.run",
                 "status": "live",
                 "paused": False,
-                "model": "deterministic motor (no LLM yet)",
-                "spend": 0.0,
-                "spend_label": "all time",
-                "cap": None,
+                "model": co.get("model") or "deterministic motor (no LLM)",
+                "fallback": co.get("fallback"),
+                "spend": round(co.get("spent_usd") or 0.0, 5),
+                "spend_label": "since boot",
+                "cap": co.get("cap"),
                 "cache_ratio": None,
+                "spend_days": co.get("spend_days") or {},
                 "facts": {
                     "match": pi.get("match_no"),
                     "fixture": f"{h.get('club', '?')} {h.get('score', 0)}–{aw.get('score', 0)} {aw.get('club', '?')}",
                     "viewers": pi.get("viewers"),
+                    "artel_live": pi.get("artel_live"),
+                    "coach_calls": co.get("calls"),
+                    "throttled": co.get("throttled"),
                 },
             }
         )

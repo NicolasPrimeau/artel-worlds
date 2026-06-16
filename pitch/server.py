@@ -240,7 +240,19 @@ async def health():
 
 @app.get("/debug")
 async def debug():
-    return {"viewers": len(G.viewers), "match": G.match_no, **G.snapshot()}
+    from . import llm
+
+    coach = {
+        "model": llm.MODEL if llm.enabled() or llm.SPEND["calls"] else None,
+        "fallback": llm.MODEL2 if llm._KEY2 else None,
+        "spent_usd": round(llm.SPEND["usd"], 5),
+        "cap": llm.CAP,
+        "calls": llm.SPEND["calls"],
+        "throttled": llm.SPEND["throttled"],
+        "spend_days": dict(llm.SPEND["days"]),
+        "live": llm.enabled(),
+    }
+    return {"viewers": len(G.viewers), "match": G.match_no, "coach": coach, **G.snapshot()}
 
 
 @app.get("/state")
