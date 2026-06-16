@@ -94,7 +94,7 @@
   .cup-tabs button.on { background:var(--green); border-color:var(--green); color:#04140a; font-weight:700; }
   .cup-body { overflow:auto; padding:14px 16px; }
   .tab { display:none; } .tab.on { display:block; }
-  #tab-bracket svg { display:block; height:auto; width:860px; max-width:none; }
+  #tab-bracket svg { display:block; height:auto; width:1132px; max-width:none; }
   .bracket-scroll { overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
     touch-action:pan-x; overscroll-behavior-x:contain; }
   .bracket-hint { text-align:center; color:var(--dim); font-size:10px; margin-top:6px; }
@@ -483,8 +483,8 @@ function tieBox(t, x, y, w, h) {  // a single matchup card in the SVG bracket
     const ry = y + h / 2 * i, won = r[2] && t.played;
     const col = won ? '#6ee7a8' : (t.played && t.winner ? '#7c8a80' : '#cfe9d8');
     if (i) g += `<line x1="${x + 5}" y1="${ry}" x2="${x + w - 5}" y2="${ry}" stroke="#12170f"/>`;
-    g += `<text x="${x + 6}" y="${ry + h / 4 + 3.5}" font-size="9.5" fill="${col}" font-weight="${won ? 700 : 400}">${esc(trim(r[0], 13))}</text>`;
-    if (t.played) g += `<text x="${x + w - 6}" y="${ry + h / 4 + 3.5}" text-anchor="end" font-size="10" font-weight="700" fill="${col}">${r[1]}</text>`;
+    g += `<text x="${x + 6}" y="${ry + h / 4 + 3.5}" font-size="8.5" fill="${col}" font-weight="${won ? 700 : 400}">${esc(trim(r[0], 26))}</text>`;
+    if (t.played) g += `<text x="${x + w - 6}" y="${ry + h / 4 + 3.5}" text-anchor="end" font-size="9.5" font-weight="700" fill="${col}">${r[1]}</text>`;
   });
   return g;
 }
@@ -497,12 +497,12 @@ function connector(x1, ys, x2, y2) {  // two feeders (at x1, heights ys) joining
 function renderBracket(t) {
   // two-sided 16-team draw: 8 teams down each flank (Round of 16 -> QF -> SF) converging on the
   // final in the centre. Left half = round slots 0-3 / 0-1 / 0; right half = the rest.
-  const W = 104, H = 38;
+  const W = 148, H = 36;
   const r16 = t.rounds[0], qf = t.rounds[1], sf = t.rounds[2], third = t.rounds[3][0], fin = t.rounds[4][0];
-  const X = [6, 128, 250, 372, 494, 616, 738];  // 7 columns: R16 QF SF | FINAL | SF QF R16
-  const r16y = [24, 84, 144, 204], qfy = [54, 174], sfy = 114, finy = 114, thy = 252;
+  const X = [6, 168, 330, 492, 654, 816, 978];  // 7 columns: R16 QF SF | FINAL | SF QF R16
+  const r16y = [22, 80, 138, 196], qfy = [51, 167], sfy = 109, finy = 109, thy = 242;
   const cx = X[3] + W / 2;
-  let g = `<svg viewBox="0 0 848 288" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,sans-serif">`;
+  let g = `<svg viewBox="0 0 1132 262" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,sans-serif">`;
   g += `<text x="${cx}" y="${finy - H / 2 - 7}" text-anchor="middle" font-size="10" fill="#7c8a80" letter-spacing="1.5">FINAL</text>`;
   g += `<text x="${cx}" y="${thy - H / 2 - 6}" text-anchor="middle" font-size="9" fill="#7c8a80" letter-spacing="1">THIRD PLACE</text>`;
   // connectors — left flank
@@ -542,7 +542,7 @@ function renderSched(t) {
     const pens = tie.pa != null ? ` (${tie.pa}-${tie.pb} pens)` : '';
     const sc = tie.played ? `${tie.sa}–${tie.sb}` : (tie.live ? 'LIVE' : 'vs');
     const aw = tie.played && tie.winner === tie.a ? 'win' : '', bw = tie.played && tie.winner === tie.b ? 'win' : '';
-    h += `<div class="sched-row ${tie.live ? 'live' : ''}"><span class="tm r ${aw}">${esc(trim(tie.a, 20))}</span><span class="sc">${sc}</span><span class="tm ${bw}">${esc(trim(tie.b, 20))}</span><span style="color:#7c8a80;font-size:11px">${pens}</span></div>`;
+    h += `<div class="sched-row ${tie.live ? 'live' : ''}"><span class="tm r ${aw}">${esc(trim(tie.a, 40))}</span><span class="sc">${sc}</span><span class="tm ${bw}">${esc(trim(tie.b, 40))}</span><span style="color:#7c8a80;font-size:11px">${pens}</span></div>`;
   });
   return h;
 }

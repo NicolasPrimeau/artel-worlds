@@ -29,7 +29,7 @@ class Config:
     dribble_speed: float = 1.9  # a carried ball is nudged forward at ~player pace
     control_radius: float = 2.4  # within this of the ball, a player is "on" it
     tackle_radius: float = 2.2  # an opponent this close can contest possession
-    gk_reach: float = 4.2  # a keeper gathers (saves) the ball within this — bigger than control
+    gk_reach: float = 4.5  # a keeper gathers (saves) the ball within this — bigger than control
 
     shoot_range: float = 26.0  # shoot only when genuinely close — forces build-up, not blasts
     pass_lead: float = 4.5  # lead a moving teammate by this much

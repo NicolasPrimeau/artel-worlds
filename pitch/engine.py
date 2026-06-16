@@ -186,14 +186,39 @@ class Pitch:
     def _move(self, p: Player, intent: dict) -> None:
         c = self.cfg
         tx, ty = intent.get("move", (p.x, p.y))
+        sprint = intent.get("sprint")
         cap = (c.keeper_speed if p.role == "GK" else c.player_speed) * p.pace
+        if self.possessor == p.id:
+            cap *= 0.86  # running WITH the ball is slower than without — defenders can close down
         dx, dy = tx - p.x, ty - p.y
         dist = _len(dx, dy)
         ux, uy = _unit(dx, dy)
-        # ARRIVE for positioning (ease to a stop, no jitter); SPRINT for ball-chasing (full pace,
-        # so defenders actually close down). With the gentle accel both read as a real runner —
-        # accelerating, gliding, arcing into turns.
-        desired = cap if intent.get("sprint") else cap * min(1.0, dist / c.arrive_radius)
+        # DRIBBLE around opponents — the player on the ball steers slightly around defenders in
+        # their path (a jink, not a hard swerve) instead of running straight through them. Only the
+        # carrier does this; defenders hold and block rather than politely stepping aside.
+        if self.possessor == p.id:
+            sx, sy = 0.0, 0.0
+            for o in self.players:
+                if o.team == p.team:
+                    continue
+                ox, oy = o.x - p.x, o.y - p.y
+                od = _len(ox, oy)
+                if 0.0 < od < 4.5 and (ux * ox + uy * oy) > 0:  # close AND ahead of us
+                    px, py = -uy, ux  # perpendicular to our heading
+                    side = -1.0 if (px * ox + py * oy) > 0 else 1.0  # step to the freer side
+                    w = (4.5 - od) / 4.5
+                    sx += px * side * w
+                    sy += py * side * w
+            if sx or sy:
+                ux, uy = _unit(ux + sx * 0.6, uy + sy * 0.6)
+        # MOMENTUM: changing direction costs speed — you can't turn at full pace, and the velocity
+        # blends (it never snaps), so players carry through their runs and ease into turns.
+        sp = _len(p.vx, p.vy)
+        turn = 1.0
+        if sp > 1e-6 and p.role != "GK":  # keepers stay sharp across their line
+            align = (p.vx * ux + p.vy * uy) / sp  # 1 = same heading, -1 = reversing
+            turn = 0.55 + 0.45 * max(0.0, align)
+        desired = (cap if sprint else cap * min(1.0, dist / c.arrive_radius)) * turn
         p.vx += (ux * desired - p.vx) * c.accel
         p.vy += (uy * desired - p.vy) * c.accel
         sp = _len(p.vx, p.vy)
@@ -219,8 +244,13 @@ class Pitch:
                 # CARRY — the ball eases to a spot just ahead of the carrier instead of being
                 # re-kicked every tick. Velocity is real (target-tracking), so it reads as a
                 # smooth dribble and the client interpolates it cleanly. No more jitter.
-                ax = c.length if owner.team == "home" else 0.0
-                fx, fy = _unit(ax - owner.x, c.width / 2 - owner.y)
+                # lead the ball in the direction the carrier is actually running (so it follows
+                # their jink and angle of attack), falling back to goalward when nearly stopped
+                hx, hy = owner.vx, owner.vy
+                if _len(hx, hy) < 0.05:
+                    ax = c.length if owner.team == "home" else 0.0
+                    hx, hy = ax - owner.x, c.width / 2 - owner.y
+                fx, fy = _unit(hx, hy)
                 tx, ty = owner.x + fx * c.carry_ahead, owner.y + fy * c.carry_ahead
                 b.vx = (tx - b.x) * c.carry_ease
                 b.vy = (ty - b.y) * c.carry_ease

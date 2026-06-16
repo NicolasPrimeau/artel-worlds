@@ -27,6 +27,19 @@ def _open(pitch: Pitch, q: Player) -> float:
     return min((_len(o.x - q.x, o.y - q.y) for o in pitch.opponents(q)), default=99.0)
 
 
+def _attack_target(pitch: Pitch, p: Player) -> tuple[float, float]:
+    # drive at goal from the MORE OPEN flank, not always straight up the middle — attacks come in
+    # at varied angles depending on where the defence is overloaded.
+    c = pitch.cfg
+    gx, _gy = pitch.attack_goal(p.team)
+    foes = pitch.opponents(p)
+    top = sum(1 for o in foes if o.y < c.width / 2)
+    bot = sum(1 for o in foes if o.y >= c.width / 2)
+    lane = c.width * 0.30 if top <= bot else c.width * 0.70
+    ty = _clamp(p.y * 0.45 + lane * 0.55, 8.0, c.width - 8.0)
+    return gx, ty
+
+
 def _kick(
     p: Player, tx: float, ty: float, speed: float, noise: float, rng, skill: float = 0.0
 ) -> dict:
@@ -73,10 +86,11 @@ def _formation_target(pitch: Pitch, p: Player) -> tuple[float, float]:
         fx = min(fx, b.x - 4) if p.team == "home" else max(fx, b.x + 4)
         fx = min(fx, L * 0.52) if p.team == "home" else max(fx, L * 0.48)
         if fwd_ball < L * 0.4:
-            # ball threatening our third — drop and tuck in to a compact block in front of goal
+            # ball threatening our third — drop deep and slide to the ball's side to cover the
+            # flank the attack is coming down, rather than sitting centrally and leaving it open
             goal_x = 0.0 if p.team == "home" else L
             fx = fx * 0.4 + (goal_x + (15 if p.team == "home" else -15)) * 0.6
-            fy = fy * 0.5 + (c.width / 2) * 0.5
+            fy = fy * 0.35 + b.y * 0.4 + (c.width / 2) * 0.25
     elif p.role == "FWD":
         # forwards hold a high line — they stay an outlet up top even when the ball is deep
         fx = max(fx, L * 0.42) if p.team == "home" else min(fx, L * 0.58)
@@ -142,9 +156,9 @@ def decide(pitch: Pitch, p: Player) -> dict:
         if opts and (pressured or len(opts) >= 2 or rng.random() < 0.6):
             tgt = max(opts, key=lambda q: q.x * fwd + _open(pitch, q) * 0.5)
             return _kick(p, tgt.x + c.pass_lead * fwd, tgt.y, c.pass_speed, 0.08, rng)
-        # carry: drive at goal down the more open lane — NO kick, so the engine eases the ball ahead
-        push_y = _clamp(p.y + rng.choice((-1, 1)) * 5.0, 6, c.width - 6)
-        return {"move": (gx, push_y)}
+        # carry: drive at goal via the more open flank — NO kick, so the engine eases the ball ahead
+        # of the carrier (a smooth dribble) and they jink around defenders on the way.
+        return {"move": _attack_target(pitch, p)}
 
     if pitch.possessor is not None and pitch.possessor in teammate_ids:
         # a teammate has the ball — don't chase our own player; hold shape and offer support
