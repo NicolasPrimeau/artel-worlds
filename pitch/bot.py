@@ -29,8 +29,9 @@ def _open(pitch: Pitch, q: Player) -> float:
 
 def _kick(p: Player, tx: float, ty: float, speed: float, noise: float, rng) -> dict:
     ux, uy = _unit(tx - p.x, ty - p.y)
-    # accuracy noise: perturb the heading (more for harder kicks); deterministic via the rng
-    a = (rng.random() - 0.5) * noise
+    # accuracy noise: perturb the heading (more for harder kicks); a sharper player (higher acc)
+    # scatters less. deterministic via the rng
+    a = (rng.random() - 0.5) * noise * (2.0 - p.acc)
     cs = 1 - a * a / 2
     sn = a
     rx, ry = ux * cs - uy * sn, ux * sn + uy * cs

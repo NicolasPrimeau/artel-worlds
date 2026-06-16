@@ -39,6 +39,11 @@ def _edition_clubs(edition: int) -> list[str]:
     return [CLUBS[(start + i) % n] for i in range(8)]
 
 
+def _rate(mult: float) -> int:
+    # map an attribute multiplier (~0.85..1.15) to a FIFA-style 2-digit rating for display
+    return max(48, min(99, round(74 + (mult - 1.0) * 160)))
+
+
 class Game:
     def __init__(self) -> None:
         self.viewers: set[WebSocket] = set()
@@ -144,6 +149,10 @@ class Game:
                     "role": p.role,
                     "x": round(p.x, 2),
                     "y": round(p.y, 2),
+                    "pac": _rate(p.pace),
+                    "acc": _rate(p.acc),
+                    "ctl": _rate(p.control),
+                    "han": _rate(p.handling) if p.role == "GK" else None,
                 }
                 for p in self.pitch.players
             ],

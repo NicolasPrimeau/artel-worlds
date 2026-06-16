@@ -351,18 +351,26 @@ function render() {
         const [px, py] = S(p.x, p.y), col = p.team === 'home' ? '#3d8bff' : '#ff6a3d';
         ctx.beginPath(); ctx.arc(px, py, pr + 4, 0, 7); ctx.strokeStyle = col;
         ctx.lineWidth = Math.max(1.5, s * 0.3); ctx.stroke();
-        const fs = Math.max(12, s * 1.5); ctx.font = `700 ${fs}px -apple-system,sans-serif`;
-        const w = ctx.measureText(p.name).width, padX = 8, h = fs + 10;
+        const stats = p.han != null
+          ? `HAN ${p.han}   PAC ${p.pac}   ACC ${p.acc}`
+          : `PAC ${p.pac}   ACC ${p.acc}   CTL ${p.ctl}`;
+        const fs = Math.max(12, s * 1.4), sf = Math.max(9.5, s * 1.0), padX = 9;
+        ctx.font = `700 ${fs}px -apple-system,sans-serif`; const nw = ctx.measureText(p.name).width;
+        ctx.font = `600 ${sf}px -apple-system,sans-serif`; const sw = ctx.measureText(stats).width;
+        const w = Math.max(nw, sw), h = fs + sf + 14;
         let lx = px - w / 2 - padX, ly = py - pr - 8 - h;
         lx = Math.max(2, Math.min(cv.width - w - padX * 2 - 2, lx));
         if (ly < 2) ly = py + pr + 8;             // flip below if no room above
-        ctx.fillStyle = 'rgba(10,15,10,.92)';
-        if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(lx, ly, w + padX * 2, h, 6); ctx.fill(); }
+        ctx.fillStyle = 'rgba(10,15,10,.93)';
+        if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(lx, ly, w + padX * 2, h, 7); ctx.fill(); }
         else ctx.fillRect(lx, ly, w + padX * 2, h);
         ctx.strokeStyle = col; ctx.lineWidth = 1.2;
         if (ctx.roundRect) ctx.stroke();
-        ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-        ctx.fillText(p.name, lx + padX, ly + h / 2);
+        ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        ctx.fillStyle = '#fff'; ctx.font = `700 ${fs}px -apple-system,sans-serif`;
+        ctx.fillText(p.name, lx + padX, ly + 5);
+        ctx.fillStyle = '#9fb4a6'; ctx.font = `600 ${sf}px -apple-system,sans-serif`;
+        ctx.fillText(stats, lx + padX, ly + 5 + fs + 3);
         ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
       }
     }

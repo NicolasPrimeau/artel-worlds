@@ -42,6 +42,12 @@ class Player:
     home_y: float
     vx: float = 0.0
     vy: float = 0.0
+    # per-player attributes (multipliers around 1.0) — each one rolls a slightly different player,
+    # so a quick striker, a wayward passer, or a sticky-handed keeper emerge match to match
+    pace: float = 1.0  # top speed
+    acc: float = 1.0  # passing/shooting accuracy (higher = tighter)
+    control: float = 1.0  # first touch / how far they can reach to win a loose ball
+    handling: float = 1.0  # keeper save reach
 
 
 @dataclass
@@ -94,9 +100,15 @@ class Pitch:
     def setup(self, home_names: list[str], away_names: list[str]) -> None:
         self.players = []
         pid = 0
+        r = self._rng
         for team, names in (("home", home_names), ("away", away_names)):
             for (role, hx, hy), name in zip(self._formation(team), names):
-                self.players.append(Player(pid, team, name, role, hx, hy, hx, hy))
+                p = Player(pid, team, name, role, hx, hy, hx, hy)
+                p.pace = round(r.uniform(0.9, 1.12), 3)
+                p.acc = round(r.uniform(0.85, 1.15), 3)
+                p.control = round(r.uniform(0.92, 1.1), 3)
+                p.handling = round(r.uniform(0.86, 1.14), 3) if role == "GK" else 1.0
+                self.players.append(p)
                 pid += 1
         self._kickoff("home")
 
@@ -154,7 +166,7 @@ class Pitch:
         best, bd = None, 1e9
         for p in self.players:
             d = _len(p.x - b.x, p.y - b.y)
-            reach = c.gk_reach if p.role == "GK" else c.control_radius
+            reach = c.gk_reach * p.handling if p.role == "GK" else c.control_radius * p.control
             if d <= reach and d < bd:
                 best, bd = p, d
         self.possessor = best.id if best else None
@@ -162,7 +174,7 @@ class Pitch:
     def _move(self, p: Player, intent: dict) -> None:
         c = self.cfg
         tx, ty = intent.get("move", (p.x, p.y))
-        cap = c.keeper_speed if p.role == "GK" else c.player_speed
+        cap = (c.keeper_speed if p.role == "GK" else c.player_speed) * p.pace
         dx, dy = tx - p.x, ty - p.y
         dist = _len(dx, dy)
         ux, uy = _unit(dx, dy)
