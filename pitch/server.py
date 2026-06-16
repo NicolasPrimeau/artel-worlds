@@ -18,59 +18,6 @@ STATIC = Path(__file__).parent / "static"
 TICK_INTERVAL = float(os.environ.get("PITCH_TICK_INTERVAL", "0.08"))  # sim+broadcast rate
 FULLTIME_HOLD = float(os.environ.get("PITCH_FULLTIME_HOLD", "6"))  # pause on the final whistle
 
-# AI x football club names, themed on the great soccer cities of the world (plus Montréal). A big
-# pool so each World Cup edition draws a fresh, random field of 8.
-CLUBS = [
-    "Real Latency",
-    "Inter Lengtho",
-    "AC Median",
-    "Bayer Neural",
-    "Paris Saint-GPT",
-    "Gradient Galácticos",
-    "Boca Tensors",
-    "Sporting Vector",
-    "Ajax Overflow",
-    "Manchester Neural",
-    "Montréal Median",
-    "Montréal Gradient",
-    "São Paulo Softmax",
-    "Flamengo Float",
-    "Palmeiras Pooling",
-    "River Plateau",
-    "Madrid Matrix",
-    "Atlético Adam",
-    "Sevilla Softmax",
-    "Barça Backprop",
-    "Napoli NaN",
-    "Roma ReLU",
-    "Juventus Jitter",
-    "Bayern Bias",
-    "Borussia Backprop",
-    "Marseille Matmul",
-    "Lyon Loss",
-    "Benfica Bias",
-    "Porto Pooling",
-    "PSV Perceptron",
-    "Feyenoord Float",
-    "Celtic Cluster",
-    "Rangers Regression",
-    "Galatasaray Gradient",
-    "Fenerbahçe Float",
-    "Panathinaikos Pooling",
-    "Red Star Regression",
-    "Dinamo Dropout",
-    "Al Ahly Adam",
-    "Zamalek Z-Score",
-    "Wydad Weights",
-    "Espérance Epoch",
-    "Enyimba Embedding",
-    "Urawa Residuals",
-    "Gamba Gradient",
-    "FC Seoul Softmax",
-    "Club América Activation",
-    "Chivas Convolution",
-]
-
 
 def _rate(mult: float) -> int:
     # map an attribute multiplier (~0.85..1.15) to a FIFA-style 2-digit rating for display
@@ -91,7 +38,7 @@ class Game:
 
     def _new_edition(self) -> None:
         self.edition += 1
-        self.tour = Tournament(clubs=CLUBS, edition=self.edition, seed=1000 + self.edition)
+        self.tour = Tournament(edition=self.edition, seed=1000 + self.edition)
 
     def _new_match(self) -> None:
         tie = self.tour.current()

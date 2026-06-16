@@ -31,7 +31,7 @@ class Tie:
 
 @dataclass
 class Tournament:
-    clubs: list[str]
+    clubs: list[str] = field(default_factory=list)
     edition: int = 1
     seed: int = 0
     rounds: list[list[Tie]] = field(default_factory=list)
@@ -47,9 +47,15 @@ class Tournament:
         self._draw()
 
     def _draw(self) -> None:
-        c = list(self.clubs)
-        self._rng.shuffle(c)
-        c = c[:8]
+        # build 8 club names by pairing a unique prefix (a soccer city or classic club word) with a
+        # unique AI/ML suffix — no prefix and no suffix repeats within an edition, so you never get
+        # two "...Median" sides. Huge combinatorial variety, fresh field every tournament.
+        pre = list(CLUB_PREFIXES)
+        suf = list(AI_SUFFIXES)
+        self._rng.shuffle(pre)
+        self._rng.shuffle(suf)
+        c = [f"{pre[i]} {suf[i]}" for i in range(8)]
+        self.clubs = c
         names = list(NAME_POOL)
         self._rng.shuffle(names)
         for i, club in enumerate(c):
@@ -130,6 +136,99 @@ class Tournament:
                     r["l"] += 0 if won else 1
                     r["pts"] += 3 if won else 0
         return sorted(rows.values(), key=lambda r: (-r["pts"], -(r["gf"] - r["ga"]), -r["gf"]))
+
+
+# Club name = one CLUB_PREFIX + one AI_SUFFIX, both unique within an edition. Prefixes are the
+# great soccer cities of the world (plus Montréal) and a few classic club words; suffixes are AI/ML
+# terms. Pairing them at draw time gives ~1,800 combinations and never repeats a word in one field.
+CLUB_PREFIXES = [
+    "Montréal",
+    "Manchester",
+    "Madrid",
+    "Barcelona",
+    "Milan",
+    "Turin",
+    "Naples",
+    "Munich",
+    "Dortmund",
+    "Paris",
+    "Marseille",
+    "Lyon",
+    "Lisbon",
+    "Porto",
+    "Amsterdam",
+    "Glasgow",
+    "Istanbul",
+    "Athens",
+    "Belgrade",
+    "São Paulo",
+    "Rio",
+    "Buenos Aires",
+    "Rosario",
+    "Montevideo",
+    "Santiago",
+    "Bogotá",
+    "Guadalajara",
+    "Cairo",
+    "Casablanca",
+    "Lagos",
+    "Accra",
+    "Dakar",
+    "Nairobi",
+    "Tokyo",
+    "Osaka",
+    "Seoul",
+    "Jakarta",
+    "Tehran",
+    "Real",
+    "Inter",
+    "Atlético",
+    "Sporting",
+    "Athletic",
+    "Olympique",
+    "Bayer",
+    "Borussia",
+    "Dynamo",
+    "Internacional",
+]
+AI_SUFFIXES = [
+    "Latency",
+    "Tensor",
+    "Gradient",
+    "Softmax",
+    "Neural",
+    "Vector",
+    "Median",
+    "Overflow",
+    "Backprop",
+    "ReLU",
+    "Sigmoid",
+    "Dropout",
+    "Epoch",
+    "Pooling",
+    "Bias",
+    "Jitter",
+    "Matrix",
+    "Embedding",
+    "Kernel",
+    "Logit",
+    "Entropy",
+    "Convolution",
+    "Activation",
+    "Residuals",
+    "Transformers",
+    "Attention",
+    "Inference",
+    "Variance",
+    "Momentum",
+    "Hessians",
+    "Eigenvectors",
+    "Manifolds",
+    "Latents",
+    "Quantizers",
+    "Perceptrons",
+    "Optimizers",
+]
 
 
 # Player surnames drawn from the great soccer nations — Brazil, Argentina, Spain, Italy, England,
