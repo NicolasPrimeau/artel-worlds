@@ -6,8 +6,8 @@ from random import Random
 ROLES = ["GK", "LB", "RB", "CM", "ST"]
 
 
-# A single-elimination World Cup over 8 clubs: quarter-finals -> semi-finals -> (third place) ->
-# final. The engine plays one tie at a time; the tournament records the result, advances winners
+# A single-elimination World Cup over 16 clubs: round of 16 -> quarter-finals -> semi-finals ->
+# (third place) -> final. The engine plays one tie at a time; the tournament records, advances winners
 # along the bracket, and keeps the running Golden Boot. Rosters are fixed for the edition so a
 # player's goals accumulate across the rounds (the parasocial layer). When the final is decided a
 # champion is crowned and a fresh edition is drawn.
@@ -52,21 +52,25 @@ class Tournament:
         # cities may repeat (a city naturally fields more than one club). Fresh field each tournament.
         suf = list(AI_SUFFIXES)
         self._rng.shuffle(suf)
-        c = [f"{self._rng.choice(CLUB_PREFIXES)} {suf[i]}" for i in range(8)]
+        c = [f"{self._rng.choice(CLUB_PREFIXES)} {suf[i]}" for i in range(16)]
         self.clubs = c
         names = list(NAME_POOL)
         self._rng.shuffle(names)
         for i, club in enumerate(c):
             self.rosters[club] = [(ROLES[k], names[i * 5 + k]) for k in range(5)]
-        qf = [Tie("Quarter-final", i, c[2 * i], c[2 * i + 1]) for i in range(4)]
-        sf = [
-            Tie("Semi-final", 0, a_from=(0, 0), b_from=(0, 1)),
-            Tie("Semi-final", 1, a_from=(0, 2), b_from=(0, 3)),
-        ]
-        third = Tie("Third place", 0, a_from=(1, 0), b_from=(1, 1), a_loser=True, b_loser=True)
-        final = Tie("Final", 0, a_from=(1, 0), b_from=(1, 1))
-        self.rounds = [qf, sf, [third], [final]]
-        self.order = [(0, i) for i in range(4)] + [(1, 0), (1, 1)] + [(2, 0), (3, 0)]
+        # 16-team single-elimination: Round of 16 -> quarter-finals -> semi-finals -> (third) -> final
+        r16 = [Tie("Round of 16", i, c[2 * i], c[2 * i + 1]) for i in range(8)]
+        qf = [Tie("Quarter-final", i, a_from=(0, 2 * i), b_from=(0, 2 * i + 1)) for i in range(4)]
+        sf = [Tie("Semi-final", i, a_from=(1, 2 * i), b_from=(1, 2 * i + 1)) for i in range(2)]
+        third = Tie("Third place", 0, a_from=(2, 0), b_from=(2, 1), a_loser=True, b_loser=True)
+        final = Tie("Final", 0, a_from=(2, 0), b_from=(2, 1))
+        self.rounds = [r16, qf, sf, [third], [final]]
+        self.order = (
+            [(0, i) for i in range(8)]
+            + [(1, i) for i in range(4)]
+            + [(2, 0), (2, 1)]
+            + [(3, 0), (4, 0)]
+        )
 
     def tie_at(self, idx: tuple[int, int]) -> Tie:
         return self.rounds[idx[0]][idx[1]]
@@ -103,8 +107,7 @@ class Tournament:
         self.cur += 1
         nxt = self.current()
         if nxt is None:
-            final = self.rounds[3][0]
-            self.champion = final.winner
+            self.champion = self.rounds[-1][0].winner  # the final is the last round
 
     def _propagate(self, src: tuple[int, int], winner: str | None, loser: str | None) -> None:
         for rnd in self.rounds:

@@ -14,8 +14,7 @@
   html, body { margin:0; height:100%; background:var(--bg); color:#eafff0; overflow:hidden;
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
   #app { display:flex; flex-direction:column; height:100vh; height:100dvh; position:relative; }
-  /* 3-column grid keeps the score bug dead-centre no matter how wide the conn chip gets */
-  #bar { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:8px;
+  #bar { display:flex; justify-content:center; align-items:center; gap:8px;
     padding:calc(6px + env(safe-area-inset-top)) 12px 6px; flex:0 0 auto; }
   /* TV broadcast score bug: clock pill + colour caps + 3-letter codes over full club names */
   #bar .center { display:flex; flex-direction:column; align-items:center; gap:4px; min-width:0; }
@@ -43,11 +42,11 @@
   #round { font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:#cdebd7; font-weight:800; }
   #upnext { font-size:10px; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     max-width:74vw; }
-  /* connection status: a small pill in the top-right corner, consistent in both orientations */
-  #conn { position:absolute; z-index:7; top:calc(6px + env(safe-area-inset-top));
-    right:calc(10px + env(safe-area-inset-right)); font-size:10px; color:var(--dim); white-space:nowrap;
-    display:inline-flex; align-items:center; gap:5px; background:#0a0f0acc; padding:3px 8px;
-    border-radius:20px; }
+  /* connection status — a badge built into the round line, centred with the scoreboard so it can
+     never overlap or push the score bug. green = live, amber = paused, red = offline. */
+  .rline { display:flex; align-items:center; justify-content:center; gap:7px; }
+  #conn { font-size:10px; color:var(--dim); white-space:nowrap; letter-spacing:.5px;
+    text-transform:uppercase; display:inline-flex; align-items:center; gap:4px; }
   #conn::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--dim); }
   #conn.live { color:var(--green); } #conn.live::before { background:var(--green); box-shadow:0 0 8px var(--green); }
   #conn.paused { color:#d4af37; } #conn.paused::before { background:#d4af37; }
@@ -95,7 +94,7 @@
   .cup-tabs button.on { background:var(--green); border-color:var(--green); color:#04140a; font-weight:700; }
   .cup-body { overflow:auto; padding:14px 16px; }
   .tab { display:none; } .tab.on { display:block; }
-  #tab-bracket svg { display:block; height:auto; width:540px; max-width:none; }
+  #tab-bracket svg { display:block; height:auto; width:860px; max-width:none; }
   .bracket-scroll { overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
     touch-action:pan-x; overscroll-behavior-x:contain; }
   .bracket-hint { text-align:center; color:var(--dim); font-size:10px; margin-top:6px; }
@@ -146,7 +145,6 @@
 <body>
 <div id="app">
   <div id="bar">
-    <span class="edge"></span>
     <span class="center">
       <span id="bug">
         <span id="clock">0:00</span>
@@ -155,10 +153,10 @@
         <span class="side a"><span class="stack"><b class="abbr" id="abA">—</b><span class="fullnm" id="nmA"></span></span><i class="sw"></i></span>
       </span>
       <button id="tourbar" type="button" aria-label="open tournament">
-        <span id="round"></span><span id="upnext"></span>
+        <span class="rline"><span id="conn">live</span><span id="round"></span></span>
+        <span id="upnext"></span>
       </button>
     </span>
-    <span id="conn">connecting…</span>
   </div>
   <div id="wrap">
     <canvas id="cv"></canvas>
@@ -479,40 +477,51 @@ function tieBox(t, x, y, w, h) {  // a single matchup card in the SVG bracket
   const live = t.live, gold = '#d4af37';
   const stroke = live ? gold : '#26312a';
   const rows = [[t.a, t.sa, t.winner && t.winner === t.a], [t.b, t.sb, t.winner && t.winner === t.b]];
-  let g = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="#0e1411" stroke="${stroke}" stroke-width="${live ? 2 : 1}"/>`;
-  if (live) g += `<text x="${x + w - 6}" y="${y - 4}" text-anchor="end" font-size="9" fill="${gold}" font-weight="700">LIVE</text>`;
+  let g = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="5" fill="#0e1411" stroke="${stroke}" stroke-width="${live ? 2 : 1}"/>`;
+  if (live) g += `<text x="${x + w - 5}" y="${y - 4}" text-anchor="end" font-size="8" fill="${gold}" font-weight="700">LIVE</text>`;
   rows.forEach((r, i) => {
     const ry = y + h / 2 * i, won = r[2] && t.played;
     const col = won ? '#6ee7a8' : (t.played && t.winner ? '#7c8a80' : '#cfe9d8');
-    if (i) g += `<line x1="${x + 6}" y1="${ry}" x2="${x + w - 6}" y2="${ry}" stroke="#12170f"/>`;
-    g += `<text x="${x + 8}" y="${ry + h / 4 + 4}" font-size="11" fill="${col}" font-weight="${won ? 700 : 400}">${esc(trim(r[0], 18))}</text>`;
-    if (t.played) g += `<text x="${x + w - 8}" y="${ry + h / 4 + 4}" text-anchor="end" font-size="11" font-weight="700" fill="${col}">${r[1]}</text>`;
+    if (i) g += `<line x1="${x + 5}" y1="${ry}" x2="${x + w - 5}" y2="${ry}" stroke="#12170f"/>`;
+    g += `<text x="${x + 6}" y="${ry + h / 4 + 3.5}" font-size="9.5" fill="${col}" font-weight="${won ? 700 : 400}">${esc(trim(r[0], 13))}</text>`;
+    if (t.played) g += `<text x="${x + w - 6}" y="${ry + h / 4 + 3.5}" text-anchor="end" font-size="10" font-weight="700" fill="${col}">${r[1]}</text>`;
   });
   return g;
 }
-function connector(x1, ys, x2, y2) {  // two feeders (ys) joining one target at (x2,y2)
+function connector(x1, ys, x2, y2) {  // two feeders (at x1, heights ys) joining one target at (x2,y2)
   const xm = (x1 + x2) / 2, c = '#2a352d';
   let g = `<polyline points="${x1},${ys[0]} ${xm},${ys[0]} ${xm},${ys[1]} ${x1},${ys[1]}" fill="none" stroke="${c}"/>`;
   g += `<line x1="${xm}" y1="${y2}" x2="${x2}" y2="${y2}" stroke="${c}"/>`;
   return g;
 }
 function renderBracket(t) {
-  const W = 150, H = 46, qf = t.rounds[0], sf = t.rounds[1], third = t.rounds[2][0], fin = t.rounds[3][0];
-  const qx = 10, sx = 200, fx = 390;
-  const qc = [25, 90, 155, 220], sc = [57, 187], fc = 122, tc = 250;  // row centres
-  let svg = `<svg viewBox="0 0 540 296" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,sans-serif">`;
-  // connectors first (under the boxes)
-  svg += connector(qx + W, [qc[0], qc[1]], sx, sc[0]) + connector(qx + W, [qc[2], qc[3]], sx, sc[1]);
-  svg += connector(sx + W, [sc[0], sc[1]], fx, fc);
-  svg += `<text x="${fx + W / 2}" y="22" text-anchor="middle" font-size="11" fill="#7c8a80" letter-spacing="1">FINAL</text>`;
-  svg += `<text x="${fx + W / 2}" y="${tc - H / 2 - 8}" text-anchor="middle" font-size="10" fill="#7c8a80" letter-spacing="1">THIRD PLACE</text>`;
-  qf.forEach((tie, i) => svg += tieBox(tie, qx, qc[i] - H / 2, W, H));
-  sf.forEach((tie, i) => svg += tieBox(tie, sx, sc[i] - H / 2, W, H));
-  svg += tieBox(fin, fx, fc - H / 2, W, H);
-  svg += tieBox(third, fx, tc - H / 2, W, H);
-  if (t.champion) svg += `<text x="${fx + W / 2}" y="${fc + H / 2 + 22}" text-anchor="middle" font-size="13" fill="#d4af37" font-weight="800">🏆 ${esc(trim(t.champion, 22))}</text>`;
-  svg += `</svg>`;
-  return `<div class="bracket-scroll">${svg}</div><div class="bracket-hint">← swipe to see the full draw →</div>`;
+  // two-sided 16-team draw: 8 teams down each flank (Round of 16 -> QF -> SF) converging on the
+  // final in the centre. Left half = round slots 0-3 / 0-1 / 0; right half = the rest.
+  const W = 104, H = 38;
+  const r16 = t.rounds[0], qf = t.rounds[1], sf = t.rounds[2], third = t.rounds[3][0], fin = t.rounds[4][0];
+  const X = [6, 128, 250, 372, 494, 616, 738];  // 7 columns: R16 QF SF | FINAL | SF QF R16
+  const r16y = [24, 84, 144, 204], qfy = [54, 174], sfy = 114, finy = 114, thy = 252;
+  const cx = X[3] + W / 2;
+  let g = `<svg viewBox="0 0 848 288" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,sans-serif">`;
+  g += `<text x="${cx}" y="${finy - H / 2 - 7}" text-anchor="middle" font-size="10" fill="#7c8a80" letter-spacing="1.5">FINAL</text>`;
+  g += `<text x="${cx}" y="${thy - H / 2 - 6}" text-anchor="middle" font-size="9" fill="#7c8a80" letter-spacing="1">THIRD PLACE</text>`;
+  // connectors — left flank
+  g += connector(X[0] + W, [r16y[0], r16y[1]], X[1], qfy[0]) + connector(X[0] + W, [r16y[2], r16y[3]], X[1], qfy[1]);
+  g += connector(X[1] + W, [qfy[0], qfy[1]], X[2], sfy);
+  g += `<line x1="${X[2] + W}" y1="${sfy}" x2="${X[3]}" y2="${finy}" stroke="#2a352d"/>`;
+  // connectors — right flank (feeders sit to the right of their target)
+  g += connector(X[6], [r16y[0], r16y[1]], X[5] + W, qfy[0]) + connector(X[6], [r16y[2], r16y[3]], X[5] + W, qfy[1]);
+  g += connector(X[5], [qfy[0], qfy[1]], X[4] + W, sfy);
+  g += `<line x1="${X[4]}" y1="${sfy}" x2="${X[3] + W}" y2="${finy}" stroke="#2a352d"/>`;
+  // boxes
+  for (let i = 0; i < 4; i++) { g += tieBox(r16[i], X[0], r16y[i] - H / 2, W, H); g += tieBox(r16[i + 4], X[6], r16y[i] - H / 2, W, H); }
+  g += tieBox(qf[0], X[1], qfy[0] - H / 2, W, H) + tieBox(qf[1], X[1], qfy[1] - H / 2, W, H);
+  g += tieBox(qf[2], X[5], qfy[0] - H / 2, W, H) + tieBox(qf[3], X[5], qfy[1] - H / 2, W, H);
+  g += tieBox(sf[0], X[2], sfy - H / 2, W, H) + tieBox(sf[1], X[4], sfy - H / 2, W, H);
+  g += tieBox(fin, X[3], finy - H / 2, W, H) + tieBox(third, X[3], thy - H / 2, W, H);
+  if (t.champion) g += `<text x="${cx}" y="${finy + H / 2 + 18}" text-anchor="middle" font-size="12" fill="#d4af37" font-weight="800">🏆 ${esc(trim(t.champion, 20))}</text>`;
+  g += `</svg>`;
+  return `<div class="bracket-scroll">${g}</div><div class="bracket-hint">← swipe to see the full draw →</div>`;
 }
 function renderBoot(t) {
   if (!t.scorers.length) return '<p style="color:#7c8a80">No goals yet this edition.</p>';
