@@ -779,7 +779,10 @@ def test_comms_from_emits_radio_events_with_intel_cells():
         orders = {"focus": 5, "focus_at": (7, 4)}
 
     p = {"tick": 12}
-    out = _comms_from({"say": "SPOTTED #5 (7,4) energy 40 — push!", "focus": 5}, B(), p)
+    # focus only hits the feed when it was actually (re)committed this call -> focus_set=True
+    out = _comms_from(
+        {"say": "SPOTTED #5 (7,4) energy 40 — push!", "focus": 5}, B(), p, focus_set=True
+    )
     kinds = {e["kind"]: e for e in out}
     # the radio reads human: coordinates, #ids and energy numbers stripped from the feed
     assert kinds["say"]["text"] == "SPOTTED — push!"
@@ -787,13 +790,17 @@ def test_comms_from_emits_radio_events_with_intel_cells():
     assert kinds["focus"]["text"] == "Focus fire — all on one"  # no jargon id
     assert all(e["tank"] == 2 and e["t"] == 12 for e in out)
 
+    # a blocked/deduped focus (focus_set False) stays off the feed even with focus in inp
+    quiet = _comms_from({"focus": 5}, B(), p)
+    assert not any(e["kind"] == "focus" for e in quiet)
+
     # plain focus (no focus_at) is a focus event, no cell
     class B2:
         id = 3
         orders = {"focus": 9}
 
     # rally only appears when actually (re)set this call — passed in as rally_cell
-    out2 = _comms_from({"focus": 9}, B2(), {"tick": 3}, rally_cell=(8, 6))
+    out2 = _comms_from({"focus": 9}, B2(), {"tick": 3}, rally_cell=(8, 6), focus_set=True)
     k2 = {e["kind"]: e for e in out2}
     assert k2["focus"]["text"] == "Focus fire — all on one" and "cell" not in k2["focus"]
     assert k2["rally"]["text"] == "Form up here" and k2["rally"]["cell"] == [8, 6]
@@ -968,3 +975,14 @@ def test_focus_and_rally_are_mutually_exclusive_per_command():
     # both ordered, no enemy in range -> REPOSITION wins: rally kept, focus dropped
     o2 = asyncio.run(run([], {"focus": 5, "focus_at": [9, 1], "regroup": [9, 9]}))
     assert o2.get("regroup") == (9, 9) and "focus" not in o2 and "focus_at" not in o2
+
+
+def test_squad_focus_commitment_blocks_quick_overrides():
+    from phalanx.agent import FOCUS_COOLDOWN, _accept_focus
+
+    state = {}
+    assert _accept_focus(state, 5, 10)  # first call commits
+    state.update(target=5, tick=10)
+    assert _accept_focus(state, 5, 11)  # same target -> always fine (teammates converging)
+    assert not _accept_focus(state, 3, 11)  # a DIFFERENT target too soon -> blocked
+    assert _accept_focus(state, 3, 10 + FOCUS_COOLDOWN)  # after the cooldown -> allowed

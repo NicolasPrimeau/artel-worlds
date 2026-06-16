@@ -105,10 +105,13 @@ LLM_TIMEOUT = float(os.environ.get("PHALANX_LLM_TIMEOUT", "12"))
 
 # Concise. Names the teammates, says coordinate through Artel — and stops there. No
 # instructions on HOW to use Artel: the coordination has to emerge, not be scripted.
-COMMAND_EVERY = int(os.environ.get("PHALANX_COMMAND_EVERY", "4"))  # ticks between routine orders
+COMMAND_EVERY = int(os.environ.get("PHALANX_COMMAND_EVERY", "6"))  # ticks between routine orders
 RALLY_COOLDOWN = int(
-    os.environ.get("PHALANX_RALLY_COOLDOWN", "8")
+    os.environ.get("PHALANX_RALLY_COOLDOWN", "12")
 )  # min ticks before the unit can be re-rallied to the same area — a rally is a commitment
+FOCUS_COOLDOWN = int(
+    os.environ.get("PHALANX_FOCUS_COOLDOWN", "8")
+)  # min ticks before re-calling focus on the SAME target — keeps focus calls occasional
 WARM_KEEPALIVE = float(
     os.environ.get("PHALANX_WARM_KEEPALIVE", "300")
 )  # seconds between keepalive pings that hold the claude-sdk CLI sessions warm through idle
@@ -118,43 +121,24 @@ WARM_KEEPALIVE = float(
 # its bot through standing orders, at command cadence, from what it learns over Artel. Red
 # gets no orders: coordination is exactly and only what Artel buys.
 SYSTEM = (
-    "You command one tank in team Artel's three-tank unit in Phalanx (hex arena, shrinking "
-    "safe zone, last team standing). Your teammates are {mates}; everything the unit shares "
-    "flows through Artel. Your tank DRIVES ITSELF competently (targeting, range-keeping, "
-    "pathing, retreating when hurt). You do not steer — you give STANDING ORDERS when the "
-    "situation calls for them:\n"
-    "- focus: concentrate the unit's fire on ONE enemy id (pass focus_at [q,r] from a "
-    "teammate's report and your tank will hunt a target it has never seen — that is the "
-    "whole point of the radio).\n"
-    "- regroup [q,r]: pull the unit onto ONE piece of ground to FIGHT FROM — cover, a "
-    "chokepoint, a flank that takes the enemy from the side, the lane it must cross. Pick "
-    "the tactical POSITION; do NOT default to the map center — the zone forces center on "
-    "its own, late. A rally is a STANDING commitment, not a per-turn nudge: set it once and "
-    "let the unit hold that ground — re-issue ONLY when the position or the fight actually "
-    "changes. Use it to mass for a fight, rescue a teammate, or seize strong ground.\n"
-    "- post [q,r]: where to hold when it has no contact (ambush corners, cover the zone).\n"
-    "- clear_orders: release your tank back to its own instincts.\n"
-    "DOCTRINE, in order: a teammate UNDER FIRE outranks everything — focus their attacker "
-    "and converge; mass fire on ONE enemy (a 3v1 wins, three 1v1s lose); hold TACTICAL "
-    "ground — cover and firing angles, a chokepoint, the lane the enemy must cross — never "
-    "the bare center until the zone actually squeezes you, never strung out alone. A tank "
-    "that holds still — not "
-    "firing, untouched, in the zone — REPAIRS +2 energy per turn: post a hurt tank behind "
-    "cover to recover while the others screen it, and keep pressure on hurt enemies so "
-    "they never can.\n"
-    "ARTEL, in the same call — say: talk to your crew on the radio like a person would — "
-    "PLAIN words, no coordinates or #numbers (your tank shares its position automatically). "
-    "'They're weak on the left, push!', 'I'm pinned — need help', 'fall back to the rocks', "
-    "'nice, stay on that one'. Your teammates' calls tell you what they can see and you "
-    "can't. objective: your ONE medium-term commitment on the team "
-    "board; change it only when reality breaks it. lesson: save one concrete lesson when a "
-    "call clearly won or lost a fight — but only if it is NOT already covered by a lesson in "
-    "your context; the team's memory needs new rules, not echoes. [WIN]/[LOSS] lessons from "
-    "past matches arrive in your context — trust wins.\n"
-    "ONE order per command: EITHER focus (bring the unit's fire onto a target you can engage) "
-    "OR regroup (reposition when you can't) — they are opposing intents, never both at once.\n"
-    "No orders needed? Send none — your tank fights fine alone; orders are for making three "
-    "tanks fight as ONE."
+    "You command one tank in team Artel's 3-tank unit in Phalanx (hex arena, shrinking safe "
+    "zone, last team standing). Teammates: {mates}. Your tank fights on its own — targeting, "
+    "kiting, retreating, repairing. You only set STANDING ORDERS, and RARELY: most turns, "
+    "issue nothing and stay silent.\n"
+    "- focus <enemy id>: mass the unit's fire on ONE enemy (a 3v1 wins; three 1v1s lose). "
+    "Add focus_at [q,r] from a teammate's report to hunt an enemy you can't see.\n"
+    "- regroup [q,r]: rally onto strong ground to fight FROM — cover, a chokepoint, the lane "
+    "the enemy must cross; NOT the bare center (the zone forces that late). A rally is a "
+    "commitment: set it once, re-issue only when the position or fight truly changes.\n"
+    "- post [q,r]: hold here with no contact. clear_orders: release to instinct.\n"
+    "Priority: a teammate UNDER FIRE outranks all — focus their attacker and converge. Hold "
+    "cover and angles, never strung out alone. A still, unhit tank in the zone repairs — let "
+    "hurt tanks recover behind a screen, keep pressure on hurt enemies.\n"
+    "ONE order per command: focus (when you can engage) OR regroup (when you can't), never "
+    "both. say: ONLY a genuinely new threat or a call for help — a few plain words, no "
+    "coordinates — and only when it matters; silence most turns. objective: your one "
+    "medium-term aim on the board, changed rarely. lesson: one rule after a clear win or "
+    "loss, only if new. [WIN]/[LOSS] lessons arrive in context — trust wins."
 )
 
 SOLO_SYSTEM = (
@@ -901,6 +885,7 @@ async def command(
     beacons: dict | None = None,
     solo: bool = False,
     distress: dict | None = None,
+    focus_state: dict | None = None,
 ) -> tuple[float, str, str]:
     # ONE commander call: read the Artel picture, set standing orders on the bot, do the
     # Artel traffic. The bot drives every tick regardless — a failed or skipped command
@@ -968,12 +953,21 @@ async def command(
             counts["command"] = counts.get("command", 0) + 1
         if inp.get("clear_orders"):
             bot.orders.clear()
+        tick = p.get("tick", 0)
         try:
             focus = int(inp.get("focus", 0) or 0)
         except (TypeError, ValueError):
             focus = 0
+        # squad-wide focus cooldown: don't let this commander yank the unit off the target it
+        # just committed to onto a different one — treat a too-soon override as no focus call.
+        if focus and focus_state is not None and not _accept_focus(focus_state, focus, tick):
+            focus = 0
+        focus_set = False
         if focus:
             bot.orders["focus"] = focus
+            focus_set = True
+            if focus_state is not None:
+                focus_state["target"], focus_state["tick"] = focus, tick
             fa = inp.get("focus_at")
             if isinstance(fa, (list, tuple)) and len(fa) == 2:
                 try:
@@ -1012,7 +1006,7 @@ async def command(
         plan = str(inp.get("plan", "") or "")[:140]
         if not solo:
             await _artel_ops(http, agent, inp, p, mate_ids, objective, claims, counts)
-            comms = _comms_from(inp, bot, p, rally_cell)
+            comms = _comms_from(inp, bot, p, rally_cell, focus_set)
     return cost, plan, inbox, comms
 
 
@@ -1045,7 +1039,17 @@ def _accept_rally(bot, cell, tick: int) -> bool:
     return True
 
 
-def _comms_from(inp: dict, bot, p: dict, rally_cell=None) -> list[dict]:
+def _accept_focus(state: dict, target: int, tick: int) -> bool:
+    # focus fire is a SQUAD commitment: once the unit is massing on a target, a different
+    # commander can't yank it onto a new one until the cooldown lapses. The same target is
+    # always allowed (teammates converging on it / refreshing the call).
+    cur = state.get("target")
+    if cur and cur != target and tick - state.get("tick", -999) < FOCUS_COOLDOWN:
+        return False
+    return True
+
+
+def _comms_from(inp: dict, bot, p: dict, rally_cell=None, focus_set=False) -> list[dict]:
     # the squad's radio, as watchable events: the spoken report plus the orders it set.
     out: list[dict] = []
     tank = getattr(bot, "id", None)
@@ -1061,7 +1065,9 @@ def _comms_from(inp: dict, bot, p: dict, rally_cell=None) -> list[dict]:
     say = _humanize_say(str(inp.get("say", "") or "").strip())
     if say:
         add("say", say)
-    if orders.get("focus") and inp.get("focus"):
+    if (
+        focus_set
+    ):  # only when a NEW focus was actually committed this call (not a deduped/blocked one)
         add("focus", "Focus fire — all on one")
     # rally only hits the feed when it was actually (re)set this call — a deduped re-issue
     # of ground the unit already holds is silent
@@ -1129,6 +1135,7 @@ class Squad:
         self._beacons: dict[int, dict] = {}  # per-tank latest teammate beacons (via Artel)
         self._walls: dict[int, set] = {}  # per-tank remembered walls (own sightings only)
         self._distress: dict | None = None  # squad-wide last UNDER FIRE call (sticky ~5 ticks)
+        self._focus: dict = {}  # squad-wide focus commitment {target, tick} — gates overrides
         self._bots: dict[int, Bot] = {}  # the motors: same Bot red runs, one per tank
         self._cmd_tasks: dict[int, asyncio.Task] = {}  # in-flight commander calls (async)
         self._commanded: set[int] = set()  # tanks that got at least one command this match
@@ -1318,6 +1325,7 @@ class Squad:
                     self._beacons.setdefault(tank_id, {}),
                     self.solo,
                     distress,
+                    self._focus,
                 ),
                 timeout=DECIDE_DEADLINE,
             )
@@ -1383,6 +1391,7 @@ class Squad:
             self._seen_ids = {}
             self._beacons = {}
             self._distress = None
+            self._focus = {}
             self._bots = {}
             self._cmd_tasks = {}
             self._commanded = set()
@@ -1406,6 +1415,7 @@ class Squad:
         self._seen_ids = {}
         self._beacons = {}
         self._distress = None
+        self._focus = {}
         self._bots = {}
         self._cmd_tasks = {}
         self._commanded = set()
