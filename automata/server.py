@@ -51,6 +51,10 @@ LLM_MODEL = os.environ.get(
 LLM_TRIBES = int(os.environ.get("LLM_TRIBES", "2"))
 LLM_INTERVAL = max(1, int(os.environ.get("LLM_INTERVAL", "20")))
 LLM_ENABLED = bool(LLM_KEY) and LLM_TRIBES > 0
+# the world is in-memory, but the operator pause flag persists on a small volume so a deploy
+# can't silently un-pause a world the operator had paused (phalanx/watchtower already persist theirs)
+STATE_DIR = os.environ.get("AUTOMATA_STATE_DIR", "/data")
+_PAUSE_FILE = os.path.join(STATE_DIR, "automata_paused")
 
 # Artel coordination project for this world. On reset we clear it (as its creator,
 # the host agent below) so coordination never builds on a dead world's maps.
@@ -131,7 +135,7 @@ class Automata:
         self.agent = HeuristicAgent()
         self.lock = asyncio.Lock()
         self.viewers: set[WebSocket] = set()
-        self.paused = False  # operator toggle (ops page): freezes the world, page stays up
+        self.paused = self._read_paused()  # operator toggle; persisted so deploys don't reset it
         self.tokens: dict[int, str] = {}  # lineage -> secret; proves a player owns the tribe
         self.dispatches: list[dict] = []  # recent tribe rationales for the live dispatch feed
         self.llm = (
@@ -144,6 +148,23 @@ class Automata:
             else None
         )
         self._assign_llm_tribes()
+
+    @staticmethod
+    def _read_paused() -> bool:
+        try:
+            with open(_PAUSE_FILE) as f:
+                return f.read().strip() == "1"
+        except Exception:
+            return False
+
+    def set_paused(self, value: bool) -> None:
+        self.paused = bool(value)
+        try:
+            os.makedirs(STATE_DIR, exist_ok=True)
+            with open(_PAUSE_FILE, "w") as f:
+                f.write("1" if self.paused else "0")
+        except Exception:
+            pass
 
     def reset(self):
         self.world = World(DEFAULT, seed=_rand_seed())
@@ -696,6 +717,25 @@ async def hub_watchtower():
     return JSONResponse(_WT_CACHE["data"], headers={"Cache-Control": "public, max-age=60"})
 
 
+@app.get("/hub/status.json", include_in_schema=False)
+async def hub_status():
+    # the public hub badges reflect REAL state (live / paused / offline). Proxied server-side so
+    # the landing page reads phalanx/watchtower paused flags without CORS.
+    async with httpx.AsyncClient() as client:
+        ph, wt = await asyncio.gather(
+            _fetch_json(client, f"{PHALANX_DEBUG}/debug"),
+            _fetch_json(client, f"{WATCHTOWER_DEBUG}/debug"),
+        )
+    return JSONResponse(
+        {
+            "automata": {"paused": G.paused, "up": True},
+            "phalanx": {"paused": bool((ph or {}).get("paused")), "up": ph is not None},
+            "watchtower": {"paused": bool((wt or {}).get("paused")), "up": wt is not None},
+        },
+        headers={"Cache-Control": "public, max-age=15"},
+    )
+
+
 @app.get("/thumbs/{name}.webp", include_in_schema=False)
 async def thumb(name: str):
     safe = "".join(c for c in name if c.isalnum() or c in "-_")
@@ -980,7 +1020,7 @@ async def admin_pause(request: Request):
     if not ADMIN_TOKEN or request.headers.get("x-admin-token") != ADMIN_TOKEN:
         raise HTTPException(status_code=403, detail="forbidden")
     body = await request.json()
-    G.paused = bool(body.get("paused"))
+    G.set_paused(bool(body.get("paused")))
     return {"paused": G.paused}
 
 
@@ -991,7 +1031,7 @@ async def ui_pause(request: Request, world: str = "", paused: int = 1):
         raise HTTPException(status_code=401, detail="sign in")
     want = bool(paused)
     if world == "automata":
-        G.paused = want
+        G.set_paused(want)
         return {"ok": True, "world": "automata", "paused": want}
     target = {"phalanx": PHALANX_DEBUG, "watchtower": WATCHTOWER_DEBUG}.get(world)
     if not target:

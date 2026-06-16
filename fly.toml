@@ -13,6 +13,10 @@ primary_region = "yyz"
     hard_limit = 200
     soft_limit = 150
 
+[mounts]
+  source = "worlds_data"
+  destination = "/data"  # persists only the operator pause flag; the world stays in-memory
+
 [[vm]]
   size = "shared-cpu-1x"
   memory = "512mb"  # Claude CLI genome-authoring for LLM tribes (claude-sdk provider)
