@@ -182,12 +182,12 @@ class Bot:
             else:
                 return {**intent, **self._toward(p, wallset, occ, tq, tr, R)}
 
-        # 4c. FOLLOW order: form on a teammate and move WITH them — a moving rally. Prefer the
-        # leader's live position when this tank can see them, else the spot last relayed over
-        # Artel (follow_at). Trail at a short gap so we fight from their flank, not stacked on
-        # them; in formation with nothing to shoot, hold on the leader instead of wandering off.
+        # 4c. FOLLOW order: form on a teammate and move WITH them — a moving rally. But FIRING
+        # WINS: a tank with an enemy in range holds and shoots rather than breaking the shot to
+        # march after the leader. Following is what an UNENGAGED tank does — close the gap, then
+        # in formation with nothing to shoot, hold on the leader instead of wandering off.
         lead = self.orders.get("follow")
-        if lead:
+        if lead and not in_range:
             ally = next(
                 (
                     v

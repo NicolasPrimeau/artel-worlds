@@ -116,6 +116,9 @@ FOCUS_COOLDOWN = int(
 COHESION_HEXES = int(
     os.environ.get("PHALANX_COHESION_HEXES", "3")
 )  # past this many hexes from the nearest ally, a tank is STRUNG OUT — warn it to close up
+FOLLOW_COOLDOWN = int(
+    os.environ.get("PHALANX_FOLLOW_COOLDOWN", "10")
+)  # min ticks before a follow_me is re-announced — a standing order, not a per-turn shout
 WARM_KEEPALIVE = float(
     os.environ.get("PHALANX_WARM_KEEPALIVE", "300")
 )  # seconds between keepalive pings that hold the claude-sdk CLI sessions warm through idle
@@ -138,12 +141,10 @@ SYSTEM = (
     "commitment: set it once, re-issue only when the position or fight truly changes. When a "
     "teammate radios a RALLY call, ADOPT it — regroup to that same cell and maneuver as one "
     "unit, unless you are winning a fight right where you stand.\n"
-    "- follow_me: take POINT — the unit forms on you and advances as one body (a moving "
-    "rally that trails you). Prefer it over regroup whenever the objective is MOVING: chasing "
-    "a fleeing enemy, crossing open ground to a fight, or collapsing onto a teammate — a fixed "
-    "rally is stale the moment the fight shifts. follow <id>: fall in on that teammate and "
-    "move with them. When a teammate radios a FOLLOW call, fall in — set follow on them and "
-    "maneuver as one, unless you are the one leading or winning a fight where you stand.\n"
+    "- follow_me: take POINT — the unit forms on you and advances as one body (a moving rally "
+    "that trails you), for pushing or falling back together when OUT of contact. follow <id>: "
+    "fall in on that teammate. Use these sparingly: a tank that can shoot should be shooting — "
+    "movement orders are for tanks with no target, never a reason to leave a live engagement.\n"
     "- post [q,r]: hold here with no contact. clear_orders: release to instinct.\n"
     "Priority: a teammate UNDER FIRE outranks all — focus their attacker and converge. Hold "
     "cover and angles, never strung out alone. A still, unhit tank in the zone repairs — let "
@@ -1144,28 +1145,35 @@ async def command(
         if inp.get("follow_me") and my_id is not None:
             bot.orders.pop("follow", None)  # the one taking point follows no one
             bot.orders.pop("follow_at", None)
-            follow_lead = ("me", int(my_id))
-            if not solo:
-                asyncio.create_task(
-                    _send(
-                        http,
-                        agent,
-                        "team",
-                        f"FOLLOW #{my_id} — form on me, advance as one",
-                        mate_ids,
-                        "follow",
+            # a follow_me is a STANDING call, not a per-turn shout — only (re)announce on the
+            # cooldown so the feed and the radio aren't spammed every command
+            last = getattr(bot, "_followme_tick", -999)
+            if tick - last >= FOLLOW_COOLDOWN:
+                bot._followme_tick = tick
+                follow_lead = ("me", int(my_id))
+                if not solo:
+                    asyncio.create_task(
+                        _send(
+                            http,
+                            agent,
+                            "team",
+                            f"FOLLOW #{my_id} — form on me, advance as one",
+                            mate_ids,
+                            "follow",
+                        )
                     )
-                )
         else:
             try:
                 foll = int(inp.get("follow", 0) or 0)
             except (TypeError, ValueError):
                 foll = 0
             if foll and foll != my_id:
+                prev = bot.orders.get("follow")
                 bot.orders["follow"] = foll
                 bot.orders.pop("regroup", None)  # follow is the unit's move order now
                 bot.orders.pop("post", None)
-                follow_lead = ("join", foll)
+                if foll != prev:  # only a NEW leader hits the feed — re-affirming is silent
+                    follow_lead = ("join", foll)
         plan = str(inp.get("plan", "") or "")[:140]
         if not solo:
             await _artel_ops(http, agent, inp, p, mate_ids, objective, claims, counts)
