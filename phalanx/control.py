@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
+
 from .config import Config
 from .tank import AXIAL_DIRS, bfs_step, dir_toward, hex_distance
 
 KNOWLEDGE_TTL = 16  # ticks an enemy sighting stays trusted before it goes stale
 LOW_ENERGY = 30.0  # below this, fall back and keep firing instead of pressing in
 ZONE_MARGIN = 1  # stay this many hexes inside the safe radius, off the bleeding edge
+FOLLOW_GAP = int(os.environ.get("PHALANX_FOLLOW_GAP", "2"))  # hexes a follower trails its leader
 
 # Three solo temperaments — different comfort range, target pick, and hunting lane. A team of
 # deterministic bots fields one of each, so "the solo side" is three DIFFERENT hunters, not one
@@ -178,6 +181,32 @@ class Bot:
                 self.orders.pop("regroup", None)
             else:
                 return {**intent, **self._toward(p, wallset, occ, tq, tr, R)}
+
+        # 4c. FOLLOW order: form on a teammate and move WITH them — a moving rally. Prefer the
+        # leader's live position when this tank can see them, else the spot last relayed over
+        # Artel (follow_at). Trail at a short gap so we fight from their flank, not stacked on
+        # them; in formation with nothing to shoot, hold on the leader instead of wandering off.
+        lead = self.orders.get("follow")
+        if lead:
+            ally = next(
+                (
+                    v
+                    for v in p.get("visible", [])
+                    if v.get("kind") == "ally" and v.get("id") == lead
+                ),
+                None,
+            )
+            if ally is not None:
+                lq, lr = p["q"] + ally["dq"], p["r"] + ally["dr"]
+            else:
+                fa = self.orders.get("follow_at")
+                lq, lr = (int(fa[0]), int(fa[1])) if fa else (None, None)
+            if lq is not None:
+                if hex_distance(p["q"], p["r"], lq, lr) > FOLLOW_GAP:
+                    tq, tr = self._inside_zone(p, lq, lr, cq, cr)
+                    return {**intent, **self._toward(p, wallset, occ, tq, tr, R)}
+                if not self.board:
+                    return {**intent, "turn": 0, "move": "hold"}  # in formation, gun ready
 
         # 5. nobody known: sweep toward the enemy half ALONE, each temperament down its own
         #    lane — solo hunters spread; they don't get to march as an accidental phalanx.

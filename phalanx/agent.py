@@ -110,8 +110,9 @@ RALLY_COOLDOWN = int(
     os.environ.get("PHALANX_RALLY_COOLDOWN", "12")
 )  # min ticks before the unit can be re-rallied to the same area — a rally is a commitment
 FOCUS_COOLDOWN = int(
-    os.environ.get("PHALANX_FOCUS_COOLDOWN", "8")
-)  # min ticks before re-calling focus on the SAME target — keeps focus calls occasional
+    os.environ.get("PHALANX_FOCUS_COOLDOWN", "3")
+)  # min ticks before the unit can be yanked onto a DIFFERENT focus — short, so fire can
+# chase the best target as the fight shifts, but not thrash every single tick
 WARM_KEEPALIVE = float(
     os.environ.get("PHALANX_WARM_KEEPALIVE", "300")
 )  # seconds between keepalive pings that hold the claude-sdk CLI sessions warm through idle
@@ -134,6 +135,10 @@ SYSTEM = (
     "commitment: set it once, re-issue only when the position or fight truly changes. When a "
     "teammate radios a RALLY call, ADOPT it — regroup to that same cell and maneuver as one "
     "unit, unless you are winning a fight right where you stand.\n"
+    "- follow_me: take POINT — the unit forms on you and advances as one body (a moving "
+    "rally that trails you). follow <id>: fall in on that teammate and move with them. When a "
+    "teammate radios a FOLLOW call, fall in — set follow on them and maneuver as one, unless "
+    "you are the one leading or winning a fight where you stand.\n"
     "- post [q,r]: hold here with no contact. clear_orders: release to instinct.\n"
     "Priority: a teammate UNDER FIRE outranks all — focus their attacker and converge. Hold "
     "cover and angles, never strung out alone. A still, unhit tank in the zone repairs — let "
@@ -184,6 +189,18 @@ TOOLS = [
                     "type": "array",
                     "items": {"type": "integer"},
                     "description": "[q,r] where to hold when it has no contact",
+                },
+                "follow_me": {
+                    "type": "boolean",
+                    "description": "true = take POINT: call the unit to form on YOU and advance "
+                    "together — a MOVING rally that trails you wherever you go. Use to spearhead "
+                    "a push or a withdrawal as one body instead of a fixed cell.",
+                },
+                "follow": {
+                    "type": "integer",
+                    "description": "teammate tank id to fall in on and move WITH (0 = none) — "
+                    "answer a teammate's FOLLOW call by forming on them; your tank trails them "
+                    "and fights from their flank",
                 },
                 "clear_orders": {
                     "type": "boolean",
@@ -599,18 +616,18 @@ def _command_brief(p: dict, bot) -> str:
     return "\n".join(lines)
 
 
-async def _consume_inbox(http: httpx.AsyncClient, agent: dict) -> tuple[str, dict, str, str]:
-    # returns (reports, beacons, focus_call, rally_call): position beacons are telemetry, not
-    # conversation — they fold into one teammate-positions line. A FOCUS call (mass fire) and
-    # a RALLY call (maneuver together) are the unit's coordination signals, each surfaced on
-    # its own prominent line so the LLM converges on it.
+async def _consume_inbox(http: httpx.AsyncClient, agent: dict) -> tuple[str, dict, str, str, str]:
+    # returns (reports, beacons, focus_call, rally_call, follow_call): position beacons are
+    # telemetry, not conversation — they fold into one teammate-positions line. FOCUS (mass
+    # fire), RALLY (maneuver to ground), and FOLLOW (form on a moving leader) are the unit's
+    # coordination signals, each surfaced on its own prominent line so the LLM converges.
     try:
         r = await http.post(f"{ARTEL_URL}/messages/inbox/consume", headers=_headers(agent), json={})
         msgs = r.json() if r.status_code < 300 else []
     except Exception:
-        return "", {}, "", ""
+        return "", {}, "", "", ""
     me = agent.get("id")
-    lines, beacons, focus_call, rally_call = [], {}, "", ""
+    lines, beacons, focus_call, rally_call, follow_call = [], {}, "", "", ""
     for m in msgs:
         body = m.get("body") or ""
         sender = m.get("from_agent", "?")
@@ -624,9 +641,12 @@ async def _consume_inbox(http: httpx.AsyncClient, agent: dict) -> tuple[str, dic
         elif body.startswith("RALLY "):
             rally_call = f"{sender}: {body}"  # freshest team rally call wins
             lines.append(f"{sender}: {body}")
+        elif body.startswith("FOLLOW "):
+            follow_call = f"{sender}: {body}"  # freshest team follow call wins
+            lines.append(f"{sender}: {body}")
         elif body:
             lines.append(f"{sender}: {body}")
-    return " | ".join(lines)[:600], beacons, focus_call, rally_call
+    return " | ".join(lines)[:600], beacons, focus_call, rally_call, follow_call
 
 
 async def _send(
@@ -916,11 +936,15 @@ async def command(
     # ONE commander call: read the Artel picture, set standing orders on the bot, do the
     # Artel traffic. The bot drives every tick regardless — a failed or skipped command
     # call costs nothing but staleness.
-    focus_call = rally_call = ""
+    focus_call = rally_call = follow_call = ""
     if solo:
         inbox, board = "", ""
     else:
-        (inbox, fresh_beacons, focus_call, rally_call), board, recalled = await asyncio.gather(
+        (
+            (inbox, fresh_beacons, focus_call, rally_call, follow_call),
+            board,
+            recalled,
+        ) = await asyncio.gather(
             _consume_inbox(http, agent),
             _board(http, agent),
             _recall_lessons(http, agent, _recall_query(p, bot, distress)),
@@ -954,6 +978,12 @@ async def command(
             f"\nTEAM RALLY CALL — {rally_call}. Form up: regroup to that SAME cell and "
             f"maneuver onto the called ground with the unit, unless you are winning a fight "
             f"right where you stand."
+        )
+    if follow_call:
+        user += (
+            f"\nTEAM FOLLOW CALL — {follow_call}. Fall in: set follow on that teammate id and "
+            f"move with them as one body, unless you are the one leading or winning a fight "
+            f"where you stand."
         )
     if board:
         user += f"\nTEAM BOARD — current objectives: {board}"
@@ -1028,21 +1058,6 @@ async def command(
                         break
             if at is not None:
                 bot.orders["focus_at"] = at
-            # broadcast the focus call OVER ARTEL on a fresh target so teammates HEAR it and
-            # choose to converge — the massed-fire coordination travels the wire and the other
-            # LLMs decide to align, instead of three commanders each guessing a target alone
-            if focus_set and not solo:
-                where = f" at ({at[0]},{at[1]})" if at else ""
-                asyncio.create_task(
-                    _send(
-                        http,
-                        agent,
-                        "team",
-                        f"FOCUS #{focus}{where} — converge fire",
-                        mate_ids,
-                        "focus",
-                    )
-                )
         rally_cell = None
         for key in ("regroup", "post"):
             v = inp.get(key)
@@ -1067,6 +1082,7 @@ async def command(
                         bot.orders.pop("focus", None)
                         bot.orders.pop("focus_at", None)
                         focus = 0
+                        focus_set = False  # the focus was dropped — no phantom focus event
                     if not _accept_rally(bot, cell, p.get("tick", 0)):
                         continue
                     bot._rally = (p.get("tick", 0), cell)
@@ -1086,10 +1102,51 @@ async def command(
                             )
                         )
                 bot.orders[key] = cell
+        # broadcast the focus call OVER ARTEL — but only now that the rally has had its say, so
+        # a focus the unit dropped in favour of repositioning never goes out. The massed-fire
+        # coordination travels the wire and the other LLMs decide to converge.
+        if focus_set and focus and not solo:
+            at = bot.orders.get("focus_at")
+            where = f" at ({at[0]},{at[1]})" if at else ""
+            asyncio.create_task(
+                _send(
+                    http, agent, "team", f"FOCUS #{focus}{where} — converge fire", mate_ids, "focus"
+                )
+            )
+        # FOLLOW — a moving rally. follow_me takes point and calls the unit onto YOU; follow
+        # falls in on a named teammate. Like focus/rally it rides Artel and the other LLMs
+        # choose to form up — the server never marches the tanks.
+        follow_lead = None
+        my_id = getattr(bot, "id", None)
+        if inp.get("follow_me") and my_id is not None:
+            bot.orders.pop("follow", None)  # the one taking point follows no one
+            bot.orders.pop("follow_at", None)
+            follow_lead = ("me", int(my_id))
+            if not solo:
+                asyncio.create_task(
+                    _send(
+                        http,
+                        agent,
+                        "team",
+                        f"FOLLOW #{my_id} — form on me, advance as one",
+                        mate_ids,
+                        "follow",
+                    )
+                )
+        else:
+            try:
+                foll = int(inp.get("follow", 0) or 0)
+            except (TypeError, ValueError):
+                foll = 0
+            if foll and foll != my_id:
+                bot.orders["follow"] = foll
+                bot.orders.pop("regroup", None)  # follow is the unit's move order now
+                bot.orders.pop("post", None)
+                follow_lead = ("join", foll)
         plan = str(inp.get("plan", "") or "")[:140]
         if not solo:
             await _artel_ops(http, agent, inp, p, mate_ids, objective, claims, counts)
-            comms = _comms_from(inp, bot, p, rally_cell, focus_set)
+            comms = _comms_from(inp, bot, p, rally_cell, focus_set, follow_lead)
     return cost, plan, inbox, comms
 
 
@@ -1127,7 +1184,9 @@ def _accept_focus(state: dict, target: int, tick: int) -> bool:
     return True
 
 
-def _comms_from(inp: dict, bot, p: dict, rally_cell=None, focus_set=False) -> list[dict]:
+def _comms_from(
+    inp: dict, bot, p: dict, rally_cell=None, focus_set=False, follow_lead=None
+) -> list[dict]:
     # the squad's radio, as watchable events: the spoken report plus the orders it set.
     out: list[dict] = []
     tank = getattr(bot, "id", None)
@@ -1157,6 +1216,12 @@ def _comms_from(inp: dict, bot, p: dict, rally_cell=None, focus_set=False) -> li
     # of ground the unit already holds is silent
     if rally_cell:
         add("rally", f"Form up at ({int(rally_cell[0])},{int(rally_cell[1])})", cell=rally_cell)
+    # follow: a moving rally — the map ties the line to a LEADER tank, not a fixed cell
+    if follow_lead:
+        mode, lead = follow_lead
+        text = "Follow me — form up" if mode == "me" else f"Falling in on #{int(lead)}"
+        e = {"t": tick, "tank": tank, "kind": "follow", "text": text, "lead": int(lead)}
+        out.append(e)
     return out
 
 
@@ -1376,6 +1441,17 @@ class Squad:
             self._cmd_tasks[tank_id] = asyncio.create_task(
                 self._run_command(tank_id, agent, p, bot, mate_ids, notes, distress)
             )
+
+        # FOLLOW order: keep the leader's position fresh from its Artel beacon so the follower
+        # trails the MOVING leader (the decision to follow was the LLM's; this just delivers the
+        # leader's live whereabouts over the wire, exactly like any beacon).
+        lead_id = bot.orders.get("follow")
+        if lead_id and not self.solo:
+            lead_agent = (self._assign.get(lead_id) or {}).get("id")
+            beacon = (self._beacons.get(tank_id) or {}).get(lead_agent)
+            m = _POS.search(beacon or "")
+            if m:
+                bot.orders["follow_at"] = (int(m.group(1)), int(m.group(2)))
 
         intent = bot.decide(p, DEFAULT, p.get("tick", 0))
         fired = f"fired at #{intent['fire']}" if intent.get("fire") else "held fire"

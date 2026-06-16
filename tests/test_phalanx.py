@@ -285,18 +285,19 @@ def test_predictive_fire_at_leads_a_mover():
     assert shooter.last_fire == f"hit #{victim.id}"
 
 
-def test_teammate_on_the_line_eats_the_shot():
+def test_shot_passes_through_a_teammate_on_the_line():
     a, shooter, victim = _duel(33)
     mate = next(t for t in a.tanks.values() if t.team == shooter.team and t.id != shooter.id)
     victim.q, victim.r = 8, 5
-    mate.q, mate.r = 6, 5  # parked on the firing line
+    mate.q, mate.r = 6, 5  # parked on the firing line — but allies are TRANSPARENT to the shot
     m0, v0 = mate.energy, victim.energy
     a.submit(shooter.id, {"fire": victim.id, "power": 2})
     a.step()
-    assert a.tanks[victim.id].energy >= v0 - 1  # screened
-    assert a.tanks[mate.id].energy <= m0 - DEFAULT.shot_damage + 1  # the teammate ate it
-    assert "TEAMMATE" in shooter.last_fire
-    assert shooter.energy < 100  # no reward for friendly hits, cost still paid
+    assert a.tanks[mate.id].hit_taken == 0  # no friendly fire — the ally was never hit
+    assert a.tanks[mate.id].energy >= m0  # untouched (it may even repair while idle on the line)
+    assert a.tanks[victim.id].energy <= v0 - DEFAULT.shot_damage + 1  # it reached the enemy behind
+    assert "TEAMMATE" not in shooter.last_fire
+    assert f"#{victim.id}" in shooter.last_fire  # registered as an enemy hit
 
 
 def test_repair_only_when_idle_untouched_and_inside():
@@ -391,6 +392,32 @@ def test_orders_regroup_moves_and_clears_on_arrival():
     near = dict(p, q=8, r=7)  # adjacent to the rally point
     bot.decide(near, DEFAULT, 2)
     assert "regroup" not in bot.orders  # arrived: order clears itself
+
+
+def test_follow_trails_the_leader_and_holds_in_formation():
+    from phalanx.control import Bot
+
+    bot = Bot(1, "artel", "opportunist")
+    p = {
+        "q": 3,
+        "r": 10,
+        "heading": 0,
+        "energy": 80,
+        "gun_ready": True,
+        "visible": [],
+        "walls": [],
+        "zone_radius": 14,
+    }
+    # follow leader #2, last relayed over Artel at (9,3) — far off, so close the gap (not
+    # sweep its own lane) even with no enemy in sight
+    bot.orders["follow"] = 2
+    bot.orders["follow_at"] = (9, 3)
+    out = bot.decide(dict(p), DEFAULT, 1)
+    assert out["move"] == "fwd"  # marching onto the leader, not lane-sweeping alone
+    # in formation (leader visible as an ally, within the gap) and nothing to shoot -> hold
+    formed = dict(p, q=8, r=3, visible=[{"id": 2, "kind": "ally", "dq": 1, "dr": 0, "dist": 1}])
+    out2 = bot.decide(formed, DEFAULT, 2)
+    assert out2["move"] == "hold"  # stays on the leader's flank instead of wandering off
 
 
 def test_orders_post_holds_position_when_nothing_known():

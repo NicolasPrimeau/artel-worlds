@@ -173,15 +173,23 @@ class Arena:
         br: int,
         tanks_block: bool = False,
         ignore: frozenset | set = frozenset(),
+        friendly: str | None = None,
     ) -> bool:
-        occ = {(t.q, t.r) for t in self.tanks.values()} - set(ignore) if tanks_block else None
+        # friendly: a team whose tanks are TRANSPARENT to this line — allies never block a
+        # shot (no friendly fire); only enemies and walls stop it.
+        occ = (
+            {(t.q, t.r) for t in self.tanks.values() if friendly is None or t.team != friendly}
+            - set(ignore)
+            if tanks_block
+            else None
+        )
         for q, r in hex_line(aq, ar, bq, br):
             if (q, r) == (aq, ar) or (q, r) == (bq, br):
                 continue
             if (q, r) in self.walls:
                 return True
             if occ is not None and (q, r) in occ:
-                return True  # a tank in the line of fire eats the shot — friend or foe
+                return True  # an ENEMY tank in the line of fire eats the shot
         return False
 
     # --- contract ---
@@ -208,7 +216,9 @@ class Arena:
                 "dr": o.r - me.r,
                 "dist": d,
                 "dir": dir_toward(me.q, me.r, o.q, o.r),
-                "clear_shot": not self._blocked(me.q, me.r, o.q, o.r, tanks_block=True),
+                "clear_shot": not self._blocked(
+                    me.q, me.r, o.q, o.r, tanks_block=True, friendly=me.team
+                ),
                 "step": [o.step_dq, o.step_dr],
             }
             if ally or d <= rng // 2:
@@ -344,7 +354,11 @@ class Arena:
             self._stat(t.team, "shots")
             self._stat(t.team, "trigger_energy", cost)
             ray = self._ray(oq, orr, aim, cfg.power_range[power - 1])
-            occ_now = {(o.q, o.r): o for o in living if o.id != t.id and o.energy > 0}
+            # allies are transparent to the shot — only enemy tanks (and walls) stop the ray,
+            # so massing fire never frags a teammate on the line
+            occ_now = {
+                (o.q, o.r): o for o in living if o.id != t.id and o.energy > 0 and o.team != t.team
+            }
             victim: Tank | None = None
             stop: tuple[int, int] | None = None
             for cell in ray:
