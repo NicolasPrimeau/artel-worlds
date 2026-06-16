@@ -260,6 +260,9 @@ function line(pts) { ctx.beginPath(); pts.forEach(([wx, wy], i) => {
   const [px, py] = S(wx, wy); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }); ctx.stroke(); }
 function arc(wx, wy, rW, a0, a1) { const [cx, cy] = S(wx, wy); ctx.beginPath();
   ctx.arc(cx, cy, rW * view.scale, a0, a1); ctx.stroke(); }
+function warc(wx, wy, rW, a0, a1) {  // arc drawn in WORLD space so it rotates with the pitch
+  const pts = []; for (let i = 0; i <= 12; i++) { const a = a0 + (a1 - a0) * i / 12;
+    pts.push([wx + rW * Math.cos(a), wy + rW * Math.sin(a)]); } line(pts); }
 function dot(wx, wy, rW, fill) { const [cx, cy] = S(wx, wy); ctx.beginPath();
   ctx.arc(cx, cy, rW * view.scale, 0, 7); ctx.fillStyle = fill; ctx.fill(); }
 
@@ -284,7 +287,8 @@ function drawField() {
   line([[0,boy0],[box,boy0],[box,boy1],[0,boy1]]);     // boxes
   line([[L,boy0],[L-box,boy0],[L-box,boy1],[L,boy1]]);
   dot(11, Wd/2, 0.4, 'rgba(225,245,230,.5)'); dot(L-11, Wd/2, 0.4, 'rgba(225,245,230,.5)');  // pen spots
-  arc(0,0,2,0,Math.PI/2); arc(0,Wd,2,-Math.PI/2,0); arc(L,0,2,Math.PI/2,Math.PI); arc(L,Wd,2,Math.PI,3*Math.PI/2); // corners
+  // corner arcs — each a quarter circle curving INTO the pitch (world-space, so they rotate right)
+  warc(0,0,2,0,Math.PI/2); warc(0,Wd,2,-Math.PI/2,0); warc(L,0,2,Math.PI/2,Math.PI); warc(L,Wd,2,Math.PI,1.5*Math.PI);
   // goals — posts + a faint net
   const gm = world.goal_width/2, by0 = Wd/2 - gm, by1 = Wd/2 + gm;
   ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(2, s*0.45);
