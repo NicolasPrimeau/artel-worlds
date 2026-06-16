@@ -14,23 +14,36 @@
   html, body { margin:0; height:100%; background:var(--bg); color:#eafff0; overflow:hidden;
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
   #app { display:flex; flex-direction:column; height:100dvh; }
-  #bar { display:flex; align-items:center; justify-content:space-between; gap:8px;
+  /* 3-column grid keeps the score bug dead-centre no matter how wide the conn chip gets */
+  #bar { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:8px;
     padding:calc(6px + env(safe-area-inset-top)) 12px 6px; flex:0 0 auto; }
-  /* TV broadcast score bug: clock pill + team colour caps + 3-letter codes + combined score */
-  #bar .center { display:flex; flex-direction:column; align-items:center; gap:3px; flex:1; min-width:0; }
-  #bug { display:inline-flex; align-items:stretch; height:30px; border-radius:6px; overflow:hidden;
+  /* TV broadcast score bug: clock pill + colour caps + 3-letter codes over full club names */
+  #bar .center { display:flex; flex-direction:column; align-items:center; gap:4px; min-width:0; }
+  #bug { display:inline-flex; align-items:stretch; border-radius:7px; overflow:hidden;
     font-variant-numeric:tabular-nums; box-shadow:0 1px 8px rgba(0,0,0,.45); border:1px solid #000; }
-  #bug > * { display:flex; align-items:center; }
   #clock { background:#101a10; color:#bfe8cb; padding:0 9px; font-weight:700; font-size:13px;
-    letter-spacing:.5px; border-right:1px solid #000; min-width:46px; justify-content:center; }
-  .side { background:#0b0f0b; }
-  .side .sw { width:5px; align-self:stretch; }
+    letter-spacing:.5px; border-right:1px solid #000; min-width:48px; display:flex; align-items:center;
+    justify-content:center; }
+  .side { background:#0b0f0b; display:flex; align-items:stretch; }
+  .side .sw { width:5px; }
   .side.h .sw { background:var(--home); } .side.a .sw { background:var(--away); }
-  .abbr { padding:0 9px; font-weight:800; font-size:14px; letter-spacing:1px; }
+  .stack { display:flex; flex-direction:column; justify-content:center; padding:3px 9px; line-height:1.1;
+    max-width:34vw; }
+  .side.h .stack { align-items:flex-end; } .side.a .stack { align-items:flex-start; }
+  .abbr { font-weight:800; font-size:14px; letter-spacing:1px; }
   .side.h .abbr { color:var(--home); } .side.a .abbr { color:var(--away); }
-  #score { background:#161d16; padding:0 11px; font-weight:800; font-size:17px; white-space:nowrap; }
-  #bar .edge { min-width:44px; flex:0 0 auto; }
-  #conn { font-size:11px; color:var(--dim); min-width:44px; text-align:right;
+  .fullnm { font-size:9px; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    max-width:100%; }
+  #score { background:#161d16; padding:0 12px; font-weight:800; font-size:18px; white-space:nowrap;
+    display:flex; align-items:center; }
+  /* tournament strip — tappable, lives right in the scoreboard so the cup is front-and-centre */
+  #tourbar { background:none; border:0; cursor:pointer; display:flex; flex-direction:column;
+    align-items:center; gap:1px; padding:1px 8px; border-radius:6px; }
+  #tourbar:hover { background:#10160f; }
+  #round { font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:#cdebd7; font-weight:800; }
+  #upnext { font-size:10px; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    max-width:74vw; }
+  #conn { font-size:11px; color:var(--dim); justify-self:end;
     display:inline-flex; align-items:center; gap:5px; justify-content:flex-end; }
   #conn::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--dim); }
   #conn.live { color:var(--green); } #conn.live::before { background:var(--green); box-shadow:0 0 8px var(--green); }
@@ -62,9 +75,6 @@
   #sharepop a, #sharepop button { background:none; border:0; border-bottom:1px solid #1a201a; color:var(--dim);
     padding:8px 16px; font-size:12px; white-space:nowrap; text-align:left; }
   #sharepop a:hover, #sharepop button:hover { background:#1a201a; color:#fff; }
-  #bar .row1 { display:flex; align-items:center; gap:10px; justify-content:center; min-width:0; }
-  #round { font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim);
-    font-weight:700; }
   #cupbtn { background:#10160f; border:1px solid #20271f; color:var(--dim); border-radius:7px;
     padding:4px 9px; font-size:11px; cursor:pointer; }
   #cupbtn:hover { border-color:#2f3a30; color:#fff; }
@@ -85,8 +95,10 @@
   .cup-tabs button.on { background:var(--green); border-color:var(--green); color:#04140a; font-weight:700; }
   .cup-body { overflow:auto; padding:14px 16px; }
   .tab { display:none; } .tab.on { display:block; }
-  #tab-bracket svg { width:100%; height:auto; min-width:540px; }
-  .bracket-scroll { overflow-x:auto; }
+  #tab-bracket svg { display:block; height:auto; width:540px; max-width:none; }
+  .bracket-scroll { overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
+    touch-action:pan-x; overscroll-behavior-x:contain; }
+  .bracket-hint { text-align:center; color:var(--dim); font-size:10px; margin-top:6px; }
   .champ { text-align:center; font-size:13px; color:#d4af37; font-weight:700; margin-bottom:10px; }
   table.cup { width:100%; border-collapse:collapse; font-size:13px; }
   table.cup th { text-align:left; color:var(--dim); font-weight:600; font-size:11px;
@@ -113,11 +125,13 @@
     <span class="center">
       <span id="bug">
         <span id="clock">0:00</span>
-        <span class="side h"><i class="sw"></i><b class="abbr" id="abH">—</b></span>
+        <span class="side h"><i class="sw"></i><span class="stack"><b class="abbr" id="abH">—</b><span class="fullnm" id="nmH"></span></span></span>
         <span id="score">0–0</span>
-        <span class="side a"><b class="abbr" id="abA">—</b><i class="sw"></i></span>
+        <span class="side a"><span class="stack"><b class="abbr" id="abA">—</b><span class="fullnm" id="nmA"></span></span><i class="sw"></i></span>
       </span>
-      <span id="round"></span>
+      <button id="tourbar" type="button" aria-label="open tournament">
+        <span id="round"></span><span id="upnext"></span>
+      </button>
     </span>
     <span id="conn">connecting…</span>
   </div>
@@ -159,6 +173,14 @@
 <script>
 const $ = id => document.getElementById(id);
 const abbr = s => ((s || '').normalize('NFD').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || '—');
+function upNext(t) {
+  if (!t) return '';
+  if (t.champion) return '🏆 ' + t.champion + ' — champions';
+  const flat = t.rounds.flat();
+  const i = flat.findIndex(x => x.live);
+  const nx = i >= 0 ? flat[i + 1] : null;
+  return nx ? `Up next: ${nx.a || 'TBD'} vs ${nx.b || 'TBD'}` : '';
+}
 const cv = $('cv'), ctx = cv.getContext('2d');
 let world = { length:120, width:80, goal_width:24 };
 let buf = [], latest = null;  // buf: timestamped snapshots; latest: newest (for the scoreboard)
@@ -326,8 +348,10 @@ function apply(s) {
   buf.push({ t: performance.now(), snap: s });
   if (buf.length > 12) buf.shift();
   $('abH').textContent = abbr(s.home.club); $('abA').textContent = abbr(s.away.club);
+  $('nmH').textContent = s.home.club; $('nmA').textContent = s.away.club;
   $('score').textContent = `${s.home.score}–${s.away.score}`;
   $('round').textContent = s.round || '';
+  $('upnext').textContent = upNext(s.tournament);
   // broadcast clock: a continuous MM:SS over a 90:00 match, ticking with seconds like TV
   const secs = Math.min(5400, Math.floor(s.tick / s.match_ticks * 5400));
   $('clock').textContent = s.fulltime ? 'FT' : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
@@ -429,7 +453,7 @@ function renderBracket(t) {
   svg += tieBox(third, fx, tc - H / 2, W, H);
   if (t.champion) svg += `<text x="${fx + W / 2}" y="${fc + H / 2 + 22}" text-anchor="middle" font-size="13" fill="#d4af37" font-weight="800">🏆 ${esc(trim(t.champion, 22))}</text>`;
   svg += `</svg>`;
-  return `<div class="bracket-scroll">${svg}</div>`;
+  return `<div class="bracket-scroll">${svg}</div><div class="bracket-hint">← swipe to see the full draw →</div>`;
 }
 function renderBoot(t) {
   if (!t.scorers.length) return '<p style="color:#7c8a80">No goals yet this edition.</p>';
@@ -454,18 +478,29 @@ function renderSched(t) {
   });
   return h;
 }
+let _tourSig = '';
 function renderTour(t) {
   if (!t) return;
+  // rebuild only when the tournament data actually changes — otherwise every websocket frame
+  // would replace the DOM and reset the bracket's scroll position mid-swipe (the scroll bug).
+  const sig = JSON.stringify(t);
+  if (sig === _tourSig) return;
+  _tourSig = sig;
+  const sc = $('tab-bracket').querySelector('.bracket-scroll');
+  const keepLeft = sc ? sc.scrollLeft : 0;
   $('cupEd').textContent = 'Edition ' + t.edition + (t.champion ? ' · 🏆 ' + t.champion : '');
   $('tab-bracket').innerHTML = renderBracket(t);
   $('tab-boot').innerHTML = renderBoot(t);
   $('tab-teams').innerHTML = renderTeams(t);
   $('tab-sched').innerHTML = renderSched(t);
+  const sc2 = $('tab-bracket').querySelector('.bracket-scroll');
+  if (sc2) sc2.scrollLeft = keepLeft;
 }
 (function () {
-  const open = () => { $('cup').hidden = false; renderTour(lastTour); };
+  const open = () => { $('cup').hidden = false; _tourSig = ''; renderTour(lastTour); };
   const close = () => { $('cup').hidden = true; };
   $('cupbtn').addEventListener('click', open);
+  $('tourbar').addEventListener('click', open);
   $('cupClose').addEventListener('click', close);
   $('cup').addEventListener('click', e => { if (e.target.id === 'cup') close(); });
   addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
