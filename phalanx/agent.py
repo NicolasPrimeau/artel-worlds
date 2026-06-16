@@ -113,6 +113,9 @@ FOCUS_COOLDOWN = int(
     os.environ.get("PHALANX_FOCUS_COOLDOWN", "3")
 )  # min ticks before the unit can be yanked onto a DIFFERENT focus — short, so fire can
 # chase the best target as the fight shifts, but not thrash every single tick
+COHESION_HEXES = int(
+    os.environ.get("PHALANX_COHESION_HEXES", "3")
+)  # past this many hexes from the nearest ally, a tank is STRUNG OUT — warn it to close up
 WARM_KEEPALIVE = float(
     os.environ.get("PHALANX_WARM_KEEPALIVE", "300")
 )  # seconds between keepalive pings that hold the claude-sdk CLI sessions warm through idle
@@ -142,8 +145,11 @@ SYSTEM = (
     "move with them. When a teammate radios a FOLLOW call, fall in — set follow on them and "
     "maneuver as one, unless you are the one leading or winning a fight where you stand.\n"
     "- post [q,r]: hold here with no contact. clear_orders: release to instinct.\n"
-    "Priority: a teammate UNDER FIRE outranks all — focus their attacker and converge. Hold "
-    "cover and angles, never strung out alone. A still, unhit tank in the zone repairs — let "
+    "PRIORITY #1 — KEEP THE UNIT TOGETHER. A tank that fights more than ~2 hexes from a "
+    "teammate gets killed alone, and a unit picked off one at a time loses. If you or an ally "
+    "is strung out, CONCENTRATE first (follow_me / follow / rally) before pushing — do not "
+    "advance into the enemy ahead of your team. A teammate UNDER FIRE outranks all else: "
+    "converge on them and focus their attacker. A still, unhit tank in the zone repairs — let "
     "hurt tanks recover behind a screen, keep pressure on hurt enemies.\n"
     "ONE move order per command: focus (when you can engage) OR exactly one of regroup / "
     "follow_me / follow (when you must move the unit) — regroup to hold fixed ground, "
@@ -965,6 +971,23 @@ async def command(
         user += "\nTEAMMATE POSITIONS (Artel beacons, ~1 turn old): " + "; ".join(
             f"{k} at {v}" for k, v in view.items() if k != agent["id"]
         )
+        # cohesion check: strung-out tanks get defeated in detail — the real-game killer. If
+        # this tank is far from every teammate, tell the commander to close up, not push on.
+        mates = []
+        for k, vv in view.items():
+            if k == agent["id"]:
+                continue
+            mm = _POS.search(str(vv))
+            if mm:
+                mates.append((int(mm.group(1)), int(mm.group(2))))
+        if mates:
+            nearest = min(_hexdist(p["q"], p["r"], mq, mr) for mq, mr in mates)
+            if nearest > COHESION_HEXES:
+                user += (
+                    f"\nYOU ARE STRUNG OUT — {nearest} hexes from your nearest teammate. Close "
+                    f"up NOW (follow a teammate or rally the unit); do NOT push further out, or "
+                    f"you get killed alone."
+                )
         sc = _support_call(p, view, agent["id"])
         if sc:
             user += (
