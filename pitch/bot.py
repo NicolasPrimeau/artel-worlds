@@ -38,17 +38,45 @@ def _kick(p: Player, tx: float, ty: float, speed: float, noise: float, rng) -> d
     return {"move": (tx, ty), "kick": (rx * speed, ry * speed)}
 
 
+ROLE_ZONE = {"DEF": 0, "MID": 1, "FWD": 2}  # which third of the pitch a role belongs in
+
+
+def _fwd_x(team: str, x: float, length: float) -> float:
+    # x measured up the attacking direction: 0 = own goal line, length = opponent's goal line
+    return x if team == "home" else length - x
+
+
+def _pursuit_cost(pitch: Pitch, q: Player, b) -> float:
+    # who presses the ball: nearest, but a player pays a penalty for leaving their zone — so a
+    # defender doesn't charge the attacking third and a striker doesn't track into his own box.
+    L = pitch.cfg.length
+    fx = _fwd_x(q.team, b.x, L)
+    ball_zone = 0 if fx < L / 3 else (1 if fx < 2 * L / 3 else 2)
+    return _len(q.x - b.x, q.y - b.y) + abs(ball_zone - ROLE_ZONE.get(q.role, 1)) * 20.0
+
+
 def _formation_target(pitch: Pitch, p: Player) -> tuple[float, float]:
     c = pitch.cfg
     b = pitch.ball
+    L = c.length
     # team shape slides toward the ball's x; forwards push further than defenders.
     role_push = {"DEF": 0.35, "MID": 0.7, "FWD": 1.0}.get(p.role, 0.5)
-    shift = (b.x - c.length / 2) * role_push
+    shift = (b.x - L / 2) * role_push
     fx = p.home_x + shift
-    # defenders never get caught upfield of the ball — stay goal-side
-    if p.role == "DEF":
-        fx = min(fx, b.x - 4) if p.team == "home" else max(fx, b.x + 4)
+    fwd_ball = _fwd_x(p.team, b.x, L)  # how deep into our half the ball is (0 = our goal line)
     fy = p.home_y * 0.55 + b.y * 0.45  # hold width but lean to the ball's side
+    if p.role == "DEF":
+        # defenders stay goal-side of the ball and never drift into the attacking half — a back line
+        fx = min(fx, b.x - 4) if p.team == "home" else max(fx, b.x + 4)
+        fx = min(fx, L * 0.52) if p.team == "home" else max(fx, L * 0.48)
+        if fwd_ball < L * 0.4:
+            # ball threatening our third — drop and tuck in to a compact block in front of goal
+            goal_x = 0.0 if p.team == "home" else L
+            fx = fx * 0.4 + (goal_x + (15 if p.team == "home" else -15)) * 0.6
+            fy = fy * 0.5 + (c.width / 2) * 0.5
+    elif p.role == "FWD":
+        # forwards hold a high line — they stay an outlet up top even when the ball is deep
+        fx = max(fx, L * 0.42) if p.team == "home" else min(fx, L * 0.58)
     fx = _clamp(fx, 8.0, c.length - 8.0)
     fy = _clamp(fy, 6.0, c.width - 6.0)
     # de-stack: ease away from the nearest teammate so two players never occupy a spot
@@ -90,34 +118,36 @@ def decide(pitch: Pitch, p: Player) -> dict:
         return {"move": (keep_x, ty), "sprint": threat}
 
     outfield = [q for q in pitch.teammates(p) if q.role != "GK"]
-    pursuer = min(outfield, key=lambda q: _len(q.x - b.x, q.y - b.y))
+    teammate_ids = {q.id for q in pitch.teammates(p)}
 
-    if pursuer.id != p.id:  # not my ball — hold shape
+    if pitch.possessor == p.id:
+        # ON THE BALL: shoot (only when genuinely close), else PASS by default, else carry.
+        fwd = 1.0 if p.team == "home" else -1.0
+        dist_goal = _len(gx - p.x, gy - p.y)
+        mine_open = _open(pitch, p)
+        if dist_goal < c.shoot_range and mine_open > 3.0:
+            ax, ay = _shoot_aim(pitch, p)
+            # scatter grows with range — long shots fly wide, so goals come from working it close
+            return _kick(p, ax, ay, c.shot_speed, 0.22 + dist_goal / 130.0, rng)
+        # PASS is the default — keep it moving. Favour an advanced, open teammate (a forward making
+        # the run up top), so the ball travels through the team and reaches the attackers.
+        mates = [q for q in outfield if q.id != p.id]
+        opts = [q for q in mates if _open(pitch, q) > 5.5 and (q.x - p.x) * fwd > -10]
+        pressured = mine_open < 6.5
+        if opts and (pressured or len(opts) >= 2 or rng.random() < 0.6):
+            tgt = max(opts, key=lambda q: q.x * fwd + _open(pitch, q) * 0.5)
+            return _kick(p, tgt.x + c.pass_lead * fwd, tgt.y, c.pass_speed, 0.08, rng)
+        # carry: drive at goal down the more open lane — NO kick, so the engine eases the ball ahead
+        push_y = _clamp(p.y + rng.choice((-1, 1)) * 5.0, 6, c.width - 6)
+        return {"move": (gx, push_y)}
+
+    if pitch.possessor is not None and pitch.possessor in teammate_ids:
+        # a teammate has the ball — don't chase our own player; hold shape and offer support
         return {"move": _formation_target(pitch, p), "kick": None}
 
-    if pitch.possessor != p.id:  # chase / intercept — sprint to win the ball
+    # loose ball or the opponent has it — only the role-appropriate nearest player presses; the
+    # rest hold their line. A defender wins it in our third, a forward leads the press up high.
+    pursuer = min(outfield, key=lambda q: _pursuit_cost(pitch, q, b))
+    if pursuer.id == p.id:
         return {"move": (b.x, b.y), "sprint": True}
-
-    # on the ball: shoot (only when genuinely close), else PASS by default, else carry.
-    fwd = 1.0 if p.team == "home" else -1.0
-    dist_goal = _len(gx - p.x, gy - p.y)
-    mine_open = _open(pitch, p)
-    if dist_goal < c.shoot_range and mine_open > 3.0:
-        ax, ay = _shoot_aim(pitch, p)
-        # scatter grows with range — long shots fly wide, so goals come from working it close
-        return _kick(p, ax, ay, c.shot_speed, 0.22 + dist_goal / 130.0, rng)
-
-    # PASS is the default — keep the ball moving. Any open teammate who isn't well behind me is
-    # an option (forward, square, or a slight switch); favour the most advanced + most open. This
-    # is what makes it read like soccer: build-up through passes, not endless solo dribbles.
-    mates = [q for q in outfield if q.id != p.id]
-    opts = [q for q in mates if _open(pitch, q) > 5.5 and (q.x - p.x) * fwd > -10]
-    pressured = mine_open < 6.5
-    if opts and (pressured or len(opts) >= 2 or rng.random() < 0.6):
-        tgt = max(opts, key=lambda q: q.x * fwd + _open(pitch, q) * 0.5)
-        return _kick(p, tgt.x + c.pass_lead * fwd, tgt.y, c.pass_speed, 0.08, rng)
-
-    # carry: drive at goal down the more open lane — NO kick, so the engine eases the ball
-    # ahead of us (a smooth dribble that the client can interpolate), instead of re-striking it.
-    push_y = _clamp(p.y + rng.choice((-1, 1)) * 5.0, 6, c.width - 6)
-    return {"move": (gx, push_y)}
+    return {"move": _formation_target(pitch, p), "kick": None}
