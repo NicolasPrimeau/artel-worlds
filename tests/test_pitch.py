@@ -1,8 +1,10 @@
 from pitch.bot import decide
+from pitch.config import DEFAULT
 from pitch.engine import Pitch, _len
 
-HOME = ["GK a", "DEF b", "DEF c", "MID d", "FWD e"]
-AWAY = ["GK f", "DEF g", "DEF h", "MID i", "FWD j"]
+N = DEFAULT.team_size
+HOME = [f"Home{i}" for i in range(N)]
+AWAY = [f"Away{i}" for i in range(N)]
 
 
 def _play(seed: int, ticks: int = 900):
@@ -44,5 +46,5 @@ def test_snapshot_is_well_formed():
     g.pitch.step(decide)
     s = g.snapshot()
     assert {"home", "away", "ball", "players", "tick", "match_ticks"} <= set(s)
-    assert len(s["players"]) == 10
+    assert len(s["players"]) == 2 * N
     assert s["home"]["club"] and s["away"]["club"]

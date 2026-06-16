@@ -4,8 +4,8 @@ from .bot import decide
 from .config import DEFAULT
 from .engine import Pitch, _len
 
-HOME = ["H-GK", "H-DEF1", "H-DEF2", "H-MID", "H-FWD"]
-AWAY = ["A-GK", "A-DEF1", "A-DEF2", "A-MID", "A-FWD"]
+HOME = [f"H{i}" for i in range(DEFAULT.team_size)]
+AWAY = [f"A{i}" for i in range(DEFAULT.team_size)]
 
 
 def _ascii(pitch: Pitch, cols: int = 62, rows: int = 18) -> str:

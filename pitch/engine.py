@@ -20,6 +20,9 @@ def _clamp(v: float, lo: float, hi: float) -> float:
     return lo if v < lo else hi if v > hi else v
 
 
+DISP = {"GK": "GK", "DEF": "DF", "MID": "MF", "FWD": "FW"}  # short position labels for player names
+
+
 @dataclass
 class Ball:
     x: float
@@ -74,40 +77,58 @@ class Pitch:
     goal_team: str | None = None  # team that just scored (for the celebration colour)
     restart_kind: str | None = None  # "corner" | "goal-kick" | "throw-in" — for the feed
     _concede_to: str = "home"  # who kicks off after the celebration
+    shapes: dict[str, tuple[int, int, int]] = field(default_factory=dict)  # team -> (def, mid, fwd)
     _rng: Random = field(default_factory=lambda: Random(0))
 
     def __post_init__(self) -> None:
         self._rng = Random(f"pitch:{self.seed}")
 
     # --- setup ---
-    def _formation(self, team: str) -> list[tuple[str, float, float]]:
-        # a 2-1-1 in front of a keeper, mirrored by side. x in own half; y spread across width.
-        c = self.cfg
-        w = c.width
-        if team == "home":  # defends x=0, attacks x=length
-            return [
-                ("GK", 6.0, w / 2),
-                ("DEF", 28.0, w * 0.32),
-                ("DEF", 28.0, w * 0.68),
-                ("MID", 52.0, w / 2),
-                ("FWD", 78.0, w / 2),
-            ]
-        return [  # away: mirror across the halfway line
-            ("GK", c.length - 6.0, w / 2),
-            ("DEF", c.length - 28.0, w * 0.32),
-            ("DEF", c.length - 28.0, w * 0.68),
-            ("MID", c.length - 52.0, w / 2),
-            ("FWD", c.length - 78.0, w / 2),
+    def _shape(self, out: int) -> tuple[int, int, int]:
+        # a random but sensible (defenders, midfielders, forwards) split for the squad — so each
+        # team lines up differently (e.g. 4-2-2 vs 3-2-3). >=2 at the back, >=1 in midfield/attack.
+        cands = [
+            (nd, out - nd - nf, nf)
+            for nd in range(2, 5)
+            for nf in range(1, 4)
+            if 1 <= out - nd - nf <= 4
         ]
+        if not cands:  # tiny squads — fall back to a balanced split
+            nd = max(1, round(out * 0.38))
+            nf = max(1, round(out * 0.34))
+            return nd, max(0, out - nd - nf), nf
+        return self._rng.choice(cands)
+
+    def _positions(self, team: str, shape: tuple[int, int, int]) -> list[tuple[str, float, float]]:
+        # a keeper plus three lines, spread across the width. Home defends x=0 and attacks +x.
+        c = self.cfg
+        w = c.length
+        pos: list[tuple[str, float, float]] = [
+            ("GK", 6.0 if team == "home" else c.length - 6.0, c.width / 2)
+        ]
+        for role, depth, cnt in zip(("DEF", "MID", "FWD"), (0.22, 0.44, 0.68), shape):
+            if cnt <= 0:
+                continue
+            x = depth * w if team == "home" else w - depth * w
+            for j in range(cnt):
+                pos.append((role, x, c.width * (j + 1) / (cnt + 1)))
+        return pos
 
     def setup(self, home_names: list[str], away_names: list[str]) -> None:
+        # *_names are plain surnames (team_size each); the position label + shirt number come from
+        # the formation slot, so squad size is driven entirely by cfg.team_size.
         self.players = []
+        self.shapes = {}
         pid = 0
         r = self._rng
-        numbers = [1, 2, 3, 8, 9]  # GK, DEF, DEF, MID, FWD — reads like real shirt numbers
+        out = self.cfg.team_size - 1
         for team, names in (("home", home_names), ("away", away_names)):
-            for slot, ((role, hx, hy), name) in enumerate(zip(self._formation(team), names)):
-                p = Player(pid, team, name, role, hx, hy, hx, hy, numbers[slot])
+            shape = self._shape(out)
+            self.shapes[team] = shape
+            for slot, ((role, hx, hy), surname) in enumerate(
+                zip(self._positions(team, shape), names)
+            ):
+                p = Player(pid, team, f"{DISP[role]} {surname}", role, hx, hy, hx, hy, slot + 1)
                 p.pace = round(r.uniform(0.9, 1.12), 3)
                 p.acc = round(r.uniform(0.85, 1.15), 3)
                 p.finishing = round(r.uniform(0.85, 1.15), 3)
@@ -189,7 +210,7 @@ class Pitch:
         sprint = intent.get("sprint")
         cap = (c.keeper_speed if p.role == "GK" else c.player_speed) * p.pace
         if self.possessor == p.id:
-            cap *= 0.86  # running WITH the ball is slower than without — defenders can close down
+            cap *= 0.9  # running WITH the ball is slightly slower — defenders can close down
         dx, dy = tx - p.x, ty - p.y
         dist = _len(dx, dy)
         ux, uy = _unit(dx, dy)

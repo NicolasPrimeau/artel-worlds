@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from random import Random
 
-ROLES = ["GK", "LB", "RB", "CM", "ST"]
+from .config import DEFAULT
 
 
 # A single-elimination World Cup over 16 clubs: round of 16 -> quarter-finals -> semi-finals ->
@@ -35,7 +35,7 @@ class Tournament:
     edition: int = 1
     seed: int = 0
     rounds: list[list[Tie]] = field(default_factory=list)
-    rosters: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
+    rosters: dict[str, list[str]] = field(default_factory=dict)  # club -> surnames (team_size each)
     scorers: dict[str, dict] = field(default_factory=dict)
     order: list[tuple[int, int]] = field(default_factory=list)  # ties in play order
     cur: int = 0  # index into order
@@ -54,10 +54,10 @@ class Tournament:
         self._rng.shuffle(suf)
         c = [f"{self._rng.choice(CLUB_PREFIXES)} {suf[i]}" for i in range(16)]
         self.clubs = c
-        names = list(NAME_POOL)
-        self._rng.shuffle(names)
-        for i, club in enumerate(c):
-            self.rosters[club] = [(ROLES[k], names[i * 5 + k]) for k in range(5)]
+        # each club gets a unique-within-the-squad set of surnames; surnames may recur across clubs
+        # (two sides can both field a "Silva"), which keeps the pool small as squads grow.
+        for club in c:
+            self.rosters[club] = self._rng.sample(NAME_POOL, DEFAULT.team_size)
         # 16-team single-elimination: Round of 16 -> quarter-finals -> semi-finals -> (third) -> final
         r16 = [Tie("Round of 16", i, c[2 * i], c[2 * i + 1]) for i in range(8)]
         qf = [Tie("Quarter-final", i, a_from=(0, 2 * i), b_from=(0, 2 * i + 1)) for i in range(4)]
@@ -79,7 +79,7 @@ class Tournament:
         return self.tie_at(self.order[self.cur]) if self.cur < len(self.order) else None
 
     def roster_names(self, club: str) -> list[str]:
-        return [f"{role} {name}" for role, name in self.rosters[club]]
+        return list(self.rosters[club])
 
     def record_goal(self, club: str, name: str) -> None:
         key = f"{club}|{name}"

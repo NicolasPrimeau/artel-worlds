@@ -116,8 +116,16 @@ class Game:
             "scorer": self.pitch.scorer,
             "goal_team": self.pitch.goal_team,
             "restart": self.pitch.restart_kind,
-            "home": {"club": self.home_club, "score": self.pitch.score["home"]},
-            "away": {"club": self.away_club, "score": self.pitch.score["away"]},
+            "home": {
+                "club": self.home_club,
+                "score": self.pitch.score["home"],
+                "formation": "-".join(map(str, self.pitch.shapes.get("home", ()))),
+            },
+            "away": {
+                "club": self.away_club,
+                "score": self.pitch.score["away"],
+                "formation": "-".join(map(str, self.pitch.shapes.get("away", ()))),
+            },
             "ball": {"x": round(self.pitch.ball.x, 2), "y": round(self.pitch.ball.y, 2)},
             "players": [
                 {

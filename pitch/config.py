@@ -14,7 +14,7 @@ class Config:
     width: float = 80.0  # touchline-to-touchline
     goal_width: float = 24.0  # span of the goal mouth, centred on the width
 
-    team_size: int = 5  # includes the keeper
+    team_size: int = 9  # includes the keeper — a 3-3-2; bump for an even fuller pitch
 
     player_speed: float = 0.82  # max outfield move per tick — calmer, more deliberate pace
     keeper_speed: float = 1.25  # keepers are quick across the mouth (they make the saves)
@@ -29,9 +29,9 @@ class Config:
     dribble_speed: float = 1.9  # a carried ball is nudged forward at ~player pace
     control_radius: float = 2.4  # within this of the ball, a player is "on" it
     tackle_radius: float = 2.2  # an opponent this close can contest possession
-    gk_reach: float = 4.5  # a keeper gathers (saves) the ball within this — bigger than control
+    gk_reach: float = 3.9  # a keeper gathers (saves) the ball within this — bigger than control
 
-    shoot_range: float = 26.0  # shoot only when genuinely close — forces build-up, not blasts
+    shoot_range: float = 31.0  # shoot only when genuinely close — forces build-up, not blasts
     pass_lead: float = 4.5  # lead a moving teammate by this much
     carry_ahead: float = 1.6  # a dribbled ball rides this far ahead of the carrier's feet
     carry_ease: float = (

@@ -33,6 +33,7 @@
   .side.h .abbr { color:var(--home); } .side.a .abbr { color:var(--away); }
   .fullnm { font-size:9px; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     max-width:100%; }
+  .fmt { font-size:8px; color:#5f6f63; letter-spacing:.5px; font-variant-numeric:tabular-nums; }
   #score { background:#161d16; padding:0 12px; font-weight:800; font-size:18px; white-space:nowrap;
     display:flex; align-items:center; }
   /* tournament strip — tappable, lives right in the scoreboard so the cup is front-and-centre */
@@ -148,9 +149,9 @@
     <span class="center">
       <span id="bug">
         <span id="clock">0:00</span>
-        <span class="side h"><i class="sw"></i><span class="stack"><b class="abbr" id="abH">—</b><span class="fullnm" id="nmH"></span></span></span>
+        <span class="side h"><i class="sw"></i><span class="stack"><b class="abbr" id="abH">—</b><span class="fullnm" id="nmH"></span><span class="fmt" id="fmtH"></span></span></span>
         <span id="score">0–0</span>
-        <span class="side a"><span class="stack"><b class="abbr" id="abA">—</b><span class="fullnm" id="nmA"></span></span><i class="sw"></i></span>
+        <span class="side a"><span class="stack"><b class="abbr" id="abA">—</b><span class="fullnm" id="nmA"></span><span class="fmt" id="fmtA"></span></span><i class="sw"></i></span>
       </span>
       <button id="tourbar" type="button" aria-label="open tournament">
         <span class="rline"><span id="conn">live</span><span id="round"></span></span>
@@ -406,6 +407,7 @@ function apply(s) {
   if (buf.length > 12) buf.shift();
   $('abH').textContent = abbr(s.home.club); $('abA').textContent = abbr(s.away.club);
   $('nmH').textContent = s.home.club; $('nmA').textContent = s.away.club;
+  $('fmtH').textContent = s.home.formation || ''; $('fmtA').textContent = s.away.formation || '';
   $('score').textContent = `${s.home.score}–${s.away.score}`;
   $('round').textContent = s.round || '';
   $('upnext').textContent = upNext(s.tournament);
