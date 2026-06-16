@@ -187,7 +187,8 @@ function card(w){
       <div class="row">
         <div class="m"><div class="v">${facts.tick ?? "—"}</div><div class="k">tick</div></div>
         <div class="m"><div class="v">${facts.population ?? "—"}</div><div class="k">population</div></div>
-        <div class="m"><div class="v spend">$0</div><div class="k">LLM spend (not metered)</div></div>
+        <div class="m"><div class="v spend">${w.spend!=null?money(w.spend):"$0"}</div><div class="k">LLM spend</div></div>
+        <div class="m"><div class="v" style="color:var(--accent,#7fd1a8)">${w.cache_ratio!=null?pct(w.cache_ratio):"—"}</div><div class="k">prompt cache</div></div>
       </div>`;
   }
   return `

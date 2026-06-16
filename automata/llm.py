@@ -64,6 +64,10 @@ PERSONAS = (
 )
 
 
+# cumulative prompt-cache instrumentation: cached input vs total input across genome authoring
+CACHE = {"cached_in": 0, "input": 0}
+
+
 class ModelClient(Protocol):
     async def complete(
         self, system: str, user: str, max_tokens: int, temperature: float
@@ -98,6 +102,10 @@ class ClaudeSDKClient:
         if result is None or getattr(result, "is_error", False):
             raise RuntimeError(f"claude-sdk: {getattr(result, 'result', 'no result')}")
         self.spent += float(result.total_cost_usd or 0.0)
+        usage = result.usage or {}
+        cached = int(usage.get("cache_read_input_tokens", 0))
+        CACHE["cached_in"] += cached
+        CACHE["input"] += int(usage.get("input_tokens", 0)) + cached
         return result.result or ""
 
 
@@ -121,12 +129,19 @@ class AnthropicClient:
                     "model": self.model,
                     "max_tokens": max_tokens,
                     "temperature": temperature,
-                    "system": system,
+                    # cache the identical system prompt every authoring call (~0.1x repeat cost)
+                    "system": [
+                        {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+                    ],
                     "messages": [{"role": "user", "content": user}],
                 },
             )
             r.raise_for_status()
             data = r.json()
+            _u = data.get("usage", {})
+            _cached = int(_u.get("cache_read_input_tokens", 0))
+            CACHE["cached_in"] += _cached
+            CACHE["input"] += int(_u.get("input_tokens", 0)) + _cached
             return "".join(
                 b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"
             )

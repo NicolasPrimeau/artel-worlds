@@ -26,6 +26,7 @@ from pydantic import BaseModel
 from .agent import HeuristicAgent
 from .config import DEFAULT
 from .genome import TARGETS, VARIABLES, VERBS, random_genome, to_dict
+from .llm import CACHE as LLM_CACHE
 from .llm import PERSONAS, AnthropicClient, ClaudeSDKClient, author_genome
 from .tick import step
 from .world import World
@@ -835,6 +836,9 @@ async def ui_stats(request: Request):
             "url": "https://automata.artel.run",
             "status": "live",
             "paused": G.paused,
+            "cache_ratio": round(LLM_CACHE["cached_in"] / max(1, LLM_CACHE["input"]), 3)
+            if G.llm
+            else None,
             "model": LLM_MODEL if LLM_ENABLED else "heuristic CA (no LLM)",
             "spend": round(getattr(G.llm, "spent", 0.0), 4) if G.llm else None,
             "spend_label": "since boot",
