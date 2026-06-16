@@ -241,4 +241,5 @@ async def stream(ws: WebSocket):
 
 @app.get("/")
 async def root():
-    return FileResponse(STATIC / "index.html")
+    # no-cache so a phone always revalidates and never runs a stale build of the inline client
+    return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})

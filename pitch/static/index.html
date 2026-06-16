@@ -75,9 +75,6 @@
   #sharepop a, #sharepop button { background:none; border:0; border-bottom:1px solid #1a201a; color:var(--dim);
     padding:8px 16px; font-size:12px; white-space:nowrap; text-align:left; }
   #sharepop a:hover, #sharepop button:hover { background:#1a201a; color:#fff; }
-  #cupbtn { background:#10160f; border:1px solid #20271f; color:var(--dim); border-radius:7px;
-    padding:4px 9px; font-size:11px; cursor:pointer; }
-  #cupbtn:hover { border-color:#2f3a30; color:#fff; }
   #cup[hidden] { display:none; }
   #cup { position:fixed; inset:0; z-index:20; background:#05080699; backdrop-filter:blur(3px);
     display:flex; align-items:center; justify-content:center; padding:14px; }
@@ -142,7 +139,6 @@
   </div>
   <div id="foot">
     <span>⚽ Pitch — <b>Artel Worlds</b></span>
-    <button id="cupbtn" type="button">🏆 tournament</button>
     <a href="https://artel.run" target="_blank" rel="noopener">Artel ↗</a>
     <a class="gh" href="https://github.com/NicolasPrimeau/artel-worlds" target="_blank" rel="noopener">source ↗</a>
     <a href="https://worlds.artel.run/worlds" target="_blank" rel="noopener">all worlds →</a>
@@ -186,10 +182,11 @@ let world = { length:120, width:80, goal_width:24 };
 let buf = [], latest = null;  // buf: timestamped snapshots; latest: newest (for the scoreboard)
 const RENDER_DELAY = 150;  // render this far behind live so we always interpolate between two
                            // RECEIVED frames (never extrapolate) — absorbs network jitter, no stutter
-let view = null, ballTrail = [], selected = null, lastTour = null;
+let view = null, ballTrail = [], selected = null, lastTour = null, fitW = 0, fitH = 0;
 
 function resize() {
   const dpr = Math.min(2, window.devicePixelRatio || 1), r = cv.getBoundingClientRect();
+  fitW = r.width; fitH = r.height;
   cv.width = Math.max(1, Math.round(r.width * dpr));
   cv.height = Math.max(1, Math.round(r.height * dpr));
   computeView();
@@ -288,6 +285,11 @@ function frame() {
 }
 
 function render() {
+  // Poll the canvas box every frame and re-fit on any change. This is the backstop that makes
+  // orientation changes reliable on every device — it needs no resize/orientationchange event to
+  // fire (those are flaky on mobile); a size change is caught within one frame regardless.
+  const rr = cv.getBoundingClientRect();
+  if (Math.abs(rr.width - fitW) > 0.5 || Math.abs(rr.height - fitH) > 0.5) resize();
   if (view && latest) {
     drawField();
     const { players, ball } = frame(), s = view.scale, pr = Math.max(4.5, s * 1.55);
@@ -509,7 +511,6 @@ function renderTour(t) {
 (function () {
   const open = () => { $('cup').hidden = false; _tourSig = ''; renderTour(lastTour); };
   const close = () => { $('cup').hidden = true; };
-  $('cupbtn').addEventListener('click', open);
   $('tourbar').addEventListener('click', open);
   $('cupClose').addEventListener('click', close);
   $('cup').addEventListener('click', e => { if (e.target.id === 'cup') close(); });
