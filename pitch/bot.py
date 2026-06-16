@@ -62,6 +62,13 @@ def _fwd_x(team: str, x: float, length: float) -> float:
     return x if team == "home" else length - x
 
 
+def _offside_adv(pitch: Pitch, p: Player) -> float:
+    # the offside line in attacking-direction terms: the second-to-last opponent's advance. A forward
+    # should hold on this line (the last defender's shoulder), not loiter beyond it in the keeper's zone.
+    advs = sorted((_fwd_x(p.team, o.x, pitch.cfg.length) for o in pitch.opponents(p)), reverse=True)
+    return advs[1] if len(advs) >= 2 else (advs[0] if advs else pitch.cfg.length)
+
+
 def _pursuit_cost(pitch: Pitch, q: Player, b) -> float:
     # who presses the ball: nearest, but a player pays a penalty for leaving their zone — so a
     # defender doesn't charge the attacking third and a striker doesn't track into his own box.
@@ -81,14 +88,16 @@ def _mark_target(pitch: Pitch, p: Player) -> tuple[float, float]:
     if not foes:
         return base
     foe = min(foes, key=lambda o: _len(o.x - p.x, o.y - p.y))
-    if _len(foe.x - p.x, foe.y - p.y) > 18.0:  # nobody near enough to mark — just hold shape
+    if _len(foe.x - p.x, foe.y - p.y) > 16.0:  # nobody near enough to mark — just hold shape
         return base
     own_goal_x = 0.0 if p.team == "home" else c.length
     ux, uy = _unit(own_goal_x - foe.x, c.width / 2 - foe.y)
-    mx, my = foe.x + ux * 2.4, foe.y + uy * 2.4  # tuck just goal-side of the man
+    # sit goal-side but a few steps OFF — close enough to contest a pass, loose enough that the man
+    # is still a viable receiver, so the ball moves instead of every pass dying in traffic
+    mx, my = foe.x + ux * 4.0, foe.y + uy * 4.0
     return (
-        _clamp(mx * 0.7 + base[0] * 0.3, 6.0, c.length - 6.0),
-        _clamp(my * 0.7 + base[1] * 0.3, 6.0, c.width - 6.0),
+        _clamp(mx * 0.6 + base[0] * 0.4, 6.0, c.length - 6.0),
+        _clamp(my * 0.6 + base[1] * 0.4, 6.0, c.width - 6.0),
     )
 
 
@@ -113,8 +122,11 @@ def _formation_target(pitch: Pitch, p: Player) -> tuple[float, float]:
             fx = fx * 0.4 + (goal_x + (15 if p.team == "home" else -15)) * 0.6
             fy = fy * 0.35 + b.y * 0.4 + (c.width / 2) * 0.25
     elif p.role == "FWD":
-        # forwards hold a high line — they stay an outlet up top even when the ball is deep
-        fx = max(fx, L * 0.42) if p.team == "home" else min(fx, L * 0.58)
+        # forwards hold a high line, but stay ONSIDE — on the last defender's shoulder, not loitering
+        # beyond it in the keeper's zone (which is offside anyway and makes a useless pass target)
+        fadv = max(_fwd_x(p.team, fx, L), L * 0.42)
+        fadv = min(fadv, _offside_adv(pitch, p) - 1.0)
+        fx = fadv if p.team == "home" else L - fadv
     fx = _clamp(fx, 8.0, c.length - 8.0)
     fy = _clamp(fy, 6.0, c.width - 6.0)
     # de-stack: ease away from the nearest teammate so two players never occupy a spot
@@ -195,28 +207,21 @@ def decide(pitch: Pitch, p: Player) -> dict:
             box_x = c.length - 11 if p.team == "home" else 11
             box_y = _clamp(c.width / 2 + rng.choice((-1, 1)) * 6, 8, c.width - 8)
             return _kick(p, box_x, box_y, c.pass_speed * 1.15, 0.14, rng)
-        # PASS is the default — keep it moving. Favour a teammate who is OPEN and REACHABLE (a
-        # short, completable ball beats a hopeful long one); a little forward progress is a bonus.
-        # This is what makes the build-up actually connect instead of breaking down on attack.
+        # Keep the ball moving — but FORWARD. Pass often (retain possession), strongly favouring the
+        # team-mate who advances the play, so the ball climbs into the final third instead of going
+        # square forever. Carry at goal when no pass is on. This is what turns possession into shots.
         mates = [q for q in outfield if q.id != p.id]
-        opts = [q for q in mates if _open(pitch, q) > 3.5 and (q.x - p.x) * fwd > -8]
-        pressured = mine_open < 6.5
+        opts = [q for q in mates if _open(pitch, q) > 3.5 and (q.x - p.x) * fwd > -2]
+        pressured = mine_open < 6.0
         if opts and (pressured or len(opts) >= 2 or rng.random() < 0.6):
-            tgt = max(
-                opts,
-                key=lambda q: (
-                    _open(pitch, q) * 0.7
-                    + (q.x - p.x) * fwd * 0.35
-                    - _len(q.x - p.x, q.y - p.y) * 0.2
-                ),
-            )
-            # mostly accurate, but a tighter ball through traffic can be misplaced or read and cut
-            # out by a defender in the lane — like real soccer. scatter grows when the lane is snug.
+            tgt = max(opts, key=lambda q: (q.x - p.x) * fwd * 0.6 + _open(pitch, q) * 0.4)
             noise = 0.08 + max(0.0, 8.0 - _open(pitch, tgt)) * 0.012
             return _kick(p, tgt.x + c.pass_lead * fwd, tgt.y, c.pass_speed, noise, rng)
-        # carry: drive at goal via the more open flank — NO kick, so the engine eases the ball ahead
-        # of the carrier (a smooth dribble) and they jink around defenders on the way.
-        return {"move": _attack_target(pitch, p)}
+        # carry: drive at goal down the open flank, sprinting into clear space to reach shooting range
+        return {
+            "move": _attack_target(pitch, p),
+            "sprint": mine_open > 8.0 and dist_goal > c.shoot_range,
+        }
 
     if pitch.possessor is not None and pitch.possessor in teammate_ids:
         # a teammate has the ball — don't chase our own player; hold shape and offer support
