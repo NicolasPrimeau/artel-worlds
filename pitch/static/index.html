@@ -272,9 +272,14 @@ function frame() {
   const span = b.t - a.t, al = span > 0 ? (rt - a.t) / span : 1;
   const A = a.snap, B = b.snap, pm = {};
   A.players.forEach(p => pm[p.id] = p);
+  // SNAP across teleports (dead-ball repositioning, kickoff resets) instead of lerping — otherwise
+  // the ball/players visibly slide across the pitch when they're placed for a goal kick etc.
+  const jump = (q, p, lim) => Math.hypot(p.x - q.x, p.y - q.y) > lim;
   const players = B.players.map(p => { const q = pm[p.id] || p;
-    return { ...p, x: lerp(q.x, p.x, al), y: lerp(q.y, p.y, al) }; });
-  const ball = { x: lerp(A.ball.x, B.ball.x, al), y: lerp(A.ball.y, B.ball.y, al) };
+    return jump(q, p, 8) ? { ...p } : { ...p, x: lerp(q.x, p.x, al), y: lerp(q.y, p.y, al) }; });
+  const teleport = jump(A.ball, B.ball, 14);
+  const ball = teleport ? { x: B.ball.x, y: B.ball.y, teleport: true }
+                        : { x: lerp(A.ball.x, B.ball.x, al), y: lerp(A.ball.y, B.ball.y, al) };
   return { players, ball };
 }
 
@@ -294,6 +299,7 @@ function render() {
       if (p.role === 'GK') { ctx.fillStyle = '#0a0f0a'; ctx.beginPath(); ctx.arc(px, py, pr*0.4, 0, 7); ctx.fill(); }
     }
     if (ball) {
+      if (ball.teleport) ballTrail.length = 0;  // don't streak the trail across a reposition
       ballTrail.push({ x: ball.x, y: ball.y }); if (ballTrail.length > 7) ballTrail.shift();
       ballTrail.forEach((b, i) => { const a = i / ballTrail.length;
         dot(b.x, b.y, s*0.0 + Math.max(1.6, s*0.7) / view.scale * a, `rgba(255,255,255,${0.05 + a*0.12})`); });
