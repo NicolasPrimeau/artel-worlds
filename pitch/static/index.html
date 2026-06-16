@@ -16,16 +16,20 @@
   #app { display:flex; flex-direction:column; height:100dvh; }
   #bar { display:flex; align-items:center; justify-content:space-between; gap:8px;
     padding:calc(6px + env(safe-area-inset-top)) 12px 6px; flex:0 0 auto; }
-  #clock { font-size:clamp(11px,2.8vw,14px); color:var(--dim); font-variant-numeric:tabular-nums;
-    min-width:44px; }
-  #bar .center { display:flex; align-items:center; gap:10px; flex:1; justify-content:center;
-    min-width:0; flex-wrap:nowrap; }
-  .club { font-weight:700; font-size:clamp(12px,3.4vw,18px); white-space:nowrap; overflow:hidden;
-    text-overflow:ellipsis; max-width:30vw; flex:0 1 auto; }
-  .club.h { color:var(--home); text-align:right; } .club.a { color:var(--away); text-align:left; }
-  #score { font-weight:800; font-variant-numeric:tabular-nums; font-size:clamp(18px,5vw,26px);
-    background:#11181230; border:1px solid #20271f; border-radius:8px; padding:2px 12px;
-    white-space:nowrap; flex:0 0 auto; }
+  /* TV broadcast score bug: clock pill + team colour caps + 3-letter codes + combined score */
+  #bar .center { display:flex; flex-direction:column; align-items:center; gap:3px; flex:1; min-width:0; }
+  #bug { display:inline-flex; align-items:stretch; height:30px; border-radius:6px; overflow:hidden;
+    font-variant-numeric:tabular-nums; box-shadow:0 1px 8px rgba(0,0,0,.45); border:1px solid #000; }
+  #bug > * { display:flex; align-items:center; }
+  #clock { background:#101a10; color:#bfe8cb; padding:0 9px; font-weight:700; font-size:13px;
+    letter-spacing:.5px; border-right:1px solid #000; min-width:46px; justify-content:center; }
+  .side { background:#0b0f0b; }
+  .side .sw { width:5px; align-self:stretch; }
+  .side.h .sw { background:var(--home); } .side.a .sw { background:var(--away); }
+  .abbr { padding:0 9px; font-weight:800; font-size:14px; letter-spacing:1px; }
+  .side.h .abbr { color:var(--home); } .side.a .abbr { color:var(--away); }
+  #score { background:#161d16; padding:0 11px; font-weight:800; font-size:17px; white-space:nowrap; }
+  #bar .edge { min-width:44px; flex:0 0 auto; }
   #conn { font-size:11px; color:var(--dim); min-width:44px; text-align:right;
     display:inline-flex; align-items:center; gap:5px; justify-content:flex-end; }
   #conn::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--dim); }
@@ -58,16 +62,62 @@
   #sharepop a, #sharepop button { background:none; border:0; border-bottom:1px solid #1a201a; color:var(--dim);
     padding:8px 16px; font-size:12px; white-space:nowrap; text-align:left; }
   #sharepop a:hover, #sharepop button:hover { background:#1a201a; color:#fff; }
+  #bar .row1 { display:flex; align-items:center; gap:10px; justify-content:center; min-width:0; }
+  #round { font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim);
+    font-weight:700; }
+  #cupbtn { background:#10160f; border:1px solid #20271f; color:var(--dim); border-radius:7px;
+    padding:4px 9px; font-size:11px; cursor:pointer; }
+  #cupbtn:hover { border-color:#2f3a30; color:#fff; }
+  #cup[hidden] { display:none; }
+  #cup { position:fixed; inset:0; z-index:20; background:#05080699; backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; padding:14px; }
+  .cup-box { background:#0c1110; border:1px solid #20271f; border-radius:14px; width:min(760px,100%);
+    max-height:92dvh; display:flex; flex-direction:column; overflow:hidden;
+    box-shadow:0 20px 60px rgba(0,0,0,.6); }
+  .cup-head { display:flex; align-items:center; justify-content:space-between; padding:12px 16px;
+    border-bottom:1px solid #1a201a; }
+  .cup-head b { font-size:15px; } .cup-head .ed { color:var(--dim); font-weight:400; font-size:12px; }
+  #cupClose { background:none; border:0; color:var(--dim); font-size:20px; cursor:pointer; line-height:1; }
+  #cupClose:hover { color:#fff; }
+  .cup-tabs { display:flex; gap:4px; padding:8px 12px; border-bottom:1px solid #1a201a; flex-wrap:wrap; }
+  .cup-tabs button { background:none; border:1px solid #20271f; color:var(--dim); border-radius:20px;
+    padding:5px 12px; font-size:12px; cursor:pointer; }
+  .cup-tabs button.on { background:var(--green); border-color:var(--green); color:#04140a; font-weight:700; }
+  .cup-body { overflow:auto; padding:14px 16px; }
+  .tab { display:none; } .tab.on { display:block; }
+  #tab-bracket svg { width:100%; height:auto; min-width:540px; }
+  .bracket-scroll { overflow-x:auto; }
+  .champ { text-align:center; font-size:13px; color:#d4af37; font-weight:700; margin-bottom:10px; }
+  table.cup { width:100%; border-collapse:collapse; font-size:13px; }
+  table.cup th { text-align:left; color:var(--dim); font-weight:600; font-size:11px;
+    text-transform:uppercase; letter-spacing:.5px; padding:6px 6px; border-bottom:1px solid #1a201a; }
+  table.cup td { padding:7px 6px; border-bottom:1px solid #12170f; }
+  table.cup td.num, table.cup th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  table.cup .rk { color:var(--dim); width:22px; }
+  table.cup .pts { font-weight:800; color:var(--green); }
+  table.cup .gl { font-weight:800; color:var(--green); }
+  .sched-rnd { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:1px;
+    margin:12px 0 4px; }
+  .sched-row { display:flex; align-items:center; gap:8px; padding:6px 4px; border-bottom:1px solid #12170f;
+    font-size:13px; }
+  .sched-row .tm { flex:1; } .sched-row .tm.r { text-align:right; }
+  .sched-row .sc { font-variant-numeric:tabular-nums; color:var(--dim); min-width:46px; text-align:center; }
+  .sched-row.live { color:#fff; } .sched-row.live .sc { color:#d4af37; font-weight:700; }
+  .win { color:#6ee7a8; font-weight:700; }
 </style>
 </head>
 <body>
 <div id="app">
   <div id="bar">
-    <span id="clock">0'</span>
+    <span class="edge"></span>
     <span class="center">
-      <span class="club h" id="homeClub">—</span>
-      <span id="score">0–0</span>
-      <span class="club a" id="awayClub">—</span>
+      <span id="bug">
+        <span id="clock">0:00</span>
+        <span class="side h"><i class="sw"></i><b class="abbr" id="abH">—</b></span>
+        <span id="score">0–0</span>
+        <span class="side a"><b class="abbr" id="abA">—</b><i class="sw"></i></span>
+      </span>
+      <span id="round"></span>
     </span>
     <span id="conn">connecting…</span>
   </div>
@@ -78,6 +128,7 @@
   </div>
   <div id="foot">
     <span>⚽ Pitch — <b>Artel Worlds</b></span>
+    <button id="cupbtn" type="button">🏆 tournament</button>
     <a href="https://artel.run" target="_blank" rel="noopener">Artel ↗</a>
     <a class="gh" href="https://github.com/NicolasPrimeau/artel-worlds" target="_blank" rel="noopener">source ↗</a>
     <a href="https://worlds.artel.run/worlds" target="_blank" rel="noopener">all worlds →</a>
@@ -87,14 +138,33 @@
         <a id="shareli" target="_blank" rel="noopener">LinkedIn</a><a id="sharex" target="_blank" rel="noopener">X</a></div></span>
   </div>
 </div>
+<div id="cup" hidden>
+  <div class="cup-box">
+    <div class="cup-head"><b>🏆 AI World Cup <span class="ed" id="cupEd"></span></b>
+      <button id="cupClose" type="button" aria-label="close">✕</button></div>
+    <div class="cup-tabs">
+      <button data-tab="bracket" class="on">Bracket</button>
+      <button data-tab="boot">Golden Boot</button>
+      <button data-tab="teams">Standings</button>
+      <button data-tab="sched">Schedule</button>
+    </div>
+    <div class="cup-body">
+      <div id="tab-bracket" class="tab on"></div>
+      <div id="tab-boot" class="tab"></div>
+      <div id="tab-teams" class="tab"></div>
+      <div id="tab-sched" class="tab"></div>
+    </div>
+  </div>
+</div>
 <script>
 const $ = id => document.getElementById(id);
+const abbr = s => ((s || '').normalize('NFD').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || '—');
 const cv = $('cv'), ctx = cv.getContext('2d');
 let world = { length:120, width:80, goal_width:24 };
 let buf = [], latest = null;  // buf: timestamped snapshots; latest: newest (for the scoreboard)
 const RENDER_DELAY = 150;  // render this far behind live so we always interpolate between two
                            // RECEIVED frames (never extrapolate) — absorbs network jitter, no stutter
-let view = null, ballTrail = [], selected = null;
+let view = null, ballTrail = [], selected = null, lastTour = null;
 
 function resize() {
   const dpr = Math.min(2, window.devicePixelRatio || 1), r = cv.getBoundingClientRect();
@@ -255,17 +325,23 @@ function apply(s) {
   latest = s;
   buf.push({ t: performance.now(), snap: s });
   if (buf.length > 12) buf.shift();
-  $('homeClub').textContent = s.home.club; $('awayClub').textContent = s.away.club;
+  $('abH').textContent = abbr(s.home.club); $('abA').textContent = abbr(s.away.club);
   $('score').textContent = `${s.home.score}–${s.away.score}`;
-  const mins = Math.min(90, Math.floor(s.tick / s.match_ticks * 90));
-  $('clock').textContent = s.fulltime ? "FT" : mins + "'";
+  $('round').textContent = s.round || '';
+  // broadcast clock: a continuous MM:SS over a 90:00 match, ticking with seconds like TV
+  const secs = Math.min(5400, Math.floor(s.tick / s.match_ticks * 5400));
+  $('clock').textContent = s.fulltime ? 'FT' : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
   // banner is driven by server state — the goal freeze holds it long enough to read
   if (s.celebrating) {
     setBanner('GOAL', s.scorer || '', s.goal_team === 'home' ? '#3d8bff' : '#ff6a3d');
+  } else if (s.fulltime && s.champion && s.round === 'Final') {
+    setBanner('CHAMPIONS', s.champion, '#d4af37');
   } else if (s.fulltime) {
     const w = s.home.score > s.away.score ? s.home.club : s.away.score > s.home.score ? s.away.club : 'DRAW';
     setBanner('FULL TIME', w, '#6ee7a8');
   } else { setBanner(null); }
+  lastTour = s.tournament;
+  if (!$('cup').hidden) renderTour(lastTour);
   if (s.restart && apply._lastRestart !== s.tick - (s.tick % 1)) {
     const labels = { corner: 'Corner', 'goal-kick': 'Goal kick', 'throw-in': 'Throw-in' };
     if (apply._restartShown !== s.restart + ':' + s.match_no) { setToast(labels[s.restart] || ''); }
@@ -310,6 +386,93 @@ addEventListener('focus', () => { if (!ws || ws.readyState > 1) connect(); });
     setTimeout(() => { copy.textContent = 'copy link'; }, 1400);
   });
   document.addEventListener('click', e => { if (!e.target.closest('.share')) pop.hidden = true; });
+})();
+
+// --- tournament popup: bracket (SVG, with connecting lines), Golden Boot, standings, schedule ---
+const esc = t => (t == null ? '' : String(t)).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const trim = (t, n) => { t = t || '—'; return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+
+function tieBox(t, x, y, w, h) {  // a single matchup card in the SVG bracket
+  const live = t.live, gold = '#d4af37';
+  const stroke = live ? gold : '#26312a';
+  const rows = [[t.a, t.sa, t.winner && t.winner === t.a], [t.b, t.sb, t.winner && t.winner === t.b]];
+  let g = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="#0e1411" stroke="${stroke}" stroke-width="${live ? 2 : 1}"/>`;
+  if (live) g += `<text x="${x + w - 6}" y="${y - 4}" text-anchor="end" font-size="9" fill="${gold}" font-weight="700">LIVE</text>`;
+  rows.forEach((r, i) => {
+    const ry = y + h / 2 * i, won = r[2] && t.played;
+    const col = won ? '#6ee7a8' : (t.played && t.winner ? '#7c8a80' : '#cfe9d8');
+    if (i) g += `<line x1="${x + 6}" y1="${ry}" x2="${x + w - 6}" y2="${ry}" stroke="#12170f"/>`;
+    g += `<text x="${x + 8}" y="${ry + h / 4 + 4}" font-size="11" fill="${col}" font-weight="${won ? 700 : 400}">${esc(trim(r[0], 18))}</text>`;
+    if (t.played) g += `<text x="${x + w - 8}" y="${ry + h / 4 + 4}" text-anchor="end" font-size="11" font-weight="700" fill="${col}">${r[1]}</text>`;
+  });
+  return g;
+}
+function connector(x1, ys, x2, y2) {  // two feeders (ys) joining one target at (x2,y2)
+  const xm = (x1 + x2) / 2, c = '#2a352d';
+  let g = `<polyline points="${x1},${ys[0]} ${xm},${ys[0]} ${xm},${ys[1]} ${x1},${ys[1]}" fill="none" stroke="${c}"/>`;
+  g += `<line x1="${xm}" y1="${y2}" x2="${x2}" y2="${y2}" stroke="${c}"/>`;
+  return g;
+}
+function renderBracket(t) {
+  const W = 150, H = 46, qf = t.rounds[0], sf = t.rounds[1], third = t.rounds[2][0], fin = t.rounds[3][0];
+  const qx = 10, sx = 200, fx = 390;
+  const qc = [25, 90, 155, 220], sc = [57, 187], fc = 122, tc = 250;  // row centres
+  let svg = `<svg viewBox="0 0 540 296" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,sans-serif">`;
+  // connectors first (under the boxes)
+  svg += connector(qx + W, [qc[0], qc[1]], sx, sc[0]) + connector(qx + W, [qc[2], qc[3]], sx, sc[1]);
+  svg += connector(sx + W, [sc[0], sc[1]], fx, fc);
+  svg += `<text x="${fx + W / 2}" y="22" text-anchor="middle" font-size="11" fill="#7c8a80" letter-spacing="1">FINAL</text>`;
+  svg += `<text x="${fx + W / 2}" y="${tc - H / 2 - 8}" text-anchor="middle" font-size="10" fill="#7c8a80" letter-spacing="1">THIRD PLACE</text>`;
+  qf.forEach((tie, i) => svg += tieBox(tie, qx, qc[i] - H / 2, W, H));
+  sf.forEach((tie, i) => svg += tieBox(tie, sx, sc[i] - H / 2, W, H));
+  svg += tieBox(fin, fx, fc - H / 2, W, H);
+  svg += tieBox(third, fx, tc - H / 2, W, H);
+  if (t.champion) svg += `<text x="${fx + W / 2}" y="${fc + H / 2 + 22}" text-anchor="middle" font-size="13" fill="#d4af37" font-weight="800">🏆 ${esc(trim(t.champion, 22))}</text>`;
+  svg += `</svg>`;
+  return `<div class="bracket-scroll">${svg}</div>`;
+}
+function renderBoot(t) {
+  if (!t.scorers.length) return '<p style="color:#7c8a80">No goals yet this edition.</p>';
+  let h = '<table class="cup"><tr><th class="rk"></th><th>Player</th><th>Club</th><th class="num">⚽</th></tr>';
+  t.scorers.forEach((r, i) => h += `<tr><td class="rk">${i + 1}</td><td>${esc(r.name)}</td><td style="color:#9fb4a6">${esc(r.club)}</td><td class="num gl">${r.goals}</td></tr>`);
+  return h + '</table>';
+}
+function renderTeams(t) {
+  if (!t.teams.length) return '<p style="color:#7c8a80">No results yet this edition.</p>';
+  let h = '<table class="cup"><tr><th class="rk"></th><th>Club</th><th class="num">P</th><th class="num">W</th><th class="num">L</th><th class="num">GF</th><th class="num">GA</th><th class="num">Pts</th></tr>';
+  t.teams.forEach((r, i) => h += `<tr><td class="rk">${i + 1}</td><td>${esc(r.club)}</td><td class="num">${r.p}</td><td class="num">${r.w}</td><td class="num">${r.l}</td><td class="num">${r.gf}</td><td class="num">${r.ga}</td><td class="num pts">${r.pts}</td></tr>`);
+  return h + '</table>';
+}
+function renderSched(t) {
+  let h = '', last = null;
+  t.rounds.flat().forEach(tie => {
+    if (tie.rnd !== last) { h += `<div class="sched-rnd">${esc(tie.rnd)}</div>`; last = tie.rnd; }
+    const pens = tie.pa != null ? ` (${tie.pa}-${tie.pb} pens)` : '';
+    const sc = tie.played ? `${tie.sa}–${tie.sb}` : (tie.live ? 'LIVE' : 'vs');
+    const aw = tie.played && tie.winner === tie.a ? 'win' : '', bw = tie.played && tie.winner === tie.b ? 'win' : '';
+    h += `<div class="sched-row ${tie.live ? 'live' : ''}"><span class="tm r ${aw}">${esc(trim(tie.a, 20))}</span><span class="sc">${sc}</span><span class="tm ${bw}">${esc(trim(tie.b, 20))}</span><span style="color:#7c8a80;font-size:11px">${pens}</span></div>`;
+  });
+  return h;
+}
+function renderTour(t) {
+  if (!t) return;
+  $('cupEd').textContent = 'Edition ' + t.edition + (t.champion ? ' · 🏆 ' + t.champion : '');
+  $('tab-bracket').innerHTML = renderBracket(t);
+  $('tab-boot').innerHTML = renderBoot(t);
+  $('tab-teams').innerHTML = renderTeams(t);
+  $('tab-sched').innerHTML = renderSched(t);
+}
+(function () {
+  const open = () => { $('cup').hidden = false; renderTour(lastTour); };
+  const close = () => { $('cup').hidden = true; };
+  $('cupbtn').addEventListener('click', open);
+  $('cupClose').addEventListener('click', close);
+  $('cup').addEventListener('click', e => { if (e.target.id === 'cup') close(); });
+  addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+  document.querySelectorAll('.cup-tabs button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.cup-tabs button').forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('.cup-body .tab').forEach(x => x.classList.toggle('on', x.id === 'tab-' + b.dataset.tab));
+  }));
 })();
 
 resize();

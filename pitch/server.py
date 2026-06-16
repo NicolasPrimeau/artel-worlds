@@ -11,14 +11,14 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from .bot import decide
 from .engine import Pitch
+from .tournament import Tournament
 
 log = logging.getLogger("pitch")
 STATIC = Path(__file__).parent / "static"
 TICK_INTERVAL = float(os.environ.get("PITCH_TICK_INTERVAL", "0.08"))  # sim+broadcast rate
 FULLTIME_HOLD = float(os.environ.get("PITCH_FULLTIME_HOLD", "6"))  # pause on the final whistle
 
-# Tongue-in-cheek AI x football club names; two are drawn per match. Player names come from a
-# pool so every match reads like a real fixture (the parasocial layer — for free).
+# Tongue-in-cheek AI x football club names; 8 are drawn per World Cup edition.
 CLUBS = [
     "Real Latency",
     "Bayer Neural",
@@ -31,28 +31,12 @@ CLUBS = [
     "Sporting Vector",
     "Ajax Overflow",
 ]
-NAMES = [
-    "Okafor",
-    "Bianchi",
-    "Sorensen",
-    "Tanaka",
-    "Mbeki",
-    "Rossi",
-    "Novak",
-    "Haaland-9",
-    "Pirlo-bot",
-    "Adeyemi",
-    "Kovač",
-    "Silva",
-    "Ferreira",
-    "Yamamoto",
-    "Dubois",
-    "Hassan",
-    "Larsson",
-    "Costa",
-    "Petrov",
-    "Nakamura",
-]
+
+
+def _edition_clubs(edition: int) -> list[str]:
+    n = len(CLUBS)
+    start = (edition * 3) % n
+    return [CLUBS[(start + i) % n] for i in range(8)]
 
 
 class Game:
@@ -61,23 +45,75 @@ class Game:
         self.match_no = 0
         self.history: list[dict] = []  # recent final scores, for the ticker
         self._fulltime_at: float | None = None
-        self._rng_i = 0
+        self._champion_done = False
+        self.edition = 0
         self.pitch = Pitch()
+        self._new_edition()
         self._new_match()
 
+    def _new_edition(self) -> None:
+        self.edition += 1
+        self.tour = Tournament(
+            clubs=_edition_clubs(self.edition), edition=self.edition, seed=1000 + self.edition
+        )
+
     def _new_match(self) -> None:
+        tie = self.tour.current()
+        if tie is None:  # edition finished — draw the next World Cup
+            self._new_edition()
+            tie = self.tour.current()
         self.match_no += 1
-        i = self._rng_i
-        self._rng_i += 1
-        home = CLUBS[(2 * i) % len(CLUBS)]
-        away = CLUBS[(2 * i + 1) % len(CLUBS)]
-        roles = ["GK", "LB", "RB", "CM", "ST"]
-        hn = [f"{roles[k]} {NAMES[(i * 5 + k) % len(NAMES)]}" for k in range(5)]
-        an = [f"{roles[k]} {NAMES[(i * 5 + k + 7) % len(NAMES)]}" for k in range(5)]
-        self.pitch = Pitch(seed=1000 + self.match_no)
-        self.pitch.setup(hn, an)
-        self.home_club, self.away_club = home, away
+        self.home_club, self.away_club = tie.a, tie.b
+        self.round_label = tie.rnd
+        self.pitch = Pitch(seed=2000 + self.match_no)
+        self.pitch.setup(self.tour.roster_names(tie.a), self.tour.roster_names(tie.b))
         self._fulltime_at = None
+        self._champion_done = False
+        self._last_h = self._last_a = 0
+
+    def note_goals(self) -> None:
+        # attribute each new goal to its scorer's club for the Golden Boot
+        h, a = self.pitch.score["home"], self.pitch.score["away"]
+        if (h > self._last_h or a > self._last_a) and self.pitch.scorer:
+            club = self.home_club if self.pitch.goal_team == "home" else self.away_club
+            if club:
+                self.tour.record_goal(club, self.pitch.scorer)
+        self._last_h, self._last_a = h, a
+
+    def record_fulltime(self) -> None:
+        self.tour.record_result(self.pitch.score["home"], self.pitch.score["away"])
+        self._champion_done = self.tour.current() is None
+
+    def tour_snapshot(self) -> dict:
+        t = self.tour
+        cur = t.order[t.cur] if t.cur < len(t.order) else None
+        rounds = [
+            [
+                {
+                    "rnd": tie.rnd,
+                    "slot": tie.slot,
+                    "a": tie.a,
+                    "b": tie.b,
+                    "sa": tie.sa,
+                    "sb": tie.sb,
+                    "pa": tie.pa,
+                    "pb": tie.pb,
+                    "winner": tie.winner,
+                    "played": tie.played,
+                    "live": (ri, si) == cur,
+                }
+                for si, tie in enumerate(rnd)
+            ]
+            for ri, rnd in enumerate(t.rounds)
+        ]
+        scorers = sorted(t.scorers.values(), key=lambda r: -r["goals"])[:12]
+        return {
+            "edition": t.edition,
+            "champion": t.champion,
+            "rounds": rounds,
+            "scorers": scorers,
+            "teams": t.standings(),
+        }
 
     def snapshot(self) -> dict:
         c = self.pitch.cfg
@@ -87,9 +123,12 @@ class Game:
             "width": c.width,
             "goal_width": c.goal_width,
             "match_no": self.match_no,
+            "edition": self.edition,
+            "round": self.round_label,
             "tick": self.pitch.tick,
             "match_ticks": c.match_ticks,
             "fulltime": full,
+            "champion": self.tour.champion,
             "celebrating": self.pitch.celebrate > 0,
             "scorer": self.pitch.scorer,
             "goal_team": self.pitch.goal_team,
@@ -110,6 +149,7 @@ class Game:
             ],
             "events": self.pitch.events[-6:],
             "history": self.history[-6:],
+            "tournament": self.tour_snapshot(),
         }
 
 
@@ -133,6 +173,7 @@ async def _tick_loop() -> None:
         if G.viewers:
             if G.pitch.tick < G.pitch.cfg.match_ticks:
                 G.pitch.step(decide)
+                G.note_goals()
                 await _broadcast(G.snapshot())
             else:
                 # full time: hold the final frame so viewers see the result, then kick off anew
@@ -143,10 +184,16 @@ async def _tick_loop() -> None:
                         {"home": G.home_club, "away": G.away_club, "h": s["home"], "a": s["away"]}
                     )
                     del G.history[:-6]
+                    G.record_fulltime()  # advance the bracket so it updates during the hold
                     await _broadcast(G.snapshot())
-                elif start - G._fulltime_at >= FULLTIME_HOLD:
-                    G._new_match()
-                    await _broadcast(G.snapshot())
+                else:
+                    # linger longer on a final so the champion is savoured before the next draw
+                    hold = FULLTIME_HOLD * 2 if G._champion_done else FULLTIME_HOLD
+                    if start - G._fulltime_at >= hold:
+                        if G._champion_done:
+                            G._new_edition()
+                        G._new_match()
+                        await _broadcast(G.snapshot())
         await asyncio.sleep(max(0.0, TICK_INTERVAL - (asyncio.get_event_loop().time() - start)))
 
 
