@@ -133,6 +133,7 @@ class Automata:
         self.viewers: set[WebSocket] = set()
         self.paused = False  # operator toggle (ops page): freezes the world, page stays up
         self.tokens: dict[int, str] = {}  # lineage -> secret; proves a player owns the tribe
+        self.dispatches: list[dict] = []  # recent tribe rationales for the live dispatch feed
         self.llm = (
             (
                 ClaudeSDKClient(LLM_MODEL)
@@ -148,6 +149,7 @@ class Automata:
         self.world = World(DEFAULT, seed=_rand_seed())
         self.world.seed(DEFAULT.initial_population)
         self.tokens.clear()
+        self.dispatches.clear()
         self._assign_llm_tribes()
 
     def _assign_llm_tribes(self) -> None:
@@ -196,7 +198,7 @@ class Automata:
                 return
             name = self.world.controller_of(lineage) or "house"
             try:
-                genome = await author_genome(
+                genome, note = await author_genome(
                     self.llm,
                     name,
                     self.personas.get(lineage, PERSONAS[0]),
@@ -210,6 +212,16 @@ class Automata:
                 return
             for o in members:
                 o.genome = genome
+            if note:
+                self.dispatches.append(
+                    {
+                        "tick": self.world.tick_count,
+                        "tribe": name,
+                        "lineage": lineage,
+                        "note": note,
+                    }
+                )
+                del self.dispatches[:-14]
 
         await asyncio.gather(
             *(one(lin) for lin in list(self.world.llm_tribes)), return_exceptions=True
@@ -242,6 +254,7 @@ class Automata:
             "players": sum(1 for lin in living if w.is_player_tribe(lin)),
             "toxin": self._field("toxin"),
             "nutrient": self._field("nutrient"),
+            "dispatches": self.dispatches[-8:],
             "organisms": [
                 {
                     "id": c.organism.id,

@@ -38,7 +38,9 @@ SYSTEM = (
     "Targets (divide/migrate): " + ", ".join(TARGETS) + ".\n"
     "Death: toxin in your cell >= 50, or energy <= 0, or old age. So write rules that flee toxin, "
     "seek nutrient, and divide when energy is high — most urgent rule first.\n"
-    'Reply with ONLY a JSON genome, no prose: {"regulators": {'
+    'Reply with ONLY JSON, no prose. Start with "note": one short line (<= 12 words) in your '
+    "tribe's own voice — what you're changing and WHY, your selfish read of the moment. Then the "
+    'genome: {"note": "...", "regulators": {'
     + ", ".join(f'"{r}": <0-100>' for r in REGULATORS)
     + '}, "behaviors": [{"cond1": {"variable": "...", "op": ">", "threshold": 0}, '
     '"cond2": null, "verb": "...", "target": "..."}, ...]}. At most 8 rules, all distinct.'
@@ -207,8 +209,21 @@ def parse_genome(text: str, max_genes: int) -> Genome | None:
     return Genome(regs, behaviors)
 
 
+def parse_note(text: str) -> str:
+    # the tribe's one-line dispatch — its own-voice rationale for this DNA rewrite
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        return ""
+    try:
+        raw = json.loads(text[start : end + 1])
+    except Exception:
+        return ""
+    note = raw.get("note", "")
+    return " ".join(str(note).split())[:140] if isinstance(note, str) else ""
+
+
 async def author_genome(
     client: ModelClient, name: str, persona: str, summary: dict, current: dict, max_genes: int
-) -> Genome | None:
+) -> tuple[Genome | None, str]:
     text = await client.complete(SYSTEM, build_prompt(name, persona, summary, current))
-    return parse_genome(text, max_genes)
+    return parse_genome(text, max_genes), parse_note(text)

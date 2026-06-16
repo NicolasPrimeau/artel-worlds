@@ -65,6 +65,20 @@
   #legend .barn { background: linear-gradient(90deg, #11141a, #1f9d5c, #28b86b); }
   #legend .bar { background: linear-gradient(90deg, #1f9d5c, #e6aa28, #ef5a28, #ff2417); }
   #legend .t { color: var(--fg); font-weight: 600; letter-spacing: .5px; display: block; margin-bottom: 3px; }
+  #dispatch {
+    position: absolute; right: 10px; top: 60px; width: min(300px, 44vw);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 10px; backdrop-filter: blur(6px); z-index: 5;
+    pointer-events: none; font-size: 11px; color: var(--fg); line-height: 1.45;
+  }
+  #dispatch .t { color: var(--dim); font-weight: 600; letter-spacing: .5px; display: block; margin-bottom: 5px; font-size: 10px; }
+  #dispatch ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  #dispatch li { display: flex; gap: 6px; align-items: flex-start; }
+  #dispatch .dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; margin-top: 3px; }
+  #dispatch .nm { font-weight: 700; }
+  #dispatch .nt { color: var(--dim); }
+  #dispatch .empty { color: var(--dim); font-style: italic; }
+  @media (max-width: 720px) { #dispatch { display: none; } }
 
   #guide { position: fixed; inset: 0; z-index: 20; padding: 16px;
     background: rgba(4,5,8,.72); backdrop-filter: blur(3px);
@@ -214,6 +228,10 @@
 <div id="wrap">
   <canvas id="c"></canvas>
   <div id="hint">hover to inspect · click to pin, track &amp; read DNA</div>
+</div>
+<div id="dispatch">
+  <span class="t">⌁ TRIBE DISPATCHES</span>
+  <ul id="dispatchlog"><li class="empty">— quiet — tribes report when they rewrite their DNA</li></ul>
 </div>
 <div id="legend">
   <span class="t">LEGEND</span>
@@ -544,6 +562,20 @@ function apply(s) {
   const conn = $('conn');
   if (s.paused) { conn.textContent = 'paused'; conn.className = 'stat paused'; }
   else { conn.textContent = 'live'; conn.className = 'stat live'; }
+
+  // tribe dispatches: each LLM tribe's own-voice line when it rewrites its DNA — the narrative
+  const disp = s.dispatches || [], dl = $('dispatchlog');
+  if (disp.length) {
+    dl.innerHTML = disp.slice().reverse().map(d =>
+      `<li><span class="dot" style="background:hsl(${hue(d.lineage)} 72% 60%)"></span>`
+      + `<span><b class="nm">${esc(String(d.tribe||'').replace(/^house:/,''))}</b> `
+      + `<span class="nt">${esc(d.note||'')}</span></span></li>`
+    ).join('');
+  } else if (!dl.dataset.empty) {
+    dl.innerHTML = '<li class="empty">— quiet — tribes report when they rewrite their DNA</li>';
+    dl.dataset.empty = '1';
+  }
+  if (disp.length) dl.dataset.empty = '';
 
   const cur = new Set(s.organisms.map(o => o.id));
   let births = 0, deaths = 0;
