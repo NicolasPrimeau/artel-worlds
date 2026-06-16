@@ -157,9 +157,11 @@ def decide(pitch: Pitch, p: Player) -> dict:
         if opts and (pressured or len(opts) >= 2 or rng.random() < 0.6):
             tgt = max(
                 opts,
-                key=lambda q: _open(pitch, q) * 0.8
-                + (q.x - p.x) * fwd * 0.35
-                - _len(q.x - p.x, q.y - p.y) * 0.3,
+                key=lambda q: (
+                    _open(pitch, q) * 0.8
+                    + (q.x - p.x) * fwd * 0.35
+                    - _len(q.x - p.x, q.y - p.y) * 0.3
+                ),
             )
             return _kick(p, tgt.x + c.pass_lead * fwd, tgt.y, c.pass_speed, 0.05, rng)
         # carry: drive at goal via the more open flank — NO kick, so the engine eases the ball ahead
