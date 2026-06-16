@@ -1064,10 +1064,12 @@ def _comms_from(inp: dict, bot, p: dict, rally_cell=None, focus_set=False) -> li
     say = _humanize_say(str(inp.get("say", "") or "").strip())
     if say:
         add("say", say)
-    if (
-        focus_set
-    ):  # only when a NEW focus was actually committed this call (not a deduped/blocked one)
-        add("focus", "Focus fire — all on one")
+    if focus_set:  # only a NEWLY committed focus (not a deduped/blocked one) hits the feed
+        foc = (getattr(bot, "orders", {}) or {}).get("focus")
+        e = {"t": tick, "tank": tank, "kind": "focus", "text": "Focus fire — all on one"}
+        if foc:
+            e["target"] = int(foc)  # the enemy id, so the map can converge on it
+        out.append(e)
     # rally only hits the feed when it was actually (re)set this call — a deduped re-issue
     # of ground the unit already holds is silent
     if rally_cell:
