@@ -126,7 +126,9 @@ SYSTEM = (
     "kiting, retreating, repairing. You only set STANDING ORDERS, and RARELY: most turns, "
     "issue nothing and stay silent.\n"
     "- focus <enemy id>: mass the unit's fire on ONE enemy (a 3v1 wins; three 1v1s lose). "
-    "Add focus_at [q,r] from a teammate's report to hunt an enemy you can't see.\n"
+    "Add focus_at [q,r] from a teammate's report to hunt an enemy you can't see. When a "
+    "teammate radios a FOCUS call, ADOPT it — focus that SAME enemy and converge; never run "
+    "a second target in parallel. Massed fire through the radio is how the unit wins.\n"
     "- regroup [q,r]: rally onto strong ground to fight FROM — cover, a chokepoint, the lane "
     "the enemy must cross; NOT the bare center (the zone forces that late). A rally is a "
     "commitment: set it once, re-issue only when the position or fight truly changes.\n"
@@ -595,23 +597,30 @@ def _command_brief(p: dict, bot) -> str:
     return "\n".join(lines)
 
 
-async def _consume_inbox(http: httpx.AsyncClient, agent: dict) -> tuple[str, dict]:
-    # returns (reports, beacons): position beacons are telemetry, not conversation — they
-    # fold into one teammate-positions line instead of flooding the report log
+async def _consume_inbox(http: httpx.AsyncClient, agent: dict) -> tuple[str, dict, str]:
+    # returns (reports, beacons, focus_call): position beacons are telemetry, not conversation
+    # — they fold into one teammate-positions line. A FOCUS call is the unit's massed-fire
+    # signal, surfaced on its own prominent line so the LLM converges on it.
     try:
         r = await http.post(f"{ARTEL_URL}/messages/inbox/consume", headers=_headers(agent), json={})
         msgs = r.json() if r.status_code < 300 else []
     except Exception:
-        return "", {}
-    lines, beacons = [], {}
+        return "", {}, ""
+    me = agent.get("id")
+    lines, beacons, focus_call = [], {}, ""
     for m in msgs:
         body = m.get("body") or ""
         sender = m.get("from_agent", "?")
+        if sender == me:
+            continue  # the project bus echoes our own broadcasts back — ignore them
         if body.startswith("POS "):
             beacons[sender] = body[4:].strip()
+        elif body.startswith("FOCUS "):
+            focus_call = f"{sender}: {body}"  # freshest team focus call wins
+            lines.append(f"{sender}: {body}")  # keep in the log too so it persists a few turns
         elif body:
             lines.append(f"{sender}: {body}")
-    return " | ".join(lines)[:600], beacons
+    return " | ".join(lines)[:600], beacons, focus_call
 
 
 async def _send(
@@ -901,10 +910,11 @@ async def command(
     # ONE commander call: read the Artel picture, set standing orders on the bot, do the
     # Artel traffic. The bot drives every tick regardless — a failed or skipped command
     # call costs nothing but staleness.
+    focus_call = ""
     if solo:
         inbox, board = "", ""
     else:
-        (inbox, fresh_beacons), board, recalled = await asyncio.gather(
+        (inbox, fresh_beacons, focus_call), board, recalled = await asyncio.gather(
             _consume_inbox(http, agent),
             _board(http, agent),
             _recall_lessons(http, agent, _recall_query(p, bot, distress)),
@@ -927,6 +937,12 @@ async def command(
                 "\nALLY UNDER FIRE — focus their attacker and regroup on the fight; this "
                 "outranks everything else."
             )
+    if focus_call:
+        user += (
+            f"\nTEAM FOCUS CALL — {focus_call}. Converge: focus that SAME enemy id (carry "
+            f"focus_at so your tank can hunt it) and mass the unit's guns on it, unless you "
+            f"hold a clearly stronger target right now."
+        )
     if board:
         user += f"\nTEAM BOARD — current objectives: {board}"
     if not solo and objective is not None:
@@ -984,12 +1000,37 @@ async def command(
                 focus_set = True
             if focus_state is not None:
                 focus_state["target"], focus_state["tick"] = focus, tick
+            # the target's position: a teammate's reported coords, or failing that what this
+            # tank sees right now — so the focus call we put on the wire names WHERE to hunt
+            at = None
             fa = inp.get("focus_at")
             if isinstance(fa, (list, tuple)) and len(fa) == 2:
                 try:
-                    bot.orders["focus_at"] = (int(fa[0]), int(fa[1]))
+                    at = (int(fa[0]), int(fa[1]))
                 except (TypeError, ValueError):
-                    pass
+                    at = None
+            if at is None:
+                for v in p.get("visible", []):
+                    if v.get("kind") == "enemy" and v.get("id") == focus:
+                        at = (p["q"] + v["dq"], p["r"] + v["dr"])
+                        break
+            if at is not None:
+                bot.orders["focus_at"] = at
+            # broadcast the focus call OVER ARTEL on a fresh target so teammates HEAR it and
+            # choose to converge — the massed-fire coordination travels the wire and the other
+            # LLMs decide to align, instead of three commanders each guessing a target alone
+            if focus_set and not solo:
+                where = f" at ({at[0]},{at[1]})" if at else ""
+                asyncio.create_task(
+                    _send(
+                        http,
+                        agent,
+                        "team",
+                        f"FOCUS #{focus}{where} — converge fire",
+                        mate_ids,
+                        "focus",
+                    )
+                )
         rally_cell = None
         for key in ("regroup", "post"):
             v = inp.get(key)
