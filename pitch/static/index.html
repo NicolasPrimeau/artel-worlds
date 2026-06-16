@@ -205,8 +205,12 @@ function S(wx, wy) {
   return view.rot ? [view.ox + wy * view.scale, view.oy + wx * view.scale]
                   : [view.ox + wx * view.scale, view.oy + wy * view.scale];
 }
+// A ResizeObserver re-fits whenever the canvas box actually changes — the reliable signal on
+// mobile, where 'resize'/'orientationchange' fire at the wrong time (or not at all) and the
+// viewport keeps settling as the toolbar animates. The window events stay as a belt-and-braces.
+if (window.ResizeObserver) new ResizeObserver(() => resize()).observe(cv);
 addEventListener('resize', resize);
-addEventListener('orientationchange', () => setTimeout(resize, 250));
+addEventListener('orientationchange', () => { resize(); setTimeout(resize, 300); });
 
 function screenToWorld(sx, sy) {
   if (!view) return [0, 0];
