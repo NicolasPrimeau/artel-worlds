@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from . import bot
+from . import artel_client, bot
 from .engine import Pitch, Player, _clamp
 
 # The Artel team's coach. The baseline brain is good but STATIC — it plays the same way at 0-0 and
@@ -104,3 +104,83 @@ def make_brain(artel_team: str | None):
         return bot.decide(pitch, p)
 
     return brain
+
+
+def _parse_plan(mid_rows: list, fwd_rows: list, fallback: Plan) -> Plan:
+    # reassemble the Plan from what the line agents posted to Artel memory
+    p = Plan(fallback.overload_y, fallback.commit, fallback.low_block)
+    for row in mid_rows:
+        for tok in str(row.get("content", "")).split(";"):
+            if tok.startswith("commit="):
+                p.commit = int(tok.split("=")[1])
+            elif tok.startswith("low_block="):
+                p.low_block = tok.split("=")[1] == "1"
+    for row in fwd_rows:
+        for tok in str(row.get("content", "")).split(";"):
+            if tok.startswith("overload_y="):
+                p.overload_y = float(tok.split("=")[1])
+    return p
+
+
+class Coordinator:
+    """The Artel team's coaching staff: a captain plus a defence / midfield / attack agent, each a
+    distinct Artel identity. The captain sets the lineup once; each window the line agents post
+    their piece of the plan to Artel and the team then executes the plan read BACK from Artel — so
+    the coordination genuinely flows through the server. Falls back to a local plan if Artel is
+    unconfigured or unreachable, so a match never depends on the network."""
+
+    def __init__(self, team: str) -> None:
+        self.team = team
+        self.plan = Plan(overload_y=40.0, commit=0, low_block=False)
+        self._last = Plan(overload_y=-1, commit=-1, low_block=False)
+        self._artel = artel_client.Artel() if artel_client.configured() else None
+        self.live = self._artel is not None  # genuinely talking to Artel this match
+
+    def optimize(self, pitch: Pitch) -> None:
+        # captain's team-sheet — must run before the first tick, so it's synchronous
+        optimize_lineup([p for p in pitch.players if p.team == self.team])
+
+    async def announce(self) -> None:
+        # captain posts the match plan to Artel shared memory (best-effort)
+        if self._artel:
+            await self._artel.write_memory(
+                "captain",
+                "match plan: attack the opponent's weak channel; commit when behind, sit on a lead",
+                ["pitch", "plan", "match"],
+            )
+
+    async def refresh(self, pitch: Pitch) -> None:
+        base = plan_for(pitch, self.team)  # the proven adaptive computation
+        if self._artel is None:
+            self.plan = base
+            return
+        # line agents publish their piece to Artel (only on change, to keep traffic light)
+        if base.commit != self._last.commit or base.low_block != self._last.low_block:
+            await self._artel.write_memory(
+                "mid",
+                f"commit={base.commit};low_block={int(base.low_block)}",
+                ["pitch", "line", "mid"],
+            )
+        if round(base.overload_y) != round(self._last.overload_y):
+            await self._artel.write_memory(
+                "fwd", f"overload_y={base.overload_y}", ["pitch", "line", "fwd"]
+            )
+            await self._artel.emit_event("fwd", "overload", {"y": round(base.overload_y)})
+        self._last = base
+        # the team executes the plan as read BACK from Artel (the defence agent reads midfield's
+        # commit; the midfield agent reads the attack's target) — genuine coordination through Artel
+        mid_rows = await self._artel.search_memory("def", "commit", tag="mid", limit=1)
+        fwd_rows = await self._artel.search_memory("mid", "overload_y", tag="fwd", limit=1)
+        self.plan = _parse_plan(mid_rows, fwd_rows, base)
+
+    async def aclose(self) -> None:
+        if self._artel:
+            await self._artel.aclose()
+
+    def brain(self):
+        def b(pitch: Pitch, p: Player) -> dict:
+            if p.team == self.team:
+                return coordinated_decide(pitch, p, self.plan)
+            return bot.decide(pitch, p)
+
+        return b

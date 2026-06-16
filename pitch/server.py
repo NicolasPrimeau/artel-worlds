@@ -9,14 +9,16 @@ from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 
+from . import commander
 from .bot import decide
 from .engine import Pitch
-from .tournament import Tournament
+from .tournament import ARTEL_CLUB, Tournament
 
 log = logging.getLogger("pitch")
 STATIC = Path(__file__).parent / "static"
 TICK_INTERVAL = float(os.environ.get("PITCH_TICK_INTERVAL", "0.08"))  # sim+broadcast rate
 FULLTIME_HOLD = float(os.environ.get("PITCH_FULLTIME_HOLD", "6"))  # pause on the final whistle
+COORD_INTERVAL = float(os.environ.get("PITCH_COORD_INTERVAL", "1.2"))  # Artel coach decision window
 
 
 def _rate(mult: float) -> int:
@@ -53,6 +55,16 @@ class Game:
         self._fulltime_at = None
         self._champion_done = False
         self._last_h = self._last_a = 0
+        # if the Artel team is in this tie, its line agents coach it; otherwise both run the baseline
+        artel_team = "home" if tie.a == ARTEL_CLUB else "away" if tie.b == ARTEL_CLUB else None
+        self.coord = commander.Coordinator(artel_team) if artel_team else None
+        self.artel_team = artel_team
+        self._coord_at = 0.0
+        if self.coord:
+            self.coord.optimize(self.pitch)  # set the stat-optimal lineup before kickoff
+            self.brain = self.coord.brain()
+        else:
+            self.brain = decide
 
     def note_goals(self) -> None:
         # attribute each new goal to its scorer's club for the Golden Boot
@@ -122,12 +134,15 @@ class Game:
                 "club": self.home_club,
                 "score": self.pitch.score["home"],
                 "formation": "-".join(map(str, self.pitch.shapes.get("home", ()))),
+                "artel": self.artel_team == "home",
             },
             "away": {
                 "club": self.away_club,
                 "score": self.pitch.score["away"],
                 "formation": "-".join(map(str, self.pitch.shapes.get("away", ()))),
+                "artel": self.artel_team == "away",
             },
+            "artel_live": bool(self.coord and self.coord.live),
             "ball": {"x": round(self.pitch.ball.x, 2), "y": round(self.pitch.ball.y, 2)},
             "players": [
                 {
@@ -172,7 +187,14 @@ async def _tick_loop() -> None:
         start = asyncio.get_event_loop().time()
         if G.viewers:
             if G.pitch.tick < G.pitch.cfg.match_ticks:
-                G.pitch.step(decide)
+                # refresh the Artel coach off the hot path (~every 1.2s, viewer-gated): the line
+                # agents re-throw the plan through Artel; the fast tick just reads the cached plan.
+                if G.coord and start - G._coord_at >= COORD_INTERVAL:
+                    G._coord_at = start
+                    if G.pitch.tick <= 1:
+                        G._announce_task = asyncio.create_task(G.coord.announce())
+                    G._coord_task = asyncio.create_task(G.coord.refresh(G.pitch))
+                G.pitch.step(G.brain)
                 G.note_goals()
                 await _broadcast(G.snapshot())
             else:
