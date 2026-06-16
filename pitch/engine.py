@@ -77,6 +77,8 @@ class Pitch:
     goal_team: str | None = None  # team that just scored (for the celebration colour)
     restart_kind: str | None = None  # "corner" | "goal-kick" | "throw-in" — for the feed
     _concede_to: str = "home"  # who kicks off after the celebration
+    half: int = 1  # 1 or 2
+    halftime: int = 0  # ticks remaining of the half-time break
     shapes: dict[str, tuple[int, int, int]] = field(default_factory=dict)  # team -> (def, mid, fwd)
     _offside: set[int] = field(default_factory=set)  # ids flagged offside at the last pass
     _offside_team: str | None = None
@@ -121,6 +123,8 @@ class Pitch:
         # the formation slot, so squad size is driven entirely by cfg.team_size.
         self.players = []
         self.shapes = {}
+        self.half = 1
+        self.halftime = 0
         pid = 0
         r = self._rng
         out = self.cfg.team_size - 1
@@ -165,6 +169,23 @@ class Pitch:
     # --- the tick ---
     def step(self, brain) -> None:
         self.tick += 1
+        if self.halftime > 0:
+            # HALF-TIME break — hold, then kick off the second half (the other side starts it)
+            self.halftime -= 1
+            if self.halftime == 0:
+                self.half = 2
+                self._kickoff("away")
+            return
+        if (
+            self.half == 1
+            and self.tick >= self.cfg.match_ticks // 2
+            and self.celebrate == 0
+            and self.restart == 0
+        ):
+            self.halftime = self.cfg.halftime_ticks
+            self.ball.vx = self.ball.vy = 0.0
+            self.possessor = None
+            return
         if self.celebrate > 0:
             # GOAL freeze — everything holds so the score is readable, then kick off
             self.celebrate -= 1

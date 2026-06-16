@@ -158,6 +158,15 @@ def decide(pitch: Pitch, p: Player) -> dict:
     outfield = [q for q in pitch.teammates(p) if q.role != "GK"]
     teammate_ids = {q.id for q in pitch.teammates(p)}
 
+    # SET PIECE: on a corner, attackers crash the box and defenders pack it (keeper holds its line)
+    if pitch.restart_kind == "corner" and pitch.possessor != p.id and p.role != "GK":
+        badv = _fwd_x(p.team, b.x, c.length)  # how advanced the ball is for p's team
+        spread = _clamp(c.width / 2 + ((p.id % 5) - 2) * 7.0, 8.0, c.width - 8.0)
+        if badv > c.length * 0.70 and p.role in ("FWD", "MID"):  # attacking — crash the box
+            return {"move": (c.length - 12 if p.team == "home" else 12, spread)}
+        if badv < c.length * 0.30 and p.role in ("DEF", "MID"):  # defending — pack the box
+            return {"move": (12 if p.team == "home" else c.length - 12, spread)}
+
     if pitch.possessor == p.id:
         # ON THE BALL: shoot (only when genuinely close), else PASS by default, else carry.
         fwd = 1.0 if p.team == "home" else -1.0
@@ -169,6 +178,23 @@ def decide(pitch: Pitch, p: Player) -> dict:
             ax, ay = _shoot_aim(pitch, p)
             # scatter grows with range — long shots fly wide, so goals come from working it close
             return _kick(p, ax, ay, c.shot_speed, 0.22 + dist_goal / 130.0, rng, skill=p.finishing)
+        # CROSS from wide in the final third (or taking a corner) — whip it into the box for a
+        # team-mate to attack. A big share of real goals come from balls into the box.
+        adv_me = _fwd_x(p.team, p.x, c.length)
+        wide = abs(p.y - c.width / 2) > c.width * 0.30
+        target_in_box = [
+            q
+            for q in outfield
+            if q.id != p.id
+            and _fwd_x(q.team, q.x, c.length) > c.length * 0.78
+            and abs(q.y - c.width / 2) < 22
+        ]
+        if target_in_box and (
+            pitch.restart_kind == "corner" or (wide and adv_me > c.length * 0.74)
+        ):
+            box_x = c.length - 11 if p.team == "home" else 11
+            box_y = _clamp(c.width / 2 + rng.choice((-1, 1)) * 6, 8, c.width - 8)
+            return _kick(p, box_x, box_y, c.pass_speed * 1.15, 0.14, rng)
         # PASS is the default — keep it moving. Favour a teammate who is OPEN and REACHABLE (a
         # short, completable ball beats a hopeful long one); a little forward progress is a bonus.
         # This is what makes the build-up actually connect instead of breaking down on attack.

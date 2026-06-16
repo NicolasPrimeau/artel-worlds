@@ -111,6 +111,8 @@ class Game:
             "tick": self.pitch.tick,
             "match_ticks": c.match_ticks,
             "fulltime": full,
+            "halftime": self.pitch.halftime > 0,
+            "half": self.pitch.half,
             "champion": self.tour.champion,
             "celebrating": self.pitch.celebrate > 0,
             "scorer": self.pitch.scorer,

@@ -415,10 +415,13 @@ function apply(s) {
   $('upnext').textContent = upNext(s.tournament);
   // broadcast clock: a continuous MM:SS over a 90:00 match, ticking with seconds like TV
   const secs = Math.min(5400, Math.floor(s.tick / s.match_ticks * 5400));
-  $('clock').textContent = s.fulltime ? 'FT' : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+  $('clock').textContent = s.fulltime ? 'FT' : s.halftime ? 'HT'
+    : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
   // banner is driven by server state — the goal freeze holds it long enough to read
   if (s.celebrating) {
     setBanner('GOAL', s.scorer || '', s.goal_team === 'home' ? '#3d8bff' : '#ff6a3d');
+  } else if (s.halftime) {
+    setBanner('HALF TIME', '', '#cdebd7');
   } else if (s.fulltime && s.champion && s.round === 'Final') {
     setBanner('CHAMPIONS', s.champion, '#d4af37');
   } else if (s.fulltime) {

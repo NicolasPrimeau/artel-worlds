@@ -40,8 +40,9 @@ class Config:
 
     celebrate_ticks: int = 32  # freeze on a goal so the score is readable before kickoff
     restart_ticks: int = 6  # brief dead-ball pause on a throw-in / corner / goal kick
+    halftime_ticks: int = 50  # the break between the two halves
 
-    match_ticks: int = 2400  # length of one match
+    match_ticks: int = 2400  # length of one match (two halves of match_ticks // 2)
 
 
 DEFAULT = Config()
