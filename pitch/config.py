@@ -1,0 +1,36 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+# Small-sided soccer on a continuous 2D pitch — 5-a-side (a keeper + four outfield), because
+# fewer players means more goals, faster play, and coordination that READS at a glance (the
+# whole point: a team that moves as a unit vs. one that doesn't should be obvious without an
+# overlay). Home attacks toward +x (the right goal); away toward -x (the left goal). Units are
+# abstract "metres"; a tick is one simulation step.
+@dataclass(frozen=True)
+class Config:
+    length: float = 120.0  # goal-to-goal
+    width: float = 80.0  # touchline-to-touchline
+    goal_width: float = 24.0  # span of the goal mouth, centred on the width
+
+    team_size: int = 5  # includes the keeper
+
+    player_speed: float = 1.15  # max outfield move per tick
+    keeper_speed: float = 1.30  # keepers cover the mouth a touch faster
+    accel: float = 0.35  # how fast a player reaches top speed (no teleporting)
+
+    ball_friction: float = 0.96  # ball velocity retained per tick when loose
+    shot_speed: float = 4.2
+    pass_speed: float = 3.0
+    dribble_speed: float = 1.9  # a carried ball is nudged forward at ~player pace
+    control_radius: float = 2.4  # within this of the ball, a player is "on" it
+    tackle_radius: float = 2.2  # an opponent this close can contest possession
+
+    shoot_range: float = 40.0  # only shoot when this close to the target goal
+    pass_lead: float = 4.0  # lead a moving teammate by this much
+
+    match_ticks: int = 2400  # length of one match
+
+
+DEFAULT = Config()
