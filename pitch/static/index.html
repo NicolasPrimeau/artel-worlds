@@ -244,14 +244,25 @@ function applyConn(s) {  // the socket's up, but reflect the WORLD's state (paus
 }
 addEventListener('focus', () => { if (!ws || ws.readyState > 1) connect(); });
 
-// share
+// share — native OS share sheet on mobile (navigator.share); popover fallback on desktop
 (function () {
   const url = 'https://pitch.artel.run/', title = 'The AI World Cup — live on Pitch';
   $('shareli').href = 'https://www.linkedin.com/sharing/share-offsite/?url=' + encodeURIComponent(url);
   $('sharex').href = 'https://twitter.com/intent/tweet?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(title);
-  const btn = $('sharebtn'), pop = $('sharepop');
-  btn.onclick = e => { e.stopPropagation(); pop.hidden = !pop.hidden; };
-  $('sharecopy').onclick = () => { navigator.clipboard?.writeText(url); $('sharecopy').textContent = 'copied!'; };
+  const btn = $('sharebtn'), pop = $('sharepop'), copy = $('sharecopy');
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    if (navigator.share) { navigator.share({ title, text: title, url }).catch(() => {}); return; }
+    pop.hidden = !pop.hidden;
+  });
+  copy.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(url); } catch (_) {
+      const t = document.createElement('textarea'); t.value = url; document.body.appendChild(t); t.select();
+      try { document.execCommand('copy'); } catch (__) {} t.remove();
+    }
+    copy.textContent = 'copied ✓'; pop.hidden = true;
+    setTimeout(() => { copy.textContent = 'copy link'; }, 1400);
+  });
   document.addEventListener('click', e => { if (!e.target.closest('.share')) pop.hidden = true; });
 })();
 
