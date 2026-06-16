@@ -1093,15 +1093,10 @@ async def command(
     return cost, plan, inbox, comms
 
 
-_SAY_STRIP = re.compile(r"#\d+|\(-?\d+\s*,\s*-?\d+\)|energy\s+\d+", re.I)
-
-
 def _humanize_say(text: str) -> str:
-    # the feed should read like a crew talking, not a debug log: strip any coordinates,
-    # #ids, or energy numbers a commander slipped into its radio call
-    t = _SAY_STRIP.sub("", text)
-    t = re.sub(r"\s{2,}", " ", t).strip(" ,;:—-")
-    return t
+    # show the radio as the commanders wrote it — enemy #ids, coordinates, and energy intact,
+    # since that intel IS the coordination a viewer wants to read — just tidy the whitespace
+    return re.sub(r"\s{2,}", " ", text).strip(" ,;:")
 
 
 def _accept_rally(bot, cell, tick: int) -> bool:
@@ -1144,19 +1139,24 @@ def _comms_from(inp: dict, bot, p: dict, rally_cell=None, focus_set=False) -> li
             e["cell"] = [int(cell[0]), int(cell[1])]
         out.append(e)
 
-    say = _humanize_say(str(inp.get("say", "") or "").strip())
+    say = _humanize_say(str(inp.get("say", "") or ""))
     if say:
         add("say", say)
     if focus_set:  # only a NEWLY committed focus (not a deduped/blocked one) hits the feed
-        foc = (getattr(bot, "orders", {}) or {}).get("focus")
-        e = {"t": tick, "tank": tank, "kind": "focus", "text": "Focus fire — all on one"}
+        orders = getattr(bot, "orders", {}) or {}
+        foc = orders.get("focus")
+        fat = orders.get("focus_at")
+        text = f"Focus fire → #{foc}" if foc else "Focus fire — all on one"
+        if fat:
+            text += f" at ({int(fat[0])},{int(fat[1])})"
+        e = {"t": tick, "tank": tank, "kind": "focus", "text": text}
         if foc:
             e["target"] = int(foc)  # the enemy id, so the map can converge on it
         out.append(e)
     # rally only hits the feed when it was actually (re)set this call — a deduped re-issue
     # of ground the unit already holds is silent
     if rally_cell:
-        add("rally", "Form up here", cell=rally_cell)
+        add("rally", f"Form up at ({int(rally_cell[0])},{int(rally_cell[1])})", cell=rally_cell)
     return out
 
 

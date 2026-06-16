@@ -784,10 +784,11 @@ def test_comms_from_emits_radio_events_with_intel_cells():
         {"say": "SPOTTED #5 (7,4) energy 40 — push!", "focus": 5}, B(), p, focus_set=True
     )
     kinds = {e["kind"]: e for e in out}
-    # the radio reads human: coordinates, #ids and energy numbers stripped from the feed
-    assert kinds["say"]["text"] == "SPOTTED — push!"
+    # the radio shows the intel as written — #ids, coords and energy are the coordination
+    assert kinds["say"]["text"] == "SPOTTED #5 (7,4) energy 40 — push!"
     assert "intel" not in kinds  # the VECTOR/intel line is no longer in the feed
-    assert kinds["focus"]["text"] == "Focus fire — all on one"  # no jargon id
+    assert kinds["focus"]["text"] == "Focus fire → #5 at (7,4)"  # names the target + position
+    assert kinds["focus"]["target"] == 5
     assert all(e["tank"] == 2 and e["t"] == 12 for e in out)
 
     # a blocked/deduped focus (focus_set False) stays off the feed even with focus in inp
@@ -802,8 +803,8 @@ def test_comms_from_emits_radio_events_with_intel_cells():
     # rally only appears when actually (re)set this call — passed in as rally_cell
     out2 = _comms_from({"focus": 9}, B2(), {"tick": 3}, rally_cell=(8, 6), focus_set=True)
     k2 = {e["kind"]: e for e in out2}
-    assert k2["focus"]["text"] == "Focus fire — all on one" and "cell" not in k2["focus"]
-    assert k2["rally"]["text"] == "Form up here" and k2["rally"]["cell"] == [8, 6]
+    assert k2["focus"]["text"] == "Focus fire → #9" and "cell" not in k2["focus"]
+    assert k2["rally"]["text"] == "Form up at (8,6)" and k2["rally"]["cell"] == [8, 6]
 
     # a deduped re-issue (rally_cell None) keeps the feed quiet even with regroup in inp
     out3 = _comms_from({"focus": 9, "regroup": [8, 6]}, B2(), {"tick": 3})
