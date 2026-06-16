@@ -776,6 +776,14 @@ def _render_incident(inc: Incident) -> str:
         "Resolve it. Recall a runbook first; inspect to confirm the root cause; apply the minimal "
         "fix; record a generalizable runbook when done.",
     ]
+    if inc.cascade_root is not None:
+        lines.append(
+            "This page is a SYMPTOM of an upstream failure — other alarms are firing on the SAME "
+            "root right now and your teammates are working them. read_team THIS TURN: one may have "
+            "already named the root, so you skip the diagnosis. The instant YOU find the root, "
+            "tell_team it (root node + fix) before you do anything else — that is how the unit "
+            "clears a storm without three people tracing the same dependency."
+        )
     return "\n".join(lines)
 
 
