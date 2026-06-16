@@ -210,6 +210,13 @@ async def _tick_loop() -> None:
                     )
                     del G.history[:-6]
                     G.record_fulltime()  # advance the bracket so it updates during the hold
+                    if G.coords:  # record the result + sweep this match's coordination memory
+                        summary = (
+                            f"{G.home_club} {s['home']}-{s['away']} {G.away_club} ({G.round_label})"
+                        )
+                        G._finish_task = asyncio.create_task(
+                            next(iter(G.coords.values())).finish(summary)
+                        )
                     await _broadcast(G.snapshot())
                 else:
                     # linger longer on a final so the champion is savoured before the next draw

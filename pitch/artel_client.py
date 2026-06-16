@@ -82,3 +82,13 @@ class Artel:
         if tag:
             params["tag"] = tag
         return await self._req(role, "GET", "/tasks", params=params) or []
+
+    async def clear_memory(self, role: str) -> None:
+        # wipe the project's ephemeral coordination memory (owner-only). Result events are NOT
+        # cleared, so the match record persists while the per-game line chatter is swept.
+        await self._req(
+            role,
+            "POST",
+            f"/projects/{PITCH_PROJECT}/clear",
+            json={"memory": True, "messages": True},
+        )

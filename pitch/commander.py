@@ -253,6 +253,13 @@ class Coordinator:
         rows = await self._artel.search_memory("def", "commit overload", tag=tag, limit=4)
         self.plan = _parse_plan(rows, rows, base)
 
+    async def finish(self, summary: str) -> None:
+        # at full time: record the result as a persistent event (the global pitch record), then wipe
+        # this match's ephemeral coordination memory so the project doesn't accumulate line chatter.
+        if self._artel:
+            await self._artel.emit_event("captain", "pitch.result", {"result": summary})
+            await self._artel.clear_memory("captain")
+
     async def aclose(self) -> None:
         if self._artel:
             await self._artel.aclose()
