@@ -66,7 +66,16 @@ class World:
         self.viewers: set = set()
         self._joined = False
         self.last_error: str | None = None
-        self.paused = False  # operator toggle (ops page): halts firing/spend, page stays up
+        # operator pause flag, restored IMMEDIATELY on boot — NOT gated behind _ensure()/a viewer.
+        # Otherwise a restart reports (and behaves as) un-paused until someone watches, and could
+        # fire a storm before the flag is read back from the kv. Pause must be reliable.
+        self.paused = self._restore_paused()
+
+    def _restore_paused(self) -> bool:
+        try:
+            return self.metrics.kv_get("paused") == "1"
+        except Exception:
+            return False
 
     @staticmethod
     def _load_artel_agents() -> list[dict]:

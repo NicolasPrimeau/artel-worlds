@@ -495,6 +495,25 @@ def test_world_state_survives_a_restart(monkeypatch):
         asyncio.run(run())
 
 
+def test_pause_is_restored_at_construction_not_gated_on_a_viewer(monkeypatch):
+    # reliability invariant: a restart must come back paused if the kv says paused, WITHOUT
+    # needing a viewer/storm to trigger _ensure() — otherwise a paused world reports un-paused
+    # (and could fire a storm) until someone watches it.
+    from watchtower.world import World
+
+    with tempfile.TemporaryDirectory() as d:
+        monkeypatch.setenv("WATCHTOWER_DB", os.path.join(d, "w.db"))
+        w = World()
+        assert w.paused is False
+        w.set_paused(True)  # operator pauses -> persisted to the kv
+
+        w2 = World()  # simulate a restart on the same volume
+        assert w2.paused is True  # restored at construction — no _ensure()/viewer needed
+
+        w2.set_paused(False)
+        assert World().paused is False
+
+
 def test_failover_accepts_either_side_of_the_promotion():
     from watchtower.faults import _db_primary_stuck
     from random import Random
