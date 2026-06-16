@@ -232,6 +232,7 @@ class Automata:
         living = {o.lineage_id for o in w.organisms.values()}
         return {
             **w.stats(),
+            "paused": self.paused,
             "width": w.cfg.width,
             "height": w.cfg.height,
             "toxin_lethal": w.cfg.toxin_lethal,
@@ -296,6 +297,10 @@ async def _tick_loop():
                 step(G.world, G.agent)
                 snap = G.snapshot()
             await _broadcast(snap)
+        elif G.paused and G.viewers:
+            # paused: don't step or spend, but keep viewers fed a frozen frame so the page
+            # reflects "paused" instead of a stale "live"
+            await _broadcast(G.snapshot())
         await asyncio.sleep(TICK_INTERVAL)
 
 
