@@ -6,58 +6,56 @@ import re
 
 import httpx
 
-# A tiny LLM client for the coach. OpenAI-compatible (e.g. Gemini Flash via PITCH_LLM_KEY/URL) or
-# the Anthropic API. Disabled unless a key is set, so the app stays deterministic until configured.
-# Every call is best-effort: on any error it returns "" and the coach falls back to its heuristic.
+# The coach's LLM, with failover like phalanx: a primary provider (Groq) and a fallback (Gemini).
+# Both are OpenAI-compatible chat endpoints. If the primary errors or rate-limits (429), the call
+# falls through to the secondary; if both fail it returns "" and the coach uses its heuristic. The
+# whole thing is off unless a primary key is configured, so the app stays deterministic until wired.
 
-PROVIDER = os.environ.get("PITCH_LLM_PROVIDER", "openai")
-MODEL = os.environ.get("PITCH_MODEL", "gemini-2.0-flash")
+_GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+
+# primary (Groq by default)
 _KEY = os.environ.get("PITCH_LLM_KEY", "")
-_URL = os.environ.get(
-    "PITCH_LLM_URL", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-)
-_ANTHROPIC = os.environ.get("PITCH_ANTHROPIC_KEY", "")  # deliberately NOT ANTHROPIC_API_KEY
+_URL = os.environ.get("PITCH_LLM_URL", "https://api.groq.com/openai/v1/chat/completions")
+_MODEL = os.environ.get("PITCH_MODEL", "llama-3.3-70b-versatile")
+# fallback (Gemini by default)
+_KEY2 = os.environ.get("PITCH_LLM2_KEY", "")
+_URL2 = os.environ.get("PITCH_LLM2_URL", _GEMINI_URL)
+_MODEL2 = os.environ.get("PITCH_MODEL2", "gemini-2.0-flash")
 
 
 def enabled() -> bool:
-    return bool(_KEY or _ANTHROPIC)
+    return bool(_KEY or _KEY2)
+
+
+async def _ask(h: httpx.AsyncClient, key: str, url: str, model: str, system: str, user: str) -> str:
+    if not key:
+        return ""
+    r = await h.post(
+        url,
+        headers={"Authorization": f"Bearer {key}"},
+        json={
+            "model": model,
+            "temperature": 0.4,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        },
+    )
+    if r.status_code >= 300:  # raise so the caller falls through to the fallback provider
+        raise httpx.HTTPStatusError("bad status", request=r.request, response=r)
+    return r.json()["choices"][0]["message"]["content"]
 
 
 async def complete(system: str, user: str, timeout: float = 8.0) -> str:
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as h:
-            if _KEY:
-                r = await h.post(
-                    _URL,
-                    headers={"Authorization": f"Bearer {_KEY}"},
-                    json={
-                        "model": MODEL,
-                        "messages": [
-                            {"role": "system", "content": system},
-                            {"role": "user", "content": user},
-                        ],
-                        "temperature": 0.5,
-                    },
-                )
-                return r.json()["choices"][0]["message"]["content"] if r.status_code < 300 else ""
-            if _ANTHROPIC:
-                r = await h.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": _ANTHROPIC,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": MODEL,
-                        "max_tokens": 300,
-                        "system": system,
-                        "messages": [{"role": "user", "content": user}],
-                    },
-                )
-                return r.json()["content"][0]["text"] if r.status_code < 300 else ""
-    except Exception:
-        return ""
+    async with httpx.AsyncClient(timeout=timeout) as h:
+        for key, url, model in ((_KEY, _URL, _MODEL), (_KEY2, _URL2, _MODEL2)):
+            try:
+                out = await _ask(h, key, url, model, system, user)
+                if out:
+                    return out
+            except Exception:
+                continue
     return ""
 
 
