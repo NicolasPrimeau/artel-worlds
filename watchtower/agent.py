@@ -109,6 +109,11 @@ SYSTEM = (
     "1b. CHECK THE BOARD: call check_board once — an open task may be a past UNRESOLVED incident of "
     "this same fault with notes from whoever tried before. If your fix cracks an open board item, "
     "close_task it.\n"
+    "1c. TEAM RADIO: call read_team for live word from teammates working OTHER pages right now — in "
+    "a multi-alarm storm they may have already found the shared root, so you skip the diagnosis and "
+    "go straight to it. And the MOMENT you identify a root that is making OTHER alarms fire (a "
+    "dependency the loud nodes all lean on), tell_team it in one line — root node + the fix — so they "
+    "stop re-diagnosing the same fault. Sharing the root live is the fastest a unit clears a storm.\n"
     "2. DIAGNOSE: inspect / read_logs the suspect nodes to confirm the root cause. Cheap, but not "
     "free — don't inspect the whole graph when the runbook already named the fix. WARNING: the same "
     "page can have DIFFERENT root causes on different days — the obvious fix is sometimes wrong. "
@@ -209,6 +214,26 @@ TOOLS = [
             "type": "object",
             "properties": {"task_id": {"type": "string"}},
             "required": ["task_id"],
+        },
+    },
+    {
+        "name": "read_team",
+        "description": "Read live messages from teammates working other incidents RIGHT NOW. In a "
+        "multi-alarm storm a teammate may have already found the shared root — check before you "
+        "diagnose from scratch.",
+        "schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "tell_team",
+        "description": "Radio teammates ONE short live line — above all, the ROOT of a cascade (root "
+        "node + the fix) the moment you find it, so they stop working its symptoms. The fastest way "
+        "a unit avoids three people diagnosing the same fault.",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "one line: the root and the fix"}
+            },
+            "required": ["text"],
         },
     },
 ]
@@ -459,6 +484,39 @@ class ArtelStore:
         except Exception:
             pass
 
+    async def tell_team(self, text: str) -> None:
+        if not text:
+            return
+        try:
+            await self.http.post(
+                f"{ARTEL_URL}/messages",
+                headers=_headers(self.agent),
+                json={
+                    "to": f"project:{WATCHTOWER_PROJECT}",
+                    "subject": "incident",
+                    "body": text[:280],
+                },
+            )
+            self._activity(f"radioed team: {text[:90]}")
+        except Exception:
+            pass
+
+    async def read_team(self) -> str:
+        try:
+            r = await self.http.post(
+                f"{ARTEL_URL}/messages/inbox/consume", headers=_headers(self.agent), json={}
+            )
+            msgs = r.json() if r.status_code < 300 else []
+        except Exception:
+            return ""
+        me = self.agent.get("id")
+        lines = [
+            f"{m.get('from_agent', '?')}: {m.get('body', '')[:200]}"
+            for m in (msgs if isinstance(msgs, list) else [])
+            if m.get("from_agent") != me and m.get("body")
+        ]
+        return " | ".join(lines[-6:])
+
     async def _open_tasks(self) -> list[dict]:
         r = await self.http.get(
             f"{ARTEL_URL}/tasks",
@@ -655,6 +713,12 @@ class SoloStore:
             self.notes.append({"text": text[:400], "used": 0, "last_used": self.shift})
             del self.notes[:-200]
 
+    async def tell_team(self, text: str) -> None:
+        return  # the solo fleet has no radio — silence between responders IS the experiment
+
+    async def read_team(self) -> str:
+        return ""  # nothing ever arrives: no shared channel
+
     async def save_handoff(self, summary: str) -> None:
         self.last_shift = summary[:300]
         self.shift += 1
@@ -747,6 +811,9 @@ async def respond(http, inc: Incident, store, counts: dict | None = None, on_ste
     handoff = await store.handoff()
     if handoff:
         intro += "\nShift context:\n" + handoff
+    team = await store.read_team()  # live word from teammates already on the storm
+    if team:
+        intro += "\nLIVE from teammates right now:\n" + team
     transcript = [{"role": "user", "text": intro}]
     dud_streak = 0  # consecutive remediations that changed nothing
     for _ in range(MAX_ROUNDS):
@@ -791,6 +858,12 @@ async def respond(http, inc: Incident, store, counts: dict | None = None, on_ste
             elif name == "close_task":
                 done = await store.finish_task(str(inp.get("task_id", "")))
                 out = {"result": "task completed" if done else "no open task with that id"}
+            elif name == "read_team":
+                msgs = await store.read_team()
+                out = {"messages": msgs or "no new word from teammates"}
+            elif name == "tell_team":
+                await store.tell_team(str(inp.get("text", "")))
+                out = {"result": "radioed the team"}
             else:
                 out = {"error": f"unknown tool {name}"}
             results.append({"id": c["id"], "output": json.dumps(out)})

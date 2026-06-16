@@ -142,6 +142,27 @@ def test_storm_wave_cycles_with_a_real_surge():
     assert max(STORM_WAVE) >= 4  # the wave really surges, it isn't a flat drip
 
 
+def test_solo_radio_is_silent_but_artel_has_the_channel():
+    import asyncio
+    import inspect
+
+    from watchtower.agent import ArtelStore, SoloStore
+
+    # both fleets expose the SAME message primitive (fairness) ...
+    for store in (ArtelStore, SoloStore):
+        assert inspect.iscoroutinefunction(store.tell_team)
+        assert inspect.iscoroutinefunction(store.read_team)
+
+    # ... but the solo fleet's radio is dead: tell_team is a no-op and read_team is always empty.
+    s = SoloStore("solo-1")
+
+    async def go():
+        await s.tell_team("root is queue — restart it")  # no-op, never raises
+        return await s.read_team()
+
+    assert asyncio.run(go()) == ""
+
+
 def test_cascade_symptom_clears_only_when_root_is_fixed():
     from watchtower.config import DEFAULT
     from watchtower.incidents import Incident, cascade_root_spec, symptom_spec
