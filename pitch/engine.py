@@ -27,6 +27,7 @@ class Ball:
     vx: float = 0.0
     vy: float = 0.0
     last_touch: str | None = None  # which team last played it (for restarts)
+    last_kicker: int | None = None  # player id who last struck it (for the scorer's name)
 
 
 @dataclass
@@ -58,6 +59,12 @@ class Pitch:
     tick: int = 0
     possessor: int | None = None  # player id currently on the ball, or None (loose)
     events: list[str] = field(default_factory=list)  # goals etc., for the feed
+    celebrate: int = 0  # ticks remaining of a goal freeze (so the score reads before kickoff)
+    restart: int = 0  # ticks remaining of a dead-ball pause (throw-in / corner / goal kick)
+    scorer: str | None = None  # name shown during a celebration
+    goal_team: str | None = None  # team that just scored (for the celebration colour)
+    restart_kind: str | None = None  # "corner" | "goal-kick" | "throw-in" — for the feed
+    _concede_to: str = "home"  # who kicks off after the celebration
     _rng: Random = field(default_factory=lambda: Random(0))
 
     def __post_init__(self) -> None:
@@ -96,6 +103,8 @@ class Pitch:
     def _kickoff(self, _conceding: str) -> None:
         self.ball = Ball(self.cfg.length / 2, self.cfg.width / 2, last_touch=None)
         self.possessor = None
+        self.celebrate = self.restart = 0
+        self.scorer = self.goal_team = self.restart_kind = None
         for p in self.players:
             p.x, p.y, p.vx, p.vy = p.home_x, p.home_y, 0.0, 0.0
 
@@ -113,12 +122,28 @@ class Pitch:
 
     # --- the tick ---
     def step(self, brain) -> None:
+        self.tick += 1
+        if self.celebrate > 0:
+            # GOAL freeze — everything holds so the score is readable, then kick off
+            self.celebrate -= 1
+            if self.celebrate == 0:
+                self.scorer = self.goal_team = None
+                self._kickoff(self._concede_to)
+            return
+        if self.restart > 0:
+            # dead ball (corner/goal-kick/throw-in): players reposition, the ball sits
+            self.restart -= 1
+            intents = {p.id: brain(self, p) for p in self.players}
+            for p in self.players:
+                self._move(p, intents[p.id])
+            if self.restart == 0:
+                self.restart_kind = None
+            return
         self._resolve_possession()
         intents = {p.id: brain(self, p) for p in self.players}
         for p in self.players:
             self._move(p, intents[p.id])
         self._advance_ball(intents)
-        self.tick += 1
 
     def _resolve_possession(self) -> None:
         b = self.ball
@@ -154,16 +179,24 @@ class Pitch:
             owner = self.players[self.possessor]
             kick = intents[owner.id].get("kick")
             b.last_touch = owner.team
-            if kick is not None:
+            if kick is not None:  # pass or shot — struck away
                 b.vx, b.vy = kick
                 b.x += b.vx
                 b.y += b.vy
+                b.last_kicker = owner.id
                 self.possessor = None
-            else:  # shielding/holding — ball stays at the owner's feet, slightly ahead
+            else:
+                # CARRY — the ball eases to a spot just ahead of the carrier instead of being
+                # re-kicked every tick. Velocity is real (target-tracking), so it reads as a
+                # smooth dribble and the client interpolates it cleanly. No more jitter.
                 ax = c.length if owner.team == "home" else 0.0
                 fx, fy = _unit(ax - owner.x, c.width / 2 - owner.y)
-                b.x, b.y = owner.x + fx * 1.2, owner.y + fy * 1.2
-                b.vx = b.vy = 0.0
+                tx, ty = owner.x + fx * c.carry_ahead, owner.y + fy * c.carry_ahead
+                b.vx = (tx - b.x) * c.carry_ease
+                b.vy = (ty - b.y) * c.carry_ease
+                b.x += b.vx
+                b.y += b.vy
+                b.last_kicker = owner.id
         else:
             b.x += b.vx
             b.y += b.vy
@@ -178,31 +211,53 @@ class Pitch:
     def _boundaries(self) -> None:
         c = self.cfg
         b = self.ball
-        # end lines: goal or goal-kick
         if b.x <= 0.0:
-            if self._in_mouth(b.y):
-                return self._goal("away")
-            return self._restart_endline("home")
+            return self._goal("away") if self._in_mouth(b.y) else self._restart_endline("home")
         if b.x >= c.length:
-            if self._in_mouth(b.y):
-                return self._goal("home")
-            return self._restart_endline("away")
-        # touchlines: bounce back in (a throw-in is overkill for the spike)
-        if b.y <= 0.0:
-            b.y, b.vy = 0.0, abs(b.vy) * 0.5
-        elif b.y >= c.width:
-            b.y, b.vy = c.width, -abs(b.vy) * 0.5
+            return self._goal("home") if self._in_mouth(b.y) else self._restart_endline("away")
+        if b.y <= 0.0 or b.y >= c.width:
+            return self._throw_in()
+
+    def _scorer_name(self) -> str | None:
+        k = self.ball.last_kicker
+        return self.players[k].name if k is not None and 0 <= k < len(self.players) else None
 
     def _goal(self, scorer: str) -> None:
         self.score[scorer] += 1
+        who = self._scorer_name() or scorer
         self.events.append(
-            f"t{self.tick}: GOAL {scorer} ({self.score['home']}-{self.score['away']})"
+            f"t{self.tick}: GOAL — {who} ({self.score['home']}-{self.score['away']})"
         )
-        self._kickoff("away" if scorer == "home" else "home")
+        # freeze and celebrate before kickoff — don't snap straight back to centre
+        self.celebrate = self.cfg.celebrate_ticks
+        self.scorer = who
+        self.goal_team = scorer
+        self._concede_to = "away" if scorer == "home" else "home"
+        self.ball.vx = self.ball.vy = 0.0
+        self.possessor = None
+
+    def _dead_ball(self, x: float, y: float, to_team: str, kind: str) -> None:
+        # place a dead ball and pause briefly so the restart reads, then play resumes
+        self.ball = Ball(x, y, last_touch=("away" if to_team == "home" else "home"))
+        self.possessor = None
+        self.restart = self.cfg.restart_ticks
+        self.restart_kind = kind
 
     def _restart_endline(self, defending: str) -> None:
-        # goal kick for the team whose line it crossed — placed just out of the box, ball dead
         c = self.cfg
-        x = 12.0 if defending == "home" else c.length - 12.0
-        self.ball = Ball(x, c.width / 2, last_touch=("away" if defending == "home" else "home"))
-        self.possessor = None
+        b = self.ball
+        out_top = b.y < c.width / 2
+        if b.last_touch == defending:  # defender put it out → CORNER to the attackers
+            x = 1.0 if defending == "home" else c.length - 1.0
+            y = 1.0 if out_top else c.width - 1.0
+            self._dead_ball(x, y, "away" if defending == "home" else "home", "corner")
+        else:  # attacker put it out → GOAL KICK to the defenders
+            x = 12.0 if defending == "home" else c.length - 12.0
+            self._dead_ball(x, c.width / 2, defending, "goal-kick")
+
+    def _throw_in(self) -> None:
+        c = self.cfg
+        b = self.ball
+        y = 0.5 if b.y <= 0.0 else c.width - 0.5
+        to_team = "away" if b.last_touch == "home" else "home"  # other team throws in
+        self._dead_ball(_clamp(b.x, 6.0, c.length - 6.0), y, to_team, "throw-in")

@@ -14,7 +14,7 @@ from .engine import Pitch
 
 log = logging.getLogger("pitch")
 STATIC = Path(__file__).parent / "static"
-TICK_INTERVAL = float(os.environ.get("PITCH_TICK_INTERVAL", "0.1"))  # sim+broadcast rate
+TICK_INTERVAL = float(os.environ.get("PITCH_TICK_INTERVAL", "0.07"))  # sim+broadcast rate (smooth)
 FULLTIME_HOLD = float(os.environ.get("PITCH_FULLTIME_HOLD", "6"))  # pause on the final whistle
 
 # Tongue-in-cheek AI x football club names; two are drawn per match. Player names come from a
@@ -90,6 +90,10 @@ class Game:
             "tick": self.pitch.tick,
             "match_ticks": c.match_ticks,
             "fulltime": full,
+            "celebrating": self.pitch.celebrate > 0,
+            "scorer": self.pitch.scorer,
+            "goal_team": self.pitch.goal_team,
+            "restart": self.pitch.restart_kind,
             "home": {"club": self.home_club, "score": self.pitch.score["home"]},
             "away": {"club": self.away_club, "score": self.pitch.score["away"]},
             "ball": {"x": round(self.pitch.ball.x, 2), "y": round(self.pitch.ball.y, 2)},

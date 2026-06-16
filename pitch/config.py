@@ -29,6 +29,13 @@ class Config:
 
     shoot_range: float = 40.0  # only shoot when this close to the target goal
     pass_lead: float = 4.0  # lead a moving teammate by this much
+    carry_ahead: float = 1.6  # a dribbled ball rides this far ahead of the carrier's feet
+    carry_ease: float = (
+        0.5  # how snappily the carried ball tracks that spot (0..1) — smooth, not glued
+    )
+
+    celebrate_ticks: int = 32  # freeze on a goal so the score is readable before kickoff
+    restart_ticks: int = 6  # brief dead-ball pause on a throw-in / corner / goal kick
 
     match_ticks: int = 2400  # length of one match
 

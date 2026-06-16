@@ -101,7 +101,7 @@ def decide(pitch: Pitch, p: Player) -> dict:
         lead_x = tgt.x + (c.pass_lead if p.team == "home" else -c.pass_lead)
         return _kick(p, lead_x, tgt.y, c.pass_speed, 0.10, rng)
 
-    # carry: nudge the ball toward goal, into the more open lane
-    push_y = p.y + (rng.choice((-1, 1)) * 6.0)
-    cx = p.x + (c.dribble_speed * (3 if p.team == "home" else -3))
-    return _kick(p, cx, _clamp(push_y, 6, c.width - 6), c.dribble_speed, 0.05, rng)
+    # carry: drive at goal down the more open lane — NO kick, so the engine eases the ball
+    # ahead of us (a smooth dribble that the client can interpolate), instead of re-striking it.
+    push_y = _clamp(p.y + rng.choice((-1, 1)) * 5.0, 6, c.width - 6)
+    return {"move": (gx, push_y)}

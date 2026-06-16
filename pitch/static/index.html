@@ -5,67 +5,95 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="theme-color" content="#0a0f0a">
 <title>Pitch — Artel Worlds</title>
+<meta property="og:title" content="Pitch — the AI World Cup">
+<meta property="og:description" content="AI teams play live soccer. One side coordinates through Artel; the rest go it alone.">
+<meta property="og:url" content="https://pitch.artel.run/">
 <style>
-  :root { --bg:#0a0f0a; --home:#3d8bff; --away:#ff6a3d; --line:#cfe9d6; --dim:#7d8a80; }
+  :root { --bg:#0a0f0a; --home:#3d8bff; --away:#ff6a3d; --dim:#7d8a80; --green:#6ee7a8; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { margin:0; height:100%; background:var(--bg); color:#eafff0; overflow:hidden;
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
   #app { display:flex; flex-direction:column; height:100dvh; }
-  /* scoreboard */
-  #bar { display:flex; align-items:center; justify-content:center; gap:10px;
-    padding:calc(6px + env(safe-area-inset-top)) 10px 6px; flex:0 0 auto; }
-  #bar .club { font-weight:700; font-size:clamp(12px,3.4vw,18px); white-space:nowrap;
-    overflow:hidden; text-overflow:ellipsis; max-width:32vw; }
-  #bar .h { color:var(--home); text-align:right; } #bar .a { color:var(--away); text-align:left; }
+  #bar { display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:calc(6px + env(safe-area-inset-top)) 12px 6px; flex:0 0 auto; }
+  #clock { font-size:clamp(11px,2.8vw,14px); color:var(--dim); font-variant-numeric:tabular-nums;
+    min-width:44px; }
+  #bar .center { display:flex; align-items:center; gap:10px; flex:1; justify-content:center; min-width:0; }
+  .club { font-weight:700; font-size:clamp(12px,3.4vw,18px); white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis; max-width:30vw; }
+  .club.h { color:var(--home); text-align:right; } .club.a { color:var(--away); text-align:left; }
   #score { font-weight:800; font-variant-numeric:tabular-nums; font-size:clamp(18px,5vw,26px);
     background:#11181230; border:1px solid #20271f; border-radius:8px; padding:2px 12px; }
-  #clock { font-size:clamp(10px,2.6vw,13px); color:var(--dim); min-width:34px; text-align:center; }
+  #conn { font-size:11px; color:var(--dim); min-width:44px; text-align:right;
+    display:inline-flex; align-items:center; gap:5px; justify-content:flex-end; }
+  #conn::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--dim); }
+  #conn.live { color:var(--green); } #conn.live::before { background:var(--green); box-shadow:0 0 8px var(--green); }
+  #conn.paused { color:#d4af37; } #conn.paused::before { background:#d4af37; }
+  #conn.down { color:#d98a8a; }
   #wrap { position:relative; flex:1 1 auto; min-height:0; }
   canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
-  #banner { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-    pointer-events:none; opacity:0; transition:opacity .2s; }
+  #banner { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; pointer-events:none; opacity:0; transition:opacity .18s; gap:6px; }
   #banner.show { opacity:1; }
-  #banner span { font-weight:900; letter-spacing:2px; font-size:clamp(34px,12vw,90px);
-    text-shadow:0 2px 30px rgba(0,0,0,.6); }
-  #conn { position:absolute; top:6px; right:8px; font-size:10px; color:var(--dim); }
-  #conn.live::before { content:"● "; color:#6ee7a8; }
-  #conn.down { color:#d98a8a; }
-  #foot { flex:0 0 auto; display:flex; gap:14px; justify-content:center; align-items:center;
-    padding:5px 10px calc(5px + env(safe-area-inset-bottom)); font-size:11px; color:var(--dim); }
-  #foot a { color:#6ee7a8; text-decoration:none; }
-  #ticker { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:60vw; }
+  #banner .big { font-weight:900; letter-spacing:3px; font-size:clamp(40px,13vw,96px);
+    text-shadow:0 2px 36px rgba(0,0,0,.7); }
+  #banner .sub { font-weight:700; font-size:clamp(14px,4vw,22px); color:#fff; text-shadow:0 2px 14px rgba(0,0,0,.7); }
+  #toast { position:absolute; left:50%; bottom:10px; transform:translateX(-50%);
+    font-size:11px; color:var(--dim); background:#0a0f0acc; padding:3px 10px; border-radius:20px;
+    opacity:0; transition:opacity .2s; pointer-events:none; }
+  #toast.show { opacity:1; }
+  #foot { flex:0 0 auto; display:flex; gap:12px; justify-content:center; align-items:center; flex-wrap:wrap;
+    padding:6px 12px calc(6px + env(safe-area-inset-bottom)); font-size:11px; color:var(--dim); }
+  #foot a { color:var(--green); text-decoration:none; }
+  #foot .gh { color:var(--dim); display:inline-flex; align-items:center; gap:4px; }
+  .share { position:relative; }
+  .share button { background:#10160f; border:1px solid #20271f; color:var(--dim); border-radius:7px;
+    padding:4px 9px; font-size:11px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; }
+  .share button:hover { border-color:#2f3a30; color:#fff; }
+  #sharepop[hidden] { display:none; }
+  #sharepop { position:absolute; bottom:130%; left:50%; transform:translateX(-50%); display:flex;
+    flex-direction:column; background:#10160f; border:1px solid #20271f; border-radius:8px; overflow:hidden; }
+  #sharepop a, #sharepop button { background:none; border:0; border-bottom:1px solid #1a201a; color:var(--dim);
+    padding:8px 16px; font-size:12px; white-space:nowrap; text-align:left; }
+  #sharepop a:hover, #sharepop button:hover { background:#1a201a; color:#fff; }
 </style>
 </head>
 <body>
 <div id="app">
   <div id="bar">
-    <span class="club h" id="homeClub">—</span>
-    <span id="score">0–0</span>
-    <span class="club a" id="awayClub">—</span>
+    <span id="clock">0'</span>
+    <span class="center">
+      <span class="club h" id="homeClub">—</span>
+      <span id="score">0–0</span>
+      <span class="club a" id="awayClub">—</span>
+    </span>
+    <span id="conn">connecting…</span>
   </div>
   <div id="wrap">
     <canvas id="cv"></canvas>
-    <div id="banner"><span id="bannerText"></span></div>
-    <div id="conn">connecting…</div>
-    <div style="position:absolute;top:6px;left:8px;font-size:11px;color:var(--dim)" id="clock">0'</div>
+    <div id="banner"><span class="big" id="bannerBig"></span><span class="sub" id="bannerSub"></span></div>
+    <div id="toast"></div>
   </div>
   <div id="foot">
     <span>⚽ Pitch — <b>Artel Worlds</b></span>
-    <span id="ticker"></span>
+    <a href="https://artel.run" target="_blank" rel="noopener">Artel ↗</a>
+    <a class="gh" href="https://github.com/NicolasPrimeau/artel-worlds" target="_blank" rel="noopener">source ↗</a>
     <a href="https://worlds.artel.run/worlds" target="_blank" rel="noopener">all worlds →</a>
+    <span class="share"><button id="sharebtn" type="button" aria-label="share">
+      <svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor"><path d="M11 2.5a2.5 2.5 0 1 1 .603 1.628l-6.718 3.12a2.499 2.499 0 0 1 0 1.504l6.718 3.12a2.5 2.5 0 1 1-.488.876l-6.718-3.12a2.5 2.5 0 1 1 0-3.256l6.718-3.12A2.5 2.5 0 0 1 11 2.5z"/></svg> share</button>
+      <div id="sharepop" hidden><button id="sharecopy" type="button">copy link</button>
+        <a id="shareli" target="_blank" rel="noopener">LinkedIn</a><a id="sharex" target="_blank" rel="noopener">X</a></div></span>
   </div>
 </div>
 <script>
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d');
-let world = {length:120, width:80, goal_width:24};
-let prev = null, cur = null, recvAt = 0, lastScore = "0-0";
-const STEP_MS = 100;  // server tick rate; we interpolate across it
-let dpr = 1, view = null;
+let world = { length:120, width:80, goal_width:24 };
+let prev = null, cur = null, recvAt = 0, interval = 70, lastRecv = 0;
+let view = null, ballTrail = [];
 
 function resize() {
-  dpr = Math.min(2, window.devicePixelRatio || 1);
-  const r = cv.getBoundingClientRect();
+  const dpr = Math.min(2, window.devicePixelRatio || 1), r = cv.getBoundingClientRect();
   cv.width = Math.max(1, Math.round(r.width * dpr));
   cv.height = Math.max(1, Math.round(r.height * dpr));
   computeView();
@@ -73,125 +101,130 @@ function resize() {
 function computeView() {
   const cw = cv.width, ch = cv.height, L = world.length, Wd = world.width;
   const landscape = cw >= ch;
-  // landscape: pitch laid out long-axis horizontal. portrait: rotate 90° so it fills a tall screen.
   const scale = landscape ? Math.min(cw / L, ch / Wd) * 0.96 : Math.min(cw / Wd, ch / L) * 0.96;
   const pw = (landscape ? L : Wd) * scale, ph = (landscape ? Wd : L) * scale;
   view = { scale, rot: !landscape, ox: (cw - pw) / 2, oy: (ch - ph) / 2 };
 }
-function S(wx, wy) {  // world -> screen (device px)
-  return view.rot
-    ? [view.ox + wy * view.scale, view.oy + wx * view.scale]
-    : [view.ox + wx * view.scale, view.oy + wy * view.scale];
+function S(wx, wy) {
+  return view.rot ? [view.ox + wy * view.scale, view.oy + wx * view.scale]
+                  : [view.ox + wx * view.scale, view.oy + wy * view.scale];
 }
 addEventListener('resize', resize);
-addEventListener('orientationchange', () => setTimeout(resize, 200));
+addEventListener('orientationchange', () => setTimeout(resize, 250));
+
+function line(pts) { ctx.beginPath(); pts.forEach(([wx, wy], i) => {
+  const [px, py] = S(wx, wy); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }); ctx.stroke(); }
+function arc(wx, wy, rW, a0, a1) { const [cx, cy] = S(wx, wy); ctx.beginPath();
+  ctx.arc(cx, cy, rW * view.scale, a0, a1); ctx.stroke(); }
+function dot(wx, wy, rW, fill) { const [cx, cy] = S(wx, wy); ctx.beginPath();
+  ctx.arc(cx, cy, rW * view.scale, 0, 7); ctx.fillStyle = fill; ctx.fill(); }
 
 function drawField() {
   const L = world.length, Wd = world.width, s = view.scale;
   ctx.clearRect(0, 0, cv.width, cv.height);
-  // grass + subtle stripes
   const [x0, y0] = S(0, 0), [x1, y1] = S(L, Wd);
   ctx.fillStyle = '#123a1c';
   ctx.fillRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
-  ctx.save();
-  const stripes = 10;
-  for (let i = 0; i < stripes; i++) {
-    if (i % 2) continue;
-    const a = (L / stripes) * i, b = (L / stripes) * (i + 1);
-    const [ax, ay] = S(a, 0), [bx, by] = S(b, Wd);
+  const stripes = 12;
+  for (let i = 0; i < stripes; i += 2) {
+    const [ax, ay] = S(L / stripes * i, 0), [bx, by] = S(L / stripes * (i + 1), Wd);
     ctx.fillStyle = '#15431f';
     ctx.fillRect(Math.min(ax, bx), Math.min(ay, by), Math.abs(bx - ax), Math.abs(by - ay));
   }
-  ctx.restore();
-  ctx.strokeStyle = 'rgba(207,233,214,.55)'; ctx.lineWidth = Math.max(1, s * 0.25);
-  const line = pts => { ctx.beginPath(); pts.forEach(([wx, wy], i) => {
-    const [px, py] = S(wx, wy); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }); ctx.stroke(); };
-  // boundary
-  line([[0,0],[L,0],[L,Wd],[0,Wd],[0,0]]);
-  // halfway
-  line([[L/2,0],[L/2,Wd]]);
-  // centre circle
-  ctx.beginPath(); const [cx, cy] = S(L/2, Wd/2); ctx.arc(cx, cy, 10*s, 0, 7); ctx.stroke();
-  // penalty boxes + goal mouths
-  const gm = world.goal_width/2, by0 = Wd/2 - gm, by1 = Wd/2 + gm;
-  const box = 16, boy0 = Wd/2 - 20, boy1 = Wd/2 + 20;
-  line([[0,boy0],[box,boy0],[box,boy1],[0,boy1]]);
+  ctx.strokeStyle = 'rgba(225,245,230,.5)'; ctx.lineWidth = Math.max(1, s * 0.22);
+  line([[0,0],[L,0],[L,Wd],[0,Wd],[0,0]]);          // boundary
+  line([[L/2,0],[L/2,Wd]]);                            // halfway
+  arc(L/2, Wd/2, 9.15, 0, 7);                          // centre circle
+  dot(L/2, Wd/2, 0.4, 'rgba(225,245,230,.5)');         // centre spot
+  const boy0 = Wd/2 - 20, boy1 = Wd/2 + 20, box = 16;
+  line([[0,boy0],[box,boy0],[box,boy1],[0,boy1]]);     // boxes
   line([[L,boy0],[L-box,boy0],[L-box,boy1],[L,boy1]]);
-  // goals (thick posts)
-  ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(2, s*0.5);
+  dot(11, Wd/2, 0.4, 'rgba(225,245,230,.5)'); dot(L-11, Wd/2, 0.4, 'rgba(225,245,230,.5)');  // pen spots
+  arc(0,0,2,0,Math.PI/2); arc(0,Wd,2,-Math.PI/2,0); arc(L,0,2,Math.PI/2,Math.PI); arc(L,Wd,2,Math.PI,3*Math.PI/2); // corners
+  // goals — posts + a faint net
+  const gm = world.goal_width/2, by0 = Wd/2 - gm, by1 = Wd/2 + gm;
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(2, s*0.45);
   line([[0,by0],[0,by1]]); line([[L,by0],[L,by1]]);
+  ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1;
+  for (let g = by0; g <= by1; g += 3) { line([[0,g],[-3,g]]); line([[L,g],[L+3,g]]); }
 }
 
 function lerp(a, b, t) { return a + (b - a) * t; }
-function interpEntities() {
+function frame() {
   if (!cur) return { players: [], ball: null };
-  const t = prev ? Math.min(1, (performance.now() - recvAt) / STEP_MS) : 1;
-  const pmap = {}; if (prev) prev.players.forEach(p => pmap[p.id] = p);
-  const players = cur.players.map(p => {
-    const q = pmap[p.id] || p;
-    return { ...p, x: lerp(q.x, p.x, t), y: lerp(q.y, p.y, t) };
-  });
+  const t = prev ? Math.max(0, Math.min(1, (performance.now() - recvAt) / interval)) : 1;
+  const pm = {}; if (prev) prev.players.forEach(p => pm[p.id] = p);
+  const players = cur.players.map(p => { const q = pm[p.id] || p;
+    return { ...p, x: lerp(q.x, p.x, t), y: lerp(q.y, p.y, t) }; });
   let ball = cur.ball;
   if (prev && prev.ball) ball = { x: lerp(prev.ball.x, cur.ball.x, t), y: lerp(prev.ball.y, cur.ball.y, t) };
   return { players, ball };
 }
 
 function render() {
-  if (view) {
+  if (view && cur) {
     drawField();
-    const { players, ball } = interpEntities();
-    const s = view.scale, pr = Math.max(4, s * 1.5);
+    const { players, ball } = frame(), s = view.scale, pr = Math.max(4.5, s * 1.55);
+    for (const p of players) {            // player shadows
+      const [px, py] = S(p.x + 0.6, p.y + 0.6);
+      ctx.beginPath(); ctx.arc(px, py, pr, 0, 7); ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.fill();
+    }
     for (const p of players) {
       const [px, py] = S(p.x, p.y);
       ctx.beginPath(); ctx.arc(px, py, pr, 0, 7);
-      ctx.fillStyle = p.team === 'home' ? getCss('--home') : getCss('--away');
-      ctx.fill();
-      ctx.lineWidth = Math.max(1, s*0.18); ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.stroke();
-      if (p.role === 'GK') { ctx.fillStyle = '#0a0f0a'; ctx.beginPath(); ctx.arc(px, py, pr*0.42, 0, 7); ctx.fill(); }
+      ctx.fillStyle = p.team === 'home' ? '#3d8bff' : '#ff6a3d'; ctx.fill();
+      ctx.lineWidth = Math.max(1, s*0.22); ctx.strokeStyle = 'rgba(255,255,255,.65)'; ctx.stroke();
+      if (p.role === 'GK') { ctx.fillStyle = '#0a0f0a'; ctx.beginPath(); ctx.arc(px, py, pr*0.4, 0, 7); ctx.fill(); }
     }
     if (ball) {
-      const [bx, by] = S(ball.x, ball.y);
-      ctx.beginPath(); ctx.arc(bx, by, Math.max(2.5, s*0.85), 0, 7);
-      ctx.fillStyle = '#fff'; ctx.fill();
-      ctx.lineWidth = 1; ctx.strokeStyle = '#222'; ctx.stroke();
+      ballTrail.push({ x: ball.x, y: ball.y }); if (ballTrail.length > 7) ballTrail.shift();
+      ballTrail.forEach((b, i) => { const a = i / ballTrail.length;
+        dot(b.x, b.y, s*0.0 + Math.max(1.6, s*0.7) / view.scale * a, `rgba(255,255,255,${0.05 + a*0.12})`); });
+      const [bx, by] = S(ball.x + 0.5, ball.y + 0.7);  // ball shadow
+      ctx.beginPath(); ctx.arc(bx, by, Math.max(2.2, s*0.8), 0, 7); ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fill();
+      const [px, py] = S(ball.x, ball.y);
+      ctx.beginPath(); ctx.arc(px, py, Math.max(2.6, s*0.85), 0, 7);
+      ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = '#1a1a1a'; ctx.stroke();
     }
   }
   requestAnimationFrame(render);
 }
-function getCss(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 
-function flash(text, color, ms) {
-  $('bannerText').textContent = text; $('bannerText').style.color = color;
-  $('banner').classList.add('show');
-  clearTimeout(flash._t); flash._t = setTimeout(() => $('banner').classList.remove('show'), ms);
+function setBanner(big, sub, color) {
+  if (!big) { $('banner').classList.remove('show'); return; }
+  $('bannerBig').textContent = big; $('bannerBig').style.color = color || '#fff';
+  $('bannerSub').textContent = sub || ''; $('banner').classList.add('show');
+}
+let toastT;
+function setToast(text) {
+  const el = $('toast'); if (!text) { el.classList.remove('show'); return; }
+  el.textContent = text; el.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 2200);
 }
 
 function apply(s) {
   if (s.length !== world.length || s.width !== world.width) { world = s; computeView(); }
-  else world = s;
-  prev = cur; cur = s; recvAt = performance.now();
-  $('homeClub').textContent = s.home.club;
-  $('awayClub').textContent = s.away.club;
-  const sc = `${s.home.score}–${s.away.score}`;
-  $('score').textContent = sc;
+  const nowp = performance.now();
+  if (lastRecv) interval = lerp(interval, Math.min(300, Math.max(40, nowp - lastRecv)), 0.3);
+  lastRecv = nowp;
+  prev = cur; cur = s; recvAt = nowp;
+  $('homeClub').textContent = s.home.club; $('awayClub').textContent = s.away.club;
+  $('score').textContent = `${s.home.score}–${s.away.score}`;
   const mins = Math.min(90, Math.floor(s.tick / s.match_ticks * 90));
   $('clock').textContent = s.fulltime ? "FT" : mins + "'";
-  // goal flash on score change (not at kickoff reset where match_no changes)
-  const key = s.match_no + ":" + sc;
-  if (apply._lastKey && apply._lastMatch === s.match_no && key !== apply._lastKey && !s.fulltime) {
-    flash('GOAL', '#fff', 1600);
-  }
-  if (s.fulltime && apply._lastFt !== s.match_no) {
-    apply._lastFt = s.match_no;
+  // banner is driven by server state — the goal freeze holds it long enough to read
+  if (s.celebrating) {
+    setBanner('GOAL', s.scorer || '', s.goal_team === 'home' ? '#3d8bff' : '#ff6a3d');
+  } else if (s.fulltime) {
     const w = s.home.score > s.away.score ? s.home.club : s.away.score > s.home.score ? s.away.club : 'DRAW';
-    flash('FULL TIME', '#6ee7a8', 5000);
+    setBanner('FULL TIME', w, '#6ee7a8');
+  } else { setBanner(null); }
+  if (s.restart && apply._lastRestart !== s.tick - (s.tick % 1)) {
+    const labels = { corner: 'Corner', 'goal-kick': 'Goal kick', 'throw-in': 'Throw-in' };
+    if (apply._restartShown !== s.restart + ':' + s.match_no) { setToast(labels[s.restart] || ''); }
   }
-  apply._lastKey = key; apply._lastMatch = s.match_no;
-  // ticker of recent results
-  if (s.history && s.history.length) {
-    $('ticker').textContent = s.history.slice().reverse()
-      .map(r => `${r.home} ${r.h}–${r.a} ${r.away}`).join('   •   ');
-  }
+  apply._restartShown = s.restart ? s.restart + ':' + s.match_no : null;
+  if (cur && prev && cur.match_no !== prev.match_no) ballTrail = [];
 }
 
 let ws, retry = 0;
@@ -199,12 +232,28 @@ function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/stream`);
   ws.onopen = () => { retry = 0; $('conn').className = 'live'; $('conn').textContent = 'live'; };
-  ws.onmessage = e => { try { apply(JSON.parse(e.data)); } catch (_) {} };
+  ws.onmessage = e => { try { const s = JSON.parse(e.data); applyConn(s); apply(s); } catch (_) {} };
   ws.onclose = () => { $('conn').className = 'down'; $('conn').textContent = 'reconnecting';
     setTimeout(connect, Math.min(3000, 400 * 2 ** retry++)); };
   ws.onerror = () => ws.close();
 }
+function applyConn(s) {  // the socket's up, but reflect the WORLD's state (paused vs live)
+  const c = $('conn');
+  if (s.paused) { c.textContent = 'paused'; c.className = 'paused'; }
+  else { c.textContent = 'live'; c.className = 'live'; }
+}
 addEventListener('focus', () => { if (!ws || ws.readyState > 1) connect(); });
+
+// share
+(function () {
+  const url = 'https://pitch.artel.run/', title = 'The AI World Cup — live on Pitch';
+  $('shareli').href = 'https://www.linkedin.com/sharing/share-offsite/?url=' + encodeURIComponent(url);
+  $('sharex').href = 'https://twitter.com/intent/tweet?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(title);
+  const btn = $('sharebtn'), pop = $('sharepop');
+  btn.onclick = e => { e.stopPropagation(); pop.hidden = !pop.hidden; };
+  $('sharecopy').onclick = () => { navigator.clipboard?.writeText(url); $('sharecopy').textContent = 'copied!'; };
+  document.addEventListener('click', e => { if (!e.target.closest('.share')) pop.hidden = true; });
+})();
 
 resize();
 connect();
