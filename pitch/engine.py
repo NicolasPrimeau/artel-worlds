@@ -146,13 +146,18 @@ class Pitch:
         self._advance_ball(intents)
 
     def _resolve_possession(self) -> None:
+        # a player controls the ball when it's within their reach; the keeper's reach is larger
+        # (a dive/parry), so on-target shots get gathered instead of trickling in. Closest
+        # qualifying player wins, so an outfielder can still beat a keeper to a loose ball.
         b = self.ball
-        nearest, nd = None, 1e9
+        c = self.cfg
+        best, bd = None, 1e9
         for p in self.players:
             d = _len(p.x - b.x, p.y - b.y)
-            if d < nd:
-                nearest, nd = p, d
-        self.possessor = nearest.id if (nearest and nd <= self.cfg.control_radius) else None
+            reach = c.gk_reach if p.role == "GK" else c.control_radius
+            if d <= reach and d < bd:
+                best, bd = p, d
+        self.possessor = best.id if best else None
 
     def _move(self, p: Player, intent: dict) -> None:
         c = self.cfg

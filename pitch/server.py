@@ -14,7 +14,7 @@ from .engine import Pitch
 
 log = logging.getLogger("pitch")
 STATIC = Path(__file__).parent / "static"
-TICK_INTERVAL = float(os.environ.get("PITCH_TICK_INTERVAL", "0.07"))  # sim+broadcast rate (smooth)
+TICK_INTERVAL = float(os.environ.get("PITCH_TICK_INTERVAL", "0.08"))  # sim+broadcast rate
 FULLTIME_HOLD = float(os.environ.get("PITCH_FULLTIME_HOLD", "6"))  # pause on the final whistle
 
 # Tongue-in-cheek AI x football club names; two are drawn per match. Player names come from a

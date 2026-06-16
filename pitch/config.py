@@ -16,9 +16,9 @@ class Config:
 
     team_size: int = 5  # includes the keeper
 
-    player_speed: float = 0.92  # max outfield move per tick (a touch slower — calmer pace)
-    keeper_speed: float = 1.05
-    accel: float = 0.16  # gentler ramp to top speed — players glide and arc, not snap
+    player_speed: float = 0.82  # max outfield move per tick — calmer, more deliberate pace
+    keeper_speed: float = 1.25  # keepers are quick across the mouth (they make the saves)
+    accel: float = 0.15  # gentler ramp to top speed — players glide and arc, not snap
     arrive_radius: float = (
         4.0  # ease to a stop within this of a POSITIONING target (not when chasing)
     )
@@ -29,9 +29,10 @@ class Config:
     dribble_speed: float = 1.9  # a carried ball is nudged forward at ~player pace
     control_radius: float = 2.4  # within this of the ball, a player is "on" it
     tackle_radius: float = 2.2  # an opponent this close can contest possession
+    gk_reach: float = 4.2  # a keeper gathers (saves) the ball within this — bigger than control
 
-    shoot_range: float = 40.0  # only shoot when this close to the target goal
-    pass_lead: float = 4.0  # lead a moving teammate by this much
+    shoot_range: float = 26.0  # shoot only when genuinely close — forces build-up, not blasts
+    pass_lead: float = 4.5  # lead a moving teammate by this much
     carry_ahead: float = 1.6  # a dribbled ball rides this far ahead of the carrier's feet
     carry_ease: float = (
         0.5  # how snappily the carried ball tracks that spot (0..1) — smooth, not glued

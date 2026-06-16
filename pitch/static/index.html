@@ -18,12 +18,14 @@
     padding:calc(6px + env(safe-area-inset-top)) 12px 6px; flex:0 0 auto; }
   #clock { font-size:clamp(11px,2.8vw,14px); color:var(--dim); font-variant-numeric:tabular-nums;
     min-width:44px; }
-  #bar .center { display:flex; align-items:center; gap:10px; flex:1; justify-content:center; min-width:0; }
+  #bar .center { display:flex; align-items:center; gap:10px; flex:1; justify-content:center;
+    min-width:0; flex-wrap:nowrap; }
   .club { font-weight:700; font-size:clamp(12px,3.4vw,18px); white-space:nowrap; overflow:hidden;
-    text-overflow:ellipsis; max-width:30vw; }
+    text-overflow:ellipsis; max-width:30vw; flex:0 1 auto; }
   .club.h { color:var(--home); text-align:right; } .club.a { color:var(--away); text-align:left; }
   #score { font-weight:800; font-variant-numeric:tabular-nums; font-size:clamp(18px,5vw,26px);
-    background:#11181230; border:1px solid #20271f; border-radius:8px; padding:2px 12px; }
+    background:#11181230; border:1px solid #20271f; border-radius:8px; padding:2px 12px;
+    white-space:nowrap; flex:0 0 auto; }
   #conn { font-size:11px; color:var(--dim); min-width:44px; text-align:right;
     display:inline-flex; align-items:center; gap:5px; justify-content:flex-end; }
   #conn::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--dim); }
@@ -89,7 +91,9 @@
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d');
 let world = { length:120, width:80, goal_width:24 };
-let prev = null, cur = null, recvAt = 0, interval = 70, lastRecv = 0;
+let buf = [], latest = null;  // buf: timestamped snapshots; latest: newest (for the scoreboard)
+const RENDER_DELAY = 150;  // render this far behind live so we always interpolate between two
+                           // RECEIVED frames (never extrapolate) — absorbs network jitter, no stutter
 let view = null, ballTrail = [], selected = null;
 
 function resize() {
@@ -118,12 +122,12 @@ function screenToWorld(sx, sy) {
                   : [(sx - view.ox) / view.scale, (sy - view.oy) / view.scale];
 }
 cv.addEventListener('click', e => {  // tap a player to reveal their name; tap elsewhere to clear
-  if (!cur) return;
+  if (!latest) return;
   const r = cv.getBoundingClientRect();
   const [wx, wy] = screenToWorld((e.clientX - r.left) * (cv.width / r.width),
                                  (e.clientY - r.top) * (cv.height / r.height));
-  let best = null, bd = 4.0;
-  for (const p of cur.players) { const d = Math.hypot(p.x - wx, p.y - wy); if (d < bd) { bd = d; best = p.id; } }
+  let best = null, bd = 4.5;
+  for (const p of latest.players) { const d = Math.hypot(p.x - wx, p.y - wy); if (d < bd) { bd = d; best = p.id; } }
   selected = best;
 });
 
@@ -166,18 +170,24 @@ function drawField() {
 
 function lerp(a, b, t) { return a + (b - a) * t; }
 function frame() {
-  if (!cur) return { players: [], ball: null };
-  const t = prev ? Math.max(0, Math.min(1, (performance.now() - recvAt) / interval)) : 1;
-  const pm = {}; if (prev) prev.players.forEach(p => pm[p.id] = p);
-  const players = cur.players.map(p => { const q = pm[p.id] || p;
-    return { ...p, x: lerp(q.x, p.x, t), y: lerp(q.y, p.y, t) }; });
-  let ball = cur.ball;
-  if (prev && prev.ball) ball = { x: lerp(prev.ball.x, cur.ball.x, t), y: lerp(prev.ball.y, cur.ball.y, t) };
+  if (!buf.length) return { players: [], ball: null };
+  const rt = performance.now() - RENDER_DELAY;
+  let a = buf[0], b = buf[buf.length - 1];
+  if (rt <= buf[0].t) { a = b = buf[0]; }
+  else if (rt >= buf[buf.length - 1].t) { a = b = buf[buf.length - 1]; }
+  else { for (let i = 0; i < buf.length - 1; i++) {
+    if (buf[i].t <= rt && buf[i + 1].t >= rt) { a = buf[i]; b = buf[i + 1]; break; } } }
+  const span = b.t - a.t, al = span > 0 ? (rt - a.t) / span : 1;
+  const A = a.snap, B = b.snap, pm = {};
+  A.players.forEach(p => pm[p.id] = p);
+  const players = B.players.map(p => { const q = pm[p.id] || p;
+    return { ...p, x: lerp(q.x, p.x, al), y: lerp(q.y, p.y, al) }; });
+  const ball = { x: lerp(A.ball.x, B.ball.x, al), y: lerp(A.ball.y, B.ball.y, al) };
   return { players, ball };
 }
 
 function render() {
-  if (view && cur) {
+  if (view && latest) {
     drawField();
     const { players, ball } = frame(), s = view.scale, pr = Math.max(4.5, s * 1.55);
     for (const p of players) {            // player shadows
@@ -241,10 +251,10 @@ function setToast(text) {
 
 function apply(s) {
   if (s.length !== world.length || s.width !== world.width) { world = s; computeView(); }
-  const nowp = performance.now();
-  if (lastRecv) interval = lerp(interval, Math.min(300, Math.max(40, nowp - lastRecv)), 0.3);
-  lastRecv = nowp;
-  prev = cur; cur = s; recvAt = nowp;
+  if (latest && latest.match_no !== s.match_no) { buf = []; ballTrail = []; selected = null; }  // new match
+  latest = s;
+  buf.push({ t: performance.now(), snap: s });
+  if (buf.length > 12) buf.shift();
   $('homeClub').textContent = s.home.club; $('awayClub').textContent = s.away.club;
   $('score').textContent = `${s.home.score}–${s.away.score}`;
   const mins = Math.min(90, Math.floor(s.tick / s.match_ticks * 90));
@@ -261,7 +271,6 @@ function apply(s) {
     if (apply._restartShown !== s.restart + ':' + s.match_no) { setToast(labels[s.restart] || ''); }
   }
   apply._restartShown = s.restart ? s.restart + ':' + s.match_no : null;
-  if (cur && prev && cur.match_no !== prev.match_no) { ballTrail = []; selected = null; }
 }
 
 let ws, retry = 0;

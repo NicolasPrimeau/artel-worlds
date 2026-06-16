@@ -97,19 +97,24 @@ def decide(pitch: Pitch, p: Player) -> dict:
     if pitch.possessor != p.id:  # chase / intercept — sprint to win the ball
         return {"move": (b.x, b.y), "sprint": True}
 
-    # on the ball: shoot, pass, or carry
+    # on the ball: shoot (only when genuinely close), else PASS by default, else carry.
+    fwd = 1.0 if p.team == "home" else -1.0
     dist_goal = _len(gx - p.x, gy - p.y)
-    if dist_goal < c.shoot_range:
+    mine_open = _open(pitch, p)
+    if dist_goal < c.shoot_range and mine_open > 3.0:
         ax, ay = _shoot_aim(pitch, p)
-        return _kick(p, ax, ay, c.shot_speed, 0.12 + dist_goal / 400.0, rng)
+        # scatter grows with range — long shots fly wide, so goals come from working it close
+        return _kick(p, ax, ay, c.shot_speed, 0.22 + dist_goal / 130.0, rng)
 
-    # best forward, open pass
-    options = [q for q in outfield if q.id != p.id and _ahead(p.team, q, p)]
-    options = [q for q in options if _open(pitch, q) > 5.0]
-    if options:
-        tgt = max(options, key=lambda q: (q.x if p.team == "home" else -q.x) + _open(pitch, q))
-        lead_x = tgt.x + (c.pass_lead if p.team == "home" else -c.pass_lead)
-        return _kick(p, lead_x, tgt.y, c.pass_speed, 0.10, rng)
+    # PASS is the default — keep the ball moving. Any open teammate who isn't well behind me is
+    # an option (forward, square, or a slight switch); favour the most advanced + most open. This
+    # is what makes it read like soccer: build-up through passes, not endless solo dribbles.
+    mates = [q for q in outfield if q.id != p.id]
+    opts = [q for q in mates if _open(pitch, q) > 5.5 and (q.x - p.x) * fwd > -10]
+    pressured = mine_open < 6.5
+    if opts and (pressured or len(opts) >= 2 or rng.random() < 0.6):
+        tgt = max(opts, key=lambda q: q.x * fwd + _open(pitch, q) * 0.5)
+        return _kick(p, tgt.x + c.pass_lead * fwd, tgt.y, c.pass_speed, 0.08, rng)
 
     # carry: drive at goal down the more open lane — NO kick, so the engine eases the ball
     # ahead of us (a smooth dribble that the client can interpolate), instead of re-striking it.
