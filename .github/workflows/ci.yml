@@ -46,7 +46,9 @@ jobs:
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Deploy Automata
-        run: flyctl deploy --app artel-worlds --remote-only --yes
+        # immediate strategy: these apps run a single machine with a volume, so a rolling deploy
+        # has nowhere to place the new machine and fails / silently no-ops. Recreate in place.
+        run: flyctl deploy --app artel-worlds --remote-only --yes --strategy immediate
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
@@ -60,7 +62,7 @@ jobs:
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Deploy Phalanx
-        run: flyctl deploy --app artel-phalanx --config fly-phalanx.toml --remote-only --yes
+        run: flyctl deploy --app artel-phalanx --config fly-phalanx.toml --remote-only --yes --strategy immediate
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
@@ -74,7 +76,7 @@ jobs:
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Deploy Watchtower
-        run: flyctl deploy --app artel-watchtower --config fly-watchtower.toml --remote-only --yes
+        run: flyctl deploy --app artel-watchtower --config fly-watchtower.toml --remote-only --yes --strategy immediate
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
