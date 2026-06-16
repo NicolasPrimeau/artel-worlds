@@ -37,6 +37,7 @@
   #conn { color:var(--dim); display:inline-flex; align-items:center; gap:5px; font-size:12px; }
   #conn::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--dim); }
   #conn.live { color:var(--green); } #conn.live::before { background:var(--green); box-shadow:0 0 8px var(--green); }
+  #conn.paused { color:#d4af37; } #conn.paused::before { background:#d4af37; }
   main { max-width:880px; margin:0 auto; padding:16px; display:grid; gap:14px; }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:13px; padding:14px 16px; backdrop-filter:blur(12px); max-width:100%; }
   .ttl { color:var(--dim); font-size:10px; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:10px; display:flex; align-items:center; gap:7px; }
@@ -389,6 +390,9 @@ function wall(el, nodes){
 }
 
 function render(s){
+  const conn = $("conn");
+  if (s.paused) { conn.textContent = "paused"; conn.className = "paused"; }
+  else { conn.textContent = "live"; conn.className = "live"; }
   const sum = s.summary || {};
   $("h-artel").textContent = fmt(sum.artel_mttr_recent);
   $("h-solo").textContent = fmt(sum.solo_mttr_recent);

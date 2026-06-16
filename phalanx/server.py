@@ -164,6 +164,7 @@ class Phalanx:
             "height": a.cfg.height,
             "map_radius": a.cfg.map_radius,
             "scores": self.scores,
+            "paused": self.paused,
             "coordinated": list(COORDINATED),
             "comms": list(self.squad._comms),
             "zone": {
@@ -349,6 +350,10 @@ async def _tick_loop():
                 await asyncio.sleep(MATCH_END_LINGER)
                 async with G.lock:
                     G._new_match()
+        elif G.paused and G.viewers:
+            # paused: don't simulate, but keep feeding a frozen frame so the page reflects
+            # "paused" instead of a stale "live"
+            await _broadcast(G.snapshot())
         await asyncio.sleep(max(0.0, TICK_INTERVAL - (loop.time() - start)))
 
 

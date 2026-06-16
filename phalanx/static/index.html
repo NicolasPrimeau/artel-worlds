@@ -48,6 +48,7 @@
   #conn { color:var(--dim); display:inline-flex; align-items:center; gap:5px; }
   #conn::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--dim); }
   #conn.live { color:#6ee7a8; } #conn.live::before { background:#6ee7a8; box-shadow:0 0 8px #6ee7a8; }
+  #conn.paused { color:#d4af37; } #conn.paused::before { background:#d4af37; }
   #wrap { position:relative; flex:1 1 auto; min-height:0; }
   canvas#c { display:block; width:100%; height:100%; touch-action:none; }
   /* scoreboard */
@@ -516,6 +517,10 @@ function loop(now){ try{ render(now); }catch(e){ /* never let one bad frame kill
 
 function apply(snp){
   const now=performance.now();
+  // the socket is up, but reflect the WORLD's state: paused, not just "live"
+  const conn=$('conn');
+  if(snp.paused){ conn.textContent='paused'; conn.className='paused'; }
+  else { conn.textContent='live'; conn.className='live'; }
   const first=!snap||snap.width!==snp.width;
   if(!L||first){ snap=snp; layout(); }
   // new match: drop every scheduled effect from the old one

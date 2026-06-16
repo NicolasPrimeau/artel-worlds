@@ -354,6 +354,9 @@ class World:
                     log.warning("watchtower loop error: %s", e)
                 await asyncio.sleep(self._interval())
             else:
+                if self.paused and self.viewers:
+                    # keep viewers fed a frozen frame so the page shows "paused", not stale "live"
+                    await self._broadcast()
                 await asyncio.sleep(IDLE_POLL)
 
     def _interval(self) -> float:
