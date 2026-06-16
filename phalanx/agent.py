@@ -297,14 +297,20 @@ def _build_payload(
                         ],
                     }
                 )
+        # prompt caching: the system prompt + tool schema are byte-identical every command, so
+        # mark them as a cache breakpoint — the repeated prefix bills at ~0.1x after the first
+        # write. Only the small per-turn brief (after the breakpoint) is ever fresh input.
+        _tools = [
+            {"name": t["name"], "description": t["description"], "input_schema": t["schema"]}
+            for t in toolset
+        ]
+        if _tools:
+            _tools[-1] = {**_tools[-1], "cache_control": {"type": "ephemeral"}}
         payload = {
             "model": ep["model"],
             "max_tokens": 320,
-            "system": system,
-            "tools": [
-                {"name": t["name"], "description": t["description"], "input_schema": t["schema"]}
-                for t in toolset
-            ],
+            "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+            "tools": _tools,
             "tool_choice": {"type": "tool", "name": toolset[0]["name"]}
             if force_act
             else {"type": "any"},
@@ -367,7 +373,13 @@ def _build_payload(
     return ep["url"], payload, headers
 
 
-def _parse(ep: dict, data: dict) -> tuple[str, list[dict], int, int]:
+# cumulative prompt-cache instrumentation: how much of the input we've sent has been served
+# from the provider's cache (cheap) vs paid fresh — the answer to "are we caching enough"
+_CACHE = {"cached_in": 0, "input": 0}
+
+
+def _parse(ep: dict, data: dict) -> tuple[str, list[dict], int, int, int]:
+    # last element is cached INPUT tokens — what prompt caching saved us this call
     if ep["provider"] == "anthropic":
         usage = data.get("usage", {})
         text, calls = "", []
@@ -382,7 +394,10 @@ def _parse(ep: dict, data: dict) -> tuple[str, list[dict], int, int]:
                         "input": block.get("input", {}),
                     }
                 )
-        return text, calls, usage.get("input_tokens", 0), usage.get("output_tokens", 0)
+        # anthropic bills cache reads separately from fresh input; count both as input seen
+        fresh = usage.get("input_tokens", 0)
+        cached = usage.get("cache_read_input_tokens", 0)
+        return text, calls, fresh + cached, usage.get("output_tokens", 0), cached
 
     usage = data.get("usage", {})
     msg = (data.get("choices") or [{}])[0].get("message", {})
@@ -394,11 +409,14 @@ def _parse(ep: dict, data: dict) -> tuple[str, list[dict], int, int]:
         except Exception:
             inp = {}
         calls.append({"id": c.get("id"), "name": fn.get("name"), "input": inp})
+    # gemini/openai-compat report implicitly-cached prefix tokens here (already inside prompt_tokens)
+    cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
     return (
         msg.get("content") or "",
         calls,
         usage.get("prompt_tokens", 0),
         usage.get("completion_tokens", 0),
+        cached,
     )
 
 
@@ -450,7 +468,9 @@ async def _chat(
         url, payload, headers = _build_payload(ep, system, transcript, force_act, tools)
         r = await http.post(url, headers=headers, json=payload)
         if r.status_code < 300:
-            text, calls, tin, tout = _parse(ep, r.json())
+            text, calls, tin, tout, cached = _parse(ep, r.json())
+            _CACHE["cached_in"] += cached
+            _CACHE["input"] += tin
             return text, calls, tin, tout, ep
         if r.status_code == 429:
             _mark_throttled(ep, r.text[:300])
@@ -1517,6 +1537,9 @@ class Squad:
             "fallback_key_set": bool(FALLBACK and FALLBACK["key"]),
             "spent_usd": round(self.spent, 4),
             "cap_usd": SPEND_CAP_USD,
+            "cache_ratio": round(_CACHE["cached_in"] / max(1, _CACHE["input"]), 3),
+            "cached_in": _CACHE["cached_in"],
+            "input_tok": _CACHE["input"],
             "last_error": self.last_error,
             "throttled_429s": dict(THROTTLED),
             "endpoints_down": {

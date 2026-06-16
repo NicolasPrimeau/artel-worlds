@@ -163,6 +163,7 @@ function card(w){
         <div class="m"><div class="v a">${secs(facts.artel_mttr)}</div><div class="k">Artel MTTR</div></div>
         <div class="m"><div class="v s">${secs(facts.solo_mttr)}</div><div class="k">solo MTTR</div></div>
         <div class="m"><div class="v">${pct(facts.win_rate)}</div><div class="k">Artel wins</div></div>
+        <div class="m"><div class="v" style="color:var(--accent,#7fd1a8)">${w.cache_ratio!=null?pct(w.cache_ratio):"—"}</div><div class="k">prompt cache</div></div>
       </div>
       <div class="facts">incidents <b>${facts.incidents ?? 0}</b> · gave up <b>${m[0] ?? "—"}</b> Artel / <b>${m[1] ?? "—"}</b> solo</div>
       ${(facts.wedge||[]).length >= 2 ? '<div class="chartbox"><canvas id="wt-wedge"></canvas></div>'
@@ -177,6 +178,7 @@ function card(w){
       <div class="row">
         <div class="m"><div class="v spend">${money(w.spend)}</div><div class="k">spend (cap ${money(w.cap)})</div></div>
         <div class="m"><div class="v"><span style="color:var(--artel-soft)">${sc.artel ?? 0}</span><span style="color:var(--dim);font-weight:400">–</span><span style="color:var(--red)">${sc.red ?? 0}</span></div><div class="k">wins (A–R)</div></div>
+        <div class="m"><div class="v" style="color:var(--accent,#7fd1a8)">${w.cache_ratio!=null?pct(w.cache_ratio):"—"}</div><div class="k">prompt cache</div></div>
       </div>
       ${recent.length ? `<div class="dots">${dots}</div>` : ""}
       <div class="facts">${facts.match ?? 0} matches finished · last ${recent.length || 0} above (blue = Artel won) · rate-limit hits <b>${t}</b></div>`;

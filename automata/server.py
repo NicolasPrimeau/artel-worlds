@@ -859,6 +859,7 @@ async def ui_stats(request: Request):
                 "spend": round(spend, 4),
                 "spend_label": "all time",
                 "cap": sq.get("cap_usd"),
+                "cache_ratio": sq.get("cache_ratio"),
                 "spend_days": ph.get("spend_days") or {},
                 "facts": {
                     "match": ph.get("completed", ph.get("match")),
@@ -911,6 +912,7 @@ async def ui_stats(request: Request):
                 "spend_label": "all time",
                 "spend_today": wt.get("spent_today"),
                 "cap": wt.get("cap_daily"),
+                "cache_ratio": wt.get("cache_ratio"),
                 "spend_days": wt.get("spend_days") or {},
                 "facts": {
                     "incidents": s.get("incidents"),

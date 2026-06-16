@@ -237,14 +237,19 @@ def _build_payload(ep, system, transcript, force=None):
                         ],
                     }
                 )
+        # prompt caching: system + tool schema are identical across an incident's rounds, so
+        # mark them as a cache breakpoint — the repeated prefix bills at ~0.1x after the write.
+        _tools = [
+            {"name": t["name"], "description": t["description"], "input_schema": t["schema"]}
+            for t in TOOLS
+        ]
+        if _tools:
+            _tools[-1] = {**_tools[-1], "cache_control": {"type": "ephemeral"}}
         payload = {
             "model": ep["model"],
             "max_tokens": 400,
-            "system": system,
-            "tools": [
-                {"name": t["name"], "description": t["description"], "input_schema": t["schema"]}
-                for t in TOOLS
-            ],
+            "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+            "tools": _tools,
             "tool_choice": {"type": "any"},
             "messages": messages,
         }
@@ -300,7 +305,12 @@ def _build_payload(ep, system, transcript, force=None):
     return ep["url"], payload, headers
 
 
+# cumulative prompt-cache instrumentation: cached input vs total input seen across all calls
+CACHE = {"cached_in": 0, "input": 0}
+
+
 def _parse(ep, data):
+    # last element is cached INPUT tokens (what prompt caching served cheap this call)
     if ep["provider"] == "anthropic":
         usage = data.get("usage", {})
         text, calls = "", []
@@ -315,7 +325,9 @@ def _parse(ep, data):
                         "input": block.get("input", {}),
                     }
                 )
-        return text, calls, usage.get("input_tokens", 0), usage.get("output_tokens", 0)
+        fresh = usage.get("input_tokens", 0)
+        cached = usage.get("cache_read_input_tokens", 0)
+        return text, calls, fresh + cached, usage.get("output_tokens", 0), cached
 
     usage = data.get("usage", {})
     msg = (data.get("choices") or [{}])[0].get("message", {})
@@ -327,11 +339,13 @@ def _parse(ep, data):
         except Exception:
             inp = {}
         calls.append({"id": c.get("id"), "name": fn.get("name"), "input": inp})
+    cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
     return (
         msg.get("content") or "",
         calls,
         usage.get("prompt_tokens", 0),
         usage.get("completion_tokens", 0),
+        cached,
     )
 
 
@@ -369,7 +383,9 @@ async def _chat(http, system, transcript, session: str = ""):
         url, payload, headers = _build_payload(ep, system, transcript)
         r = await http.post(url, headers=headers, json=payload)
         if r.status_code < 300:
-            text, calls, tin, tout = _parse(ep, r.json())
+            text, calls, tin, tout, cached = _parse(ep, r.json())
+            CACHE["cached_in"] += cached
+            CACHE["input"] += tin
             return text, calls, tin, tout, ep
         if r.status_code == 429:
             _mark_throttled(ep, r.text[:300])
