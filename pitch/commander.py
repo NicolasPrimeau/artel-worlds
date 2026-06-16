@@ -119,6 +119,16 @@ def make_brain(artel_team: str | None):
     return brain
 
 
+def combined_brain(coords: dict):
+    # route each player to its side's coordinator (Artel sides) or the baseline. With half the field
+    # Artel, a match can have two coordinators — both teams coached, each by its own line agents.
+    def brain(pitch: Pitch, p: Player) -> dict:
+        co = coords.get(p.team)
+        return coordinated_decide(pitch, p, co.plan) if co else bot.decide(pitch, p)
+
+    return brain
+
+
 def _state_prompt(pitch: Pitch, team: str) -> str:
     c = pitch.cfg
     other = "away" if team == "home" else "home"
@@ -221,24 +231,27 @@ class Coordinator:
         if self._artel is None:
             self.plan = base
             return
-        # line agents publish their piece to Artel (only on change, to keep traffic light)
+        # line agents publish their piece to Artel, tagged by this team so two coordinators in an
+        # Artel-vs-Artel tie don't read each other's plan (only on change, to keep traffic light).
+        tag = f"team:{self.team}"
         if base.commit != self._last.commit or base.low_block != self._last.low_block:
             await self._artel.write_memory(
                 "mid",
                 f"commit={base.commit};low_block={int(base.low_block)}",
-                ["pitch", "line", "mid"],
+                ["pitch", "line", tag],
             )
         if round(base.overload_y) != round(self._last.overload_y):
             await self._artel.write_memory(
-                "fwd", f"overload_y={base.overload_y}", ["pitch", "line", "fwd"]
+                "fwd", f"overload_y={base.overload_y}", ["pitch", "line", tag]
             )
-            await self._artel.emit_event("fwd", "overload", {"y": round(base.overload_y)})
+            await self._artel.emit_event(
+                "fwd", "overload", {"team": self.team, "y": round(base.overload_y)}
+            )
         self._last = base
-        # the team executes the plan as read BACK from Artel (the defence agent reads midfield's
-        # commit; the midfield agent reads the attack's target) — genuine coordination through Artel
-        mid_rows = await self._artel.search_memory("def", "commit", tag="mid", limit=1)
-        fwd_rows = await self._artel.search_memory("mid", "overload_y", tag="fwd", limit=1)
-        self.plan = _parse_plan(mid_rows, fwd_rows, base)
+        # the team executes the plan as read BACK from Artel — the line agents read each other's
+        # posts (filtered to our team) and reassemble the plan: genuine coordination through Artel
+        rows = await self._artel.search_memory("def", "commit overload", tag=tag, limit=4)
+        self.plan = _parse_plan(rows, rows, base)
 
     async def aclose(self) -> None:
         if self._artel:

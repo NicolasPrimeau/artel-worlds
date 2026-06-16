@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from . import commander
 from .bot import decide
 from .engine import Pitch
-from .tournament import ARTEL_CLUB, Tournament
+from .tournament import Tournament
 
 log = logging.getLogger("pitch")
 STATIC = Path(__file__).parent / "static"
@@ -55,16 +55,17 @@ class Game:
         self._fulltime_at = None
         self._champion_done = False
         self._last_h = self._last_a = 0
-        # if the Artel team is in this tie, its line agents coach it; otherwise both run the baseline
-        artel_team = "home" if tie.a == ARTEL_CLUB else "away" if tie.b == ARTEL_CLUB else None
-        self.coord = commander.Coordinator(artel_team) if artel_team else None
-        self.artel_team = artel_team
+        # any Artel-coached side in this tie gets its own line-agent coordinator (a match can have
+        # two — both teams coached); baseline sides just run the deterministic brain.
+        self.coords: dict[str, commander.Coordinator] = {}
+        for side, club in (("home", tie.a), ("away", tie.b)):
+            if club in self.tour.artel_clubs:
+                co = commander.Coordinator(side)
+                co.optimize(self.pitch)  # stat-optimal lineup before kickoff
+                self.coords[side] = co
         self._coord_at = 0.0
-        if self.coord:
-            self.coord.optimize(self.pitch)  # set the stat-optimal lineup before kickoff
-            self.brain = self.coord.brain()
-        else:
-            self.brain = decide
+        self._coord_tasks: list = []
+        self.brain = commander.combined_brain(self.coords) if self.coords else decide
 
     def note_goals(self) -> None:
         # attribute each new goal to its scorer's club for the Golden Boot
@@ -134,15 +135,15 @@ class Game:
                 "club": self.home_club,
                 "score": self.pitch.score["home"],
                 "formation": "-".join(map(str, self.pitch.shapes.get("home", ()))),
-                "artel": self.artel_team == "home",
+                "artel": "home" in self.coords,
             },
             "away": {
                 "club": self.away_club,
                 "score": self.pitch.score["away"],
                 "formation": "-".join(map(str, self.pitch.shapes.get("away", ()))),
-                "artel": self.artel_team == "away",
+                "artel": "away" in self.coords,
             },
-            "artel_live": bool(self.coord and self.coord.live),
+            "artel_live": any(co.live for co in self.coords.values()),
             "ball": {"x": round(self.pitch.ball.x, 2), "y": round(self.pitch.ball.y, 2)},
             "players": [
                 {
@@ -189,11 +190,13 @@ async def _tick_loop() -> None:
             if G.pitch.tick < G.pitch.cfg.match_ticks:
                 # refresh the Artel coach off the hot path (~every 1.2s, viewer-gated): the line
                 # agents re-throw the plan through Artel; the fast tick just reads the cached plan.
-                if G.coord and start - G._coord_at >= COORD_INTERVAL:
+                if G.coords and start - G._coord_at >= COORD_INTERVAL:
                     G._coord_at = start
-                    if G.pitch.tick <= 1:
-                        G._announce_task = asyncio.create_task(G.coord.announce())
-                    G._coord_task = asyncio.create_task(G.coord.refresh(G.pitch))
+                    G._coord_tasks = []
+                    for co in G.coords.values():
+                        if G.pitch.tick <= 1:
+                            G._coord_tasks.append(asyncio.create_task(co.announce()))
+                        G._coord_tasks.append(asyncio.create_task(co.refresh(G.pitch)))
                 G.pitch.step(G.brain)
                 G.note_goals()
                 await _broadcast(G.snapshot())

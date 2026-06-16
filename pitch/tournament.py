@@ -5,8 +5,6 @@ from random import Random
 
 from .config import DEFAULT
 
-ARTEL_CLUB = "Artel"  # the one entrant coached by the Artel agents; the rest run the baseline
-
 
 # A single-elimination World Cup over 16 clubs: round of 16 -> quarter-finals -> semi-finals ->
 # (third place) -> final. The engine plays one tie at a time; the tournament records, advances winners
@@ -42,6 +40,7 @@ class Tournament:
     order: list[tuple[int, int]] = field(default_factory=list)  # ties in play order
     cur: int = 0  # index into order
     champion: str | None = None
+    artel_clubs: set[str] = field(default_factory=set)  # the coordinated (Artel-coached) entrants
     _rng: Random = field(default_factory=lambda: Random(0))
 
     def __post_init__(self) -> None:
@@ -55,10 +54,9 @@ class Tournament:
         suf = list(AI_SUFFIXES)
         self._rng.shuffle(suf)
         c = [f"{self._rng.choice(CLUB_PREFIXES)} {suf[i]}" for i in range(16)]
-        c[self._rng.randrange(16)] = (
-            ARTEL_CLUB  # one entrant is the Artel team (the coordinated side)
-        )
         self.clubs = c
+        # half the field is Artel-coached (the coordinated, LLM-led sides); the rest run the baseline
+        self.artel_clubs = set(self._rng.sample(c, len(c) // 2))
         # each club gets a unique-within-the-squad set of surnames; surnames may recur across clubs
         # (two sides can both field a "Silva"), which keeps the pool small as squads grow.
         for club in c:
