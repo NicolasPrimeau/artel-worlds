@@ -353,7 +353,11 @@ def _build_payload(
         # output — at $2.50/M that burns the monthly budget in hours. An arena turn does
         # not need chain-of-thought; the reflex floors catch any sloppy miss.
         payload["reasoning_effort"] = REASONING
-    headers = {"authorization": f"Bearer {ep['key']}", "content-type": "application/json"}
+    headers = {
+        "authorization": f"Bearer {ep['key']}",
+        "content-type": "application/json",
+        "user-agent": "artel-worlds/1.0",  # Groq's Cloudflare 403s the default python UA
+    }
     return ep["url"], payload, headers
 
 
@@ -728,7 +732,11 @@ async def _oneshot(http: httpx.AsyncClient, sys: str, user: str, max_tokens: int
                 # without this, hidden thinking eats the whole max_tokens budget and the
                 # visible lesson/plan arrives truncated to two words
                 payload["reasoning_effort"] = REASONING
-            headers = {"authorization": f"Bearer {ep['key']}", "content-type": "application/json"}
+            headers = {
+                "authorization": f"Bearer {ep['key']}",
+                "content-type": "application/json",
+                "user-agent": "artel-worlds/1.0",  # Groq's Cloudflare 403s the default python UA
+            }
         r = await _post_llm(http, ep["url"], headers, payload)
         if r.status_code >= 300:
             if r.status_code == 429:
