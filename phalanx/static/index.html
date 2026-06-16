@@ -95,6 +95,8 @@
   #commslog li.k-focus .msg { color:#ffb37f; }
   #commslog li.k-rally .msg { color:#9be8a8; }
   #commslog li.k-follow .msg { color:#78e096; }
+  @keyframes commsfresh { 0%{opacity:0; transform:translateX(-5px); background:rgba(127,224,255,.22)} 55%{opacity:1} 100%{opacity:1; transform:none; background:transparent} }
+  #commslog li.fresh { animation: commsfresh .55s ease-out; }
   @keyframes commsin { from { opacity:0; transform:translateY(3px); } to { opacity:1; } }
   @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.35; } }
   #hud .cta a.primary { flex-basis:100%; }
@@ -249,6 +251,7 @@ let snap=null, dpr=1, cssW=0, cssH=0, L=null, hits=[], hoverId=null, winnerTimer
 let anim={}, t0=0, meta={}, prevTick=null; // smooth interpolation + per-tank team/coord
 let beams=[], deaths=[], flashes=[], ghosts=[], gains=[], pings=[], focusMarks=[], followMarks=[]; // transient effects (born may be in the future)
 let prevIds=new Set(), seenComms=new Set();
+let lastCommsSig='', lastCommsKeys=new Set();  // de-flicker: only rebuild the feed on change
 
 const hexDist=(aq,ar,bq,br)=>{const dq=aq-bq,dr=ar-br;return (Math.abs(dq)+Math.abs(dq+dr)+Math.abs(dr))/2;};
 const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
@@ -516,7 +519,7 @@ function apply(snp){
   const first=!snap||snap.width!==snp.width;
   if(!L||first){ snap=snp; layout(); }
   // new match: drop every scheduled effect from the old one
-  if(prevTick!=null && snp.tick<prevTick){ beams=[]; flashes=[]; deaths=[]; ghosts=[]; gains=[]; pings=[]; focusMarks=[]; followMarks=[]; seenComms.clear(); anim={}; meta={}; prevIds=new Set(); }
+  if(prevTick!=null && snp.tick<prevTick){ beams=[]; flashes=[]; deaths=[]; ghosts=[]; gains=[]; pings=[]; focusMarks=[]; followMarks=[]; seenComms.clear(); lastCommsSig=''; lastCommsKeys=new Set(); anim={}; meta={}; prevIds=new Set(); }
   prevTick=snp.tick;
   // this tick's volley — fires FIRST, from the hexes tanks started the turn on (the
   // tracer's origin cells), while the hulls still hold there; the glide follows. The beam
@@ -563,13 +566,21 @@ function apply(snp){
   cm.hidden=false;
   if(comms.length){ clog.dataset.empty='';
     const nLines = window.innerWidth<=640 ? 2 : 5;  // keep the map clear on phones
-    clog.innerHTML='';
-    for(const e of comms.slice(-nLines)){
-      const li=document.createElement('li'); li.className='k-'+(e.kind||'say');
-      const who=String(e.who||'').split('-').pop()||'?';
-      const chip=document.createElement('span'); chip.className='who'; chip.textContent='♢'+who;
-      const msg=document.createElement('span'); msg.className='msg'; msg.textContent=e.text||'';
-      li.appendChild(chip); li.appendChild(msg); clog.appendChild(li);
+    const vis = comms.slice(-nLines);
+    const sig = vis.map(e=>e.t+'|'+(e.who||'')+'|'+e.kind+'|'+e.text).join('~');
+    if(sig!==lastCommsSig){  // only touch the DOM when the visible feed actually changes —
+      const prev=lastCommsKeys, nowKeys=new Set();  // otherwise it rebuilt 60x/s and flickered
+      clog.innerHTML='';
+      for(const e of vis){
+        const key=e.t+'|'+(e.who||'')+'|'+e.kind+'|'+e.text; nowKeys.add(key);
+        const li=document.createElement('li'); li.className='k-'+(e.kind||'say');
+        if(!prev.has(key)) li.classList.add('fresh');  // only a genuinely NEW line blinks in
+        const who=String(e.who||'').split('-').pop()||'?';
+        const chip=document.createElement('span'); chip.className='who'; chip.textContent='♢'+who;
+        const msg=document.createElement('span'); msg.className='msg'; msg.textContent=e.text||'';
+        li.appendChild(chip); li.appendChild(msg); clog.appendChild(li);
+      }
+      lastCommsSig=sig; lastCommsKeys=nowKeys;
     }
     for(const e of comms){
       const key=e.t+'|'+(e.who||'')+'|'+e.kind+'|'+e.text;
