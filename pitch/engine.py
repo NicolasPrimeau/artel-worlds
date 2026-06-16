@@ -226,6 +226,9 @@ class Pitch:
                 b.vy = (ty - b.y) * c.carry_ease
                 b.x += b.vx
                 b.y += b.vy
+                # you can't dribble it into the net — a carried ball is held just short of the goal
+                # line, so a goal can only come from a struck ball (a shot). Soccer rules apply.
+                b.x = min(b.x, c.length - 0.6) if owner.team == "home" else max(b.x, 0.6)
                 b.last_kicker = owner.id
         else:
             b.x += b.vx

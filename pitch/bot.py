@@ -128,7 +128,9 @@ def decide(pitch: Pitch, p: Player) -> dict:
         fwd = 1.0 if p.team == "home" else -1.0
         dist_goal = _len(gx - p.x, gy - p.y)
         mine_open = _open(pitch, p)
-        if dist_goal < c.shoot_range and mine_open > 3.0:
+        # shoot when in range and with a sight of goal — and ALWAYS when point-blank, since you
+        # can't just carry it over the line: a goal has to be struck.
+        if dist_goal < c.shoot_range and (mine_open > 3.0 or dist_goal < 13.0):
             ax, ay = _shoot_aim(pitch, p)
             # scatter grows with range — long shots fly wide, so goals come from working it close
             return _kick(p, ax, ay, c.shot_speed, 0.22 + dist_goal / 130.0, rng, skill=p.finishing)
