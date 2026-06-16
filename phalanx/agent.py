@@ -414,7 +414,10 @@ def _parse(ep: dict, data: dict) -> tuple[str, list[dict], int, int, int]:
 THROTTLED: dict[str, int] = {}
 _down_until: dict[str, float] = {}
 _DOWN_DAILY = 900.0
-_DOWN_BURST = 20.0
+# a per-minute (TPM) throttle clears in well under a minute — bench the endpoint only briefly
+# so we get back on the cheap primary as soon as the token budget frees up, riding the instant
+# in-call failover in the meantime rather than waiting it out.
+_DOWN_BURST = float(os.environ.get("PHALANX_DOWN_BURST", "8"))
 
 
 def _mark_throttled(ep: dict, body: str) -> None:
@@ -972,8 +975,13 @@ async def command(
             focus = 0
         focus_set = False
         if focus:
+            prev_target = focus_state.get("target") if focus_state is not None else None
             bot.orders["focus"] = focus
-            focus_set = True
+            # a standing focus is committed once — only a CHANGE of target reaches the feed.
+            # re-affirming the target the squad already holds keeps the tanks converged but
+            # does not spam a fresh "focus fire" call every command.
+            if focus != prev_target:
+                focus_set = True
             if focus_state is not None:
                 focus_state["target"], focus_state["tick"] = focus, tick
             fa = inp.get("focus_at")
