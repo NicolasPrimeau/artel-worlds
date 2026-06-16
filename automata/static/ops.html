@@ -182,6 +182,14 @@ function card(w){
       </div>
       ${recent.length ? `<div class="dots">${dots}</div>` : ""}
       <div class="facts">${facts.match ?? 0} matches finished · last ${recent.length || 0} above (blue = Artel won) · rate-limit hits <b>${t}</b></div>`;
+  } else if (w.key === "pitch"){
+    body = `
+      <div class="row">
+        <div class="m"><div class="v">${facts.match ?? "—"}</div><div class="k">match #</div></div>
+        <div class="m"><div class="v">${facts.viewers ?? 0}</div><div class="k">viewers</div></div>
+        <div class="m"><div class="v spend">$0</div><div class="k">spend (no LLM yet)</div></div>
+      </div>
+      <div class="facts">live fixture: <b>${facts.fixture || "—"}</b></div>`;
   } else {
     body = `
       <div class="row">
@@ -199,10 +207,11 @@ function card(w){
         <span class="st ${w.paused?'paused':(w.status||'idle')}">${w.paused?'paused':(w.status||'idle')}</span>
       </div>
       ${body}
+      ${w.key === "pitch" ? `<div class="cardfoot"><span class="tag">no operator controls yet</span></div>` : `
       <div class="cardfoot">
         <button class="reset pausebtn${w.paused?' on':''}" onclick="pauseWorld('${w.key}','${w.name}',${w.paused?0:1})">${w.paused?'▶ resume':'⏸ pause'}</button>
         <button class="reset" onclick="resetWorld('${w.key}','${w.name}')">reset ${w.name}</button>
-      </div>
+      </div>`}
     </div>`;
 }
 

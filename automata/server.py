@@ -722,15 +722,17 @@ async def hub_status():
     # the public hub badges reflect REAL state (live / paused / offline). Proxied server-side so
     # the landing page reads phalanx/watchtower paused flags without CORS.
     async with httpx.AsyncClient() as client:
-        ph, wt = await asyncio.gather(
+        ph, wt, pi = await asyncio.gather(
             _fetch_json(client, f"{PHALANX_DEBUG}/debug"),
             _fetch_json(client, f"{WATCHTOWER_DEBUG}/debug"),
+            _fetch_json(client, f"{PITCH_DEBUG}/debug"),
         )
     return JSONResponse(
         {
             "automata": {"paused": G.paused, "up": True},
             "phalanx": {"paused": bool((ph or {}).get("paused")), "up": ph is not None},
             "watchtower": {"paused": bool((wt or {}).get("paused")), "up": wt is not None},
+            "pitch": {"paused": False, "up": pi is not None},
         },
         headers={"Cache-Control": "public, max-age=15"},
     )
@@ -791,6 +793,7 @@ UI_PASSWORD = os.environ.get("WORLDS_UI_PASSWORD", "")
 _UI_SECRET = (os.environ.get("WORLDS_UI_SECRET") or UI_PASSWORD or "artel-worlds-dev").encode()
 _UI_TTL = 7 * 24 * 3600
 PHALANX_DEBUG = os.environ.get("PHALANX_DEBUG_URL", "https://phalanx.artel.run").rstrip("/")
+PITCH_DEBUG = os.environ.get("PITCH_DEBUG_URL", "https://pitch.artel.run").rstrip("/")
 WATCHTOWER_DEBUG = os.environ.get("WATCHTOWER_DEBUG_URL", "https://watchtower.artel.run").rstrip(
     "/"
 )
@@ -879,10 +882,11 @@ async def ui_stats(request: Request):
     if UI_PASSWORD and not _authed(request):
         raise HTTPException(status_code=401, detail="sign in")
     async with httpx.AsyncClient() as client:
-        ph, wt, wt_state = await asyncio.gather(
+        ph, wt, wt_state, pi = await asyncio.gather(
             _fetch_json(client, f"{PHALANX_DEBUG}/debug"),
             _fetch_json(client, f"{WATCHTOWER_DEBUG}/debug"),
             _fetch_json(client, f"{WATCHTOWER_DEBUG}/state"),
+            _fetch_json(client, f"{PITCH_DEBUG}/debug"),
         )
     worlds = []
     a = G.snapshot()
@@ -994,6 +998,40 @@ async def ui_stats(request: Request):
                 "world": 3,
                 "status": "unreachable",
                 "url": "https://watchtower.artel.run",
+                "spend": None,
+                "cap": None,
+            }
+        )
+    if pi:
+        h, aw = pi.get("home") or {}, pi.get("away") or {}
+        worlds.append(
+            {
+                "key": "pitch",
+                "name": "Pitch",
+                "world": 4,
+                "url": "https://pitch.artel.run",
+                "status": "live",
+                "paused": False,
+                "model": "deterministic motor (no LLM yet)",
+                "spend": 0.0,
+                "spend_label": "all time",
+                "cap": None,
+                "cache_ratio": None,
+                "facts": {
+                    "match": pi.get("match_no"),
+                    "fixture": f"{h.get('club', '?')} {h.get('score', 0)}–{aw.get('score', 0)} {aw.get('club', '?')}",
+                    "viewers": pi.get("viewers"),
+                },
+            }
+        )
+    else:
+        worlds.append(
+            {
+                "key": "pitch",
+                "name": "Pitch",
+                "world": 4,
+                "status": "unreachable",
+                "url": "https://pitch.artel.run",
                 "spend": None,
                 "cap": None,
             }
