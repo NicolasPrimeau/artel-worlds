@@ -362,8 +362,8 @@ function render() {
         ctx.beginPath(); ctx.arc(px, py, pr + 4, 0, 7); ctx.strokeStyle = col;
         ctx.lineWidth = Math.max(1.5, s * 0.3); ctx.stroke();
         const stats = p.han != null
-          ? `HAN ${p.han}   PAC ${p.pac}   ACC ${p.acc}`
-          : `PAC ${p.pac}   ACC ${p.acc}   CTL ${p.ctl}`;
+          ? `HAN ${p.han}   PAC ${p.pac}   KIK ${p.pas}`
+          : `PAC ${p.pac}   SHO ${p.sho}   PAS ${p.pas}   STR ${p.str}`;
         const fs = Math.max(12, s * 1.4), sf = Math.max(9.5, s * 1.0), padX = 9;
         ctx.font = `700 ${fs}px -apple-system,sans-serif`; const nw = ctx.measureText(p.name).width;
         ctx.font = `600 ${sf}px -apple-system,sans-serif`; const sw = ctx.measureText(stats).width;

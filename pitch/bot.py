@@ -27,11 +27,14 @@ def _open(pitch: Pitch, q: Player) -> float:
     return min((_len(o.x - q.x, o.y - q.y) for o in pitch.opponents(q)), default=99.0)
 
 
-def _kick(p: Player, tx: float, ty: float, speed: float, noise: float, rng) -> dict:
+def _kick(
+    p: Player, tx: float, ty: float, speed: float, noise: float, rng, skill: float = 0.0
+) -> dict:
     ux, uy = _unit(tx - p.x, ty - p.y)
-    # accuracy noise: perturb the heading (more for harder kicks); a sharper player (higher acc)
-    # scatters less. deterministic via the rng
-    a = (rng.random() - 0.5) * noise * (2.0 - p.acc)
+    # accuracy noise: perturb the heading (more for harder kicks); a sharper player scatters less.
+    # `skill` is the relevant rating (passing for passes, finishing for shots). deterministic.
+    sk = skill or p.acc
+    a = (rng.random() - 0.5) * noise * (2.0 - sk)
     cs = 1 - a * a / 2
     sn = a
     rx, ry = ux * cs - uy * sn, ux * sn + uy * cs
@@ -128,7 +131,7 @@ def decide(pitch: Pitch, p: Player) -> dict:
         if dist_goal < c.shoot_range and mine_open > 3.0:
             ax, ay = _shoot_aim(pitch, p)
             # scatter grows with range — long shots fly wide, so goals come from working it close
-            return _kick(p, ax, ay, c.shot_speed, 0.22 + dist_goal / 130.0, rng)
+            return _kick(p, ax, ay, c.shot_speed, 0.22 + dist_goal / 130.0, rng, skill=p.finishing)
         # PASS is the default — keep it moving. Favour an advanced, open teammate (a forward making
         # the run up top), so the ball travels through the team and reaches the attackers.
         mates = [q for q in outfield if q.id != p.id]

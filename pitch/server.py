@@ -129,8 +129,10 @@ class Game:
                     "x": round(p.x, 2),
                     "y": round(p.y, 2),
                     "pac": _rate(p.pace),
-                    "acc": _rate(p.acc),
+                    "pas": _rate(p.acc),
+                    "sho": _rate(p.finishing),
                     "ctl": _rate(p.control),
+                    "str": _rate(p.strength),
                     "han": _rate(p.handling) if p.role == "GK" else None,
                 }
                 for p in self.pitch.players

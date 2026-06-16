@@ -46,8 +46,10 @@ class Player:
     # per-player attributes (multipliers around 1.0) — each one rolls a slightly different player,
     # so a quick striker, a wayward passer, or a sticky-handed keeper emerge match to match
     pace: float = 1.0  # top speed
-    acc: float = 1.0  # passing/shooting accuracy (higher = tighter)
-    control: float = 1.0  # first touch / how far they can reach to win a loose ball
+    acc: float = 1.0  # passing accuracy (higher = tighter)
+    finishing: float = 1.0  # shooting accuracy (a clinical striker vs a wayward one)
+    control: float = 1.0  # first touch / reach to collect a loose ball
+    strength: float = 1.0  # reach to win the ball in a duel / tackle an opponent
     handling: float = 1.0  # keeper save reach
 
 
@@ -108,7 +110,9 @@ class Pitch:
                 p = Player(pid, team, name, role, hx, hy, hx, hy, numbers[slot])
                 p.pace = round(r.uniform(0.9, 1.12), 3)
                 p.acc = round(r.uniform(0.85, 1.15), 3)
+                p.finishing = round(r.uniform(0.85, 1.15), 3)
                 p.control = round(r.uniform(0.92, 1.1), 3)
+                p.strength = round(r.uniform(0.9, 1.12), 3)
                 p.handling = round(r.uniform(0.86, 1.14), 3) if role == "GK" else 1.0
                 self.players.append(p)
                 pid += 1
@@ -165,10 +169,16 @@ class Pitch:
         # qualifying player wins, so an outfielder can still beat a keeper to a loose ball.
         b = self.ball
         c = self.cfg
+        prev = self.players[self.possessor].team if self.possessor is not None else None
         best, bd = None, 1e9
         for p in self.players:
             d = _len(p.x - b.x, p.y - b.y)
-            reach = c.gk_reach * p.handling if p.role == "GK" else c.control_radius * p.control
+            if p.role == "GK":
+                reach = c.gk_reach * p.handling
+            elif prev is not None and prev != p.team:
+                reach = c.control_radius * p.strength  # tackling it off an opponent — a duel
+            else:
+                reach = c.control_radius * p.control  # collecting a loose or own ball
             if d <= reach and d < bd:
                 best, bd = p, d
         self.possessor = best.id if best else None
