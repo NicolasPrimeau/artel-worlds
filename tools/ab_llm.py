@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-# A/B with the REAL LLM (Groq) authoring the directive, vs the baseline. Smaller N (LLM calls are
-# slow) and noisier, but it tests the deployed thing: does an LLM-coached side actually beat baseline?
+# Fair A/B with the REAL LLM as the strategic flank-reader, vs baseline. Identical to the heuristic
+# hybrid in tools/ab.py — same every-tick game-management reflex, same flank-refresh cadence — so the
+# ONLY difference is heuristic-read vs LLM-read. Isolates whether the LLM's read is worth anything.
 
 import asyncio
 import os
@@ -12,62 +13,53 @@ for _line in open("/home/nprimeau/projects/Artel/.env"):
 os.environ["PITCH_MODEL"] = "openai/gpt-oss-120b"
 os.environ.setdefault("PITCH_LLM_URL", "https://api.groq.com/openai/v1/chat/completions")
 
-from pitch import bot, commander, llm, plays  # noqa: E402
+from pitch import bot, commander, llm  # noqa: E402
 from pitch.engine import Pitch  # noqa: E402
 
+CADENCE = 75
 
-async def match(seed, coord, every=250):
+
+async def match(seed, coord):
     p = Pitch(seed=1000 + seed)
     p.setup(["x"] * 9, ["y"] * 9)
-    mgr = plays.PlayManager(coord)
-    cur = {"plan": None}
+    cur = {"oy": None}
 
     def brain(pitch, pl):
-        plan = cur["plan"]
-        if pl.team == coord and plan is not None:
-            it = mgr.intent(pitch, pl) if plan.combos else None
-            if it is not None:
-                return it
+        if pl.team == coord and cur["oy"] is not None:
+            commit, low_block = commander.game_management(pitch, coord)  # reflex, every tick
+            plan = commander.Plan(cur["oy"], commit, low_block, False)
             return commander.coordinated_decide(pitch, pl, plan)
         return bot.decide(pitch, pl)
 
-    cur["plan"] = await commander.author_plan_llm(p, coord)  # LLM authors the opening directive
-    calls = 1
+    cur["oy"] = (await commander.author_plan_llm(p, coord)).overload_y
     while p.tick < p.cfg.match_ticks:
-        if p.tick % every == 0:
-            cur["plan"] = await commander.author_plan_llm(p, coord)  # re-author live
-            calls += 1
-        if cur["plan"] and cur["plan"].combos:
-            side = "left" if cur["plan"].overload_y < p.cfg.width / 2 else "right"
-            mgr.call = {"combos": True, "channel": side}
-            mgr.update(p)
+        if p.tick % CADENCE == 0:
+            cur["oy"] = (
+                await commander.author_plan_llm(p, coord)
+            ).overload_y  # LLM re-reads the flank
         p.step(brain)
     opp = "away" if coord == "home" else "home"
-    return p.score[coord], p.score[opp], calls
+    return p.score[coord], p.score[opp]
 
 
 async def main():
-    print("LLM enabled:", llm.enabled(), "| model:", llm.MODEL)
-    if not llm.enabled():
-        return
-    w = ll = d = 0
-    gf = ga = tc = 0
-    seeds = 8
+    print("LLM:", llm.MODEL, "| enabled:", llm.enabled())
+    w = ll = d = gf = ga = n = 0
+    seeds = 4  # LLM calls are slow; small N (noisy) but enough to see if it clears ~52%
     for s in range(seeds):
         for coord in ("home", "away"):
-            cf, ca, calls = await match(s, coord)
+            cf, ca = await match(s, coord)
             gf += cf
             ga += ca
-            tc += calls
+            n += 1
             w += cf > ca
             ll += ca > cf
             d += cf == ca
-            print(f"  seed {s} coord={coord}: {cf}-{ca}")
-    n = seeds * 2
+            print(f"  seed {s} {coord}: {cf}-{ca}")
     wr = round(w / (w + ll) * 100) if (w + ll) else 0
     print(
-        f"\nLLM-coached vs baseline: {w}W {ll}L {d}D | win {wr}% | goals {gf / n:.2f} vs {ga / n:.2f}"
-        f" | {tc} LLM calls | spent ${llm.SPEND['usd']:.4f}"
+        f"\nLLM hybrid vs baseline: {w}W {ll}L {d}D | win {wr}% | goals {gf / n:.2f} vs {ga / n:.2f}"
+        f" (n={n}) | spent ${llm.SPEND['usd']:.4f}"
     )
 
 

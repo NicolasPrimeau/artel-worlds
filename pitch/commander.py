@@ -59,6 +59,19 @@ def optimize_lineup(players: list[Player]) -> None:
         p.pace, p.acc, p.finishing, p.control, p.strength, p.handling = pool[bi]
 
 
+def game_management(pitch: Pitch, team: str) -> tuple[int, bool]:
+    # the fast, deterministic REFLEX read off the LIVE score + clock: chase a deficit (commit numbers),
+    # protect a late lead (low block). Cheap, so it runs every tick — this is the reactivity an LLM on
+    # a slow cadence can't match, and it's identical for anyone using it (no side gets a better one).
+    c = pitch.cfg
+    other = "away" if team == "home" else "home"
+    gd = pitch.score[team] - pitch.score[other]
+    late = max(0.0, (c.match_ticks - pitch.tick) / c.match_ticks) < 0.45
+    commit = 2 if (gd < 0 and late) else (1 if gd < 0 else 0)
+    low_block = gd > 0 and late
+    return commit, low_block
+
+
 def plan_for(pitch: Pitch, team: str) -> Plan:
     c = pitch.cfg
     other = "away" if team == "home" else "home"
@@ -72,13 +85,7 @@ def plan_for(pitch: Pitch, team: str) -> Plan:
     top = side_strength(0, c.width / 2)
     bot_ = side_strength(c.width / 2, c.width)
     overload_y = c.width * 0.27 if top <= bot_ else c.width * 0.73
-
-    # SCORELINE + CLOCK: chase a deficit (commit numbers, push), protect a late lead (low block).
-    gd = pitch.score[team] - pitch.score[other]
-    frac_left = max(0.0, (c.match_ticks - pitch.tick) / c.match_ticks)
-    late = frac_left < 0.45
-    commit = 2 if (gd < 0 and late) else (1 if gd < 0 else 0)
-    low_block = gd > 0 and late
+    commit, low_block = game_management(pitch, team)
     return Plan(overload_y=overload_y, commit=commit, low_block=low_block)
 
 
@@ -142,7 +149,12 @@ def combined_brain(coords: dict):
             return it
         if co.plan is None:
             return bot.decide(pitch, p)
-        return coordinated_decide(pitch, p, co.plan)
+        # HYBRID: the LLM (via Artel) sets the strategic read — which flank to overload, whether to
+        # call plays — on its slow cadence; the deterministic reflex sets commit / low-block off the
+        # LIVE score every tick, so game management never lags a goal the way a cadenced brain would.
+        commit, low_block = game_management(pitch, p.team)
+        plan = Plan(co.plan.overload_y, commit, low_block, co.plan.combos)
+        return coordinated_decide(pitch, p, plan)
 
     return brain
 

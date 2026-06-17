@@ -1,45 +1,44 @@
 from __future__ import annotations
 
-# A/B: does the Artel coordination edge actually beat the baseline? Same deterministic motor both
-# sides; the coordinated side runs the tactical edge (overload the weak flank / commit when chasing)
-# and optionally the play actuator (LLM-called give-and-gos). Sides alternate to cancel any bias.
+# A/B: does the Artel coordination edge beat baseline? HYBRID model — the deterministic game-management
+# reflex (commit / low-block off the live score) runs EVERY TICK and is identical for any coached side;
+# only the strategic flank read differs (heuristic here, the real LLM in ab_llm.py) and it refreshes on
+# the same slow cadence for both, so the comparison is apples-to-apples (no side gets faster reactivity).
+# Sides alternate per seed to cancel home-field bias.
 
 import sys
 
-from pitch import bot, commander, plays
+from pitch import bot, commander
 from pitch.engine import Pitch
 
+CADENCE = (
+    75  # ticks (~6s) between flank re-reads — the brain's slow loop, same for LLM and heuristic
+)
 
-def coord_brain(team, use_plays):
-    mgr = plays.PlayManager(team)
-    st = {"tick": -1, "plan": None}
+
+def hybrid_brain(team, flank_fn):
+    st = {"tick": -1, "oy": None}
 
     def brain(pitch, p):
         if pitch.tick != st["tick"]:
             st["tick"] = pitch.tick
-            plan = commander.plan_for(pitch, team)
-            plan.combos = use_plays
-            st["plan"] = plan
-            if use_plays:
-                side = "left" if plan.overload_y < pitch.cfg.width / 2 else "right"
-                mgr.call = {"combos": True, "channel": side}
-                mgr.update(pitch)
+            if st["oy"] is None or pitch.tick % CADENCE == 0:
+                st["oy"] = flank_fn(pitch, team)  # strategic read, on the slow cadence
         if p.team == team:
-            if use_plays:
-                it = mgr.intent(pitch, p)
-                if it is not None:
-                    return it
-            return commander.coordinated_decide(pitch, p, st["plan"])
+            commit, low_block = commander.game_management(pitch, team)  # reflex, EVERY tick
+            plan = commander.Plan(st["oy"], commit, low_block, False)
+            return commander.coordinated_decide(pitch, p, plan)
         return bot.decide(pitch, p)
 
     return brain
 
 
+def heuristic_flank(pitch, team):
+    return commander.plan_for(pitch, team).overload_y
+
+
 def run(label, brain_for, seeds=70):
-    # PAIRED: the coordinated side plays home AND away on each seed, so any home-field bias cancels.
-    w = ll = d = 0
-    gf = ga = 0
-    n = 0
+    w = ll = d = gf = ga = n = 0
     for s in range(seeds):
         for coord in ("home", "away"):
             opp = "away" if coord == "home" else "home"
@@ -52,18 +51,14 @@ def run(label, brain_for, seeds=70):
             gf += cf
             ga += ca
             n += 1
-            if cf > ca:
-                w += 1
-            elif ca > cf:
-                ll += 1
-            else:
-                d += 1
+            w += cf > ca
+            ll += ca > cf
+            d += cf == ca
         print(f"\r{label}: {s + 1}/{seeds}", end="", file=sys.stderr)
     wr = round(w / (w + ll) * 100) if (w + ll) else 0
-    print(f"\r{label:<34} {w}W {ll}L {d}D | win {wr}% | goals {gf / n:.2f} vs {ga / n:.2f} (n={n})")
+    print(f"\r{label:<36} {w}W {ll}L {d}D | win {wr}% | goals {gf / n:.2f} vs {ga / n:.2f} (n={n})")
 
 
 if __name__ == "__main__":
     run("baseline vs baseline (control)", lambda t: lambda pi, p: bot.decide(pi, p))
-    run("positional edge only", lambda t: coord_brain(t, use_plays=False))
-    run("positional + LLM-called plays", lambda t: coord_brain(t, use_plays=True))
+    run("hybrid: heuristic flank + reflex", lambda t: hybrid_brain(t, heuristic_flank))
