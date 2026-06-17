@@ -25,7 +25,7 @@ class Config:
 
     ball_friction: float = 0.965  # ball velocity retained per tick when loose
     shot_speed: float = 3.3
-    pass_speed: float = 2.0
+    pass_speed: float = 2.7  # crisp — reaches the receiver before a defender can step in
     dribble_speed: float = 1.9  # a carried ball is nudged forward at ~player pace
     control_radius: float = 2.4  # within this of the ball, a player is "on" it
     tackle_radius: float = 2.2  # an opponent this close can contest possession

@@ -141,12 +141,25 @@ def _formation_target(pitch: Pitch, p: Player) -> tuple[float, float]:
     return _clamp(fx, 4.0, c.length - 4.0), _clamp(fy, 4.0, c.width - 4.0)
 
 
+def _pass(pitch: Pitch, p: Player, tgt: Player) -> dict:
+    # play the ball to a team-mate's feet. Whether it lands is decided by the engine (a defender in
+    # the lane can read it) — here we just pick the man and stroke it; no trajectory to thread.
+    c = pitch.cfg
+    fwd = 1.0 if p.team == "home" else -1.0
+    tx, ty = tgt.x + c.pass_lead * fwd, tgt.y
+    ux, uy = _unit(tx - p.x, ty - p.y)
+    return {"move": (tx, ty), "kick": (ux * c.pass_speed, uy * c.pass_speed), "pass_to": tgt.id}
+
+
 def decide(pitch: Pitch, p: Player) -> dict:
     c = pitch.cfg
     b = pitch.ball
     rng = pitch._rng
     gx, gy = pitch.attack_goal(p.team)
     own_x = 0.0 if p.team == "home" else c.length
+
+    if pitch.pass_to == p.id:  # a pass is coming to me — run onto it to collect (or to read it)
+        return {"move": (b.x, b.y), "sprint": True}
 
     if p.role == "GK":
         if pitch.possessor == p.id:  # gathered it — clear upfield to a wide outlet
@@ -207,20 +220,31 @@ def decide(pitch: Pitch, p: Player) -> dict:
             box_x = c.length - 11 if p.team == "home" else 11
             box_y = _clamp(c.width / 2 + rng.choice((-1, 1)) * 6, 8, c.width - 8)
             return _kick(p, box_x, box_y, c.pass_speed * 1.15, 0.14, rng)
-        # Keep the ball moving — but FORWARD. Pass often (retain possession), strongly favouring the
-        # team-mate who advances the play, so the ball climbs into the final third instead of going
-        # square forever. Carry at goal when no pass is on. This is what turns possession into shots.
+        # CARRY by default — drive at goal. Only PASS when it clearly beats carrying: when pressed
+        # (need an outlet) or to spring a genuinely open team-mate further up the pitch. Passing to a
+        # tightly-marked man just gifts possession, and endless square balls read as aimless — so the
+        # bar to release is high, the target must be genuinely open, and the pass must go FORWARD.
         mates = [q for q in outfield if q.id != p.id]
-        opts = [q for q in mates if _open(pitch, q) > 3.5 and (q.x - p.x) * fwd > -2]
-        pressured = mine_open < 6.0
-        if opts and (pressured or len(opts) >= 2 or rng.random() < 0.6):
-            tgt = max(opts, key=lambda q: (q.x - p.x) * fwd * 0.6 + _open(pitch, q) * 0.4)
-            noise = 0.08 + max(0.0, 8.0 - _open(pitch, tgt)) * 0.012
-            return _kick(p, tgt.x + c.pass_lead * fwd, tgt.y, c.pass_speed, noise, rng)
+        pressured = mine_open < 4.0
+        # forward outlets that are genuinely open (a pass that will actually land) AND advance play
+        fwd_opts = [q for q in mates if _open(pitch, q) > 6.0 and (q.x - p.x) * fwd > 7.0]
+
+        def _release(cands: list[Player]) -> dict:
+            tgt = max(cands, key=lambda q: (q.x - p.x) * fwd * 0.5 + _open(pitch, q) * 0.5)
+            return _pass(pitch, p, tgt)
+
+        if (
+            pressured
+        ):  # under pressure — find a safe open mate to keep the ball, forward if possible
+            safe = [q for q in mates if _open(pitch, q) > 5.0 and (q.x - p.x) * fwd > -3]
+            if safe:
+                return _release(safe)
+        elif fwd_opts and rng.random() < 0.3:  # unpressured — now and then spring a forward runner
+            return _release(fwd_opts)
         # carry: drive at goal down the open flank, sprinting into clear space to reach shooting range
         return {
             "move": _attack_target(pitch, p),
-            "sprint": mine_open > 8.0 and dist_goal > c.shoot_range,
+            "sprint": mine_open > 6.0 and dist_goal > c.shoot_range,
         }
 
     if pitch.possessor is not None and pitch.possessor in teammate_ids:

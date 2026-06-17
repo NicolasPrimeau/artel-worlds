@@ -102,10 +102,15 @@ def coordinated_decide(pitch: Pitch, p: Player, plan: Plan) -> dict:
             if p.id in {q.id for q in mids[: plan.commit]}:
                 gx, _ = pitch.attack_goal(p.team)
                 push = gx - (22 if p.team == "home" else -22)
-                return {"move": (push, _clamp(plan.overload_y, 8, c.width - 8)), "kick": None}
-        if p.role == "FWD":  # forwards lead the line in the weak channel
+                base = bot._formation_target(pitch, p)
+                py = _clamp(base[1] * 0.45 + plan.overload_y * 0.55, 8, c.width - 8)
+                return {"move": (push, py), "kick": None}
+        if p.role == "FWD":
+            # forwards lead the line, LEANING into the weak channel — but keep their spread (blend
+            # with the formation slot) so they don't all stack on one marked spot
             base = bot._formation_target(pitch, p)
-            return {"move": (base[0], _clamp(plan.overload_y, 8, c.width - 8)), "kick": None}
+            fy = _clamp(base[1] * 0.5 + plan.overload_y * 0.5, 8, c.width - 8)
+            return {"move": (base[0], fy), "kick": None}
 
     return bot.decide(pitch, p)  # defend / press / hold — all baseline
 

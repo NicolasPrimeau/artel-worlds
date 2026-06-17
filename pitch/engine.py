@@ -82,6 +82,8 @@ class Pitch:
     shapes: dict[str, tuple[int, int, int]] = field(default_factory=dict)  # team -> (def, mid, fwd)
     _offside: set[int] = field(default_factory=set)  # ids flagged offside at the last pass
     _offside_team: str | None = None
+    pass_to: int | None = None  # receiver of a pass in flight — the ball is steered to their feet
+    pass_ttl: int = 0  # ticks a pass stays protected (in transit) before it can run loose
     _rng: Random = field(default_factory=lambda: Random(0))
 
     def __post_init__(self) -> None:
@@ -151,6 +153,7 @@ class Pitch:
         self.celebrate = self.restart = 0
         self.scorer = self.goal_team = self.restart_kind = None
         self._offside, self._offside_team = set(), None
+        self.pass_to, self.pass_ttl = None, 0
         for p in self.players:
             p.x, p.y, p.vx, p.vy = p.home_x, p.home_y, 0.0, 0.0
 
@@ -247,6 +250,18 @@ class Pitch:
         # qualifying player wins, so an outfielder can still beat a keeper to a loose ball.
         b = self.ball
         c = self.cfg
+        if self.pass_to is not None:
+            # a pass is in flight, steered to its target's feet (the receiver, or a defender who read
+            # it in the lane). Protected until they reach it — no scramble decides a clean pass.
+            self.pass_ttl -= 1
+            rec = self.players[self.pass_to]
+            if _len(rec.x - b.x, rec.y - b.y) <= c.control_radius * 1.6 * rec.control:
+                self.possessor, self.pass_to, self.pass_ttl = self.pass_to, None, 0
+                self._offside, self._offside_team = set(), None
+                return
+            if self.pass_ttl > 0:
+                return
+            self.pass_to = None  # overshot without a touch — let it run as a loose ball
         prev = self.players[self.possessor].team if self.possessor is not None else None
         best, bd = None, 1e9
         for p in self.players:
@@ -298,7 +313,8 @@ class Pitch:
         sprint = intent.get("sprint")
         cap = (c.keeper_speed if p.role == "GK" else c.player_speed) * p.pace
         if self.possessor == p.id:
-            cap *= 0.82  # running WITH the ball is slower — defenders can close down and tackle
+            cap *= 0.9  # running WITH the ball is a touch slower — but a carrier can still drive at
+            # space and beat the first man, so dribbling is a real option, not a guaranteed loss
         dx, dy = tx - p.x, ty - p.y
         dist = _len(dx, dy)
         ux, uy = _unit(dx, dy)
@@ -349,7 +365,11 @@ class Pitch:
                 b.y += b.vy
                 b.last_kicker = owner.id
                 self.possessor = None
-                self._flag_offside(owner)
+                pass_to = intents[owner.id].get("pass_to")
+                if pass_to is not None:  # a pass to a team-mate — resolve it as a designed event
+                    self._begin_pass(owner, pass_to)
+                else:  # a shot or clearance — runs as a normal struck ball
+                    self._flag_offside(owner)
             else:
                 # CARRY — the ball eases to a spot just ahead of the carrier instead of being
                 # re-kicked every tick. Velocity is real (target-tracking), so it reads as a
@@ -371,11 +391,72 @@ class Pitch:
                 b.x = min(b.x, c.length - 0.6) if owner.team == "home" else max(b.x, 0.6)
                 b.last_kicker = owner.id
         else:
+            if self.pass_to is not None:
+                # steer the in-flight pass to its target's feet (a ball played to a man), so it
+                # arrives cleanly instead of dribbling off a computed trajectory
+                rec = self.players[self.pass_to]
+                ux, uy = _unit(rec.x - b.x, rec.y - b.y)
+                sp = max(_len(b.vx, b.vy), c.pass_speed * 0.85)
+                b.vx, b.vy = ux * sp, uy * sp
             b.x += b.vx
             b.y += b.vy
             b.vx *= c.ball_friction
             b.vy *= c.ball_friction
         self._boundaries()
+
+    def _lane_interceptor(self, owner: Player, rec: Player) -> Player | None:
+        # a pass completes UNLESS an opponent is sitting in the lane between passer and receiver. The
+        # more dead-centre they are in that lane, the likelier they read it and step in. That's the
+        # only thing that fails a pass — no defender in the way means it gets there.
+        ax, ay = owner.x, owner.y
+        dx, dy = rec.x - ax, rec.y - ay
+        seg = _len(dx, dy)
+        if seg < 1e-6:
+            return None
+        ux, uy = dx / seg, dy / seg
+        best, best_perp = None, 1e9
+        for o in self.opponents(owner):
+            if o.role == "GK":
+                continue
+            t = (o.x - ax) * ux + (o.y - ay) * uy  # how far along the lane they sit
+            if (
+                t < 2.0 or t > seg - 1.0
+            ):  # behind the passer or level with the receiver — not blocking
+                continue
+            perp = abs((o.x - ax) * -uy + (o.y - ay) * ux)  # sideways offset from the lane
+            if perp < best_perp:
+                best, best_perp = o, perp
+        if best is None or best_perp > 3.5:  # lane is clear enough — the pass gets through
+            return None
+        p = (1.0 - best_perp / 3.5) * 0.7 * (1.1 - 0.2 * owner.acc)  # tighter lane / wayward passer
+        return best if self._rng.random() < p else None
+
+    def _offside_receiver(self, owner: Player, rec: Player) -> bool:
+        # would this completed pass play the receiver in offside? (beyond the 2nd-last defender,
+        # ahead of the ball, in the attacking half) — keeps forwards honest, no camping the keeper
+        line = max(
+            self._offside_line(owner.team), self._adv(owner.team, owner.x), self.cfg.length / 2
+        )
+        return self._adv(owner.team, rec.x) > line + 0.5
+
+    def _begin_pass(self, owner: Player, receiver_id: int) -> None:
+        c = self.cfg
+        rec = self.players[receiver_id]
+        interceptor = self._lane_interceptor(owner, rec)
+        if interceptor is None and self._offside_receiver(owner, rec):
+            defend = "away" if owner.team == "home" else "home"
+            self.pass_to, self.pass_ttl = None, 0
+            self._dead_ball(
+                _clamp(rec.x, 6.0, c.length - 6.0),
+                _clamp(rec.y, 6.0, c.width - 6.0),
+                defend,
+                "offside",
+            )
+            return
+        self.pass_to = interceptor.id if interceptor is not None else receiver_id
+        dist = _len(rec.x - owner.x, rec.y - owner.y)
+        self.pass_ttl = int(dist / c.pass_speed) + 6
+        self._offside, self._offside_team = set(), None
 
     def _in_mouth(self, y: float) -> bool:
         m = self.cfg.goal_width / 2
@@ -408,12 +489,14 @@ class Pitch:
         self._concede_to = "away" if scorer == "home" else "home"
         self.ball.vx = self.ball.vy = 0.0
         self.possessor = None
+        self.pass_to, self.pass_ttl = None, 0
 
     def _dead_ball(self, x: float, y: float, to_team: str, kind: str) -> None:
         # place a dead ball and pause briefly so the restart reads, then play resumes
         self.ball = Ball(x, y, last_touch=("away" if to_team == "home" else "home"))
         self.possessor = None
         self._offside, self._offside_team = set(), None
+        self.pass_to, self.pass_ttl = None, 0
         self.restart = self.cfg.restart_ticks
         self.restart_kind = kind
 
