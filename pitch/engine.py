@@ -84,6 +84,7 @@ class Pitch:
     _offside_team: str | None = None
     pass_to: int | None = None  # receiver of a pass in flight — the ball is steered to their feet
     pass_ttl: int = 0  # ticks a pass stays protected (in transit) before it can run loose
+    _restart_no_offside: bool = False  # next delivery is a throw-in/corner/goal-kick — no offside
     _rng: Random = field(default_factory=lambda: Random(0))
 
     def __post_init__(self) -> None:
@@ -155,6 +156,7 @@ class Pitch:
         self.scorer = self.goal_team = self.restart_kind = None
         self._offside, self._offside_team = set(), None
         self.pass_to, self.pass_ttl = None, 0
+        self._restart_no_offside = False
         for p in self.players:
             p.x, p.y, p.vx, p.vy = p.home_x, p.home_y, 0.0, 0.0
             # at kickoff every player must be in their OWN half (real soccer) — a high forward line is
@@ -375,6 +377,8 @@ class Pitch:
                 pass_to = intents[owner.id].get("pass_to")
                 if pass_to is not None:  # a pass to a team-mate — resolve it as a designed event
                     self._begin_pass(owner, pass_to)
+                elif self._restart_no_offside:  # corner/throw/goal-kick delivery — no offside flag
+                    self._restart_no_offside = False
                 else:  # a shot or clearance — runs as a normal struck ball
                     self._flag_offside(owner)
             else:
@@ -449,8 +453,10 @@ class Pitch:
     def _begin_pass(self, owner: Player, receiver_id: int) -> None:
         c = self.cfg
         rec = self.players[receiver_id]
+        exempt = self._restart_no_offside  # a throw-in/corner/goal-kick delivery can't be offside
+        self._restart_no_offside = False
         interceptor = self._lane_interceptor(owner, rec)
-        if interceptor is None and self._offside_receiver(owner, rec):
+        if interceptor is None and not exempt and self._offside_receiver(owner, rec):
             defend = "away" if owner.team == "home" else "home"
             self.pass_to, self.pass_ttl = None, 0
             self._dead_ball(
@@ -506,6 +512,9 @@ class Pitch:
         self.pass_to, self.pass_ttl = None, 0
         self.restart = self.cfg.restart_ticks
         self.restart_kind = kind
+        # no offside can be given directly from a throw-in, corner kick, or goal kick (a free kick
+        # or the offside restart itself does carry an offside, so they don't set the exemption)
+        self._restart_no_offside = kind in ("throw-in", "corner", "goal-kick")
 
     def _restart_endline(self, defending: str) -> None:
         c = self.cfg
