@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 
 from alibi import llm
 from alibi.engine import HUB, MAX_TICKS, Game, Meeting, new_game
@@ -120,9 +121,24 @@ def _transcript_str(game: Game, transcript: list) -> str:
     return "\n".join(f"{_name(game, sid)}: {text}" for sid, text in transcript)
 
 
+_THINK_RE = re.compile(r"<think>.*?</think>", re.S | re.I)
+
+
+def _strip_think(text: str) -> str:
+    # reasoning models (Qwen3) emit a <think>…</think> block, or a "Here's a thinking process:" preamble,
+    # before the answer — drop it so only the spoken line reaches the table.
+    text = _THINK_RE.sub(" ", text or "")
+    text = re.sub(r"<think>.*$", " ", text, flags=re.S | re.I)  # unclosed think block
+    text = re.sub(r"</?think>", " ", text, flags=re.I)
+    text = re.sub(
+        r"^\s*here'?s?\s+(a|my)\s+(thinking|thought)\s+process[^.]*[.:]", " ", text, flags=re.I
+    )
+    return text.strip()
+
+
 def _trim(text: str) -> str:
     # keep each line to a single short sentence so it fits in a speech bubble over the agent's head
-    text = (text or "").strip().strip('"').replace("\n", " ")
+    text = _strip_think(text).strip().strip('"').replace("\n", " ")
     if len(text) > 120:
         cut = max(text.find(". ", 30, 150), text.find("? ", 30, 150), text.find("! ", 30, 150))
         if cut > 0:
@@ -145,7 +161,8 @@ async def _statement_round(game, mt, transcript, opening: bool, on_item=None):
             else "Reply in ONE short line — defend yourself, back a theory, or call out a lie."
         )
         user = f"{public}\n\nWhat you know:\n{_brief(game, mt, a)}\n\nMeeting so far:\n{convo or '(nobody has spoken yet)'}\n\n{ask}"
-        jobs.append((sys, user, _model(a)))
+        m = _model(a)
+        jobs.append((sys, user + ("\n/no_think" if "qwen" in m else ""), m))
     outs = await llm.complete_many(jobs, temperature=0.8)
     for a, text in zip(living, outs):
         text = _trim(text)
@@ -177,12 +194,13 @@ async def _vote_round(game, mt, transcript, on_item=None) -> dict:
             f"{guidance}\nChoose exactly one of: {', '.join(names)}, or skip. "
             'Reply ONLY as JSON: {"vote": "<name or skip>", "reason": "<a few words>"}'
         )
-        jobs.append((sys, user, _model(a)))
+        m = _model(a)
+        jobs.append((sys, user + ("\n/no_think" if "qwen" in m else ""), m))
     outs = await llm.complete_many(jobs, temperature=0.3)
     by_name = {a.name.lower(): a.id for a in living}
     votes: dict = {}
     for a, text in zip(living, outs):
-        parsed = llm.parse_json(text) or {}
+        parsed = llm.parse_json(_strip_think(text)) or {}
         choice = str(parsed.get("vote", "skip")).strip().lower()
         votes[a.id] = by_name.get(choice, -1)
         mt.votes = dict(votes)  # partial ballot, so the snapshot can reveal votes one by one
