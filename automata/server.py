@@ -757,9 +757,12 @@ def _automata_ui():
 
 
 @app.get("/worlds")
-async def worlds_hub():
-    # the Artel Worlds hub — lists every world. Reachable directly, and served at the root of
-    # worlds.artel.run via the host check below.
+async def worlds_hub(request: Request):
+    # the hub lives at the ROOT of worlds.artel.run — canonicalize /worlds -> / there. On Automata's
+    # own host (where / is the game) /worlds still serves the hub, for backward compatibility.
+    host = request.headers.get("host", "").split(":")[0]
+    if host.startswith("worlds."):
+        return RedirectResponse("/", status_code=308)
     hub = STATIC / "worlds.html"
     return (
         FileResponse(hub)
