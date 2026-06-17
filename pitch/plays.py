@@ -12,7 +12,7 @@ from __future__ import annotations
 import datetime
 
 from .bot import _open, _pass, decide
-from .engine import Pitch, Player, _len, _unit
+from .engine import Pitch, Player, _len
 
 GG_TTL = 42  # ticks a give-and-go may run before it's abandoned
 CALL_EVENT = "pitch.playcall"  # the brain's play-call, carried over Artel
@@ -59,7 +59,9 @@ def try_give_and_go(pitch: Pitch, team: str):
         return None
     c = pitch.cfg
     fwd = _fwd(team)
-    if _adv(team, carrier.x, c.length) < c.length * 0.45:  # only in the front ~55%
+    if (
+        _adv(team, carrier.x, c.length) < c.length * 0.55
+    ):  # attacking 45% — past midfield, where it bites
         return None
     opps = [o for o in pitch.opponents(carrier) if o.role != "GK"]
     ahead = [o for o in opps if 2 < (o.x - carrier.x) * fwd < 16 and abs(o.y - carrier.y) < 13]
@@ -172,7 +174,10 @@ class PlayManager:
             if p.get("team") == self.team:
                 latest = p
         if latest is not None:
-            self.call = {"combos": bool(latest.get("combos")), "channel": latest.get("channel", "center")}
+            self.call = {
+                "combos": bool(latest.get("combos")),
+                "channel": latest.get("channel", "center"),
+            }
             self._call_at = now
         elif now - self._call_at > CALL_TTL:
             self.call = None

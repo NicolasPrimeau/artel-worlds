@@ -5,7 +5,7 @@ import os
 import time
 from dataclasses import dataclass
 
-from . import artel_client, bot, llm
+from . import artel_client, bot, llm, plays
 from .engine import Pitch, Player, _clamp
 
 LLM_EVERY = float(os.environ.get("PITCH_LLM_EVERY", "6"))  # seconds between coach LLM calls
@@ -16,10 +16,11 @@ DIRECTIVE = "pitch.directive"
 COACH_SYSTEM = (
     "You are the head coach of an AI soccer team in a live 2D match. Read the situation and set the "
     "game plan. Reply with ONLY a JSON object, no prose: "
-    '{"overload":"left|right|center","commit":0-3,"low_block":true|false}. '
+    '{"overload":"left|right|center","commit":0-3,"low_block":true|false,"combos":true|false}. '
     "overload = which flank to attack; commit = how many midfielders to push forward (more when "
-    "chasing a deficit); low_block = sit deep to protect a lead. Be decisive and adapt to the score, "
-    "the clock, and the opponent's weak side."
+    "chasing a deficit); low_block = sit deep to protect a lead; combos = call quick give-and-go "
+    "combinations to break a packed defence. Be decisive and adapt to the score, the clock, and the "
+    "opponent's weak side."
 )
 
 # The Artel team's coach. The baseline brain is good but STATIC — it plays the same way at 0-0 and
@@ -35,6 +36,7 @@ class Plan:
     overload_y: float  # the channel to attack — the opponent's weakest defensive side
     commit: int  # how many midfielders push up to join the attack (chasing the game)
     low_block: bool  # sit deeper and protect (seeing out a lead)
+    combos: bool = False  # call quick give-and-go combinations (the play actuator acts on this)
 
 
 def optimize_lineup(players: list[Player]) -> None:
@@ -123,9 +125,20 @@ def combined_brain(coords: dict):
     # when a live Artel directive is in hand (co.plan set); with no directive — Artel down, LLM not
     # configured, or none authored yet — the side plays pure baseline. So the edge is genuinely
     # Artel-borne: cut the bus and the coached team is indistinguishable from the rest.
+    st = {"tick": -1}
+
     def brain(pitch: Pitch, p: Player) -> dict:
+        if pitch.tick != st["tick"]:  # advance/trigger each side's plays once per tick
+            st["tick"] = pitch.tick
+            for co in coords.values():
+                co.plays.update(pitch)
         co = coords.get(p.team)
-        if co is None or co.plan is None:
+        if co is None:
+            return bot.decide(pitch, p)
+        it = co.plays.intent(pitch, p)  # the play actuator overrides for the players in a play
+        if it is not None:
+            return it
+        if co.plan is None:
             return bot.decide(pitch, p)
         return coordinated_decide(pitch, p, co.plan)
 
@@ -164,6 +177,7 @@ async def author_plan_llm(pitch: Pitch, team: str) -> Plan:
         overload_y=overload_y,
         commit=commit,
         low_block=bool(out.get("low_block", fallback.low_block)),
+        combos=bool(out.get("combos", False)),
     )
 
 
@@ -202,21 +216,19 @@ class Coordinator:
         self.llm = llm.enabled()  # is an LLM coach configured to author directives?
         self._llm_at = 0.0
         self._busy = False
-        self._last_key: tuple | None = None  # last published tactic, so the readable log is sparse
         self._since = _now_cursor()
         self._plan_at = 0.0  # monotonic time the current directive was last read (for TTL expiry)
+        self.plays = plays.PlayManager(
+            team
+        )  # the actuator: runs plays when the directive calls them
 
     def optimize(self, pitch: Pitch) -> None:
         # captain's team-sheet — fit the rolled attributes to roles before kickoff (synchronous)
         optimize_lineup([p for p in pitch.players if p.team == self.team])
 
     async def announce(self) -> None:
-        if self._artel:
-            await self._artel.write_memory(
-                "captain",
-                f"{self.club}: coordinating through Artel — the coach calls overloads and presses live.",
-                ["pitch", "plan", f"team:{self.team}"],
-            )
+        # nothing to pre-stage: live coordination flows as directive EVENTS, not memories
+        return
 
     async def refresh(self, pitch: Pitch) -> None:
         if self._artel is None:
@@ -239,12 +251,18 @@ class Coordinator:
             self.plan, self._plan_at = got, now
         elif now - self._plan_at > PLAN_TTL:
             self.plan = None
+        # hand the actuator its standing play-call from the (Artel-borne) directive — no plan, no call
+        if self.plan is not None:
+            side = "left" if self.plan.overload_y < pitch.cfg.width / 2 else "right"
+            self.plays.call = {"combos": self.plan.combos, "channel": side}
+        else:
+            self.plays.call = None
 
     async def _publish(self, pitch: Pitch, plan: Plan) -> None:
-        a, tag = self._artel, f"team:{self.team}"
+        # the directive is an EVENT (the right primitive for live coordination — ephemeral, pub/sub,
+        # not a memory). It carries the structured plan the team reads back AND a readable line.
         side = "left" if plan.overload_y < pitch.cfg.width / 2 else "right"
-        # structured directive — the load-bearing channel the team reads back EVERY window...
-        await a.emit_event(
+        await self._artel.emit_event(
             "captain",
             DIRECTIVE,
             {
@@ -252,16 +270,10 @@ class Coordinator:
                 "overload_y": round(plan.overload_y, 1),
                 "commit": plan.commit,
                 "low_block": plan.low_block,
+                "combos": plan.combos,
+                "say": _say_directive(self.club, plan, side),
             },
         )
-        # ...plus a readable line ONLY when the tactic actually changes — a sparse coaching narrative
-        # in the project (not a per-window flood), kept (not wiped) so it's visible in the Artel UI
-        key = (side, plan.commit, plan.low_block)
-        if key != self._last_key:
-            self._last_key = key
-            await a.write_memory(
-                "captain", _say_directive(self.club, plan, side), ["pitch", "directive", tag]
-            )
 
     async def _read(self) -> Plan | None:
         rows = await self._artel.poll_events("captain", DIRECTIVE, self._since)
@@ -273,7 +285,12 @@ class Coordinator:
                 latest = p
         if latest is None:
             return None
-        return Plan(float(latest["overload_y"]), int(latest["commit"]), bool(latest["low_block"]))
+        return Plan(
+            float(latest["overload_y"]),
+            int(latest["commit"]),
+            bool(latest["low_block"]),
+            bool(latest.get("combos", False)),
+        )
 
     async def finish(self, summary: str) -> None:
         # record the result; KEEP the readable directive log (it's sparse and is the visible proof
