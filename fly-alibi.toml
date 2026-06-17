@@ -1,0 +1,35 @@
+app = "artel-alibi"
+primary_region = "yyz"
+
+[build]
+  dockerfile = "Dockerfile.alibi"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1  # in-memory game + WebSocket viewers — exactly one machine
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 200
+    soft_limit = 150
+
+[mounts]
+  source = "alibi_data"
+  destination = "/data"  # persists the win record + spend ledger across deploys; game stays in-memory
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"  # the heavy lifting is remote (Groq); only transcripts + httpx live here
+
+[checks]
+  [checks.health]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    path = "/health"
+    port = 8000
+    timeout = "5s"
+    type = "http"

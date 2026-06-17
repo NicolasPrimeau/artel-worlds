@@ -438,6 +438,7 @@ class World:
         return {
             "enabled": self.enabled,
             "paused": self.paused,
+            "viewers": len(self.viewers),
             "model": A.MODEL,
             "fallback_model": A.FALLBACK["model"] if A.FALLBACK else None,
             "llm_key_set": bool(A.LLM_KEY),

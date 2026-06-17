@@ -14,29 +14,73 @@ from dataclasses import dataclass, field
 # counters and a `decide_votes` callback — so the same board drives the deterministic A/B baseline or
 # LLM agents. The live runner mirrors task completion and testimony onto a real Artel server.
 
-ROOMS = ["Cafeteria", "Medbay", "Electrical", "Storage", "Reactor", "Navigation"]
+# An Antarctic research station, blizzard outside, nobody leaving. One of the team isn't human anymore
+# — the Thing wears a friend's face. The Mess Hall is the hub where everyone reconvenes for a meeting.
+HUB = "Mess Hall"
+ROOMS = [HUB, "Lab", "Generator", "Drill Site", "Comms", "Bunks"]
 ADJ = {
-    "Cafeteria": ["Medbay", "Storage", "Navigation"],
-    "Medbay": ["Cafeteria", "Electrical"],
-    "Electrical": ["Medbay", "Storage"],
-    "Storage": ["Electrical", "Cafeteria", "Reactor"],
-    "Reactor": ["Storage", "Navigation"],
-    "Navigation": ["Reactor", "Cafeteria"],
+    HUB: ["Lab", "Drill Site", "Bunks"],
+    "Lab": [HUB, "Generator"],
+    "Generator": ["Lab", "Drill Site"],
+    "Drill Site": ["Generator", HUB, "Comms"],
+    "Comms": ["Drill Site", "Bunks"],
+    "Bunks": ["Comms", HUB],
 }
-# vents let the impostor move secretly between a few far-apart rooms (escape a fresh body)
+# crawlspaces under the station let the Thing move unseen between two far rooms (slip off a fresh body)
 VENTS = {
-    "Electrical": ["Reactor"],
-    "Reactor": ["Electrical"],
-    "Medbay": ["Navigation"],
-    "Navigation": ["Medbay"],
+    "Generator": ["Comms"],
+    "Comms": ["Generator"],
+    "Lab": ["Bunks"],
+    "Bunks": ["Lab"],
 }
 TASKS_EACH = 5
 TASK_P = 0.18  # per-tick chance a crew advances a task (the board is a slow race, not a sprint)
 KILL_CD = 5  # ticks between kills — fast enough to threaten before the task board clears
+START_GRACE = 6  # no kill on the first few ticks, so a real task phase builds movement + alibis
 EMERGENCY_P = 0.01  # per-tick chance a crew calls a meeting on suspicion alone
 MAX_TICKS = 600
 
-COLORS = ["Red", "Blue", "Green", "Pink", "Orange", "Yellow", "Black", "White", "Cyan", "Lime"]
+# the winter-over crew — surnames of living researchers instrumental in modern AI (the joke: a fleet of
+# language models, named for the people who built them, playing The Thing). Each game samples a distinct
+# subset from the seed, so names overlap between games but never repeat within one (pitch-style).
+NAMES = [
+    "Hinton",
+    "LeCun",
+    "Bengio",
+    "Sutskever",
+    "Karpathy",
+    "Hassabis",
+    "Goodfellow",
+    "Vaswani",
+    "Sutton",
+    "Silver",
+    "Radford",
+    "Amodei",
+    "Shazeer",
+    "Vinyals",
+    "Abbeel",
+    "Levine",
+    "Manning",
+    "Schmidhuber",
+    "Hochreiter",
+    "Norvig",
+    "Russell",
+    "Koller",
+    "Salakhutdinov",
+    "Larochelle",
+    "Courville",
+    "Chintala",
+    "Krizhevsky",
+    "Brockman",
+    "Zaremba",
+    "Schulman",
+    "Finn",
+    "Liang",
+    "Jurafsky",
+    "Thrun",
+    "Barto",
+    "Dosovitskiy",
+]
 
 
 @dataclass
@@ -54,7 +98,10 @@ class Agent:
     room: str
     alive: bool = True
     tasks: int = TASKS_EACH  # this agent's slice of the shared Artel task board
+    model: str = ""  # which LLM drives this agent in the meeting (set by the meeting layer)
+    tasking: bool = False  # worked a task this tick (transient, for the renderer)
     # what this agent privately observed — the raw material for its testimony in a meeting
+    trail: list = field(default_factory=list)  # (tick, room) — its own movements this round
     seen: list = field(default_factory=list)  # list[Sighting]
     witnessed: set = field(default_factory=set)  # impostor ids it directly saw kill
     found: list = field(default_factory=list)  # (tick, room, victim_id) bodies it discovered
@@ -64,10 +111,11 @@ class Agent:
 class Meeting:
     tick: int
     reporter: int  # who called it (-1 = emergency button)
-    room: str  # where the body was (or "Cafeteria" for emergency)
+    room: str  # where the body was (or the hub for an emergency alarm)
     victim: int | None  # who died, if a body report
     ejected: int | None = None  # who got voted out
     votes: dict = field(default_factory=dict)  # voter id -> target id (or -1 for skip)
+    transcript: list = field(default_factory=list)  # [(speaker_id, text)] — the meeting chat
 
 
 @dataclass
@@ -102,6 +150,7 @@ class Game:
             self.cd -= 1
 
         for a in self.living():
+            a.tasking = False
             if a.impostor:
                 if a.room in VENTS and self.rng.random() < 0.25:
                     a.room = self.rng.choice(VENTS[a.room])  # vent away secretly
@@ -109,8 +158,12 @@ class Game:
                     a.room = self.rng.choice(ADJ[a.room])
             elif a.tasks > 0 and self.rng.random() < TASK_P:
                 a.tasks -= 1  # claim + complete one task on the shared board
+                a.tasking = True
             else:
                 a.room = self.rng.choice(ADJ[a.room])
+
+        for a in self.living():
+            a.trail.append((self.tick, a.room))  # each agent remembers where it has been
 
         # record sightings: everyone in a room sees everyone else in it
         for room in ROOMS:
@@ -154,7 +207,7 @@ class Game:
         # emergency button: a crew gets suspicious and calls everyone in
         if self.living(impostor=True) and self.rng.random() < EMERGENCY_P:
             caller = self.rng.choice(self.living(impostor=False))
-            return Meeting(self.tick, caller.id, "Cafeteria", None)
+            return Meeting(self.tick, caller.id, HUB, None)
 
         return None
 
@@ -172,7 +225,11 @@ class Game:
 
     # --- meeting: collect votes via `decide`, eject the plurality, reconvene. ---
     def run_meeting(self, mt: Meeting, decide):
-        votes = decide(self, mt)  # voter id -> target id (-1 = skip)
+        self.apply_votes(mt, decide(self, mt))
+
+    # apply an already-collected ballot (voter id -> target id, -1 = skip). The async LLM meeting
+    # builds the ballot itself and calls this directly; the deterministic path routes through decide.
+    def apply_votes(self, mt: Meeting, votes: dict):
         mt.votes = votes
         tally: dict[int, int] = {}
         for t in votes.values():
@@ -193,8 +250,9 @@ class Game:
                 self.wrong_ejections += 1
         self.meetings.append(mt)
         for a in self.living():
-            a.room = "Cafeteria"
+            a.room = HUB
             a.seen.clear()  # testimony is spent; co-location memory resets after the meeting
+            a.trail.clear()
         self.cd = KILL_CD
         self._check_win()
 
@@ -204,9 +262,9 @@ def new_game(seed: int, n=6, impostors=1) -> Game:
     order = list(range(n))
     rng.shuffle(order)
     imp_ids = set(order[:impostors])
-    names = rng.sample(COLORS, n)
+    names = rng.sample(NAMES, n)
     agents = [Agent(i, names[i], i in imp_ids, rng.choice(ROOMS)) for i in range(n)]
-    return Game(rng=rng, agents=agents)
+    return Game(rng=rng, agents=agents, cd=START_GRACE)
 
 
 def play(seed: int, decide, n=6, impostors=1) -> Game:

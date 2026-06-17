@@ -797,6 +797,7 @@ _UI_SECRET = (os.environ.get("WORLDS_UI_SECRET") or UI_PASSWORD or "artel-worlds
 _UI_TTL = 7 * 24 * 3600
 PHALANX_DEBUG = os.environ.get("PHALANX_DEBUG_URL", "https://phalanx.artel.run").rstrip("/")
 PITCH_DEBUG = os.environ.get("PITCH_DEBUG_URL", "https://pitch.artel.run").rstrip("/")
+ALIBI_DEBUG = os.environ.get("ALIBI_DEBUG_URL", "https://alibi.artel.run").rstrip("/")
 WATCHTOWER_DEBUG = os.environ.get("WATCHTOWER_DEBUG_URL", "https://watchtower.artel.run").rstrip(
     "/"
 )
@@ -879,17 +880,84 @@ async def _fetch_json(client: httpx.AsyncClient, url: str) -> dict | None:
         return None
 
 
+def _fmt_secs(v):
+    if v is None:
+        return "—"
+    return f"{v / 60:.1f}m" if v >= 60 else f"{round(v)}s"
+
+
+def _normalize_world_metrics(worlds: list) -> None:
+    # Every world card shows the SAME headline block — cost, results, viewers — so they read uniformly.
+    # Derive that block from each world's native fields here, rather than hand-coding it per card.
+    for w in worlds:
+        f = w.get("facts") or {}
+        key = w.get("key")
+        results = {"record": None, "label": "results", "recent": []}
+        caption = None
+        if key == "phalanx":
+            sc = f.get("scores") or {}
+            results = {
+                "record": f"{sc.get('artel', 0)}–{sc.get('red', 0)}",
+                "label": "Artel–Red wins",
+                "recent": [
+                    {"win": h.get("winner") == "artel", "title": h.get("winner") or "draw"}
+                    for h in (f.get("recent") or [])
+                ],
+            }
+            caption = f"{f.get('match', 0)} matches · blue = Artel won"
+        elif key == "watchtower":
+            wr = f.get("win_rate")
+            results = {
+                "record": f"{round(wr * 100)}%" if wr is not None else "—",
+                "label": "Artel win-rate",
+                "recent": [],
+            }
+            caption = (
+                f"{f.get('incidents', 0)} incidents · Artel {_fmt_secs(f.get('artel_mttr'))} "
+                f"vs solo {_fmt_secs(f.get('solo_mttr'))} mean fix"
+            )
+            w["wide"] = True
+            if len(f.get("wedge") or []) >= 2:
+                w["chart"] = "wedge"
+        elif key == "pitch":
+            results = {
+                "record": f"#{f.get('match')}" if f.get("match") is not None else "—",
+                "label": "match",
+                "recent": [],
+            }
+            caption = f.get("fixture")
+        elif key == "alibi":
+            r = f.get("results") or {}
+            results = {
+                "record": f"{r.get('crew', 0)}–{r.get('thing', 0)}",
+                "label": "crew–Thing",
+                "recent": f.get("recent") or [],
+            }
+            caption = f.get("caption")
+        elif key == "automata":
+            results = {"record": f.get("population"), "label": "cells alive", "recent": []}
+            caption = f"tick {f.get('tick')}" if f.get("tick") is not None else None
+        w["metrics"] = {
+            "cost": {"value": w.get("spend"), "today": w.get("spend_today"), "cap": w.get("cap")},
+            "results": results,
+            "viewers": w.get("viewers", f.get("viewers")),
+        }
+        if caption:
+            w["caption"] = caption
+
+
 @app.get("/ui/stats.json", include_in_schema=False)
 async def ui_stats(request: Request):
     # server-side aggregation of every world's live cost + status. Auth-gated like the page itself.
     if UI_PASSWORD and not _authed(request):
         raise HTTPException(status_code=401, detail="sign in")
     async with httpx.AsyncClient() as client:
-        ph, wt, wt_state, pi = await asyncio.gather(
+        ph, wt, wt_state, pi, al = await asyncio.gather(
             _fetch_json(client, f"{PHALANX_DEBUG}/debug"),
             _fetch_json(client, f"{WATCHTOWER_DEBUG}/debug"),
             _fetch_json(client, f"{WATCHTOWER_DEBUG}/state"),
             _fetch_json(client, f"{PITCH_DEBUG}/debug"),
+            _fetch_json(client, f"{ALIBI_DEBUG}/debug"),
         )
     worlds = []
     a = G.snapshot()
@@ -908,6 +976,7 @@ async def ui_stats(request: Request):
             "spend": round(getattr(G.llm, "spent", 0.0), 4) if G.llm else None,
             "spend_label": "since boot",
             "cap": None,
+            "viewers": len(G.viewers),
             "facts": {"tick": a.get("tick"), "population": a.get("population")},
         }
     )
@@ -929,6 +998,7 @@ async def ui_stats(request: Request):
                 "spend_label": "all time",
                 "cap": sq.get("cap_usd"),
                 "cache_ratio": sq.get("cache_ratio"),
+                "viewers": ph.get("viewers"),
                 "spend_days": ph.get("spend_days") or {},
                 "facts": {
                     "match": ph.get("completed", ph.get("match")),
@@ -982,6 +1052,7 @@ async def ui_stats(request: Request):
                 "spend_today": wt.get("spent_today"),
                 "cap": wt.get("cap_daily"),
                 "cache_ratio": wt.get("cache_ratio"),
+                "viewers": wt.get("viewers"),
                 "spend_days": wt.get("spend_days") or {},
                 "facts": {
                     "incidents": s.get("incidents"),
@@ -1045,6 +1116,42 @@ async def ui_stats(request: Request):
                 "cap": None,
             }
         )
+    if al:
+        worlds.append(
+            {
+                "key": "alibi",
+                "name": "Alibi",
+                "world": 5,
+                "url": "https://alibi.artel.run",
+                "status": "live" if al.get("live") else "idle",
+                "paused": al.get("paused", False),
+                "model": al.get("model"),
+                "spend": round(al.get("spend") or 0.0, 5),
+                "spend_label": "all time",
+                "cap": al.get("cap"),
+                "cache_ratio": None,
+                "viewers": al.get("viewers"),
+                "spend_days": al.get("spend_days") or {},
+                "facts": {
+                    "results": al.get("results") or {},
+                    "recent": al.get("recent") or [],
+                    "caption": al.get("caption"),
+                },
+            }
+        )
+    else:
+        worlds.append(
+            {
+                "key": "alibi",
+                "name": "Alibi",
+                "world": 5,
+                "status": "unreachable",
+                "url": "https://alibi.artel.run",
+                "spend": None,
+                "cap": None,
+            }
+        )
+    _normalize_world_metrics(worlds)
     total = sum(w["spend"] for w in worlds if isinstance(w.get("spend"), (int, float)))
     days: dict[str, dict[str, float]] = {}
     for w in worlds:
@@ -1112,9 +1219,12 @@ async def ui_reset(request: Request, world: str = ""):
             G.reset()
         await _reset_artel_project()
         return {"ok": True, "world": "automata"}
-    target = {"phalanx": PHALANX_DEBUG, "watchtower": WATCHTOWER_DEBUG, "pitch": PITCH_DEBUG}.get(
-        world
-    )
+    target = {
+        "phalanx": PHALANX_DEBUG,
+        "watchtower": WATCHTOWER_DEBUG,
+        "pitch": PITCH_DEBUG,
+        "alibi": ALIBI_DEBUG,
+    }.get(world)
     if not target:
         raise HTTPException(status_code=400, detail="unknown world")
     async with httpx.AsyncClient() as client:

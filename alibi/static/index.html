@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Alibi · Outpost 31</title>
+<style>
+  :root{
+    --bg:#070b14; --panel:rgba(16,24,40,.72); --line:rgba(120,160,220,.18);
+    --ink:#e7eefc; --dim:#8aa0c4; --warn:#ff5a5a; --good:#39d98a; --gold:#ffcf5a;
+    --frost:#bfe0ff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font:14px/1.4 "Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden;
+    -webkit-font-smoothing:antialiased}
+  #stage{position:fixed;inset:0}
+  canvas{position:absolute;inset:0;display:block;cursor:grab}
+  canvas:active{cursor:grabbing}
+
+  /* top HUD */
+  .hud{position:fixed;top:0;left:0;right:0;height:58px;display:flex;align-items:center;gap:18px;
+    padding:0 20px;background:linear-gradient(#0a1120ee,#0a112000);z-index:10;pointer-events:none}
+  .brand{font-weight:800;letter-spacing:.14em;font-size:15px}
+  .brand small{color:var(--frost);font-weight:600;letter-spacing:.22em}
+  .pill{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);
+    border-radius:999px;padding:6px 12px;backdrop-filter:blur(8px)}
+  .pill b{font-variant-numeric:tabular-nums}
+  .taskbar{width:160px;height:8px;border-radius:999px;background:#16213a;overflow:hidden;
+    border:1px solid var(--line)}
+  .taskbar i{display:block;height:100%;background:linear-gradient(90deg,#2fa1ff,#39d98a)}
+  .spacer{flex:1}
+  .hint{color:var(--dim);font-size:12px}
+
+  /* roster (left) */
+  .roster{position:fixed;left:14px;top:70px;width:208px;z-index:9;display:flex;flex-direction:column;
+    gap:6px}
+  .who{display:flex;align-items:center;gap:9px;background:var(--panel);border:1px solid var(--line);
+    border-radius:11px;padding:7px 9px;backdrop-filter:blur(8px)}
+  .who .dot{width:14px;height:14px;border-radius:5px;flex:none;box-shadow:0 0 0 2px #0006 inset}
+  .who .nm{font-weight:700;font-size:13px}
+  .who .md{color:var(--dim);font-size:10.5px;letter-spacing:.02em}
+  .who.dead{opacity:.4}
+  .who.dead .nm{text-decoration:line-through}
+
+  /* meeting overlay */
+  .meet{position:fixed;inset:0;z-index:20;display:none;flex-direction:column;align-items:center;
+    background:radial-gradient(120% 90% at 50% -10%,#101a2e,#060912f2);backdrop-filter:blur(4px);
+    padding:26px 18px}
+  .meet.show{display:flex}
+  .meet h2{margin:6px 0 2px;letter-spacing:.22em;font-size:15px;color:#ff5a5a;font-weight:800}
+  .meet .lede{color:var(--dim);font-size:12.5px;margin-bottom:14px}
+  .chat{width:min(680px,94vw);flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:9px;
+    padding:4px 2px}
+  .msg{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px 12px;
+    animation:rise .25s ease}
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .msg .hd{display:flex;align-items:center;gap:8px;margin-bottom:3px}
+  .msg .nm{font-weight:800;font-size:12.5px}
+  .msg .md{color:var(--dim);font-size:10px;letter-spacing:.02em}
+  .msg .tx{font-size:13.5px;color:#dfe8fb}
+  .verdict{width:min(680px,94vw);margin-top:12px;background:rgba(16,24,40,.9);border:1px solid var(--line);
+    border-radius:14px;padding:14px 16px;text-align:center}
+  .verdict .big{font-size:18px;font-weight:800}
+  .verdict .big.thing{color:#ff5a5a}.verdict .big.clear{color:#39d98a}
+  .verdict .tally{color:var(--dim);font-size:11.5px;margin-top:6px}
+  .meet .typing{color:var(--dim);font-size:12px;margin-top:8px}
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="map"></canvas></div>
+
+<div class="hud">
+  <div class="brand">ALIBI <small>· OUTPOST 31</small></div>
+  <div class="pill">Round <b id="hud-round">1</b></div>
+  <div class="pill">Tasks <div class="taskbar"><i id="hud-tasks" style="width:30%"></i></div></div>
+  <div class="pill">Alive <b id="hud-alive">6</b>/<b id="hud-total">6</b></div>
+  <div class="spacer"></div>
+  <div class="hint">drag to pan · scroll to zoom</div>
+</div>
+
+<div class="roster" id="roster"></div>
+
+<div class="meet" id="meet">
+  <h2>EMERGENCY MEETING</h2>
+  <div class="lede" id="meet-lede">—</div>
+  <div class="chat" id="meet-chat"></div>
+  <div class="typing" id="meet-typing">the crew are talking…</div>
+  <div class="verdict" id="meet-verdict" style="display:none"></div>
+</div>
+
+<script>
+// ---- station layout (logical world coords; world is larger than viewport → pan/zoom) ----
+const ROOMS = {
+  "Bunks":     {x:300, y:300, w:360, h:250},
+  "Mess Hall": {x:860, y:300, w:420, h:250, hub:true},
+  "Lab":       {x:1480,y:300, w:360, h:250},
+  "Comms":     {x:300, y:820, w:360, h:250},
+  "Drill Site":{x:860, y:820, w:420, h:250},
+  "Generator": {x:1480,y:820, w:360, h:250},
+};
+const HALLS = [
+  ["Mess Hall","Lab"],["Mess Hall","Bunks"],["Mess Hall","Drill Site"],
+  ["Lab","Generator"],["Generator","Drill Site"],["Drill Site","Comms"],["Comms","Bunks"],
+];
+const VENTS = [["Generator","Comms"],["Lab","Bunks"]];
+
+const COLORS = ["#ff5a5a","#4aa3ff","#39d98a","#ffcf5a","#c98bff","#ff9f4a","#7ce0ff","#ff7ab8"];
+
+// ---- baked sample state (for the look mock; the live server will replace this) ----
+let STATE = {
+  round:1, tasksDone:7, tasksTotal:24, tick:42,
+  agents:[
+    {name:"Hinton",     model:"llama-3.3-70b",  room:"Mess Hall",  alive:true,  task:false, c:0},
+    {name:"Goodfellow", model:"gpt-oss-20b",    room:"Mess Hall",  alive:true,  task:false, c:2},
+    {name:"LeCun",      model:"qwen3-32b",      room:"Lab",        alive:true,  task:true,  c:1},
+    {name:"Karpathy",   model:"gpt-oss-120b",   room:"Drill Site", alive:true,  task:false, c:4},
+    {name:"Abbeel",     model:"qwen3.6-27b",    room:"Bunks",      alive:true,  task:true,  c:3},
+    {name:"Finn",       model:"llama-4-scout",  room:"Generator",  alive:false, body:true,  c:5},
+  ],
+};
+
+// ---- camera ----
+const cv = document.getElementById('map'), ctx = cv.getContext('2d');
+let cam = {x:0,y:0,z:1}, fitDone=false, DPR=Math.min(2,window.devicePixelRatio||1);
+function resize(){ cv.width=innerWidth*DPR; cv.height=innerHeight*DPR; if(!fitDone){fit();fitDone=true;} }
+function worldBounds(){ let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(const r of Object.values(ROOMS)){x0=Math.min(x0,r.x-r.w/2);y0=Math.min(y0,r.y-r.h/2);
+    x1=Math.max(x1,r.x+r.w/2);y1=Math.max(y1,r.y+r.h/2);} return {x0:x0-120,y0:y0-120,x1:x1+120,y1:y1+120}; }
+function fit(){ const b=worldBounds(), ww=b.x1-b.x0, wh=b.y1-b.y0;
+  const z=Math.min(cv.width/DPR/ww, cv.height/DPR/wh)*0.96;
+  cam.z=z; cam.x=(b.x0+b.x1)/2; cam.y=(b.y0+b.y1)/2; }
+
+// pan/zoom
+let drag=null;
+cv.addEventListener('mousedown',e=>drag={x:e.clientX,y:e.clientY});
+addEventListener('mouseup',()=>drag=null);
+addEventListener('mousemove',e=>{ if(!drag)return; cam.x-=(e.clientX-drag.x)/cam.z; cam.y-=(e.clientY-drag.y)/cam.z; drag={x:e.clientX,y:e.clientY}; });
+cv.addEventListener('wheel',e=>{ e.preventDefault(); const f=Math.exp(-e.deltaY*0.0012); cam.z=Math.max(0.25,Math.min(2.4,cam.z*f)); },{passive:false});
+
+function toScreen(wx,wy){ return [ (wx-cam.x)*cam.z + cv.width/2, (wy-cam.y)*cam.z + cv.height/2 ]; }
+
+// ---- snow ----
+const snow=[...Array(160)].map(()=>({x:Math.random(),y:Math.random(),s:Math.random()*1.6+0.4,d:Math.random()*0.4+0.2}));
+function drawSnow(t){ ctx.save(); ctx.fillStyle="#cfe3ff";
+  for(const f of snow){ const x=((f.x+Math.sin(t*0.0002+f.y*9)*0.02)*cv.width); const y=((f.y+ (t*0.00004*f.d))%1)*cv.height;
+    ctx.globalAlpha=0.10+0.18*f.s/2; ctx.beginPath(); ctx.arc(x,y,f.s*DPR,0,7); ctx.fill(); } ctx.restore(); }
+
+function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+// ---- corridors ----
+function drawHalls(){
+  const join=(a,b,col,dash)=>{ const A=ROOMS[a],B=ROOMS[b]; const [ax,ay]=toScreen(A.x,A.y),[bx,by]=toScreen(B.x,B.y);
+    ctx.save(); ctx.lineCap="round"; if(dash)ctx.setLineDash([4*cam.z,10*cam.z]);
+    ctx.strokeStyle=col; ctx.lineWidth=(dash?5:30)*cam.z; ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by); ctx.stroke();
+    if(!dash){ ctx.strokeStyle="#0c1426"; ctx.lineWidth=20*cam.z; ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by); ctx.stroke(); }
+    ctx.restore(); };
+  for(const [a,b] of HALLS) join(a,b,"#2a3a5e",false);
+  for(const [a,b] of VENTS) join(a,b,"rgba(150,120,200,.55)",true);
+}
+
+// ---- rooms ----
+function drawRooms(){
+  for(const [name,r] of Object.entries(ROOMS)){
+    const [sx,sy]=toScreen(r.x,r.y), w=r.w*cam.z, h=r.h*cam.z;
+    ctx.save();
+    ctx.shadowColor="#000a"; ctx.shadowBlur=22*cam.z; ctx.shadowOffsetY=6*cam.z;
+    const g=ctx.createLinearGradient(sx,sy-h/2,sx,sy+h/2);
+    g.addColorStop(0,"rgba(30,44,72,.94)"); g.addColorStop(1,"rgba(17,26,46,.94)");
+    ctx.fillStyle=g; rr(sx-w/2,sy-h/2,w,h,16*cam.z); ctx.fill();
+    ctx.shadowColor="transparent";
+    ctx.strokeStyle=r.hub?"rgba(120,200,255,.5)":"rgba(110,150,210,.30)"; ctx.lineWidth=1.5*cam.z;
+    rr(sx-w/2,sy-h/2,w,h,16*cam.z); ctx.stroke();
+    // frosted top sheen
+    const sheen=ctx.createLinearGradient(sx,sy-h/2,sx,sy-h/2+h*0.4);
+    sheen.addColorStop(0,"rgba(190,224,255,.10)"); sheen.addColorStop(1,"rgba(190,224,255,0)");
+    ctx.fillStyle=sheen; rr(sx-w/2,sy-h/2,w,h*0.45,16*cam.z); ctx.fill();
+    // label
+    ctx.fillStyle="rgba(191,224,255,.85)"; ctx.font=`700 ${13*cam.z}px Inter,system-ui`;
+    ctx.textAlign="left"; ctx.textBaseline="top"; ctx.fillText(name.toUpperCase(), sx-w/2+14*cam.z, sy-h/2+11*cam.z);
+    ctx.restore();
+  }
+}
+
+// ---- crewmate avatar ----
+function crewmate(sx,sy,s,color,dead,task){
+  ctx.save(); ctx.translate(sx,sy);
+  if(dead){ ctx.rotate(Math.PI/2.4); ctx.globalAlpha=0.55; color="#5a6b86"; }
+  // shadow
+  ctx.save(); ctx.fillStyle="rgba(0,0,0,.35)"; ctx.beginPath();
+  ctx.ellipse(0,s*0.62,s*0.46,s*0.12,0,0,7); ctx.fill(); ctx.restore();
+  const w=s*0.78,h=s*1.04, dark=shade(color,-26), lite=shade(color,16);
+  // backpack
+  ctx.fillStyle=dark; rr(-w*0.62,-h*0.18,w*0.30,h*0.6,6); ctx.fill();
+  // body
+  const bg=ctx.createLinearGradient(0,-h*0.5,0,h*0.5); bg.addColorStop(0,lite); bg.addColorStop(1,dark);
+  ctx.fillStyle=bg; rr(-w*0.5,-h*0.5,w,h*0.95,w*0.42); ctx.fill();
+  ctx.strokeStyle="rgba(0,0,0,.35)"; ctx.lineWidth=s*0.04; rr(-w*0.5,-h*0.5,w,h*0.95,w*0.42); ctx.stroke();
+  // legs
+  ctx.fillStyle=dark; rr(-w*0.40,h*0.34,w*0.30,h*0.18,3); ctx.fill(); rr(w*0.10,h*0.34,w*0.30,h*0.18,3); ctx.fill();
+  // visor
+  const vg=ctx.createLinearGradient(0,-h*0.34,0,-h*0.10); vg.addColorStop(0,"#dff3ff"); vg.addColorStop(1,"#76b8e6");
+  ctx.fillStyle=vg; rr(-w*0.10,-h*0.34,w*0.56,h*0.26,h*0.13); ctx.fill();
+  ctx.fillStyle="rgba(255,255,255,.65)"; rr(w*0.04,-h*0.30,w*0.18,h*0.08,4); ctx.fill();
+  // fur hood (the Antarctic touch)
+  ctx.strokeStyle="rgba(235,245,255,.92)"; ctx.lineWidth=s*0.12; ctx.lineCap="round";
+  ctx.beginPath(); ctx.arc(0,-h*0.30,w*0.56,Math.PI*1.08,Math.PI*1.92); ctx.stroke();
+  if(dead){ ctx.strokeStyle="#1a2238"; ctx.lineWidth=s*0.06;
+    ctx.beginPath(); ctx.moveTo(0,-h*0.28); ctx.lineTo(w*0.22,-h*0.14); ctx.moveTo(w*0.22,-h*0.28); ctx.lineTo(0,-h*0.14); ctx.stroke(); }
+  ctx.restore();
+  if(task && !dead){ // task progress ring
+    ctx.save(); ctx.strokeStyle="rgba(57,217,138,.9)"; ctx.lineWidth=s*0.10;
+    ctx.beginPath(); ctx.arc(sx,sy,s*0.78,-1.6,-1.6+5.0); ctx.stroke(); ctx.restore(); }
+}
+function shade(hex,d){ if(hex[0]!=="#")return hex; let n=parseInt(hex.slice(1),16);
+  let r=(n>>16)+d,g=((n>>8)&255)+d,b=(n&255)+d; const c=v=>Math.max(0,Math.min(255,v));
+  return `rgb(${c(r)},${c(g)},${c(b)})`; }
+
+// place agents within their room (jitter so several fit), tween toward target
+function layoutAgents(){
+  const byRoom={};
+  for(const a of STATE.agents){ (byRoom[a.room]=byRoom[a.room]||[]).push(a); }
+  for(const [room,list] of Object.entries(byRoom)){ const r=ROOMS[room]; const n=list.length;
+    list.forEach((a,i)=>{ const cols=Math.ceil(Math.sqrt(n)); const cx=i%cols, cy=Math.floor(i/cols);
+      const rows=Math.ceil(n/cols);
+      a.tx = r.x + (cx-(cols-1)/2)*Math.min(96,r.w/(cols+1));
+      a.ty = r.y + 18 + (cy-(rows-1)/2)*70;
+      if(a.wx==null){a.wx=a.tx;a.wy=a.ty;}
+    });
+  }
+}
+function drawAgents(t){
+  const ordered=[...STATE.agents].sort((a,b)=>(a.ty||0)-(b.ty||0));
+  for(const a of ordered){
+    a.wx+=(a.tx-a.wx)*0.12; a.wy+=(a.ty-a.wy)*0.12;
+    const bob=a.alive?Math.sin(t*0.004+a.wx)*3:0;
+    const [sx,sy]=toScreen(a.wx,a.wy+bob); const s=46*cam.z;
+    crewmate(sx,sy,s,COLORS[a.c%COLORS.length],!a.alive,a.task);
+    // name + model tag
+    ctx.save(); ctx.textAlign="center";
+    ctx.font=`700 ${12*cam.z}px Inter`; ctx.fillStyle=a.alive?"#eaf2ff":"#7f8db0";
+    ctx.fillText(a.name, sx, sy+s*0.95);
+    ctx.font=`600 ${9.5*cam.z}px Inter`; ctx.fillStyle="rgba(150,178,220,.85)";
+    ctx.fillText(a.model, sx, sy+s*0.95+13*cam.z); ctx.restore();
+  }
+}
+
+function syncHud(){
+  document.getElementById('hud-round').textContent=STATE.round;
+  document.getElementById('hud-tasks').style.width=(100*STATE.tasksDone/STATE.tasksTotal)+'%';
+  const alive=STATE.agents.filter(a=>a.alive).length;
+  document.getElementById('hud-alive').textContent=alive;
+  document.getElementById('hud-total').textContent=STATE.agents.length;
+  const ros=document.getElementById('roster'); ros.innerHTML='';
+  for(const a of STATE.agents){ const d=document.createElement('div'); d.className='who'+(a.alive?'':' dead');
+    d.innerHTML=`<span class="dot" style="background:${COLORS[a.c%COLORS.length]}"></span>
+      <span><div class="nm">${a.name}</div><div class="md">${a.model}</div></span>`;
+    ros.appendChild(d); }
+}
+
+function frame(t){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  // vignette backdrop
+  const bg=ctx.createRadialGradient(cv.width/2,cv.height*0.2,100,cv.width/2,cv.height/2,cv.width*0.8);
+  bg.addColorStop(0,"#0c1426"); bg.addColorStop(1,"#05080f"); ctx.fillStyle=bg; ctx.fillRect(0,0,cv.width,cv.height);
+  drawHalls(); drawRooms(); layoutAgents(); drawAgents(t); drawSnow(t);
+  requestAnimationFrame(frame);
+}
+// ---- live data: consume the server's WebSocket snapshot ----
+const esc = s => (s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function nameColor(n){ const a = STATE.agents.find(x=>x.name===n); return a?COLORS[a.c%COLORS.length]:'#cfe3ff'; }
+
+function applyAgents(arr){
+  const byId = {}; for(const a of STATE.agents) byId[a.id]=a;  // keep tween state across snapshots
+  STATE.agents = arr.map(s=>{ const a = byId[s.id] || {id:s.id};
+    a.name=s.name; a.model=s.model; a.room=s.room; a.alive=s.alive;
+    a.task=s.tasking; a.body=s.body; a.c=s.color; a.thing=s.thing; return a; });
+}
+
+function renderOverlay(s){
+  const meet=$('meet'), h2=document.querySelector('.meet h2');
+  const inMeeting = ['meeting','vote','ejection'].includes(s.phase) && s.meeting;
+  if(inMeeting){
+    meet.classList.add('show'); h2.textContent='EMERGENCY MEETING';
+    const m=s.meeting;
+    $('meet-lede').textContent = m.victim ? `${m.reporter} found ${m.victim} dead in ${m.room}`
+      : `${m.reporter} sounded the alarm`;
+    $('meet-chat').innerHTML = (m.transcript||[]).map(l=>
+      `<div class="msg"><div class="hd"><span class="nm" style="color:${nameColor(l.name)}">${l.name}</span>`+
+      `<span class="md">${(l.model||'').split('/').pop()}</span></div><div class="tx">${esc(l.text)}</div></div>`).join('');
+    const chat=$('meet-chat'); chat.scrollTop=chat.scrollHeight;
+    const typing=$('meet-typing'), verdict=$('meet-verdict');
+    if(s.phase==='ejection'){
+      typing.style.display='none'; verdict.style.display='';
+      const tally = Object.entries(m.votes||{}).map(([v,t])=>`${v}→${t}`).join('  ·  ');
+      if(m.ejected){ const t=m.ejected_was_thing;
+        verdict.innerHTML=`<div class="big ${t?'thing':'clear'}">${m.ejected} was ejected — ${t?'and WAS the Thing':'was NOT the Thing'}</div><div class="tally">${tally}</div>`;
+      } else verdict.innerHTML=`<div class="big">No one was ejected</div><div class="tally">${tally}</div>`;
+    } else { typing.style.display=''; typing.textContent = s.phase==='vote'?'casting votes…':'the crew are talking…'; verdict.style.display='none'; }
+  } else if(s.phase==='gameover'){
+    meet.classList.add('show'); $('meet-chat').innerHTML=''; $('meet-lede').textContent=''; $('meet-typing').style.display='none';
+    const crew=s.winner==='crew', things=(s.agents||[]).filter(a=>a.thing).map(a=>a.name).join(', ');
+    h2.textContent = crew?'CASE CLOSED':'OUTPOST LOST';
+    const verdict=$('meet-verdict'); verdict.style.display='';
+    verdict.innerHTML=`<div class="big ${crew?'clear':'thing'}">${crew?'THE CREW SURVIVE':'THE THING WINS'} — by ${s.win_by||'—'}</div><div class="tally">the Thing was ${things||'—'}</div>`;
+  } else meet.classList.remove('show');
+}
+
+function applySnapshot(s){
+  STATE.round=s.round; STATE.tasksDone=s.tasksDone; STATE.tasksTotal=s.tasksTotal;
+  STATE.tick=s.tick; STATE.phase=s.phase; STATE.winner=s.winner; STATE.scores=s.scores;
+  applyAgents(s.agents||[]); syncHud(); renderOverlay(s);
+}
+
+function connect(){
+  const proto = location.protocol==='https:'?'wss:':'ws:';
+  let ws; try{ ws=new WebSocket(`${proto}//${location.host}/stream`); }catch(e){ return; }
+  ws.onmessage = e => { try{ applySnapshot(JSON.parse(e.data)); }catch(_){ } };
+  ws.onerror = () => { try{ ws.close(); }catch(_){ } };
+  ws.onclose = () => setTimeout(connect, 2500);  // reconnect; baked STATE stays until then
+}
+
+addEventListener('resize',resize); resize(); syncHud(); requestAnimationFrame(frame); connect();
+</script>
+</body>
+</html>

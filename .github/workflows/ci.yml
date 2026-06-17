@@ -93,3 +93,18 @@ jobs:
         run: flyctl deploy --app artel-pitch --config fly-pitch.toml --remote-only --yes
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  deploy-alibi:
+    needs: test
+    if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy Alibi
+        # single machine + volume (in-memory game) → immediate, like the other stateful worlds
+        run: flyctl deploy --app artel-alibi --config fly-alibi.toml --remote-only --yes --strategy immediate
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

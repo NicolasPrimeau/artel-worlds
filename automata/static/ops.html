@@ -123,12 +123,15 @@ function upsert(id, cfg){
   charts[id] = new Chart(el, cfg);
 }
 
+const WORLD_COLOR = { watchtower:PAL.artelA, phalanx:PAL.gold, pitch:"rgba(110,231,168,.8)",
+  alibi:"rgba(127,176,255,.85)", automata:"rgba(201,139,255,.8)" };
 function spendChart(series){
+  const keys = [...new Set(series.flatMap(s=>Object.keys(s)).filter(k=>k!=="day"))];
   upsert("spendchart", { type:"bar",
-    data:{ labels: series.map(s=>s.day.slice(5)), datasets:[
-      { label:"Watchtower", data: series.map(s=>s.watchtower||0), backgroundColor:PAL.artelA, stack:"s", borderRadius:2 },
-      { label:"Phalanx", data: series.map(s=>s.phalanx||0), backgroundColor:PAL.gold, stack:"s", borderRadius:2 },
-    ]},
+    data:{ labels: series.map(s=>s.day.slice(5)), datasets: keys.map(k=>(
+      { label: k[0].toUpperCase()+k.slice(1), data: series.map(s=>s[k]||0),
+        backgroundColor: WORLD_COLOR[k] || "rgba(150,160,180,.7)", stack:"s", borderRadius:2 }))
+    },
     options:{ maintainAspectRatio:false,
       scales:{ x:{ grid:{display:false}, stacked:true }, y:{ stacked:true, beginAtZero:true, ticks:{ callback:v=>"$"+v } } },
       plugins:{ legend:{display:true, position:"top", labels:{boxWidth:10, boxHeight:10}},
@@ -151,70 +154,49 @@ function wedgeChart(wedge){
   });
 }
 
+// Every world reports the SAME headline block — cost, results, viewers — so cards read uniformly and
+// are comparable at a glance. World-specific colour lives in a one-line caption, recent-result dots,
+// and (for the wide card) an optional chart. The hub normalizes each world into w.metrics + w.caption.
+const M0 = {}; // empty metric fallback
+function metricCell(v, k, cls){ return `<div class="m"><div class="v ${cls||''}">${v}</div><div class="k">${k}</div></div>`; }
+
+function dotsHtml(recent){
+  if (!recent || !recent.length) return "";
+  const d = recent.slice().reverse().map(h =>
+    `<span class="${h.win===true?'win':(h.win===false?'loss':'draw')}" title="${h.title||''}"></span>`).join("");
+  return `<div class="dots">${d}<span class="lbl">recent</span></div>`;
+}
+
 function card(w){
-  const facts = w.facts || {};
-  let body = "";
-  if (w.key === "watchtower"){
-    const m = facts.misses || [];
-    body = `
+  const m = w.metrics || M0, cost = m.cost || M0, res = m.results || M0;
+  const unreachable = w.status === "unreachable";
+  const costSub = cost.cap != null ? `spend · cap ${money(cost.cap)}` : (w.spend_label || "spend");
+  const body = unreachable ? `<div class="facts">world unreachable</div>` : `
       <div class="row">
-        <div class="m"><div class="v spend">${money(w.spend)}</div><div class="k">spend (${w.spend_label||"all time"})</div></div>
-        <div class="m"><div class="v spend">${money(w.spend_today)}</div><div class="k">today (cap ${money(w.cap)})</div></div>
-        <div class="m"><div class="v a">${secs(facts.artel_mttr)}</div><div class="k">Artel MTTR</div></div>
-        <div class="m"><div class="v s">${secs(facts.solo_mttr)}</div><div class="k">solo MTTR</div></div>
-        <div class="m"><div class="v">${pct(facts.win_rate)}</div><div class="k">Artel wins</div></div>
-        <div class="m"><div class="v" style="color:var(--accent,#7fd1a8)">${w.cache_ratio!=null?pct(w.cache_ratio):"—"}</div><div class="k">prompt cache</div></div>
+        ${metricCell(money(cost.value), costSub, "spend")}
+        ${cost.today != null ? metricCell(money(cost.today), "today", "spend") : ""}
+        ${metricCell(res.record ?? "—", res.label || "results", "a")}
+        ${metricCell(m.viewers ?? "—", "viewers")}
+        ${w.cache_ratio != null ? metricCell(pct(w.cache_ratio), "cache", "") : ""}
       </div>
-      <div class="facts">incidents <b>${facts.incidents ?? 0}</b> · gave up <b>${m[0] ?? "—"}</b> Artel / <b>${m[1] ?? "—"}</b> solo</div>
-      ${(facts.wedge||[]).length >= 2 ? '<div class="chartbox"><canvas id="wt-wedge"></canvas></div>'
-        : '<div class="facts">MTTR curve appears after ~20 incidents.</div>'}`;
-  } else if (w.key === "phalanx"){
-    const sc = facts.scores || {};
-    const recent = (facts.recent || []).slice().reverse();
-    const dots = recent.map(h => `<span class="${h.winner === "artel" ? "win" : h.winner ? "loss" : "draw"}" title="${h.winner||"draw"}"></span>`).join("");
-    const t = facts.throttled && Object.keys(facts.throttled).length
-      ? Object.entries(facts.throttled).map(([k,v])=>`${k}:${v}`).join(", ") : "none";
-    body = `
-      <div class="row">
-        <div class="m"><div class="v spend">${money(w.spend)}</div><div class="k">spend (cap ${money(w.cap)})</div></div>
-        <div class="m"><div class="v"><span style="color:var(--artel-soft)">${sc.artel ?? 0}</span><span style="color:var(--dim);font-weight:400">–</span><span style="color:var(--red)">${sc.red ?? 0}</span></div><div class="k">wins (A–R)</div></div>
-        <div class="m"><div class="v" style="color:var(--accent,#7fd1a8)">${w.cache_ratio!=null?pct(w.cache_ratio):"—"}</div><div class="k">prompt cache</div></div>
-      </div>
-      ${recent.length ? `<div class="dots">${dots}</div>` : ""}
-      <div class="facts">${facts.match ?? 0} matches finished · last ${recent.length || 0} above (blue = Artel won) · rate-limit hits <b>${t}</b></div>`;
-  } else if (w.key === "pitch"){
-    body = `
-      <div class="row">
-        <div class="m"><div class="v">${facts.match ?? "—"}</div><div class="k">match #</div></div>
-        <div class="m"><div class="v">${facts.viewers ?? 0}</div><div class="k">viewers</div></div>
-        <div class="m"><div class="v spend">$0</div><div class="k">spend (no LLM yet)</div></div>
-      </div>
-      <div class="facts">live fixture: <b>${facts.fixture || "—"}</b></div>`;
-  } else {
-    body = `
-      <div class="row">
-        <div class="m"><div class="v">${facts.tick ?? "—"}</div><div class="k">tick</div></div>
-        <div class="m"><div class="v">${facts.population ?? "—"}</div><div class="k">population</div></div>
-        <div class="m"><div class="v spend">${w.spend!=null?money(w.spend):"$0"}</div><div class="k">LLM spend</div></div>
-        <div class="m"><div class="v" style="color:var(--accent,#7fd1a8)">${w.cache_ratio!=null?pct(w.cache_ratio):"—"}</div><div class="k">prompt cache</div></div>
+      ${dotsHtml(res.recent)}
+      ${w.caption ? `<div class="facts">${w.caption}</div>` : ""}
+      ${w.chart === "wedge" ? '<div class="chartbox"><canvas id="wt-wedge"></canvas></div>' : ""}`;
+  const noPause = w.key === "pitch" || w.key === "alibi";
+  const foot = unreachable ? "" : `
+      <div class="cardfoot">
+        ${noPause ? "" : `<button class="reset pausebtn${w.paused?' on':''}" onclick="pauseWorld('${w.key}','${w.name}',${w.paused?0:1})">${w.paused?'▶ resume':'⏸ pause'}</button>`}
+        <button class="reset" onclick="resetWorld('${w.key}','${w.name}')">reset ${w.name}</button>
       </div>`;
-  }
   return `
-    <div class="w${w.key === "watchtower" ? " wide" : ""}">
+    <div class="w${w.wide ? " wide" : ""}">
       <div class="top">
         <span class="nm"><a href="${w.url||'#'}" style="color:#fff" target="_blank" rel="noopener">${w.name}</a></span>
         <span class="tag">${w.model || ""}${w.fallback ? `<span class="fb"> · falls back to ${w.fallback}</span>` : ""}</span>
         <span class="st ${w.paused?'paused':(w.status||'idle')}">${w.paused?'paused':(w.status||'idle')}</span>
       </div>
       ${body}
-      ${w.key === "pitch" ? `
-      <div class="cardfoot">
-        <button class="reset" onclick="resetWorld('${w.key}','${w.name}')">reset ${w.name}</button>
-      </div>` : `
-      <div class="cardfoot">
-        <button class="reset pausebtn${w.paused?' on':''}" onclick="pauseWorld('${w.key}','${w.name}',${w.paused?0:1})">${w.paused?'▶ resume':'⏸ pause'}</button>
-        <button class="reset" onclick="resetWorld('${w.key}','${w.name}')">reset ${w.name}</button>
-      </div>`}
+      ${foot}
     </div>`;
 }
 
@@ -224,7 +206,8 @@ function render(d){
   $("t-today").textContent = money(d.today_spend);
   const series = d.spend_series || [];
   const last7 = series.slice(-7);
-  const avg = last7.length ? last7.reduce((a,s)=>a+(s.phalanx||0)+(s.watchtower||0),0)/last7.length : null;
+  const dayTotal = s => Object.entries(s).reduce((a,[k,v])=>a+(k==="day"?0:(v||0)),0);
+  const avg = last7.length ? last7.reduce((a,s)=>a+dayTotal(s),0)/last7.length : null;
   $("t-avg").textContent = money(avg);
   $("t-month").textContent = avg==null ? "—" : money(avg*30 + 10);
 
