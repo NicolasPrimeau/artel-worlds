@@ -131,6 +131,7 @@ class PlayManager:
         self.started = 0
         self.completed = 0
         self._cd = 0  # cooldown ticks before another play may fire (no stutter)
+        self.call: dict | None = None  # the BRAIN's standing directive: which plays to look for now
         self.history: list[tuple] = []  # (start_tick, end_tick, (carrier, wall), outcome)
 
     def update(self, pitch: Pitch) -> None:
@@ -146,7 +147,9 @@ class PlayManager:
                     self.history.append((self.play.t0, pitch.tick, self.play.players(), "aborted"))
                 self.play = None
                 self._cd = 35
-        if self.play is None and self._cd <= 0:
+        # only LOOK for a play when the brain has called for one — no call (Artel down / LLM silent)
+        # means no coordinated plays, just the baseline. This is the seam the LLM + Artel plug into.
+        if self.play is None and self._cd <= 0 and self.call and self.call.get("combos"):
             new = try_give_and_go(pitch, self.team)
             if new is not None:
                 self.play = new
