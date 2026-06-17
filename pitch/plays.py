@@ -9,10 +9,35 @@ from __future__ import annotations
 # defender; the wall first-times it back into the run. Other players keep their baseline shape, so
 # only the two combine — legible, and it can't break the rest of the team.
 
+import datetime
+
 from .bot import _open, _pass, decide
 from .engine import Pitch, Player, _len, _unit
 
 GG_TTL = 42  # ticks a give-and-go may run before it's abandoned
+CALL_EVENT = "pitch.playcall"  # the brain's play-call, carried over Artel
+CALL_TTL = 6.0  # seconds a call stays valid without a refresh — expires if the conduit goes silent
+
+
+def _now_cursor() -> str:
+    n = datetime.datetime.now(datetime.UTC)
+    return n.strftime("%Y-%m-%dT%H:%M:%S.") + f"{n.microsecond // 1000:03d}Z"
+
+
+def decide_call(pitch: Pitch, team: str) -> dict:
+    # STAND-IN for the LLM brain: call for quick combinations when we have the ball in the attacking
+    # half. The real brain (the LLM) replaces this; the conduit + actuator below don't change.
+    poss = pitch.possessor
+    if poss is None or pitch.players[poss].team != team:
+        return {"combos": False, "channel": "center"}
+    carrier = pitch.players[poss]
+    if _adv(team, carrier.x, pitch.cfg.length) < pitch.cfg.length * 0.45:
+        return {"combos": False, "channel": "center"}
+    return {"combos": True, "channel": "center"}
+
+
+async def publish_call(artel, team: str, call: dict) -> None:
+    await artel.emit_event("captain", CALL_EVENT, {"team": team, **call})
 
 
 def _fwd(team: str) -> float:
@@ -132,7 +157,25 @@ class PlayManager:
         self.completed = 0
         self._cd = 0  # cooldown ticks before another play may fire (no stutter)
         self.call: dict | None = None  # the BRAIN's standing directive: which plays to look for now
+        self._call_cursor = _now_cursor()
+        self._call_at = 0.0
         self.history: list[tuple] = []  # (start_tick, end_tick, (carrier, wall), outcome)
+
+    async def pull_call(self, artel, now: float) -> None:
+        # read the brain's latest play-call FROM Artel (the conduit). Expire it if none arrives within
+        # CALL_TTL, so a silent/severed conduit means no plays — the edge can't outlive Artel.
+        rows = await artel.poll_events("captain", CALL_EVENT, self._call_cursor)
+        latest = None
+        for r in rows:
+            self._call_cursor = max(self._call_cursor, r.get("created_at", self._call_cursor))
+            p = r.get("payload", {})
+            if p.get("team") == self.team:
+                latest = p
+        if latest is not None:
+            self.call = {"combos": bool(latest.get("combos")), "channel": latest.get("channel", "center")}
+            self._call_at = now
+        elif now - self._call_at > CALL_TTL:
+            self.call = None
 
     def update(self, pitch: Pitch) -> None:
         if self._cd > 0:
