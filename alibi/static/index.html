@@ -102,50 +102,43 @@ const ROOM_TINT={ "Mess Hall":[70,92,128],"Lab":[58,100,108],"Comms":[86,78,116]
 const COLORS=["#ff6a6a","#54a8ff","#46e0a0","#ffcf5a","#c98bff","#ff9f4a","#7ce0ff","#ff7ab8","#9be86a","#e0e0e0"];
 const SCALE=26;  // tile → world px; camera auto-fits
 function tint(n){ return ROOM_TINT[n]||[80,90,110]; }
-let ROOMS={}, GRID=[], GW=48, GH=34, DOORS={}, doorEdges={}, VENTS=[], OUTPOST=31, stationSig="", TB={x0:0,y0:0,x1:48,y1:34};
-function rm(x,y){ return (y>=0&&y<GH&&x>=0&&x<GW&&GRID[y])?GRID[y][x]:null; }  // room at tile
-// the station is a tile map of ORGANIC regions (no rects): each tile belongs to a room (or void)
+let ROOMS={}, CORRSET=new Set(), CORRTILES=[], DOORS={}, VENTS=[], OUTPOST=31, stationSig="", TB={x0:0,y0:0,x1:1248,y1:884};
+function inRoomTile(tx,ty){ for(const r of Object.values(ROOMS)){ if(tx>=r.tx&&tx<r.tx+r.tw&&ty>=r.ty&&ty<r.ty+r.th)return r; } return null; }
+// BSP rooms (rectangles) scattered + linked by corridor TILES — a building floor plan
 function buildStation(st){
-  const sig=(st.outpost)+'|'+((st.grid||[]).join('')); if(sig===stationSig)return; stationSig=sig;
+  const sig=st.outpost+'|'+JSON.stringify(st.rects||{}); if(sig===stationSig)return; stationSig=sig;
   OUTPOST=st.outpost||31; const bb=$('hud-outpost'); if(bb)bb.textContent=OUTPOST;
-  GW=st.w||48; GH=st.h||34; const names=st.names||[];
-  GRID=[]; ROOMS={}; let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
-  for(let y=0;y<GH;y++){ const row=(st.grid&&st.grid[y])||""; const out=[];
-    for(let x=0;x<GW;x++){ const ch=row[x]||'.'; if(ch==='.'){ out.push(null); continue; }
-      const n=names[parseInt(ch,16)]; out.push(n);
-      (ROOMS[n]=ROOMS[n]||{tiles:0,c:tint(n)}).tiles++;
-      if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; }
-    GRID.push(out); }
-  TB={x0:x0*SCALE, y0:y0*SCALE, x1:(x1+1)*SCALE, y1:(y1+1)*SCALE};
-  for(const [n,c] of Object.entries(st.centers||{})) if(ROOMS[n]){ ROOMS[n].cx=c[0]*SCALE; ROOMS[n].cy=c[1]*SCALE;
-    ROOMS[n].rad=Math.sqrt(ROOMS[n].tiles)*SCALE*0.62; ROOMS[n].hub=n===HUB; }
-  DOORS={}; doorEdges={};
-  for(const [a,b,dx,dy] of (st.doors||[])){ (DOORS[a]=DOORS[a]||{})[b]={x:dx*SCALE,y:dy*SCALE}; (DOORS[b]=DOORS[b]||{})[a]={x:dx*SCALE,y:dy*SCALE};
-    if(Number.isInteger(dx)) doorEdges['V'+dx+','+Math.floor(dy)]=1; else doorEdges['H'+Math.floor(dx)+','+dy]=1; }
+  ROOMS={}; let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(const [n,[rx,ry,rw,rh]] of Object.entries(st.rects||{})){
+    const cx=(rx+rw/2)*SCALE, cy=(ry+rh/2)*SCALE;
+    ROOMS[n]={x:cx,y:cy,w:rw*SCALE,h:rh*SCALE,cx,cy,rad:Math.min(rw,rh)*SCALE*0.5,hub:n===HUB,c:tint(n),tx:rx,ty:ry,tw:rw,th:rh};
+    x0=Math.min(x0,rx);y0=Math.min(y0,ry);x1=Math.max(x1,rx+rw);y1=Math.max(y1,ry+rh); }
+  CORRTILES=st.corridor||[]; CORRSET=new Set(CORRTILES.map(t=>t[0]+'|'+t[1]));
+  for(const [cx,cy] of CORRTILES){ x0=Math.min(x0,cx);y0=Math.min(y0,cy);x1=Math.max(x1,cx+1);y1=Math.max(y1,cy+1); }
+  TB={x0:x0*SCALE,y0:y0*SCALE,x1:x1*SCALE,y1:y1*SCALE};
+  DOORS={}; for(const [a,b,dx,dy] of (st.doors||[])){ (DOORS[a]=DOORS[a]||{})[b]={x:dx*SCALE,y:dy*SCALE}; (DOORS[b]=DOORS[b]||{})[a]={x:dx*SCALE,y:dy*SCALE}; }
   VENTS=(st.vents||[]).filter(([a,b])=>ROOMS[a]&&ROOMS[b]);
-  for(const a of STATE.agents){ a.wx=null; a.prevRoom=null; }
+  for(const a of STATE.agents){ a.wx=null; a.prevRoom=null; a.path=null; }
   userMoved=false; if(typeof cv!=='undefined'&&cv.width) fit();
 }
-// a baked grid placeholder so the page renders before the socket connects (the live server sends the
-// real organic-region plan, which varies every game).
+// a baked BSP-ish station so the page renders before the socket connects (live server sends the real one)
 const STATION0=(()=>{
-  const names=["Mess Hall","Lab","Comms","Bunks","Storage","Generator","Reactor","Garage","Greenhouse","Infirmary","Drill Site","Freezer"];
-  const W=48,H=33, CW=12,CH=11; const idx={}; names.forEach((n,i)=>idx[n]=i);
-  const layout=[["Bunks","Infirmary","Lab","Greenhouse"],["Comms","Mess Hall","Storage","Reactor"],["Garage","Drill Site","Generator","Freezer"]];
-  const grid=[]; for(let y=0;y<H;y++){ let row=''; for(let x=0;x<W;x++){ const c=Math.min(3,(x/CW)|0), r=Math.min(2,(y/CH)|0); row+=idx[layout[r][c]].toString(16);} grid.push(row); }
-  const pos={},centers={}; layout.forEach((rr,r)=>rr.forEach((n,c)=>{ pos[n]=[c,r]; centers[n]=[c*CW+CW/2,r*CH+CH/2]; }));
-  const edges=[["Bunks","Infirmary"],["Infirmary","Lab"],["Lab","Greenhouse"],["Bunks","Comms"],["Infirmary","Mess Hall"],
-    ["Lab","Storage"],["Greenhouse","Reactor"],["Comms","Mess Hall"],["Mess Hall","Storage"],["Storage","Reactor"],
-    ["Comms","Garage"],["Mess Hall","Drill Site"],["Storage","Generator"],["Reactor","Freezer"],["Garage","Drill Site"],["Drill Site","Generator"],["Generator","Freezer"]];
-  const doors=edges.map(([a,b])=>{ const [ca,ra]=pos[a],[cb,rb]=pos[b];
-    return [a,b, ca===cb?ca*CW+CW/2:Math.max(ca,cb)*CW, ra===rb?ra*CH+CH/2:Math.max(ra,rb)*CH]; });
-  return {outpost:31, w:W, h:H, names, grid, centers, doors, vents:[["Greenhouse","Garage"],["Freezer","Bunks"]]};
+  const names=["Mess Hall","Garage","Drill Site","Greenhouse","Bunks","Lab","Reactor","Storage","Generator","Infirmary","Comms","Freezer"];
+  const rects={},centers={},cw=11,chh=10;
+  names.forEach((n,i)=>{ const c=i%4,r=(i/4)|0, rw=cw-2-(i%3), rh=chh-2-(i%2), x=2+c*cw, y=2+r*chh; rects[n]=[x,y,rw,rh]; centers[n]=[x+rw/2,y+rh/2]; });
+  const corr=new Set(), doors=[], add=(x,y)=>corr.add(x+'|'+y);
+  for(let i=0;i<names.length-1;i++){ const a=centers[names[i]],b=centers[names[i+1]], ax=a[0]|0,ay=a[1]|0,bx=b[0]|0,by=b[1]|0;
+    for(let x=Math.min(ax,bx);x<=Math.max(ax,bx);x++)add(x,ay); for(let y=Math.min(ay,by);y<=Math.max(ay,by);y++)add(bx,y);
+    doors.push([names[i],names[i+1],bx+0.5,ay+0.5]); }
+  const inroom=(x,y)=>names.some(n=>{const[rx,ry,rw,rh]=rects[n];return x>=rx&&x<rx+rw&&y>=ry&&y<ry+rh;});
+  const tiles=[...corr].map(s=>s.split('|').map(Number)).filter(([x,y])=>!inroom(x,y));
+  return {outpost:31, rects, corridor:tiles, centers, doors, vents:[["Freezer","Bunks"]]};
 })();
 
 let STATE={ round:1, tasksDone:7, tasksTotal:40, phase:"task", scores:{crew:0,thing:0}, agents:[] };
 let lastKillTick=-1, fx=[], ejecting=null, mouse={x:-1,y:-1}, userMoved=false;
 (function seed(){ const names=["Softmaxwell","Overfitz","Hallucinov","Frostbyte","ReLuther","Quantz","Attenborough","Embeddington","Adamson","Tokarev"];
-  const rk=STATION0.names;
+  const rk=Object.keys(STATION0.rects);
   STATE.agents=names.map((n,i)=>({id:i,name:n,model:"gpt-oss-120b",room:rk[i%rk.length],alive:i!==5,task:i%3===0,body:i===5,c:i})); })();
 
 const cv=$('map'), ctx=cv.getContext('2d');
@@ -201,31 +194,77 @@ function backdrop(t){
   ctx.fillStyle=sf; ctx.fillRect(0,cv.height*0.55,cv.width,cv.height*0.45);
 }
 
-// ---- station: organic tile regions ----
+// ---- station: rectangular pods on a corridor spine, with cladding + interiors ----
+const DOORW=30;
+// furniture per room type [dx,dy,w,h,kind] in pod fractions — makes each pod read as that room
+const FURN={
+  "Mess Hall":[[-.18,0,.5,.16,'table'],[-.18,-.26,.5,.09,'bench'],[-.18,.26,.5,.09,'bench']],
+  "Lab":[[-.28,-.18,.5,.13,'bench'],[.26,.18,.2,.2,'machine']],
+  "Comms":[[-.3,-.05,.16,.62,'rack'],[.22,.26,.4,.13,'desk']],
+  "Bunks":[[-.26,-.22,.46,.12,'bed'],[-.26,.02,.46,.12,'bed'],[-.26,.26,.46,.12,'bed']],
+  "Storage":[[-.3,0,.16,.66,'shelf'],[.22,0,.16,.66,'shelf']],
+  "Generator":[[-.08,.05,.36,.4,'machine'],[.34,-.1,.12,.5,'pipe']],
+  "Reactor":[[0,0,.42,.42,'core']],
+  "Garage":[[0,.08,.62,.42,'vehicle']],
+  "Greenhouse":[[-.3,0,.18,.7,'plant'],[0,0,.18,.7,'plant'],[.3,0,.18,.7,'plant']],
+  "Infirmary":[[-.26,-.16,.46,.12,'bed'],[.26,.2,.2,.34,'cabinet']],
+  "Drill Site":[[0,0,.28,.62,'rig'],[-.34,.3,.18,.14,'crate']],
+  "Freezer":[[-.28,0,.18,.7,'shelf'],[.08,0,.18,.7,'shelf']],
+};
+const FURN_COL={bed:'#cdd6e2',table:'#48586f',bench:'#3e4d63',desk:'#48586f',shelf:'#5a6678',rack:'#2c3a4e',
+  machine:'#36424f',pipe:'#3a4658',core:'#6a5238',vehicle:'#5a5048',plant:'#3f8a54',cabinet:'#7886a0',rig:'#4a4232',crate:'#4b5566'};
+function furnCol(k){ return FURN_COL[k]||'#48586f'; }
 function drawStation(t){
-  const w=SCALE*cam.z+1;
-  for(let y=0;y<GH;y++){ const row=GRID[y]; if(!row)continue; for(let x=0;x<GW;x++){ const n=row[x]; if(!n)continue;
-    const p=toScreen(x*SCALE,y*SCALE), c=ROOMS[n].c, d=((x+y)&1)?6:-6;
-    ctx.fillStyle=`rgb(${c[0]+d},${c[1]+d},${c[2]+d})`; ctx.fillRect(p[0],p[1],w,w); } }
-  // walls on region borders, skipping door edges (rooms abut → an open border is a doorway)
-  ctx.strokeStyle="#3a475c"; ctx.lineWidth=WALLW*cam.z; ctx.lineCap="round";
-  const seg=(x0,y0,x1,y1)=>{ const a=toScreen(x0*SCALE,y0*SCALE),b=toScreen(x1*SCALE,y1*SCALE); ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke(); };
-  for(let y=0;y<GH;y++)for(let x=0;x<GW;x++){ const n=rm(x,y); if(!n)continue;
-    if(rm(x+1,y)!==n && !doorEdges['V'+(x+1)+','+y]) seg(x+1,y,x+1,y+1);
-    if(rm(x-1,y)!==n && !doorEdges['V'+x+','+y]) seg(x,y,x,y+1);
-    if(rm(x,y+1)!==n && !doorEdges['H'+x+','+(y+1)]) seg(x,y+1,x+1,y+1);
-    if(rm(x,y-1)!==n && !doorEdges['H'+x+','+y]) seg(x,y,x+1,y); }
-  // vent hatches near centroids
-  for(const [a,b] of VENTS){ for(const room of [a,b]){ const r=ROOMS[room],o=ROOMS[room===a?b:a]; if(!r||!o||r.cx==null)continue;
-    const p=toScreen(r.cx+(o.cx-r.cx)*0.28,r.cy+(o.cy-r.cy)*0.28), s=10*cam.z;
+  const TS=SCALE*cam.z;  // one floor tile, in screen px
+  // 1) drop shadows on the snow so the station sits on the landscape
+  ctx.save(); ctx.fillStyle="rgba(0,0,0,.4)";
+  for(const r of Object.values(ROOMS)){ const [sx,sy]=toScreen(r.x,r.y),w=r.w*cam.z,h=r.h*cam.z; rr(sx-w/2+8*cam.z,sy-h/2+10*cam.z,w,h,6*cam.z); ctx.fill(); }
+  for(const [cx,cy] of CORRTILES){ const p=toScreen((cx)*SCALE,(cy)*SCALE); ctx.fillRect(p[0]+8*cam.z,p[1]+10*cam.z,TS+1,TS+1); } ctx.restore();
+  // 2) corridors — steel-walkway floor tiles, with walls only on edges that face the void (open into rooms)
+  for(const [cx,cy] of CORRTILES){ const p=toScreen(cx*SCALE,cy*SCALE);
+    const g=ctx.createLinearGradient(0,p[1],0,p[1]+TS); g.addColorStop(0,"#27313f"); g.addColorStop(.5,"#1b2531"); g.addColorStop(1,"#27313f");
+    ctx.fillStyle=g; ctx.fillRect(p[0],p[1],TS+1,TS+1); }
+  ctx.strokeStyle="#3d4b60"; ctx.lineWidth=Math.max(1.2,WALLW*0.7*cam.z); ctx.lineCap="round";
+  const edge=(x0,y0,x1,y1)=>{ const a=toScreen(x0*SCALE,y0*SCALE),b=toScreen(x1*SCALE,y1*SCALE); ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke(); };
+  const wall=(cx,cy,dx,dy)=>!CORRSET.has((cx+dx)+'|'+(cy+dy)) && !inRoomTile(cx+dx,cy+dy);
+  for(const [cx,cy] of CORRTILES){
+    if(wall(cx,cy,1,0)) edge(cx+1,cy,cx+1,cy+1);
+    if(wall(cx,cy,-1,0)) edge(cx,cy,cx,cy+1);
+    if(wall(cx,cy,0,1)) edge(cx,cy+1,cx+1,cy+1);
+    if(wall(cx,cy,0,-1)) edge(cx,cy,cx+1,cy); }
+  // 3) pods
+  for(const [n,r] of Object.entries(ROOMS)){ const [sx,sy]=toScreen(r.x,r.y), w=r.w*cam.z, h=r.h*cam.z, c=r.c, L=sx-w/2, T=sy-h/2;
+    ctx.save(); rr(L,T,w,h,6*cam.z); ctx.clip();
+    const fg=ctx.createLinearGradient(0,T,0,T+h); fg.addColorStop(0,"#1e2937"); fg.addColorStop(1,"#131c29");  // uniform steel interior
+    ctx.fillStyle=fg; ctx.fillRect(L,T,w,h);
+    ctx.strokeStyle="rgba(110,140,190,.05)"; ctx.lineWidth=1; for(let yy=T+18*cam.z; yy<T+h; yy+=18*cam.z){ ctx.beginPath(); ctx.moveTo(L,yy); ctx.lineTo(L+w,yy); ctx.stroke(); }
+    ctx.fillStyle=`rgba(${c[0]},${c[1]},${c[2]},.12)`; ctx.fillRect(L,T,w,h);  // faint room-accent wash
+    for(const [dx,dy,fw,fh,k] of (FURN[n]||[[-.1,0,.5,.4,'machine']])){ const px=sx+dx*w,py=sy+dy*h,ww=fw*w,hh=fh*h,col=furnCol(k);
+      ctx.fillStyle=col; rr(px-ww/2,py-hh/2,ww,hh,3*cam.z); ctx.fill();
+      ctx.fillStyle="rgba(255,255,255,.12)"; rr(px-ww/2,py-hh/2,ww,hh*0.34,3*cam.z); ctx.fill();
+      ctx.strokeStyle="rgba(0,0,0,.4)"; ctx.lineWidth=1*cam.z; rr(px-ww/2,py-hh/2,ww,hh,3*cam.z); ctx.stroke(); }
+    const cs=9*cam.z, blink=0.4+0.6*Math.abs(Math.sin(t*0.004+r.x));  // task console
+    ctx.fillStyle="#0d1a24"; ctx.fillRect(sx-cs,T+h-cs*2.2,cs*2,cs*1.3); ctx.fillStyle=`rgba(80,210,255,${blink})`; ctx.fillRect(sx-cs*0.7,T+h-cs*2,cs*1.4,cs*0.4);
+    ctx.restore();
+    // exterior cladding: dark base, steel face, top-rim highlight, accent trim
+    ctx.strokeStyle="#1d2734"; ctx.lineWidth=(WALLW+3)*cam.z; rr(L,T,w,h,6*cam.z); ctx.stroke();
+    ctx.strokeStyle="#3d4b60"; ctx.lineWidth=WALLW*cam.z; rr(L,T,w,h,6*cam.z); ctx.stroke();
+    ctx.strokeStyle="rgba(175,205,245,.35)"; ctx.lineWidth=2*cam.z; ctx.beginPath(); ctx.moveTo(L+7*cam.z,T+WALLW*0.3*cam.z); ctx.lineTo(L+w-7*cam.z,T+WALLW*0.3*cam.z); ctx.stroke();
+    ctx.strokeStyle=`rgba(${c[0]+50},${c[1]+50},${c[2]+50},.55)`; ctx.lineWidth=1.5*cam.z; rr(L+WALLW*0.7*cam.z,T+WALLW*0.7*cam.z,w-WALLW*1.4*cam.z,h-WALLW*1.4*cam.z,4*cam.z); ctx.stroke();
+    // label plate
+    ctx.fillStyle="rgba(185,210,245,.75)"; ctx.font=`800 ${8.5*cam.z}px Inter`; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(n.toUpperCase(), sx, T+10*cam.z);
+  }
+  // 4) doorways — wherever a corridor tile abuts a room, carve a gap through that room's wall
+  const thick=(WALLW+5)*cam.z;
+  for(const [cx,cy] of CORRTILES){ for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){ if(!inRoomTile(cx+dx,cy+dy))continue;
+    ctx.fillStyle="#27313f";
+    if(dx){ const tl=toScreen((cx+(dx>0?1:0))*SCALE,cy*SCALE); ctx.fillRect(tl[0]-thick/2,tl[1]+TS*0.12,thick,TS*0.76); }
+    else  { const tl=toScreen(cx*SCALE,(cy+(dy>0?1:0))*SCALE); ctx.fillRect(tl[0]+TS*0.12,tl[1]-thick/2,TS*0.76,thick); } } }
+  for(const [a,b] of VENTS){ for(const room of [a,b]){ const r=ROOMS[room],o=ROOMS[room===a?b:a]; if(!r||!o)continue;
+    const p=toScreen(r.cx+(o.cx-r.cx)*0.2,r.cy+(o.cy-r.cy)*0.2), s=9*cam.z;
     ctx.fillStyle="#241f33"; ctx.fillRect(p[0]-s,p[1]-s,s*2,s*2); ctx.strokeStyle="rgba(170,140,220,.5)"; ctx.lineWidth=1.3*cam.z;
     for(let i=-1;i<=1;i++){ctx.beginPath();ctx.moveTo(p[0]-s+3,p[1]+i*s*0.6);ctx.lineTo(p[0]+s-3,p[1]+i*s*0.6);ctx.stroke();} } }
-  // task consoles (blinking) + labels at centroids
-  for(const [n,r] of Object.entries(ROOMS)){ if(r.cx==null)continue; const p=toScreen(r.cx,r.cy), cs=11*cam.z;
-    ctx.fillStyle="#10202c"; ctx.fillRect(p[0]-cs,p[1]+cs*1.3,cs*2,cs); const blink=0.4+0.6*Math.abs(Math.sin(t*0.004+r.cx));
-    ctx.fillStyle=`rgba(80,210,255,${blink})`; ctx.fillRect(p[0]-cs*0.7,p[1]+cs*1.45,cs*1.4,cs*0.35);
-    ctx.fillStyle="rgba(155,185,228,.55)"; ctx.font=`700 ${9*cam.z}px Inter`; ctx.textAlign="center"; ctx.textBaseline="middle";
-    ctx.fillText(n.toUpperCase(),p[0],p[1]); }
 }
 
 // ---- lighting ----
@@ -250,11 +289,14 @@ function applyLighting(){ if(!lcv)lcv=document.createElement('canvas'); if(lcv.w
 
 // ---- agents ----
 function layoutAgents(){ const byRoom={}; for(const a of STATE.agents){ if(!a.alive&&!a.body)continue; (byRoom[a.room]=byRoom[a.room]||[]).push(a); }
-  for(const [room,list] of Object.entries(byRoom)){ const r=ROOMS[room]; if(!r||r.cx==null)continue; const n=list.length;
-    const cols=Math.ceil(Math.sqrt(n)), rows=Math.ceil(n/cols), sp=Math.min(26,r.rad*0.5);
+  for(const [room,list] of Object.entries(byRoom)){ const r=ROOMS[room]; if(!r)continue; const n=list.length;
+    const cols=Math.ceil(Math.sqrt(n)), rows=Math.ceil(n/cols), sp=Math.min(28,r.rad*0.6);
     list.forEach((a,i)=>{ const cxi=i%cols, cyi=Math.floor(i/cols);
       a.tx=r.cx+(cxi-(cols-1)/2)*sp; a.ty=r.cy+(cyi-(rows-1)/2)*sp;
-      if(a.prevRoom&&a.prevRoom!==room){ const d=(DOORS[a.prevRoom]||{})[room]; a.via=d?{x:d.x,y:d.y}:null; } a.prevRoom=room; }); }
+      // changed room → walk out through the shared doorway (corridor bend) before crossing to the new room
+      if(a.prevRoom && a.prevRoom!==room && ROOMS[a.prevRoom]){
+        const d=(DOORS[a.prevRoom]||{})[room]; a.path=d?[{x:d.x,y:d.y}]:null; }
+      a.prevRoom=room; }); }
 }
 // a drivetrain (phalanx-style): steer the heading toward the next waypoint, ease speed up to a walk
 // and down on arrival, advance ALONG the heading — so agents glide and turn, never teleport. Speed is
@@ -262,15 +304,13 @@ function layoutAgents(){ const byRoom={}; for(const a of STATE.agents){ if(!a.al
 const WALK=4.6;
 function moveAgents(){ for(const a of STATE.agents){ if(a.tx==null)continue;
   if(a.wx==null){a.wx=a.tx;a.wy=a.ty;a.face=1.57;a.spd=0;}
-  const tgt=a.via||{x:a.tx,y:a.ty}, dx=tgt.x-a.wx, dy=tgt.y-a.wy, d=Math.hypot(dx,dy);
+  const tgt=(a.path&&a.path.length)?a.path[0]:{x:a.tx,y:a.ty};   // follow the corridor waypoints first
+  const dx=tgt.x-a.wx, dy=tgt.y-a.wy, d=Math.hypot(dx,dy);
   if(d>1.5){
     if(a.alive) a.face=lerpA(a.face,Math.atan2(dy,dx),0.2);
-    const want=Math.min(WALK, d*0.45);          // ease out near the target
-    a.spd += (want-a.spd)*0.22;                  // ease in
-    a.wx+=Math.cos(a.face)*a.spd; a.wy+=Math.sin(a.face)*a.spd;
-    a.moving=a.spd>0.7;
-  } else { a.spd*=0.6; a.moving=false; }
-  if(a.via && Math.hypot(a.via.x-a.wx,a.via.y-a.wy)<22) a.via=null; } }
+    const want=Math.min(WALK, d*0.45); a.spd += (want-a.spd)*0.22;
+    a.wx+=Math.cos(a.face)*a.spd; a.wy+=Math.sin(a.face)*a.spd; a.moving=a.spd>0.7;
+  } else { a.spd*=0.6; a.moving=false; if(a.path&&a.path.length) a.path.shift(); } } }
 // each agent gets a stable randomized "look" from its name hash — a parka'd researcher, not an eyeball
 const LOOKS={};
 function look(name){ if(LOOKS[name])return LOOKS[name]; let h=2166136261;
@@ -346,10 +386,39 @@ function vignette(){ const g=ctx.createRadialGradient(cv.width/2,cv.height*0.46,
   ctx.fillStyle="rgba(40,80,140,.05)"; ctx.fillRect(0,0,cv.width,cv.height); }
 
 // real CC0 Antarctic-aurora wallpaper (NASA/CC0) as the backdrop, cover-fit, lightly dimmed
-const skyImg=new Image(); let skyReady=false; skyImg.onload=()=>{skyReady=true;}; skyImg.src='/sky.jpg';
-function drawSky(){ if(skyReady){ const s=Math.max(cv.width/skyImg.width,cv.height/skyImg.height), w=skyImg.width*s, h=skyImg.height*s;
-    ctx.drawImage(skyImg,(cv.width-w)/2,(cv.height-h)/2,w,h); ctx.fillStyle="rgba(4,8,16,.30)"; ctx.fillRect(0,0,cv.width,cv.height); }
-  else { ctx.fillStyle="#070d1c"; ctx.fillRect(0,0,cv.width,cv.height); } }
+// a generated bleak Antarctic landscape (The Thing): cold twilight sky, low sun haze, dark snow-capped
+// peaks on the horizon, a vast pale snow plain, blizzard fog. Screen-fixed with a hint of parallax.
+const ridge=[...Array(60)].map((_,i)=>({h:0.30+0.5*Math.abs(Math.sin(i*1.7)*Math.sin(i*0.6+1.3)), x:i/59}));
+function drawSky(t){
+  const sky=ctx.createLinearGradient(0,0,0,cv.height*0.62);
+  sky.addColorStop(0,"#0a1422"); sky.addColorStop(.55,"#16273a"); sky.addColorStop(1,"#3a4a5c");
+  ctx.fillStyle=sky; ctx.fillRect(0,0,cv.width,cv.height);
+  // low arctic sun glow on the horizon
+  const hx=cv.width*0.5, hy=cv.height*0.6;
+  const sun=ctx.createRadialGradient(hx,hy,2,hx,hy,cv.height*0.6);
+  sun.addColorStop(0,"rgba(255,224,180,.22)"); sun.addColorStop(.4,"rgba(180,150,150,.10)"); sun.addColorStop(1,"rgba(0,0,0,0)");
+  ctx.fillStyle=sun; ctx.fillRect(0,0,cv.width,cv.height*0.62);
+  const px=-cam.x*0.012;
+  // distant snow-capped peaks
+  const hz=cv.height*0.6;
+  ctx.save(); ctx.translate(px,0);
+  ctx.beginPath(); ctx.moveTo(-40,hz);
+  for(const r of ridge) ctx.lineTo(r.x*(cv.width+80)-40, hz - r.h*cv.height*0.30);
+  ctx.lineTo(cv.width+40,hz); ctx.closePath();
+  ctx.fillStyle="#202d3e"; ctx.fill();
+  ctx.fillStyle="rgba(230,240,255,.10)"; ctx.fill();  // snow sheen on peaks
+  ctx.restore();
+  // snow plain foreground with drifts
+  const plain=ctx.createLinearGradient(0,hz,0,cv.height);
+  plain.addColorStop(0,"#5a6c80"); plain.addColorStop(.4,"#43576c"); plain.addColorStop(1,"#2b3a4c");
+  ctx.fillStyle=plain; ctx.fillRect(0,hz-1,cv.width,cv.height-hz+1);
+  ctx.save(); ctx.globalAlpha=.5;
+  for(let i=0;i<4;i++){ const dy=hz+ (cv.height-hz)*(0.2+i*0.22); ctx.fillStyle=`rgba(${i%2?20:210},${i%2?30:225},${i%2?44:255},${i%2?0.18:0.05})`;
+    ctx.beginPath(); ctx.moveTo(0,dy); for(let x=0;x<=cv.width;x+=60){ ctx.lineTo(x,dy+Math.sin(x*0.01+i*2+px*0.02)*8); } ctx.lineTo(cv.width,cv.height); ctx.lineTo(0,cv.height); ctx.closePath(); ctx.fill(); }
+  ctx.restore();
+  // blizzard haze
+  ctx.fillStyle="rgba(150,170,195,.06)"; ctx.fillRect(0,0,cv.width,cv.height);
+}
 function frame(t){ drawSky(); drawAmbient(t); drawStation(t); layoutAgents(); moveAgents(); drawAgents(t); applyLighting(); drawFx(); drawSnow(t); vignette(); requestAnimationFrame(frame); }
 
 function syncHud(){ $('hud-round').textContent=STATE.round; $('hud-tasks').style.width=(100*STATE.tasksDone/Math.max(1,STATE.tasksTotal))+'%';
