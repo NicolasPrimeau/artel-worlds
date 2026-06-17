@@ -206,11 +206,13 @@ class Pitch:
                 self._kickoff(self._concede_to)
             return
         if self.restart > 0:
-            # dead ball (corner/goal-kick/throw-in): players reposition, the ball sits
+            # dead ball (corner/goal-kick/throw-in/free-kick): players reposition, the ball sits, and
+            # the team that did NOT win the restart must keep a legal distance — no crowding the taker
             self.restart -= 1
             intents = {p.id: brain(self, p) for p in self.players}
             for p in self.players:
                 self._move(p, intents[p.id])
+            self._enforce_restart_distance()
             if self.restart == 0:
                 self.restart_kind = None
             return
@@ -219,6 +221,8 @@ class Pitch:
         for p in self.players:
             self._move(p, intents[p.id])
         self._advance_ball(intents)
+        if self.restart > 0:  # a dead ball was just awarded this tick — keep opponents off at once
+            self._enforce_restart_distance()
 
     def _adv(self, team: str, x: float) -> float:
         # how far up the attacking direction: 0 = own goal line, length = the goal we attack
@@ -561,6 +565,39 @@ class Pitch:
         # no offside can be given directly from a throw-in, corner kick, or goal kick (a free kick
         # or the offside restart itself does carry an offside, so they don't set the exemption)
         self._restart_no_offside = kind in ("throw-in", "corner", "goal-kick")
+
+    def _enforce_restart_distance(self) -> None:
+        # on a dead ball, the team that did NOT win it must stand off the taker by the laws' distance
+        # (≈2m on a throw-in, ≈9m on a free kick / corner / goal kick). Push any offender back out to
+        # the line so opponents can't sit on top of the player taking it; the taker's side may stay close.
+        c = self.cfg
+        b = self.ball
+        if b.last_touch is None:
+            return
+        keep = {
+            "throw-in": 6.0,
+            "free-kick": 9.5,
+            "corner": 9.5,
+            "goal-kick": 9.5,
+            "penalty": 11.0,
+            "offside": 9.5,
+        }.get(self.restart_kind, 7.0)
+        taker = "home" if b.last_touch == "away" else "away"  # the side awarded the restart
+        cx, cy = c.length / 2, c.width / 2
+        for p in self.players:
+            if p.team == taker or p.role == "GK":
+                continue
+            if _len(p.x - b.x, p.y - b.y) >= keep:
+                continue
+            ux, uy = _unit(p.x - b.x, p.y - b.y)
+            nx, ny = b.x + ux * keep, b.y + uy * keep
+            # if pushing straight back would land off the pitch (corner / touchline) or the player is
+            # right on the ball, push toward the field's interior instead so the distance really holds
+            if (ux == 0 and uy == 0) or not (0 <= nx <= c.length and 0 <= ny <= c.width):
+                ix, iy = _unit(cx - b.x, cy - b.y)
+                nx, ny = b.x + ix * keep, b.y + iy * keep
+            p.x, p.y = _clamp(nx, 0.0, c.length), _clamp(ny, 0.0, c.width)
+            p.vx = p.vy = 0.0
 
     def _restart_endline(self, defending: str) -> None:
         c = self.cfg
