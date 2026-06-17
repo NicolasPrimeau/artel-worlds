@@ -143,7 +143,7 @@ const ROOM_TINT={ "Mess Hall":[70,92,128],"Lab":[58,100,108],"Comms":[86,78,116]
 const COLORS=["#ff6a6a","#54a8ff","#46e0a0","#ffcf5a","#c98bff","#ff9f4a","#7ce0ff","#ff7ab8","#9be86a","#e0e0e0"];
 const SCALE=26;  // tile → world px; camera auto-fits
 function tint(n){ return ROOM_TINT[n]||[80,90,110]; }
-let ROOMS={}, CORRSET=new Set(), CORRTILES=[], DOORS={}, VENTS=[], OUTPOST=31, stationSig="", TB={x0:0,y0:0,x1:1248,y1:884}, OPEN=new Set();
+let ROOMS={}, CORRSET=new Set(), CORRTILES=[], DOORS={}, VENTS=[], OUTPOST=31, stationSig="", TB={x0:0,y0:0,x1:1248,y1:884}, OPEN={};
 function inRoomTile(tx,ty){ for(const r of Object.values(ROOMS)){ if(tx>=r.tx&&tx<r.tx+r.tw&&ty>=r.ty&&ty<r.ty+r.th)return r; } return null; }
 // BSP rooms (rectangles) scattered + linked by corridor TILES — a building floor plan
 function buildStation(st){
@@ -285,17 +285,18 @@ function drawStation(t){
       ctx.fillStyle=col; rr(px-ww/2,py-hh/2,ww,hh,3*cam.z); ctx.fill();
       ctx.fillStyle="rgba(255,255,255,.12)"; rr(px-ww/2,py-hh/2,ww,hh*0.34,3*cam.z); ctx.fill();
       ctx.strokeStyle="rgba(0,0,0,.4)"; ctx.lineWidth=1*cam.z; rr(px-ww/2,py-hh/2,ww,hh,3*cam.z); ctx.stroke(); }
-    // task console — set against the lower-left wall (a corner, not the middle of the room). Lit and
-    // beaconing when there's an open task here to claim; dark when there's nothing to do.
-    const open=OPEN.has(n), cs=8*cam.z, tx=L+WALLW*cam.z+cs*1.4, ty=T+h-cs*1.9;
-    ctx.fillStyle="#0c1622"; rr(tx-cs,ty-cs*0.8,cs*2,cs*1.7,2*cam.z); ctx.fill();
-    ctx.strokeStyle="rgba(0,0,0,.4)"; ctx.lineWidth=1*cam.z; rr(tx-cs,ty-cs*0.8,cs*2,cs*1.7,2*cam.z); ctx.stroke();
-    if(open){ const p=0.55+0.45*Math.sin(t*0.006+r.x);
-      ctx.fillStyle=`rgba(90,220,255,${p})`; rr(tx-cs*0.7,ty-cs*0.5,cs*1.4,cs*1.0,1.5*cam.z); ctx.fill();
-      ctx.strokeStyle=`rgba(90,220,255,${0.45*p})`; ctx.lineWidth=2*cam.z;
-      ctx.beginPath(); ctx.arc(tx,ty-cs*2.6,(0.7+0.4*Math.sin(t*0.006+r.x))*cs*1.4,0,TAU); ctx.stroke();
-      ctx.fillStyle=`rgba(150,235,255,${p})`; ctx.beginPath(); ctx.arc(tx,ty-cs*2.6,cs*0.45,0,TAU); ctx.fill();
-    } else { ctx.fillStyle="rgba(60,90,120,.35)"; rr(tx-cs*0.7,ty-cs*0.5,cs*1.4,cs*1.0,1.5*cam.z); ctx.fill(); }
+    // task consoles — set against the lower wall (corners, not the middle). Bigger rooms hold more, so
+    // we draw a row of them; a console beacons cyan while its task is open to claim, dim once it's done.
+    const cnt=OPEN[n]||0, cs=8*cam.z, slots=Math.max(1,Math.min(cnt||1,Math.floor((w-WALLW*2*cam.z)/(cs*2.6))||1));
+    for(let si=0; si<slots; si++){ const tx=L+WALLW*cam.z+cs*1.4+si*cs*2.6, ty=T+h-cs*1.9, lit=si<cnt;
+      ctx.fillStyle="#0c1622"; rr(tx-cs,ty-cs*0.8,cs*2,cs*1.7,2*cam.z); ctx.fill();
+      ctx.strokeStyle="rgba(0,0,0,.4)"; ctx.lineWidth=1*cam.z; rr(tx-cs,ty-cs*0.8,cs*2,cs*1.7,2*cam.z); ctx.stroke();
+      if(lit){ const p=0.55+0.45*Math.sin(t*0.006+r.x+si);
+        ctx.fillStyle=`rgba(90,220,255,${p})`; rr(tx-cs*0.7,ty-cs*0.5,cs*1.4,cs*1.0,1.5*cam.z); ctx.fill();
+        ctx.strokeStyle=`rgba(90,220,255,${0.45*p})`; ctx.lineWidth=2*cam.z;
+        ctx.beginPath(); ctx.arc(tx,ty-cs*2.6,(0.7+0.4*Math.sin(t*0.006+r.x+si))*cs*1.4,0,TAU); ctx.stroke();
+        ctx.fillStyle=`rgba(150,235,255,${p})`; ctx.beginPath(); ctx.arc(tx,ty-cs*2.6,cs*0.45,0,TAU); ctx.fill();
+      } else { ctx.fillStyle="rgba(60,90,120,.35)"; rr(tx-cs*0.7,ty-cs*0.5,cs*1.4,cs*1.0,1.5*cam.z); ctx.fill(); } }
     ctx.restore();
     // exterior cladding: dark base, steel face, top-rim highlight, accent trim
     ctx.strokeStyle="#1d2734"; ctx.lineWidth=(WALLW+3)*cam.z; rr(L,T,w,h,6*cam.z); ctx.stroke();
@@ -569,7 +570,7 @@ function renderChat(s){ const chat=$('chat'), inMeet=['meeting','vote','ejection
     $('chat-title').textContent=crew?'CASE CLOSED':'OUTPOST LOST'; const v=$('chat-verdict'); v.style.display='';
     v.innerHTML=`<div class="big ${crew?'clear':'thing'}">${crew?'THE CREW SURVIVE':'THE THING WINS'} — ${s.win_by||''}</div><div class="tally">the Thing was ${things||'—'}</div>`;
   } else { chat.classList.remove('show'); ejecting=null; } }
-function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=new Set(s.station.openTasks||[]); }
+function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.station.openTasks||{}; }
   STATE.round=s.round; STATE.tasksDone=s.tasksDone; STATE.tasksTotal=s.tasksTotal; STATE.phase=s.phase;
   STATE.winner=s.winner; STATE.win_by=s.win_by; STATE.scores=s.scores; STATE.meeting=s.meeting; applyAgents(s.agents||[]);
   if(s.lastKill && s.lastKill.tick!==lastKillTick){ lastKillTick=s.lastKill.tick; pushKill(s.lastKill.room); }

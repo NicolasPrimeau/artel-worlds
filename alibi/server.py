@@ -182,7 +182,9 @@ class Alibi:
                 "centers": {n: [round(c[0], 2), round(c[1], 2)] for n, c in g.centers.items()},
                 "doors": [[a, b, dx, dy] for (a, b), (dx, dy) in g.doors.items()],
                 "vents": sorted({tuple(sorted((a, b))) for a, ns in g.vents.items() for b in ns}),
-                "openTasks": sorted(set(g.open_tasks)),  # rooms with a task console lit up to claim
+                "openTasks": {
+                    r: g.open_tasks.count(r) for r in set(g.open_tasks)
+                },  # room -> lit consoles
             },
             "meeting": meeting,
             "winner": g.winner,

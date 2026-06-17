@@ -285,6 +285,22 @@ class Game:
             return
         a.room = min(self.adj[a.room], key=lambda r: self._room_dist(r, room))
 
+    def _area(self, room):
+        x, y, w, h = self.rects[room]
+        return w * h
+
+    def _task_cap(self, room):
+        # bigger rooms hold more task consoles (the Mess Hall fits a few; a cold-locker just one)
+        return max(1, round(self._area(room) / 70))
+
+    def _spawn_task(self):
+        # light up one more console, in a room that has spare capacity, weighted toward bigger rooms
+        cands = [r for r in self.rooms if self.open_tasks.count(r) < self._task_cap(r)]
+        if cands:
+            self.open_tasks.append(
+                self.rng.choices(cands, weights=[self._area(r) for r in cands])[0]
+            )
+
     def _claim_task(self, a):
         # take the nearest open task off the board and head for it
         room = min(self.open_tasks, key=lambda r: self._room_dist(a.room, r))
@@ -297,10 +313,10 @@ class Game:
         if self.cd > 0:
             self.cd -= 1
 
-        # fresh task consoles light up in random rooms over time (capped at one open task per crew member)
+        # fresh task consoles light up over time (more land in bigger rooms; total capped near crew size)
         crew_n = len(self.living(impostor=False))
         if len(self.open_tasks) < crew_n and self.rng.random() < TASK_SPAWN_P:
-            self.open_tasks.append(self.rng.choice(self.rooms))
+            self._spawn_task()
 
         for a in self.living():
             a.tasking = False
@@ -466,7 +482,8 @@ def new_game(seed: int, n=6, impostors=1) -> Game:
         outpost=rng.randint(1, 99),
     )
     g.tasks_goal = max(8, round(crew_n * 3.5))
-    g.open_tasks = [rng.choice(rooms) for _ in range(max(2, crew_n // 2))]
+    for _ in range(max(2, crew_n // 2)):  # seed the board, size-weighted like the live spawns
+        g._spawn_task()
     return g
 
 
