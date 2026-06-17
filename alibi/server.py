@@ -57,7 +57,7 @@ class Alibi:
     def _new_game(self) -> None:
         self.g = new_game(_rng.randint(1, 2**31 - 1), n=N_AGENTS, impostors=N_IMPOSTORS)
         assign_models(self.g)
-        self.tasks_total = sum(a.tasks for a in self.g.agents if not a.impostor)
+        self.tasks_total = self.g.tasks_goal
         self.phase = "task"
         self.meeting = None
 
@@ -157,8 +157,8 @@ class Alibi:
             "phase": self.phase,
             "round": len(g.meetings) + 1,
             "tick": g.tick,
-            "tasksDone": self.tasks_total - g.tasks_left(),
-            "tasksTotal": self.tasks_total,
+            "tasksDone": g.tasks_done,
+            "tasksTotal": g.tasks_goal,
             "alive": len(g.living()),
             "total": len(g.agents),
             "agents": agents,

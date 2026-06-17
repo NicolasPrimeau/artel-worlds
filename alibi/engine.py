@@ -147,7 +147,12 @@ def _generate_station(rng: random.Random):
 
 
 TASKS_EACH = 5
-TASK_P = 0.22  # per-tick chance a crew STARTS a task (then it stays put working for WORK_TICKS)
+TASK_P = (
+    0.3  # per-tick chance an idle crew CLAIMS an open task off the board (then works WORK_TICKS)
+)
+TASK_SPAWN_P = (
+    0.5  # per-tick chance a fresh task appears on the shared board (capped at one per crew)
+)
 WORK_TICKS = 3  # a task occupies its crew for several ticks — they linger at the console
 KILL_CD = 6  # ticks between kills — on a 12-room map 2 Things are a real threat; 1 can't cover it
 START_GRACE = 6  # no kill on the first few ticks, so a real task phase builds movement + alibis
@@ -250,6 +255,9 @@ class Game:
     ejected_impostors: int = 0
     wrong_ejections: int = 0
     last_kill: dict | None = None  # {tick, victim, room} — transient signal for the kill animation
+    tasks_open: int = 0  # tasks currently AVAILABLE to claim on the shared Artel board
+    tasks_done: int = 0  # tasks completed this game (cumulative)
+    tasks_goal: int = 0  # completions the crew need to win by tasks
 
     def living(self, impostor=None):
         return [a for a in self.agents if a.alive and (impostor is None or a.impostor == impostor)]
@@ -261,13 +269,33 @@ class Game:
         return [a for a in self.living() if a.room == room]
 
     def tasks_left(self):
-        return sum(a.tasks for a in self.living(impostor=False))
+        return max(0, self.tasks_goal - self.tasks_done)
+
+    def _room_dist(self, ra, rb):
+        ca, cb = self.centers[ra], self.centers[rb]
+        return (ca[0] - cb[0]) ** 2 + (ca[1] - cb[1]) ** 2
+
+    def _approach(self, a, targets):
+        # step one room toward the nearest of `targets`; stay put if already with them, wander if none
+        others = [o for o in targets if o.id != a.id]
+        if not others:
+            a.room = self.rng.choice(self.adj[a.room])
+            return
+        tgt = min(others, key=lambda o: self._room_dist(a.room, o.room))
+        if tgt.room == a.room:
+            return
+        a.room = min(self.adj[a.room], key=lambda r: self._room_dist(r, tgt.room))
 
     # --- task phase: one tick of move / task / kill. Returns a Meeting trigger or None. ---
     def step(self) -> Meeting | None:
         self.tick += 1
         if self.cd > 0:
             self.cd -= 1
+
+        # fresh work trickles onto the shared board over time (capped at one open task per crew member)
+        crew_n = len(self.living(impostor=False))
+        if self.tasks_open < crew_n and self.rng.random() < TASK_SPAWN_P:
+            self.tasks_open += 1
 
         for a in self.living():
             a.tasking = False
@@ -276,18 +304,21 @@ class Game:
                     a.room = self.rng.choice(self.vents[a.room])  # vent away secretly
                 else:
                     a.room = self.rng.choice(self.adj[a.room])
-            elif a.work > 0:  # CLAIMED a task: stay at the console, working until done
+            elif a.work > 0:  # mid-task: stay at the console until it's done
                 a.work -= 1
                 a.tasking = True
                 if a.work == 0:
-                    a.tasks -= 1  # COMPLETE — one task off the shared Artel board, then move on
-            elif a.tasks > 0 and self.rng.random() < TASK_P:
-                a.work = WORK_TICKS - 1  # claim a task — occupies this tick + the next few
+                    self.tasks_done += 1  # COMPLETE — one off the shared Artel board
+            elif self.tasks_open > 0 and self.rng.random() < TASK_P:
+                self.tasks_open -= 1  # CLAIM an open task off the board
+                a.work = WORK_TICKS - 1
                 a.tasking = True
                 if a.work == 0:
-                    a.tasks -= 1
+                    self.tasks_done += 1
+            elif self.tasks_open == 0:
+                self._approach(a, self.living())  # board's dry → buddy up with the nearest crewmate
             else:
-                a.room = self.rng.choice(self.adj[a.room])
+                a.room = self.rng.choice(self.adj[a.room])  # tasks are out there — mill about, look
 
         for a in self.living():
             a.trail.append((self.tick, a.room))  # each agent remembers where it has been
@@ -394,7 +425,8 @@ def new_game(seed: int, n=6, impostors=1) -> Game:
     imp_ids = set(order[:impostors])
     names = rng.sample(NAMES, n)
     agents = [Agent(i, names[i], i in imp_ids, rng.choice(rooms)) for i in range(n)]
-    return Game(
+    crew_n = n - impostors
+    g = Game(
         rng=rng,
         agents=agents,
         cd=START_GRACE,
@@ -407,6 +439,9 @@ def new_game(seed: int, n=6, impostors=1) -> Game:
         corridor=corridor,
         outpost=rng.randint(1, 99),
     )
+    g.tasks_goal = max(8, round(crew_n * 3.5))
+    g.tasks_open = max(2, crew_n // 2)
+    return g
 
 
 def play(seed: int, decide, n=6, impostors=1) -> Game:
