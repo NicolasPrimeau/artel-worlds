@@ -30,7 +30,7 @@ _rng = SystemRandom()
 log = logging.getLogger("alibi")
 
 STATIC = Path(__file__).parent / "static"
-TASK_TICK = float(os.environ.get("ALIBI_TICK_INTERVAL", "1.4"))  # min seconds per task-phase tick
+TASK_TICK = float(os.environ.get("ALIBI_TICK_INTERVAL", "2.0"))  # min seconds per task-phase tick
 STMT_DELAY = float(
     os.environ.get("ALIBI_STMT_DELAY", "2.0")
 )  # seconds each spoken line holds on screen
@@ -182,6 +182,7 @@ class Alibi:
                 "centers": {n: [round(c[0], 2), round(c[1], 2)] for n, c in g.centers.items()},
                 "doors": [[a, b, dx, dy] for (a, b), (dx, dy) in g.doors.items()],
                 "vents": sorted({tuple(sorted((a, b))) for a, ns in g.vents.items() for b in ns}),
+                "openTasks": sorted(set(g.open_tasks)),  # rooms with a task console lit up to claim
             },
             "meeting": meeting,
             "winner": g.winner,

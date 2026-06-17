@@ -154,9 +154,10 @@ TASK_SPAWN_P = (
     0.5  # per-tick chance a fresh task appears on the shared board (capped at one per crew)
 )
 WORK_TICKS = 3  # a task occupies its crew for several ticks — they linger at the console
-KILL_CD = 6  # ticks between kills — on a 12-room map 2 Things are a real threat; 1 can't cover it
-START_GRACE = 6  # no kill on the first few ticks, so a real task phase builds movement + alibis
-EMERGENCY_P = 0.01  # per-tick chance a crew calls a meeting on suspicion alone
+KILL_CD = 9  # ticks between kills — crew walk to tasks (spread out), so kills come easy; slow them
+OPP_KILL_P = 0.12  # chance the Thing risks a kill with WITNESSES present (vs only when truly alone)
+START_GRACE = 8  # no kill on the first few ticks, so a real task phase builds movement + alibis
+EMERGENCY_P = 0.02  # per-tick chance a crew calls a meeting on suspicion alone
 MAX_TICKS = 600
 
 # the winter-over crew — AI/ML pun surnames (the joke: a fleet of language models playing The Thing,
@@ -216,6 +217,7 @@ class Agent:
     model: str = ""  # which LLM drives this agent in the meeting (set by the meeting layer)
     tasking: bool = False  # working a task this tick (transient, for the renderer)
     work: int = 0  # ticks left on the current task — while >0 the crew stays put at the console
+    dest: str | None = None  # the room of a claimed task it's walking to (None = nothing to do)
     # what this agent privately observed — the raw material for its testimony in a meeting
     trail: list = field(default_factory=list)  # (tick, room) — its own movements this round
     seen: list = field(default_factory=list)  # list[Sighting]
@@ -255,7 +257,9 @@ class Game:
     ejected_impostors: int = 0
     wrong_ejections: int = 0
     last_kill: dict | None = None  # {tick, victim, room} — transient signal for the kill animation
-    tasks_open: int = 0  # tasks currently AVAILABLE to claim on the shared Artel board
+    open_tasks: list = field(
+        default_factory=list
+    )  # rooms with an unclaimed task console (the board)
     tasks_done: int = 0  # tasks completed this game (cumulative)
     tasks_goal: int = 0  # completions the crew need to win by tasks
 
@@ -275,16 +279,17 @@ class Game:
         ca, cb = self.centers[ra], self.centers[rb]
         return (ca[0] - cb[0]) ** 2 + (ca[1] - cb[1]) ** 2
 
-    def _approach(self, a, targets):
-        # step one room toward the nearest of `targets`; stay put if already with them, wander if none
-        others = [o for o in targets if o.id != a.id]
-        if not others:
-            a.room = self.rng.choice(self.adj[a.room])
+    def _toward_room(self, a, room):
+        # step one room closer to `room` along the corridors (greedy on centre distance)
+        if a.room == room:
             return
-        tgt = min(others, key=lambda o: self._room_dist(a.room, o.room))
-        if tgt.room == a.room:
-            return
-        a.room = min(self.adj[a.room], key=lambda r: self._room_dist(r, tgt.room))
+        a.room = min(self.adj[a.room], key=lambda r: self._room_dist(r, room))
+
+    def _claim_task(self, a):
+        # take the nearest open task off the board and head for it
+        room = min(self.open_tasks, key=lambda r: self._room_dist(a.room, r))
+        self.open_tasks.remove(room)
+        a.dest = room
 
     # --- task phase: one tick of move / task / kill. Returns a Meeting trigger or None. ---
     def step(self) -> Meeting | None:
@@ -292,10 +297,10 @@ class Game:
         if self.cd > 0:
             self.cd -= 1
 
-        # fresh work trickles onto the shared board over time (capped at one open task per crew member)
+        # fresh task consoles light up in random rooms over time (capped at one open task per crew member)
         crew_n = len(self.living(impostor=False))
-        if self.tasks_open < crew_n and self.rng.random() < TASK_SPAWN_P:
-            self.tasks_open += 1
+        if len(self.open_tasks) < crew_n and self.rng.random() < TASK_SPAWN_P:
+            self.open_tasks.append(self.rng.choice(self.rooms))
 
         for a in self.living():
             a.tasking = False
@@ -308,17 +313,28 @@ class Game:
                 a.work -= 1
                 a.tasking = True
                 if a.work == 0:
-                    self.tasks_done += 1  # COMPLETE — one off the shared Artel board
-            elif self.tasks_open > 0 and self.rng.random() < TASK_P:
-                self.tasks_open -= 1  # CLAIM an open task off the board
-                a.work = WORK_TICKS - 1
-                a.tasking = True
-                if a.work == 0:
-                    self.tasks_done += 1
-            elif self.tasks_open == 0:
-                self._approach(a, self.living())  # board's dry → buddy up with the nearest crewmate
-            else:
-                a.room = self.rng.choice(self.adj[a.room])  # tasks are out there — mill about, look
+                    self.tasks_done += 1  # COMPLETE — one off the board
+                    a.dest = None
+            elif a.dest is not None:  # walking to a claimed task
+                if a.room == a.dest:
+                    a.work = WORK_TICKS - 1  # arrived — start working the console
+                    a.tasking = True
+                    if a.work == 0:
+                        self.tasks_done += 1
+                        a.dest = None
+                else:
+                    self._toward_room(a, a.dest)
+            elif self.open_tasks:
+                self._claim_task(a)  # something to do → claim the nearest task and set off for it
+                if a.room == a.dest:
+                    a.work = WORK_TICKS - 1
+                    a.tasking = True
+                    if a.work == 0:
+                        self.tasks_done += 1
+                        a.dest = None
+                else:
+                    self._toward_room(a, a.dest)
+            # else: nothing to do → stay put
 
         for a in self.living():
             a.trail.append((self.tick, a.room))  # each agent remembers where it has been
@@ -338,7 +354,7 @@ class Game:
                 if not crew_here:
                     continue
                 isolated = len(self._occ(m.room)) == 2  # just the impostor + one victim
-                if isolated or self.rng.random() < 0.4:
+                if isolated or self.rng.random() < OPP_KILL_P:
                     victim = self.rng.choice(crew_here)
                     victim.alive = False
                     self.bodies[m.room] = victim.id
@@ -388,6 +404,7 @@ class Game:
         for a in self.living():
             a.room = HUB
             a.work = 0
+            a.dest = None
             a.tasking = False
 
     # --- meeting: collect votes via `decide`, eject the plurality, reconvene. ---
@@ -421,6 +438,7 @@ class Game:
             a.seen.clear()  # testimony is spent; co-location memory resets after the meeting
             a.trail.clear()
             a.work = 0  # drop any in-progress task; everyone reconvened at the hub
+            a.dest = None
         self.cd = KILL_CD
         self._check_win()
 
@@ -448,7 +466,7 @@ def new_game(seed: int, n=6, impostors=1) -> Game:
         outpost=rng.randint(1, 99),
     )
     g.tasks_goal = max(8, round(crew_n * 3.5))
-    g.tasks_open = max(2, crew_n // 2)
+    g.open_tasks = [rng.choice(rooms) for _ in range(max(2, crew_n // 2))]
     return g
 
 

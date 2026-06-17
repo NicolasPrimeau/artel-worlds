@@ -143,7 +143,7 @@ const ROOM_TINT={ "Mess Hall":[70,92,128],"Lab":[58,100,108],"Comms":[86,78,116]
 const COLORS=["#ff6a6a","#54a8ff","#46e0a0","#ffcf5a","#c98bff","#ff9f4a","#7ce0ff","#ff7ab8","#9be86a","#e0e0e0"];
 const SCALE=26;  // tile → world px; camera auto-fits
 function tint(n){ return ROOM_TINT[n]||[80,90,110]; }
-let ROOMS={}, CORRSET=new Set(), CORRTILES=[], DOORS={}, VENTS=[], OUTPOST=31, stationSig="", TB={x0:0,y0:0,x1:1248,y1:884};
+let ROOMS={}, CORRSET=new Set(), CORRTILES=[], DOORS={}, VENTS=[], OUTPOST=31, stationSig="", TB={x0:0,y0:0,x1:1248,y1:884}, OPEN=new Set();
 function inRoomTile(tx,ty){ for(const r of Object.values(ROOMS)){ if(tx>=r.tx&&tx<r.tx+r.tw&&ty>=r.ty&&ty<r.ty+r.th)return r; } return null; }
 // BSP rooms (rectangles) scattered + linked by corridor TILES — a building floor plan
 function buildStation(st){
@@ -285,8 +285,17 @@ function drawStation(t){
       ctx.fillStyle=col; rr(px-ww/2,py-hh/2,ww,hh,3*cam.z); ctx.fill();
       ctx.fillStyle="rgba(255,255,255,.12)"; rr(px-ww/2,py-hh/2,ww,hh*0.34,3*cam.z); ctx.fill();
       ctx.strokeStyle="rgba(0,0,0,.4)"; ctx.lineWidth=1*cam.z; rr(px-ww/2,py-hh/2,ww,hh,3*cam.z); ctx.stroke(); }
-    const cs=9*cam.z, blink=0.4+0.6*Math.abs(Math.sin(t*0.004+r.x));  // task console
-    ctx.fillStyle="#0d1a24"; ctx.fillRect(sx-cs,T+h-cs*2.2,cs*2,cs*1.3); ctx.fillStyle=`rgba(80,210,255,${blink})`; ctx.fillRect(sx-cs*0.7,T+h-cs*2,cs*1.4,cs*0.4);
+    // task console — set against the lower-left wall (a corner, not the middle of the room). Lit and
+    // beaconing when there's an open task here to claim; dark when there's nothing to do.
+    const open=OPEN.has(n), cs=8*cam.z, tx=L+WALLW*cam.z+cs*1.4, ty=T+h-cs*1.9;
+    ctx.fillStyle="#0c1622"; rr(tx-cs,ty-cs*0.8,cs*2,cs*1.7,2*cam.z); ctx.fill();
+    ctx.strokeStyle="rgba(0,0,0,.4)"; ctx.lineWidth=1*cam.z; rr(tx-cs,ty-cs*0.8,cs*2,cs*1.7,2*cam.z); ctx.stroke();
+    if(open){ const p=0.55+0.45*Math.sin(t*0.006+r.x);
+      ctx.fillStyle=`rgba(90,220,255,${p})`; rr(tx-cs*0.7,ty-cs*0.5,cs*1.4,cs*1.0,1.5*cam.z); ctx.fill();
+      ctx.strokeStyle=`rgba(90,220,255,${0.45*p})`; ctx.lineWidth=2*cam.z;
+      ctx.beginPath(); ctx.arc(tx,ty-cs*2.6,(0.7+0.4*Math.sin(t*0.006+r.x))*cs*1.4,0,TAU); ctx.stroke();
+      ctx.fillStyle=`rgba(150,235,255,${p})`; ctx.beginPath(); ctx.arc(tx,ty-cs*2.6,cs*0.45,0,TAU); ctx.fill();
+    } else { ctx.fillStyle="rgba(60,90,120,.35)"; rr(tx-cs*0.7,ty-cs*0.5,cs*1.4,cs*1.0,1.5*cam.z); ctx.fill(); }
     ctx.restore();
     // exterior cladding: dark base, steel face, top-rim highlight, accent trim
     ctx.strokeStyle="#1d2734"; ctx.lineWidth=(WALLW+3)*cam.z; rr(L,T,w,h,6*cam.z); ctx.stroke();
@@ -340,20 +349,20 @@ function layoutAgents(){ const byRoom={}; for(const a of STATE.agents){ if(!a.al
         const d=(DOORS[a.prevRoom]||{})[room]; a.path=d?[{x:d.x,y:d.y}]:null; }
       a.prevRoom=room; }); }
 }
-// a drivetrain (phalanx-style): steer the heading toward the next waypoint, ease speed up to a walk
-// and down on arrival, advance ALONG the heading — so agents glide and turn, never teleport. Speed is
-// tuned so a room-to-room walk takes about one server tick, so motion stays continuous between updates.
+// move STRAIGHT toward the next waypoint, clamped so a step can never overshoot it — so an agent
+// converges and stops instead of skidding past and snapping back (which read as spinning). The heading
+// is purely cosmetic (it aims the headlamp cone) and only eases toward the direction of actual motion.
 const WALK=2.6;
 function moveAgents(){ for(const a of STATE.agents){ if(a.tx==null)continue;
   if(a.wx==null){a.wx=a.tx;a.wy=a.ty;a.face=1.57;a.spd=0;}
   const tgt=(a.path&&a.path.length)?a.path[0]:{x:a.tx,y:a.ty};   // follow the corridor waypoints first
   const dx=tgt.x-a.wx, dy=tgt.y-a.wy, d=Math.hypot(dx,dy);
-  if(d>2.5){   // a generous arrival deadzone so agents settle instead of jittering on their slot
-    if(a.alive) a.face=lerpA(a.face,Math.atan2(dy,dx),0.09);  // ease the heading round — no snap-spinning
-    const want=Math.min(WALK, d*0.28); a.spd += (want-a.spd)*0.1;   // gentle ramp up, glide to a stop
-    a.wx+=Math.cos(a.face)*a.spd; a.wy+=Math.sin(a.face)*a.spd; a.moving=a.spd>0.5;
-  } else { a.spd*=0.78; a.wx+=Math.cos(a.face)*a.spd; a.wy+=Math.sin(a.face)*a.spd; a.moving=false;
-    if(a.path&&a.path.length) a.path.shift(); } } }
+  if(d<1.5){  // arrived: snap to the slot, stop, leave the heading alone (no idle spin)
+    a.wx=tgt.x; a.wy=tgt.y; a.spd=0; a.moving=false;
+    if(a.path&&a.path.length) a.path.shift(); continue; }
+  const step=Math.min(WALK, d*0.5, d);   // ease in near the start, never step past the target
+  if(a.alive) a.face=lerpA(a.face,Math.atan2(dy,dx),0.18);  // cone follows the walk, eased
+  a.wx+=dx/d*step; a.wy+=dy/d*step; a.moving=step>0.4; } }
 // each agent gets a stable randomized "look" from its name hash — a parka'd researcher, not an eyeball
 const LOOKS={};
 function look(name){ if(LOOKS[name])return LOOKS[name]; let h=2166136261;
@@ -497,10 +506,10 @@ function drawMeeting(t){
   ctx.fillStyle=`rgba(4,9,18,${0.62*fade})`; ctx.fillRect(0,0,W,H);  // dim the world to a dark room
   // fit the table into the space the chat log doesn't use: a right rail on desktop, a bottom sheet on
   // phones. Reserve the header/roster up top too, so seats + bubbles never collide with the chrome.
-  const rightRes=narrow?0:342*DPR, botRes=narrow?Math.round(H*0.42):0, topRes=(narrow?98:46)*DPR;
+  const rightRes=narrow?0:342*DPR, botRes=narrow?Math.round(H*0.48):0, topRes=(narrow?96:46)*DPR;
   const aw=W-rightRes, ah=H-topRes-botRes, cx=aw/2, cy=topRes+ah/2;
-  const Rx=Math.min(aw*0.34,ah*0.42), Ry=Rx*0.58; meet.top=topRes;
-  const s=(narrow?15:23)*DPR;
+  const Rx=Math.min(aw*0.32,ah*0.40), Ry=Rx*0.58; meet.top=topRes;
+  const s=(narrow?14:23)*DPR;
   ctx.save(); ctx.globalAlpha=fade;
   // the table
   const tg=ctx.createRadialGradient(cx,cy-Ry*0.3,4,cx,cy,Rx*1.1); tg.addColorStop(0,"#38475f"); tg.addColorStop(1,"#19222e");
@@ -513,7 +522,7 @@ function drawMeeting(t){
   ctx.fillStyle="rgba(160,185,220,.7)"; ctx.font=`600 ${10.5*DPR}px Inter`; ctx.fillText(meetLede(), cx, topRes+31*DPR);
   // seats around the table
   const ids=meet.ids, n=Math.max(1,ids.length), seats={};
-  ids.forEach((id,i)=>{ const ang=-Math.PI/2+i/n*TAU; seats[id]={x:cx+Math.cos(ang)*Rx*1.16, y:cy+Math.sin(ang)*Ry*1.28}; });
+  ids.forEach((id,i)=>{ const ang=-Math.PI/2+i/n*TAU; seats[id]={x:cx+Math.cos(ang)*Rx*1.12, y:cy+Math.sin(ang)*Ry*1.22}; });
   for(const id of [...ids].sort((a,b)=>seats[a].y-seats[b].y)){ const a=STATE.agents.find(x=>x.id===id); if(!a)continue; const p=seats[id];
     let dy=0,al=1; const out=ejecting&&a.name===ejecting.name;
     if(out){ const k=Math.min(1,(performance.now()-ejecting.t0)/EJECT_MS); dy=k*H*0.62; al=1-k; }
@@ -560,7 +569,7 @@ function renderChat(s){ const chat=$('chat'), inMeet=['meeting','vote','ejection
     $('chat-title').textContent=crew?'CASE CLOSED':'OUTPOST LOST'; const v=$('chat-verdict'); v.style.display='';
     v.innerHTML=`<div class="big ${crew?'clear':'thing'}">${crew?'THE CREW SURVIVE':'THE THING WINS'} — ${s.win_by||''}</div><div class="tally">the Thing was ${things||'—'}</div>`;
   } else { chat.classList.remove('show'); ejecting=null; } }
-function applySnapshot(s){ if(s.station)buildStation(s.station);
+function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=new Set(s.station.openTasks||[]); }
   STATE.round=s.round; STATE.tasksDone=s.tasksDone; STATE.tasksTotal=s.tasksTotal; STATE.phase=s.phase;
   STATE.winner=s.winner; STATE.win_by=s.win_by; STATE.scores=s.scores; STATE.meeting=s.meeting; applyAgents(s.agents||[]);
   if(s.lastKill && s.lastKill.tick!==lastKillTick){ lastKillTick=s.lastKill.tick; pushKill(s.lastKill.room); }
