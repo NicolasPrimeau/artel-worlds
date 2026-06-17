@@ -258,22 +258,65 @@ function backdrop(t){
 const DOORW=30;
 // furniture per room type [dx,dy,w,h,kind] in pod fractions — makes each pod read as that room
 const FURN={
-  "Mess Hall":[[-.18,0,.5,.16,'table'],[-.18,-.26,.5,.09,'bench'],[-.18,.26,.5,.09,'bench']],
-  "Lab":[[-.28,-.18,.5,.13,'bench'],[.26,.18,.2,.2,'machine']],
-  "Comms":[[-.3,-.05,.16,.62,'rack'],[.22,.26,.4,.13,'desk']],
-  "Bunks":[[-.26,-.22,.46,.12,'bed'],[-.26,.02,.46,.12,'bed'],[-.26,.26,.46,.12,'bed']],
-  "Storage":[[-.3,0,.16,.66,'shelf'],[.22,0,.16,.66,'shelf']],
-  "Generator":[[-.08,.05,.36,.4,'machine'],[.34,-.1,.12,.5,'pipe']],
-  "Reactor":[[0,0,.42,.42,'core']],
-  "Garage":[[0,.08,.62,.42,'vehicle']],
-  "Greenhouse":[[-.3,0,.18,.7,'plant'],[0,0,.18,.7,'plant'],[.3,0,.18,.7,'plant']],
-  "Infirmary":[[-.26,-.16,.46,.12,'bed'],[.26,.2,.2,.34,'cabinet']],
-  "Drill Site":[[0,0,.28,.62,'rig'],[-.34,.3,.18,.14,'crate']],
-  "Freezer":[[-.28,0,.18,.7,'shelf'],[.08,0,.18,.7,'shelf']],
+  "Mess Hall":[[-.16,0,.46,.15,'table'],[-.16,-.24,.46,.08,'bench'],[-.16,.24,.46,.08,'bench'],
+    [.3,-.26,.26,.12,'counter'],[.34,0,.1,.1,'stool'],[.34,.2,.1,.1,'stool'],[.12,.3,.1,.1,'crate']],
+  "Lab":[[-.28,-.2,.46,.12,'bench'],[.28,.18,.22,.22,'machine'],[-.06,.28,.34,.12,'monitor'],
+    [.3,-.26,.13,.13,'sample'],[-.32,.24,.11,.11,'sample'],[.08,-.28,.11,.11,'sample']],
+  "Comms":[[-.32,0,.13,.62,'rack'],[-.14,0,.13,.62,'rack'],[.26,-.2,.34,.13,'monitor'],
+    [.26,.06,.34,.11,'desk'],[.26,.28,.11,.11,'stool']],
+  "Bunks":[[-.28,-.24,.42,.1,'bed'],[-.28,-.02,.42,.1,'bed'],[-.28,.2,.42,.1,'bed'],
+    [.3,-.2,.14,.18,'locker'],[.3,.06,.14,.18,'locker'],[.28,.3,.12,.1,'crate']],
+  "Storage":[[-.3,0,.15,.64,'shelf'],[.3,0,.15,.64,'shelf'],[0,-.22,.16,.16,'crate'],
+    [0,.04,.14,.14,'crate'],[0,.28,.11,.11,'barrel'],[-.04,-.02,.1,.1,'barrel']],
+  "Generator":[[-.1,.02,.36,.42,'machine'],[.34,-.06,.12,.5,'pipe'],[.34,.34,.16,.16,'panel'],
+    [-.34,-.28,.13,.13,'barrel'],[-.32,.3,.11,.11,'barrel']],
+  "Reactor":[[0,0,.4,.4,'core'],[-.34,-.3,.14,.14,'panel'],[.34,.3,.14,.14,'panel'],[.37,-.3,.1,.4,'pipe']],
+  "Garage":[[-.04,.06,.56,.4,'vehicle'],[-.36,-.28,.22,.12,'bench'],[.34,-.28,.12,.12,'barrel'],[.36,.3,.12,.12,'crate']],
+  "Greenhouse":[[-.32,0,.16,.66,'plant'],[-.08,0,.16,.66,'plant'],[.16,0,.16,.66,'plant'],
+    [.38,-.24,.14,.2,'tank'],[.38,.24,.12,.12,'crate']],
+  "Infirmary":[[-.28,-.18,.42,.11,'bed'],[-.28,.1,.42,.11,'bed'],[.3,-.22,.18,.3,'cabinet'],
+    [.3,.2,.14,.14,'monitor'],[.06,.3,.07,.18,'iv']],
+  "Drill Site":[[0,-.02,.26,.58,'rig'],[-.34,.28,.16,.14,'crate'],[.34,.28,.14,.14,'crate'],
+    [.34,-.26,.16,.16,'panel'],[-.34,-.26,.12,.12,'barrel']],
+  "Freezer":[[-.3,0,.16,.66,'shelf'],[0,0,.16,.66,'shelf'],[.3,0,.16,.66,'shelf'],[.02,.32,.12,.1,'crate']],
 };
-const FURN_COL={bed:'#cdd6e2',table:'#48586f',bench:'#3e4d63',desk:'#48586f',shelf:'#5a6678',rack:'#2c3a4e',
-  machine:'#36424f',pipe:'#3a4658',core:'#6a5238',vehicle:'#5a5048',plant:'#3f8a54',cabinet:'#7886a0',rig:'#4a4232',crate:'#4b5566'};
+const FURN_COL={bed:'#cdd6e2',table:'#48586f',bench:'#3e4d63',desk:'#48586f',shelf:'#5a6678',rack:'#26323f',
+  machine:'#36424f',pipe:'#3a4658',core:'#6a5238',vehicle:'#5a5048',plant:'#3f8a54',cabinet:'#7886a0',rig:'#4a4232',
+  crate:'#6b5a3e',counter:'#4a5a72',stool:'#3e4d63',monitor:'#1c2735',sample:'#3a6a7a',locker:'#566378',
+  barrel:'#7a5a3a',panel:'#283544',tank:'#3a7a8a',iv:'#8aa0b8'};
 function furnCol(k){ return FURN_COL[k]||'#48586f'; }
+// draw one furnishing with type-specific detailing — screens glow, racks blink, plants sprout, the
+// reactor core pulses — so each room reads as what it is rather than a box of grey rectangles.
+function drawFurn(px,py,ww,hh,k,t){
+  const col=furnCol(k), x=px-ww/2, y=py-hh/2, z=cam.z;
+  if(k==='plant'){ ctx.fillStyle="#3a2c1e"; rr(x,y+hh*0.62,ww,hh*0.38,3*z); ctx.fill();
+    ctx.fillStyle=col; for(let i=0;i<4;i++){ const fy=y+hh*(0.12+i*0.16); ctx.beginPath(); ctx.ellipse(px+((i%2)?1:-1)*ww*0.22,fy,ww*0.36,hh*0.12,0,0,TAU); ctx.fill(); }
+    ctx.fillStyle="rgba(255,255,255,.1)"; ctx.beginPath(); ctx.ellipse(px-ww*0.1,y+hh*0.2,ww*0.16,hh*0.07,0,0,TAU); ctx.fill(); return; }
+  if(k==='barrel'){ ctx.fillStyle=col; rr(x,y,ww,hh,Math.min(ww,hh)*0.4); ctx.fill();
+    ctx.strokeStyle="rgba(0,0,0,.3)"; ctx.lineWidth=1.2*z; ctx.beginPath(); ctx.moveTo(x,py-hh*0.12);ctx.lineTo(x+ww,py-hh*0.12);ctx.moveTo(x,py+hh*0.12);ctx.lineTo(x+ww,py+hh*0.12);ctx.stroke();
+    ctx.fillStyle="rgba(255,255,255,.13)"; rr(x+ww*0.12,y+hh*0.08,ww*0.26,hh*0.84,ww*0.2); ctx.fill(); return; }
+  if(k==='core'){ const g=0.5+0.5*Math.sin(t*0.003), rad=Math.min(ww,hh)/2;
+    ctx.fillStyle="#2a2018"; ctx.beginPath(); ctx.arc(px,py,rad,0,TAU); ctx.fill();
+    const grd=ctx.createRadialGradient(px,py,1,px,py,rad*0.92); grd.addColorStop(0,`rgba(255,190,90,${0.72+0.22*g})`); grd.addColorStop(.6,"rgba(255,140,50,.4)"); grd.addColorStop(1,"rgba(255,120,40,0)");
+    ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(px,py,rad*0.92,0,TAU); ctx.fill();
+    ctx.strokeStyle="rgba(255,210,140,.5)"; ctx.lineWidth=2*z; ctx.beginPath(); ctx.arc(px,py,rad*0.62,0,TAU); ctx.stroke(); return; }
+  if(k==='iv'){ ctx.strokeStyle="#9aa8bc"; ctx.lineWidth=1.6*z; ctx.beginPath(); ctx.moveTo(px,y);ctx.lineTo(px,y+hh);ctx.stroke();
+    ctx.fillStyle="rgba(180,220,255,.7)"; rr(px-ww*0.5,y,ww,hh*0.42,2*z); ctx.fill(); return; }
+  ctx.fillStyle=col; rr(x,y,ww,hh,3*z); ctx.fill();
+  ctx.fillStyle="rgba(255,255,255,.12)"; rr(x,y,ww,hh*0.32,3*z); ctx.fill();
+  ctx.strokeStyle="rgba(0,0,0,.4)"; ctx.lineWidth=1*z; rr(x,y,ww,hh,3*z); ctx.stroke();
+  if(k==='monitor'||k==='panel'||k==='desk'||k==='counter'){ const g=0.5+0.5*Math.sin(t*0.004+px*0.05);
+    ctx.fillStyle=`rgba(90,210,255,${0.3+0.3*g})`; rr(x+ww*0.12,y+hh*0.16,ww*0.76,Math.max(2*z,hh*0.42),2*z); ctx.fill(); }
+  else if(k==='rack'){ ctx.strokeStyle="rgba(0,0,0,.3)"; ctx.lineWidth=1*z;
+    for(let yy=y+hh*0.1; yy<y+hh; yy+=Math.max(6*z,hh*0.12)){ ctx.beginPath(); ctx.moveTo(x,yy); ctx.lineTo(x+ww,yy); ctx.stroke();
+      ctx.fillStyle=(Math.sin(yy*7+t*0.005)>0)?"rgba(90,230,140,.85)":"rgba(90,230,140,.25)"; ctx.fillRect(x+ww-3.5*z,yy+1*z,2*z,2*z); } }
+  else if(k==='shelf'){ ctx.strokeStyle="rgba(0,0,0,.32)"; ctx.lineWidth=1*z; for(let yy=y+hh*0.22; yy<y+hh; yy+=hh*0.24){ ctx.beginPath(); ctx.moveTo(x,yy); ctx.lineTo(x+ww,yy); ctx.stroke(); } }
+  else if(k==='bed'){ ctx.fillStyle="#eef2f8"; rr(x+ww*0.04,y+hh*0.14,ww*0.24,hh*0.72,2*z); ctx.fill(); }
+  else if(k==='vehicle'){ ctx.fillStyle="#15191f"; ctx.beginPath(); ctx.arc(x+ww*0.24,y+hh,hh*0.18,0,TAU); ctx.arc(x+ww*0.76,y+hh,hh*0.18,0,TAU); ctx.fill();
+    ctx.fillStyle="rgba(120,200,255,.22)"; rr(x+ww*0.3,y+hh*0.12,ww*0.4,hh*0.3,2*z); ctx.fill(); }
+  else if(k==='crate'){ ctx.strokeStyle="rgba(0,0,0,.35)"; ctx.lineWidth=1.4*z; ctx.beginPath(); ctx.moveTo(x,y+hh/2);ctx.lineTo(x+ww,y+hh/2);ctx.moveTo(x+ww/2,y);ctx.lineTo(x+ww/2,y+hh);ctx.stroke(); }
+  else if(k==='sample'||k==='tank'){ ctx.fillStyle="rgba(120,235,255,.4)"; rr(x+ww*0.2,y+hh*0.15,ww*0.6,hh*0.7,2*z); ctx.fill(); }
+}
 function drawStation(t){
   const TS=SCALE*cam.z;  // one floor tile, in screen px
   // 1) drop shadows on the snow so the station sits on the landscape
@@ -299,10 +342,7 @@ function drawStation(t){
     ctx.fillStyle=fg; ctx.fillRect(L,T,w,h);
     ctx.strokeStyle="rgba(110,140,190,.05)"; ctx.lineWidth=1; for(let yy=T+18*cam.z; yy<T+h; yy+=18*cam.z){ ctx.beginPath(); ctx.moveTo(L,yy); ctx.lineTo(L+w,yy); ctx.stroke(); }
     ctx.fillStyle=`rgba(${c[0]},${c[1]},${c[2]},.12)`; ctx.fillRect(L,T,w,h);  // faint room-accent wash
-    for(const [dx,dy,fw,fh,k] of (FURN[n]||[[-.1,0,.5,.4,'machine']])){ const px=sx+dx*w,py=sy+dy*h,ww=fw*w,hh=fh*h,col=furnCol(k);
-      ctx.fillStyle=col; rr(px-ww/2,py-hh/2,ww,hh,3*cam.z); ctx.fill();
-      ctx.fillStyle="rgba(255,255,255,.12)"; rr(px-ww/2,py-hh/2,ww,hh*0.34,3*cam.z); ctx.fill();
-      ctx.strokeStyle="rgba(0,0,0,.4)"; ctx.lineWidth=1*cam.z; rr(px-ww/2,py-hh/2,ww,hh,3*cam.z); ctx.stroke(); }
+    for(const [dx,dy,fw,fh,k] of (FURN[n]||[[-.1,0,.5,.4,'machine']])) drawFurn(sx+dx*w,sy+dy*h,fw*w,fh*h,k,t);
     // task terminals — one console per cell in TERMINALS[n] (wall cells, never doorways). The screen
     // glows cyan while its task is open/in-progress; dim when there's nothing to do here.
     const cnt=OPEN[n]||0, terms=TERMINALS[n]||[], cs=7*cam.z;
