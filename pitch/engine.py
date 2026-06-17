@@ -148,7 +148,8 @@ class Pitch:
         self._kickoff("home")
 
     def _kickoff(self, _conceding: str) -> None:
-        self.ball = Ball(self.cfg.length / 2, self.cfg.width / 2, last_touch=None)
+        c = self.cfg
+        self.ball = Ball(c.length / 2, c.width / 2, last_touch=None)
         self.possessor = None
         self.celebrate = self.restart = 0
         self.scorer = self.goal_team = self.restart_kind = None
@@ -156,6 +157,12 @@ class Pitch:
         self.pass_to, self.pass_ttl = None, 0
         for p in self.players:
             p.x, p.y, p.vx, p.vy = p.home_x, p.home_y, 0.0, 0.0
+            # at kickoff every player must be in their OWN half (real soccer) — a high forward line is
+            # pulled back behind the halfway line; the formation anchors are untouched for open play
+            if p.team == "home":
+                p.x = min(p.x, c.length / 2 - 2.0)
+            else:
+                p.x = max(p.x, c.length / 2 + 2.0)
 
     # --- queries used by the brain ---
     def teammates(self, p: Player) -> list[Player]:
