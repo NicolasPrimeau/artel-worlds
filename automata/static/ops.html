@@ -207,7 +207,10 @@ function card(w){
         <span class="st ${w.paused?'paused':(w.status||'idle')}">${w.paused?'paused':(w.status||'idle')}</span>
       </div>
       ${body}
-      ${w.key === "pitch" ? `<div class="cardfoot"><span class="tag">no operator controls yet</span></div>` : `
+      ${w.key === "pitch" ? `
+      <div class="cardfoot">
+        <button class="reset" onclick="resetWorld('${w.key}','${w.name}')">reset ${w.name}</button>
+      </div>` : `
       <div class="cardfoot">
         <button class="reset pausebtn${w.paused?' on':''}" onclick="pauseWorld('${w.key}','${w.name}',${w.paused?0:1})">${w.paused?'▶ resume':'⏸ pause'}</button>
         <button class="reset" onclick="resetWorld('${w.key}','${w.name}')">reset ${w.name}</button>

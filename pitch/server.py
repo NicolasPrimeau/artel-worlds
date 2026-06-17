@@ -281,6 +281,16 @@ async def state():
     return JSONResponse(G.snapshot())
 
 
+@app.post("/reset")
+async def reset():
+    # operator reset (from the ops dashboard): draw a brand-new World Cup and kick off match 1.
+    # Synchronous w.r.t. the single-threaded tick loop, so it's atomic.
+    G._new_edition()
+    G._new_match()
+    await _broadcast(G.snapshot())
+    return {"ok": True, "edition": G.edition}
+
+
 @app.websocket("/stream")
 async def stream(ws: WebSocket):
     await ws.accept()

@@ -34,7 +34,6 @@
   .fullnm { font-size:9px; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     max-width:100%; }
   .fmt { font-size:8px; color:#5f6f63; letter-spacing:.5px; font-variant-numeric:tabular-nums; }
-  .abbr.artel { color:#ffd34d !important; text-shadow:0 0 8px rgba(255,211,77,.5); }
   #score { background:#161d16; padding:0 12px; font-weight:800; font-size:18px; white-space:nowrap;
     display:flex; align-items:center; }
   /* tournament strip — tappable, lives right in the scoreboard so the cup is front-and-centre */
@@ -417,8 +416,6 @@ function apply(s) {
   $('abH').textContent = abbr(s.home.club); $('abA').textContent = abbr(s.away.club);
   $('nmH').textContent = (s.home.artel ? '⚡ ' : '') + s.home.club;
   $('nmA').textContent = (s.away.artel ? '⚡ ' : '') + s.away.club;
-  $('abH').classList.toggle('artel', !!s.home.artel);
-  $('abA').classList.toggle('artel', !!s.away.artel);
   $('fmtH').textContent = s.home.formation || ''; $('fmtA').textContent = s.away.formation || '';
   $('score').textContent = `${s.home.score}–${s.away.score}`;
   $('round').textContent = s.round || '';
@@ -426,7 +423,7 @@ function apply(s) {
   // broadcast clock: a continuous MM:SS over a 90:00 match, ticking with seconds like TV
   const secs = Math.min(5400, Math.floor(s.tick / s.match_ticks * 5400));
   $('clock').textContent = s.fulltime ? 'FT' : s.halftime ? 'HT'
-    : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    : `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
   // banner is driven by server state — the goal freeze holds it long enough to read
   if (s.celebrating) {
     setBanner('GOAL', s.scorer || '', s.goal_team === 'home' ? '#3d8bff' : '#ff6a3d');
@@ -440,12 +437,13 @@ function apply(s) {
   } else { setBanner(null); }
   lastTour = s.tournament;
   if (!$('cup').hidden) renderTour(lastTour);
-  if (s.restart && apply._lastRestart !== s.tick - (s.tick % 1)) {
+  // hold the restart label up for the WHOLE dead-ball pause, then clear it when play resumes
+  if (s.restart) {
     const labels = { corner: 'Corner', 'goal-kick': 'Goal kick', 'throw-in': 'Throw-in',
       offside: 'Offside ▶', 'free-kick': 'Free kick', penalty: 'Penalty!' };
-    if (apply._restartShown !== s.restart + ':' + s.match_no) { setToast(labels[s.restart] || ''); }
-  }
-  apply._restartShown = s.restart ? s.restart + ':' + s.match_no : null;
+    setToast(labels[s.restart] || '');
+  } else if (apply._restarting) { setToast(null); }
+  apply._restarting = !!s.restart;
 }
 
 let ws, retry = 0;

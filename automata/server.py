@@ -1109,7 +1109,9 @@ async def ui_reset(request: Request, world: str = ""):
             G.reset()
         await _reset_artel_project()
         return {"ok": True, "world": "automata"}
-    target = {"phalanx": PHALANX_DEBUG, "watchtower": WATCHTOWER_DEBUG}.get(world)
+    target = {"phalanx": PHALANX_DEBUG, "watchtower": WATCHTOWER_DEBUG, "pitch": PITCH_DEBUG}.get(
+        world
+    )
     if not target:
         raise HTTPException(status_code=400, detail="unknown world")
     async with httpx.AsyncClient() as client:
