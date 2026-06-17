@@ -54,8 +54,9 @@ class Tournament:
         suf = self._rng.sample(AI_SUFFIXES, 16)
         c = [f"{pre[i]} {suf[i]}" for i in range(16)]
         self.clubs = c
-        # half the field is Artel-coached (the coordinated, LLM-led sides); the rest run the baseline
-        self.artel_clubs = set(self._rng.sample(c, len(c) // 2))
+        # no Artel teams in pitch — every side runs the plain deterministic brain (pitch is a
+        # spectacle, not an Artel demo; coordination code stays but never activates)
+        self.artel_clubs: set[str] = set()
         # one shared pool of DISTINCT surnames dealt out across the squads — a surname is never on
         # two clubs in the same cup. Draws team_size * 16 unique names, then chunks them per club.
         squad = DEFAULT.team_size

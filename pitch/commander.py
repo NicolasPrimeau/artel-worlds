@@ -249,15 +249,14 @@ class Coordinator:
             self.plan = None  # no bus -> no edge
             return
         now = time.monotonic()
-        # the LLM coach authors a fresh directive on a slow cadence and PUBLISHES it to Artel
-        if self.llm and not self._busy and now - self._llm_at >= LLM_EVERY:
-            self._busy = True
+        # NO LLM live for pitch: the coach authors DETERMINISTICALLY (plan_for — the heuristic the LLM
+        # only ever matched) on the cadence and publishes through Artel. Keeps the coordination edge
+        # with zero model calls / cost. (author_plan_llm stays for offline A/B tooling only.)
+        if now - self._llm_at >= LLM_EVERY:
             self._llm_at = now
-            try:
-                plan = await author_plan_llm(pitch, self.team)
-                await self._publish(pitch, plan)
-            finally:
-                self._busy = False
+            plan = plan_for(pitch, self.team)
+            plan.combos = True  # call combinations; plays.py gates them to the attacking half
+            await self._publish(pitch, plan)
         # the team's plan IS whatever directive Artel hands back; expire it if none arrives in TTL so
         # the edge can't outlive the bus (Artel/LLM down => no fresh directive => baseline)
         got = await self._read()
