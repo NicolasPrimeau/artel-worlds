@@ -47,6 +47,20 @@ def _state_path() -> Path:
     return p if p.parent.exists() else Path(p.name)
 
 
+def _task_rooms(g) -> dict:
+    # rooms with a lit console: unclaimed tasks on the board PLUS tasks in progress (a crew walking to
+    # one, or working it) — so the map shows the whole task load, not just the spare consoles.
+    rooms: dict = {}
+    for r in g.open_tasks:
+        rooms[r] = rooms.get(r, 0) + 1
+    for a in g.living(impostor=False):
+        if a.work > 0:
+            rooms[a.room] = rooms.get(a.room, 0) + 1
+        elif a.dest is not None:
+            rooms[a.dest] = rooms.get(a.dest, 0) + 1
+    return rooms
+
+
 class Alibi:
     def __init__(self):
         self.lock = asyncio.Lock()
@@ -182,9 +196,7 @@ class Alibi:
                 "centers": {n: [round(c[0], 2), round(c[1], 2)] for n, c in g.centers.items()},
                 "doors": [[a, b, dx, dy] for (a, b), (dx, dy) in g.doors.items()],
                 "vents": sorted({tuple(sorted((a, b))) for a, ns in g.vents.items() for b in ns}),
-                "openTasks": {
-                    r: g.open_tasks.count(r) for r in set(g.open_tasks)
-                },  # room -> lit consoles
+                "openTasks": _task_rooms(g),  # room -> lit consoles (unclaimed + in-progress)
             },
             "meeting": meeting,
             "winner": g.winner,

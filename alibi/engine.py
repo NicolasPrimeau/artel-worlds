@@ -154,6 +154,7 @@ TASK_SPAWN_P = (
     0.5  # per-tick chance a fresh task appears on the shared board (capped at one per crew)
 )
 WORK_TICKS = 3  # a task occupies its crew for several ticks — they linger at the console
+TASK_SLACK = 4  # keep this many fewer tasks-in-play than living players, so a couple are always free to buddy
 KILL_CD = 9  # ticks between kills — crew walk to tasks (spread out), so kills come easy; slow them
 OPP_KILL_P = 0.12  # chance the Thing risks a kill with WITNESSES present (vs only when truly alone)
 START_GRACE = 8  # no kill on the first few ticks, so a real task phase builds movement + alibis
@@ -307,16 +308,32 @@ class Game:
         self.open_tasks.remove(room)
         a.dest = room
 
+    def _approach_buddy(self, a):
+        # nothing to do → close on the nearest other survivor (safety in numbers); stay if already together
+        others = [o for o in self.living() if o.id != a.id]
+        if others:
+            self._toward_room(a, min(others, key=lambda o: self._room_dist(a.room, o.room)).room)
+
+    def _active_tasks(self):
+        return len(self.open_tasks) + sum(
+            1 for a in self.living(impostor=False) if a.dest is not None or a.work > 0
+        )
+
     # --- task phase: one tick of move / task / kill. Returns a Meeting trigger or None. ---
     def step(self) -> Meeting | None:
         self.tick += 1
         if self.cd > 0:
             self.cd -= 1
 
-        # fresh task consoles light up over time (more land in bigger rooms; total capped near crew size)
-        crew_n = len(self.living(impostor=False))
-        if len(self.open_tasks) < crew_n and self.rng.random() < TASK_SPAWN_P:
+        # keep tasks-in-play topped up to a few short of the living headcount, so most crew always have
+        # something to do but a couple are free to buddy — and as the crew thins out the board tightens
+        # into a finish-or-survive scramble.
+        cap = max(2, len(self.living()) - TASK_SLACK)
+        while self._active_tasks() < cap:
+            before = len(self.open_tasks)
             self._spawn_task()
+            if len(self.open_tasks) == before:  # every room already at its per-size cap
+                break
 
         for a in self.living():
             a.tasking = False
@@ -350,7 +367,8 @@ class Game:
                         a.dest = None
                 else:
                     self._toward_room(a, a.dest)
-            # else: nothing to do → stay put
+            else:
+                self._approach_buddy(a)  # no task to claim → buddy up for safety
 
         for a in self.living():
             a.trail.append((self.tick, a.room))  # each agent remembers where it has been
@@ -481,8 +499,8 @@ def new_game(seed: int, n=6, impostors=1) -> Game:
         corridor=corridor,
         outpost=rng.randint(1, 99),
     )
-    g.tasks_goal = max(8, round(crew_n * 3.5))
-    for _ in range(max(2, crew_n // 2)):  # seed the board, size-weighted like the live spawns
+    g.tasks_goal = max(8, round(crew_n * 4.5))
+    for _ in range(max(2, n - TASK_SLACK)):  # seed the board up to the in-play cap, size-weighted
         g._spawn_task()
     return g
 
