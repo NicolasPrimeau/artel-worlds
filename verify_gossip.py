@@ -35,6 +35,7 @@ async def play(seed: int, artel_down: bool) -> tuple:
     home = DistTeam("home", bus_on=True, artel_backed=True)  # coordinates THROUGH Artel
     away = DistTeam("away", bus_on=False)  # blind control
     g = ArtelGossip(FakeArtel(down=artel_down), "home")
+    g.since = "1970-01-01T00:00:00.000Z"  # the fake uses synthetic stamps; poll from the start
     brain = make_dist_brain(home, away)
     while p.tick < p.cfg.match_ticks:
         p.step(brain)

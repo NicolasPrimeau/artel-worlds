@@ -10,8 +10,10 @@ from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 
-from . import commander
-from .bot import decide
+from . import artel_client
+from . import gossip as gossip_mod
+from .commander import optimize_lineup
+from .dist import GOSSIP_EVERY, R_SENSE, DistTeam, make_dist_brain
 from .engine import Pitch
 from .tournament import Tournament
 
@@ -56,17 +58,24 @@ class Game:
         self._fulltime_at = None
         self._champion_done = False
         self._last_h = self._last_a = 0
-        # any Artel-coached side in this tie gets its own line-agent coordinator (a match can have
-        # two — both teams coached); baseline sides just run the deterministic brain.
-        self.coords: dict[str, commander.Coordinator] = {}
+        # Every player is a distributed NODE: local sensing only, no global view. An Artel-coached
+        # side runs the bus ON — its line agents gossip sightings THROUGH Artel and the team
+        # coordinates off the shared belief read back; a baseline side runs the bus OFF (each node
+        # blind beyond its own senses). Cut Artel and the coached team collapses to the blind one.
+        self._artel = artel_client.Artel() if artel_client.configured() else None
+        self.teams: dict[str, DistTeam] = {}
+        self.gossips: dict[str, gossip_mod.ArtelGossip] = {}
         for side, club in (("home", tie.a), ("away", tie.b)):
-            if club in self.tour.artel_clubs:
-                co = commander.Coordinator(side, club)
-                co.optimize(self.pitch)  # stat-optimal lineup before kickoff
-                self.coords[side] = co
+            is_artel = club in self.tour.artel_clubs
+            backed = is_artel and self._artel is not None  # genuinely gossiping through Artel
+            self.teams[side] = DistTeam(side, bus_on=is_artel, artel_backed=backed)
+            if is_artel:
+                optimize_lineup([p for p in self.pitch.players if p.team == side])
+            if backed:
+                self.gossips[side] = gossip_mod.ArtelGossip(self._artel, side)
         self._coord_at = 0.0
-        self._coord_tasks: list = []
-        self.brain = commander.combined_brain(self.coords) if self.coords else decide
+        self._gossip_busy = False
+        self.brain = make_dist_brain(self.teams["home"], self.teams["away"])
 
     def note_goals(self) -> None:
         # attribute each new goal to its scorer's club for the Golden Boot
@@ -136,15 +145,15 @@ class Game:
                 "club": self.home_club,
                 "score": self.pitch.score["home"],
                 "formation": "-".join(map(str, self.pitch.shapes.get("home", ()))),
-                "artel": "home" in self.coords,
+                "artel": self.teams["home"].bus_on,
             },
             "away": {
                 "club": self.away_club,
                 "score": self.pitch.score["away"],
                 "formation": "-".join(map(str, self.pitch.shapes.get("away", ()))),
-                "artel": "away" in self.coords,
+                "artel": self.teams["away"].bus_on,
             },
-            "artel_live": any(co.live for co in self.coords.values()),
+            "artel_live": bool(self.gossips),
             "ball": {"x": round(self.pitch.ball.x, 2), "y": round(self.pitch.ball.y, 2)},
             "players": [
                 {
@@ -189,15 +198,22 @@ async def _tick_loop() -> None:
         start = asyncio.get_event_loop().time()
         if G.viewers:
             if G.pitch.tick < G.pitch.cfg.match_ticks:
-                # refresh the Artel coach off the hot path (~every 1.2s, viewer-gated): the line
-                # agents re-throw the plan through Artel; the fast tick just reads the cached plan.
-                if G.coords and start - G._coord_at >= COORD_INTERVAL:
+                # gossip off the hot path (~every COORD_INTERVAL, viewer-gated): each Artel team's
+                # line agents post what they see to Artel and pull the team's merged belief back. The
+                # fast tick just senses locally and reads that cached shared belief.
+                if G.gossips and not G._gossip_busy and start - G._coord_at >= COORD_INTERVAL:
                     G._coord_at = start
-                    G._coord_tasks = []
-                    for co in G.coords.values():
-                        if G.pitch.tick <= 1:
-                            G._coord_tasks.append(asyncio.create_task(co.announce()))
-                        G._coord_tasks.append(asyncio.create_task(co.refresh(G.pitch)))
+                    G._gossip_busy = True
+
+                    async def _gossip() -> None:
+                        try:
+                            await asyncio.gather(
+                                *(G.teams[s].gossip_cycle(G.pitch, g) for s, g in G.gossips.items())
+                            )
+                        finally:
+                            G._gossip_busy = False
+
+                    asyncio.create_task(_gossip())
                 G.pitch.step(G.brain)
                 G.note_goals()
                 await _broadcast(G.snapshot())
@@ -211,12 +227,12 @@ async def _tick_loop() -> None:
                     )
                     del G.history[:-6]
                     G.record_fulltime()  # advance the bracket so it updates during the hold
-                    if G.coords:  # record the result + sweep this match's coordination memory
+                    if G._artel and G.gossips:  # keep the durable result on the Artel event feed
                         summary = (
                             f"{G.home_club} {s['home']}-{s['away']} {G.away_club} ({G.round_label})"
                         )
                         G._finish_task = asyncio.create_task(
-                            next(iter(G.coords.values())).finish(summary)
+                            G._artel.emit_event("captain", "pitch.result", {"result": summary})
                         )
                     await _broadcast(G.snapshot())
                 else:
@@ -246,19 +262,28 @@ async def health():
     return {"status": "ok", "tick": G.pitch.tick, "match": G.match_no}
 
 
+def _known(t: DistTeam) -> int:
+    s = t._shared
+    return (len(s.opp) + len(s.mate) + (1 if s.ball else 0)) if s else 0
+
+
 @app.get("/debug")
 async def debug():
-    from . import llm
-
+    # the coordination is a distributed system, not an LLM coach — no spend. Report the bus state and
+    # how much of the field each Artel team currently knows via gossip (0 if Artel is unreachable).
     coach = {
-        "model": llm.MODEL if llm.enabled() or llm.SPEND["calls"] else None,
-        "fallback": llm.MODEL2 if llm._KEY2 else None,
-        "spent_usd": round(llm.SPEND["usd"], 5),
-        "cap": llm.CAP,
-        "calls": llm.SPEND["calls"],
-        "throttled": llm.SPEND["throttled"],
-        "spend_days": dict(llm.SPEND["days"]),
-        "live": llm.enabled(),
+        "model": None,
+        "fallback": None,
+        "spent_usd": 0.0,
+        "cap": 0,
+        "calls": 0,
+        "throttled": 0,
+        "spend_days": {},
+        "live": bool(G.gossips),
+        "mode": "distributed-gossip",
+        "sense_radius": R_SENSE,
+        "gossip_every_ticks": GOSSIP_EVERY,
+        "shared_known": {s: _known(t) for s, t in G.teams.items() if t.bus_on},
     }
     return {"viewers": len(G.viewers), "match": G.match_no, "coach": coach, **G.snapshot()}
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import datetime
+
 from .dist import STALE, Belief
 
 # The Artel gossip transport. A team's shared belief is assembled ONLY from events polled back out
@@ -10,7 +12,13 @@ from .dist import STALE, Belief
 # genuinely load-bearing rather than a mirror: cut Artel and the coordinated team becomes the blind one.
 
 EVENT_TYPE = "pitch.sighting"
-EPOCH = "1970-01-01T00:00:00.000Z"
+
+
+def _now_cursor() -> str:
+    # an Artel-event-format timestamp for "now", so the first poll only fetches THIS match's sightings
+    # rather than every sighting ever stored (events accumulate server-side)
+    n = datetime.datetime.now(datetime.UTC)
+    return n.strftime("%Y-%m-%dT%H:%M:%S.") + f"{n.microsecond // 1000:03d}Z"
 
 
 def _ser(b: Belief) -> dict:
@@ -49,7 +57,7 @@ class ArtelGossip:
     def __init__(self, artel, team: str) -> None:
         self.artel = artel
         self.team = team
-        self.since = EPOCH
+        self.since = _now_cursor()
         self.shared = Belief()
 
     async def cycle(self, line_beliefs: dict[str, Belief], now: int) -> Belief:
