@@ -23,6 +23,7 @@ GOSSIP_EVERY = 12  # ticks between team-belief syncs (~1s, the live Artel cadenc
 # The wedge is robust to ~2s of latency and only inverts past ~4s; a node always overlays its OWN
 # fresh senses on top of the shared cache, so only OFF-sensor info ages.
 ROLE_ZONE = {"DEF": 0, "MID": 1, "FWD": 2}
+LINE_OF = {"GK": "def", "DEF": "def", "MID": "mid", "FWD": "fwd"}  # which line agent gossips a node
 
 
 def _fwd(team: str) -> float:
@@ -52,9 +53,12 @@ class Belief:
 
 
 class DistTeam:
-    def __init__(self, team: str, bus_on: bool) -> None:
+    def __init__(self, team: str, bus_on: bool, artel_backed: bool = False) -> None:
         self.team = team
         self.bus_on = bus_on
+        # artel_backed: the shared belief is filled ONLY by the async gossip loop reading Artel (live).
+        # Otherwise it's an in-process merge of the nodes' beliefs (the measurement stand-in).
+        self.artel_backed = artel_backed
         self.bel: dict[int, Belief] = {}  # per-node belief, persisted across ticks
         self._shared: Belief | None = None  # last gossiped team belief (refreshed on cadence)
         self._shared_at = -(10**9)
@@ -68,11 +72,12 @@ class DistTeam:
         if self.bus_on:
             # gossip on a cadence (real Artel has latency): refresh the shared team belief every
             # GOSSIP_EVERY ticks; between syncs the shared view ages, but each node overlays its OWN
-            # current senses, so only information from OTHER nodes goes stale.
-            if now - self._shared_at >= GOSSIP_EVERY:
+            # current senses, so only information from OTHER nodes goes stale. When artel_backed, the
+            # async gossip_cycle owns self._shared (read from Artel) — plan never fills it locally.
+            if not self.artel_backed and now - self._shared_at >= GOSSIP_EVERY:
                 self._shared = self._combine([self.bel[pid] for pid in ids])
                 self._shared_at = now
-            shared = self._shared
+            shared = self._shared or Belief()
             views = {pid: self._combine([shared, self.bel[pid]]) for pid in ids}
             assign, presser = self._coordinate(pitch, ids, shared)
             plans = {pid: (assign, presser) for pid in ids}
@@ -81,6 +86,17 @@ class DistTeam:
             plans = {pid: self._coordinate_local(pitch, pid, self.bel[pid]) for pid in ids}
         for pid in ids:
             cache[pid] = self._decide(pitch, pid, views[pid], plans[pid])
+
+    async def gossip_cycle(self, pitch: Pitch, gossip) -> None:
+        # off the hot path (~1s, live only): aggregate each line's current sightings and hand them to
+        # the Artel gossip, which posts them and polls the team's merged belief back. Sets self._shared
+        # to whatever Artel returns — so if Artel is down, it stays empty and the team goes blind.
+        now = pitch.tick
+        lines: dict[str, Belief] = {"def": Belief(), "mid": Belief(), "fwd": Belief()}
+        for pid, bel in self.bel.items():
+            ln = LINE_OF.get(pitch.players[pid].role, "mid")
+            lines[ln] = self._combine([lines[ln], bel])
+        self._shared = await gossip.cycle(lines, now)
 
     def _sense(self, pitch: Pitch, pid: int, now: int) -> None:
         bel = self.bel.setdefault(pid, Belief())

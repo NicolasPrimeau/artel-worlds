@@ -66,6 +66,11 @@ class Artel:
     async def emit_event(self, role: str, etype: str, payload: dict) -> dict | None:
         return await self._req(role, "POST", "/events", json={"type": etype, "payload": payload})
 
+    async def poll_events(self, role: str, etype: str, since: str) -> list:
+        # read events of a type since a timestamp cursor — the gossip read-back. Returns [] if Artel
+        # is unreachable, which is exactly what makes the bus load-bearing: no read, no shared belief.
+        return await self._req(role, "GET", "/events", params={"since": since, "type": etype}) or []
+
     async def send_message(self, role: str, to: str, subject: str, body: str) -> dict | None:
         return await self._req(
             role, "POST", "/messages", json={"to": to, "subject": subject, "body": body}
