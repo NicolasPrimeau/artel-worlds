@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse, JSONResponse
 
 from . import llm
-from .engine import MAX_TICKS, ROOMS, new_game
+from .engine import MAX_TICKS, new_game
 from .meeting import CREW_POOL, THING_MODEL, assign_models, run_llm_meeting
 
 # Alibi runs one game after another, but ONLY while someone is watching (free-tier Groq, like phalanx):
@@ -28,8 +28,8 @@ TASK_TICK = float(os.environ.get("ALIBI_TICK_INTERVAL", "1.4"))  # min seconds p
 EJECT_LINGER = 6.0  # hold on the vote + airlock reveal so viewers read the result
 GAMEOVER_LINGER = 8.0  # hold on the final board before the next game
 _ADMIN_TOKEN = os.environ.get("WORLDS_ADMIN_TOKEN", "")
-N_AGENTS = int(os.environ.get("ALIBI_AGENTS", "6"))
-N_IMPOSTORS = int(os.environ.get("ALIBI_IMPOSTORS", "1"))
+N_AGENTS = int(os.environ.get("ALIBI_AGENTS", "10"))
+N_IMPOSTORS = int(os.environ.get("ALIBI_IMPOSTORS", "2"))
 
 
 def _state_path() -> Path:
@@ -162,13 +162,27 @@ class Alibi:
             "alive": len(g.living()),
             "total": len(g.agents),
             "agents": agents,
-            "rooms": list(ROOMS),
+            "station": {
+                "outpost": g.outpost,
+                "rects": {n: list(r) for n, r in g.rects.items()},
+                "doors": [[a, b, dx, dy] for (a, b), (dx, dy) in g.doors.items()],
+                "vents": sorted({tuple(sorted((a, b))) for a, ns in g.vents.items() for b in ns}),
+            },
             "meeting": meeting,
             "winner": g.winner,
             "win_by": g.win_by,
             "scores": dict(self.scores),
             "paused": self.paused,
             "caption": self.caption(),
+            "lastKill": (
+                {
+                    "tick": g.last_kill["tick"],
+                    "victim": g.by_id(g.last_kill["victim"]).name,
+                    "room": g.last_kill["room"],
+                }
+                if g.last_kill
+                else None
+            ),
         }
 
 
