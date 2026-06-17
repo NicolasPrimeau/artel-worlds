@@ -195,8 +195,9 @@ const STATION0=(()=>{
 })();
 
 let STATE={ round:1, tasksDone:7, tasksTotal:40, phase:"task", scores:{crew:0,thing:0}, agents:[] };
-let lastKillTick=-1, fx=[], ejecting=null, mouse={x:-1,y:-1}, userMoved=false, HILITE=null, meet=null;
+let lastKillTick=-1, fx=[], ejecting=null, mouse={x:-1,y:-1}, userMoved=false, HILITE=null, meet=null, disco=null;
 const EJECT_MS=3600;  // how long the ejected researcher takes to trudge off into the storm
+const DISCO_MS=2600;  // the "body found" beat — zoom into the room before cutting to the meeting
 (function seed(){ const names=["Softmaxwell","Overfitz","Hallucinov","Frostbyte","ReLuther","Quantz","Attenborough","Embeddington","Adamson","Tokarev"];
   const rk=Object.keys(STATION0.rects);
   STATE.agents=names.map((n,i)=>({id:i,name:n,model:"gpt-oss-120b",room:rk[i%rk.length],alive:i!==5,task:i%3===0,body:i===5,c:i})); })();
@@ -633,7 +634,28 @@ function drawMeeting(t){
   if(meet.bubble){ const sp=seats[meet.bubble.id]; if(sp){ ctx.globalAlpha=fade; bubble(sp.x,sp.y-s*1.5,meet.bubble.text,'say'); ctx.globalAlpha=1; } }
   ctx.restore();
 }
+// the "body found" beat — zoom the camera into the victim's room with a red alarm before the meeting
+function drawDiscovery(t){
+  const el=Math.min(1,(performance.now()-disco.t0)/DISCO_MS), r=ROOMS[disco.room], c0=disco.cam0;
+  const e=Math.min(1,el/0.6), ease=e*e*(3-2*e);  // smooth zoom-in over the first 60%
+  if(r){ cam.z=c0.z+(c0.z*2.4-c0.z)*ease; cam.x=c0.x+(r.cx-c0.x)*ease; cam.y=c0.y+(r.cy-c0.y)*ease; }
+  drawSky(); drawAmbient(t); drawStation(t); drawAgents(t); applyLighting(); drawFx();  // frozen tableau
+  const vic=STATE.agents.find(a=>a.name===disco.victim);
+  const [bx,by]= (vic&&vic.wx!=null)?toScreen(vic.wx,vic.wy):(r?toScreen(r.cx,r.cy):[cv.width/2,cv.height/2]);
+  const pulse=0.5+0.5*Math.sin(t*0.012);
+  ctx.strokeStyle=`rgba(255,70,70,${0.6+0.4*pulse})`; ctx.lineWidth=3*DPR; ctx.beginPath(); ctx.arc(bx,by,(28+16*pulse)*DPR,0,TAU); ctx.stroke();
+  ctx.strokeStyle=`rgba(255,70,70,${0.25*pulse})`; ctx.lineWidth=2*DPR; ctx.beginPath(); ctx.arc(bx,by,(48+22*pulse)*DPR,0,TAU); ctx.stroke();
+  const vg=ctx.createRadialGradient(cv.width/2,cv.height/2,cv.height*0.2,cv.width/2,cv.height/2,cv.height*0.72);
+  vg.addColorStop(0,"rgba(0,0,0,0)"); vg.addColorStop(1,`rgba(130,12,12,${0.32+0.16*pulse})`); ctx.fillStyle=vg; ctx.fillRect(0,0,cv.width,cv.height);
+  drawSnow(t);
+  ctx.textAlign="center"; ctx.fillStyle=`rgba(255,95,95,${Math.min(1,el*3)})`; ctx.font=`900 ${26*DPR}px Inter`;
+  ctx.fillText("BODY FOUND", cv.width/2, cv.height*0.19);
+  ctx.fillStyle="rgba(231,238,252,.92)"; ctx.font=`700 ${13*DPR}px Inter`;
+  ctx.fillText(`${disco.victim} found dead in the ${disco.room}`, cv.width/2, cv.height*0.19+23*DPR);
+}
 function frame(t){
+  if(disco){ if(performance.now()-disco.t0<DISCO_MS){ drawDiscovery(t); requestAnimationFrame(frame); return; }
+    cam.x=disco.cam0.x; cam.y=disco.cam0.y; cam.z=disco.cam0.z; disco=null; }  // restore the overview camera
   if(meet){ drawSky(); drawMeeting(t); drawSnow(t); vignette(); requestAnimationFrame(frame); return; }
   drawSky(); drawAmbient(t); drawStation(t); layoutAgents(); moveAgents(); drawAgents(t); applyLighting(); drawFx(); drawSnow(t); vignette(); requestAnimationFrame(frame); }
 
@@ -671,8 +693,10 @@ function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.statio
   updateMeet(s);
   setConn(s.paused?'paused':'live'); syncHud(); renderChat(s); }
 function updateMeet(s){ const inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
-  if(!inMeet){ meet=null; return; }
-  if(!meet){ meet={ t0:performance.now(), ids:STATE.agents.filter(a=>a.alive).map(a=>a.id), spoken:0, bubble:null, votes:{} }; }
+  if(!inMeet){ meet=null; disco=null; return; }
+  if(!meet){ meet={ t0:performance.now(), ids:STATE.agents.filter(a=>a.alive).map(a=>a.id), spoken:0, bubble:null, votes:{} };
+    if(s.phase==='meeting' && s.meeting.victim && ROOMS[s.meeting.room])  // a body report → play the discovery beat first
+      disco={ room:s.meeting.room, victim:s.meeting.victim, t0:performance.now(), cam0:{x:cam.x,y:cam.y,z:cam.z} }; }
   const tr=s.meeting.transcript||[];   // newest revealed line → pop a fresh bubble over its speaker
   if(tr.length>meet.spoken){ const last=tr[tr.length-1], sp=STATE.agents.find(a=>a.name===last.name);
     meet.bubble={ id:sp?sp.id:-1, text:last.text }; meet.spoken=tr.length; }
