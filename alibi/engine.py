@@ -382,6 +382,14 @@ class Game:
             return True
         return False
 
+    def reconvene(self) -> None:
+        # a meeting was called — EVERYONE downs tools and gathers at the Mess Hall table, including any
+        # crew mid-task. (Testimony — seen/trail — is kept; it's spent later in apply_votes.)
+        for a in self.living():
+            a.room = HUB
+            a.work = 0
+            a.tasking = False
+
     # --- meeting: collect votes via `decide`, eject the plurality, reconvene. ---
     def run_meeting(self, mt: Meeting, decide):
         self.apply_votes(mt, decide(self, mt))

@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
 <title>Alibi · Outpost 31</title>
 <style>
   :root{ --panel:rgba(12,18,30,.78); --line:rgba(120,160,220,.16); --ink:#e7eefc; --dim:#8aa0c4;
@@ -176,7 +177,8 @@ const STATION0=(()=>{
 })();
 
 let STATE={ round:1, tasksDone:7, tasksTotal:40, phase:"task", scores:{crew:0,thing:0}, agents:[] };
-let lastKillTick=-1, fx=[], ejecting=null, mouse={x:-1,y:-1}, userMoved=false, HILITE=null;
+let lastKillTick=-1, fx=[], ejecting=null, mouse={x:-1,y:-1}, userMoved=false, HILITE=null, meet=null;
+const EJECT_MS=3600;  // how long the ejected researcher takes to trudge off into the storm
 (function seed(){ const names=["Softmaxwell","Overfitz","Hallucinov","Frostbyte","ReLuther","Quantz","Attenborough","Embeddington","Adamson","Tokarev"];
   const rk=Object.keys(STATION0.rects);
   STATE.agents=names.map((n,i)=>({id:i,name:n,model:"gpt-oss-120b",room:rk[i%rk.length],alive:i!==5,task:i%3===0,body:i===5,c:i})); })();
@@ -361,33 +363,41 @@ function look(name){ if(LOOKS[name])return LOOKS[name]; let h=2166136261;
     skin:["#e3c2a3","#caa07e","#8f6f52","#f0d6bd"][(h>>>8)%4],
     accent:["#eef3f7","#ffcf5a","#5ab0ff","#46e0a0","#ff7ab8","#ff9f4a"][(h>>>12)%6] };
   return LOOKS[name]; }
-// drawn upright (heading is shown by the headlamp cone) so the cosmetics read clearly
+// a clean parka-researcher token: team-coloured coat, fur hood ring, goggled face, a cosmetic hat from
+// the name hash. Reads as a tidy avatar at the meeting table and as a small dot on the map.
 function figure(sx,sy,s,col,alive,working,t,lk){
-  ctx.fillStyle="rgba(0,0,0,.5)"; ctx.beginPath(); ctx.ellipse(sx,sy+s*0.52,s*0.6,s*0.2,0,0,TAU); ctx.fill();
-  if(!alive){ ctx.save(); ctx.translate(sx,sy); ctx.rotate(0.6); ctx.globalAlpha=.8; ctx.fillStyle=shade(col,-44);
-    ctx.beginPath(); ctx.ellipse(0,0,s*0.8,s*0.45,0,0,TAU); ctx.fill(); ctx.strokeStyle="rgba(255,80,80,.5)"; ctx.lineWidth=s*0.07; ctx.stroke(); ctx.restore(); return; }
-  const dark=shade(col,-34), lite=shade(col,30), hy=sy-s*0.26;
-  // parka body (shoulders)
-  const bg=ctx.createRadialGradient(sx-s*0.18,sy-s*0.1,1,sx,sy+s*0.1,s*0.95); bg.addColorStop(0,lite); bg.addColorStop(1,dark);
-  ctx.fillStyle=bg; ctx.beginPath(); ctx.ellipse(sx,sy+s*0.12,s*0.6,s*0.66,0,0,TAU); ctx.fill();
-  ctx.lineWidth=s*0.08; ctx.strokeStyle="rgba(6,10,18,.55)"; ctx.stroke();
-  ctx.fillStyle=dark; ctx.beginPath(); ctx.ellipse(sx,sy-s*0.14,s*0.42,s*0.3,0,0,TAU); ctx.fill();  // collar
-  if(lk.hat===0){ ctx.fillStyle="#eef3f7"; ctx.beginPath(); ctx.arc(sx,hy,s*0.42,0,TAU); ctx.fill(); }  // fur hood ring
-  ctx.fillStyle=(lk.hat===4)?"#1b2330":lk.skin; ctx.beginPath(); ctx.arc(sx,hy,s*0.32,0,TAU); ctx.fill();  // face/balaclava
-  // two goggle lenses + strap (replaces the single creepy dot)
-  const gg=ctx.createLinearGradient(sx,hy-s*0.1,sx,hy+s*0.08); gg.addColorStop(0,"#ffffff"); gg.addColorStop(1,lk.goggle);
-  ctx.strokeStyle="rgba(22,30,44,.75)"; ctx.lineWidth=s*0.06; ctx.beginPath(); ctx.moveTo(sx-s*0.26,hy); ctx.lineTo(sx+s*0.26,hy); ctx.stroke();
-  ctx.fillStyle=gg; ctx.beginPath(); ctx.ellipse(sx-s*0.13,hy,s*0.11,s*0.085,0,0,TAU); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(sx+s*0.13,hy,s*0.11,s*0.085,0,0,TAU); ctx.fill();
-  ctx.fillStyle="rgba(255,255,255,.55)"; ctx.beginPath(); ctx.ellipse(sx-s*0.15,hy-s*0.03,s*0.03,s*0.02,0,0,TAU); ctx.fill();
-  if(lk.hat===1){ ctx.fillStyle=lk.accent; ctx.beginPath(); ctx.arc(sx,hy-s*0.02,s*0.34,Math.PI,TAU); ctx.fill();  // beanie
-    ctx.beginPath(); ctx.arc(sx,hy-s*0.36,s*0.07,0,TAU); ctx.fill(); }  // bobble
-  if(lk.hat===3){ ctx.fillStyle=lk.accent; ctx.beginPath(); ctx.arc(sx,hy-s*0.02,s*0.36,Math.PI,TAU); ctx.fill();  // ushanka
-    ctx.beginPath(); ctx.ellipse(sx-s*0.34,hy,s*0.1,s*0.17,0,0,TAU); ctx.fill(); ctx.beginPath(); ctx.ellipse(sx+s*0.34,hy,s*0.1,s*0.17,0,0,TAU); ctx.fill(); }
-  if(lk.hat===2){ ctx.strokeStyle=lk.accent; ctx.lineWidth=s*0.07; ctx.beginPath(); ctx.arc(sx,hy-s*0.2,s*0.26,Math.PI*1.1,Math.PI*1.9); ctx.stroke(); }  // goggles-on-forehead band
-  if(working){ const a=t*0.02; ctx.strokeStyle="rgba(120,220,255,.9)"; ctx.lineWidth=s*0.09;
-    for(let k=0;k<3;k++){ const an=a+k*2.1; ctx.beginPath(); ctx.moveTo(sx+s*0.4,sy); ctx.lineTo(sx+s*0.4+Math.cos(an)*s*0.3,sy+Math.sin(an)*s*0.3); ctx.stroke(); }
-    ctx.strokeStyle="rgba(57,217,138,.95)"; ctx.lineWidth=s*0.13; ctx.beginPath(); ctx.arc(sx,sy,s*1.0,-1.6,-1.6+(t*0.004%TAU)); ctx.stroke(); }
+  ctx.fillStyle="rgba(0,0,0,.42)"; ctx.beginPath(); ctx.ellipse(sx,sy+s*0.64,s*0.6,s*0.2,0,0,TAU); ctx.fill();
+  if(!alive){ ctx.save(); ctx.translate(sx,sy+s*0.2); ctx.rotate(0.7); ctx.globalAlpha=.85;
+    ctx.fillStyle=shade(col,-40); rr(-s*0.55,-s*0.22,s*1.1,s*0.62,s*0.3); ctx.fill();
+    ctx.strokeStyle="rgba(255,140,140,.9)"; ctx.lineWidth=s*0.12; ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(-s*0.16,-s*0.04); ctx.lineTo(s*0.06,s*0.16); ctx.moveTo(s*0.06,-s*0.04); ctx.lineTo(-s*0.16,s*0.16); ctx.stroke();
+    ctx.restore(); return; }
+  const hy=sy-s*0.3;
+  if(working){ ctx.strokeStyle=`rgba(57,217,138,${0.6+0.4*Math.sin(t*0.006)})`; ctx.lineWidth=s*0.12;
+    ctx.beginPath(); ctx.arc(sx,sy+s*0.05,s*1.02,-1.6,-1.6+(t*0.004%TAU)); ctx.stroke(); }
+  // parka body — team colour, vertical sheen, dark seam
+  const bodyTop=sy-s*0.04;
+  const bg=ctx.createLinearGradient(0,bodyTop,0,sy+s*0.62); bg.addColorStop(0,shade(col,22)); bg.addColorStop(1,shade(col,-30));
+  ctx.fillStyle=bg; rr(sx-s*0.6,bodyTop,s*1.2,s*0.8,s*0.36); ctx.fill();
+  ctx.strokeStyle=shade(col,-52); ctx.lineWidth=s*0.07; rr(sx-s*0.6,bodyTop,s*1.2,s*0.8,s*0.36); ctx.stroke();
+  ctx.strokeStyle="rgba(0,0,0,.22)"; ctx.lineWidth=s*0.05; ctx.beginPath(); ctx.moveTo(sx,bodyTop+s*0.08); ctx.lineTo(sx,sy+s*0.52); ctx.stroke();
+  // fur hood ring behind the head
+  ctx.fillStyle=shade(col,-12); ctx.beginPath(); ctx.arc(sx,hy,s*0.6,0,TAU); ctx.fill();
+  ctx.fillStyle="rgba(236,242,252,.16)"; ctx.beginPath(); ctx.arc(sx,hy,s*0.6,Math.PI*0.85,Math.PI*2.15); ctx.fill();
+  // face
+  ctx.fillStyle=lk.skin; ctx.beginPath(); ctx.arc(sx,hy,s*0.43,0,TAU); ctx.fill();
+  // goggles: dark band + two tinted lenses + glint
+  ctx.fillStyle="rgba(18,26,38,.92)"; rr(sx-s*0.4,hy-s*0.14,s*0.8,s*0.25,s*0.11); ctx.fill();
+  ctx.fillStyle=lk.goggle; rr(sx-s*0.34,hy-s*0.1,s*0.28,s*0.17,s*0.08); ctx.fill(); rr(sx+s*0.06,hy-s*0.1,s*0.28,s*0.17,s*0.08); ctx.fill();
+  ctx.fillStyle="rgba(255,255,255,.55)"; rr(sx-s*0.3,hy-s*0.07,s*0.1,s*0.05,2); ctx.fill();
+  // a hat from the look hash
+  if(lk.hat===0||lk.hat===4){ ctx.fillStyle=shade(col,34); rr(sx-s*0.48,hy-s*0.64,s*0.96,s*0.3,s*0.13); ctx.fill(); }
+  if(lk.hat===1){ ctx.fillStyle=lk.accent; ctx.beginPath(); ctx.arc(sx,hy-s*0.16,s*0.5,Math.PI,TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(sx,hy-s*0.66,s*0.1,0,TAU); ctx.fill(); }
+  if(lk.hat===2){ ctx.strokeStyle=lk.accent; ctx.lineWidth=s*0.1; ctx.beginPath(); ctx.arc(sx,hy-s*0.16,s*0.5,Math.PI*1.05,Math.PI*1.95); ctx.stroke(); }
+  if(lk.hat===3){ ctx.fillStyle=lk.accent; ctx.beginPath(); ctx.arc(sx,hy-s*0.16,s*0.52,Math.PI,TAU); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(sx-s*0.5,hy-s*0.06,s*0.12,s*0.2,0,0,TAU); ctx.fill(); ctx.beginPath(); ctx.ellipse(sx+s*0.5,hy-s*0.06,s*0.12,s*0.2,0,0,TAU); ctx.fill(); }
+  ctx.fillStyle="rgba(255,255,255,.1)"; ctx.beginPath(); ctx.ellipse(sx-s*0.16,hy-s*0.26,s*0.18,s*0.1,-0.5,0,TAU); ctx.fill();
 }
 function drawAgents(t){
   const list=STATE.agents.filter(a=>a.wx!=null && !(ejecting&&a.name===ejecting.name));
@@ -463,7 +473,65 @@ function drawSky(t){
   // blizzard haze
   ctx.fillStyle="rgba(150,170,195,.06)"; ctx.fillRect(0,0,cv.width,cv.height);
 }
-function frame(t){ drawSky(); drawAmbient(t); drawStation(t); layoutAgents(); moveAgents(); drawAgents(t); applyLighting(); drawFx(); drawSnow(t); vignette(); requestAnimationFrame(frame); }
+// ---- the emergency meeting: a dedicated scene. The map drops away and the survivors ring a table in
+// the Mess Hall; each spoken line pops a bubble over its speaker, votes land one by one as chips, and
+// the ejected researcher is walked out into the storm before we cut back to the station. ----
+function meetLede(){ const m=STATE.meeting||{}; if(m.victim) return `${m.reporter} found ${m.victim} dead in the ${m.room}`;
+  return m.reporter?`${m.reporter} called everyone in`:`emergency meeting`; }
+function bubble(x,y,text,kind){ const f=12*DPR; ctx.font=`600 ${f}px Inter`;
+  const maxw=190*DPR, words=(text||'').split(' '), lines=[]; let ln='';
+  for(const w of words){ const tryln=ln?ln+' '+w:w; if(ctx.measureText(tryln).width>maxw&&ln){ lines.push(ln); ln=w; } else ln=tryln; }
+  if(ln)lines.push(ln); const lh=f*1.28, pad=9*DPR;
+  const bw=Math.min(maxw,Math.max(...lines.map(l=>ctx.measureText(l).width)))+pad*2, bh=lines.length*lh+pad*1.6;
+  let bx=x-bw/2, by=y-bh; bx=Math.max(6*DPR,Math.min(cv.width-bw-6*DPR,bx)); by=Math.max((meet&&meet.top||56*DPR)+40*DPR,by);
+  ctx.save();
+  ctx.fillStyle= kind==='vote' ? "rgba(34,24,30,.95)" : "rgba(16,24,38,.95)";
+  ctx.strokeStyle= kind==='vote' ? "rgba(255,120,120,.6)" : "rgba(130,170,225,.55)"; ctx.lineWidth=1.4*DPR;
+  rr(bx,by,bw,bh,9*DPR); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x-6*DPR,by+bh); ctx.lineTo(x+6*DPR,by+bh); ctx.lineTo(x,by+bh+9*DPR); ctx.closePath(); ctx.fill();
+  ctx.fillStyle=kind==='vote'?"#ffd7d7":"#e7eefc"; ctx.textAlign="center"; ctx.textBaseline="middle";
+  lines.forEach((l,i)=>ctx.fillText(l,bx+bw/2,by+pad*0.8+lh*(i+0.5)));
+  ctx.restore(); }
+function drawMeeting(t){
+  const W=cv.width, H=cv.height, narrow=W/DPR<=820, fade=Math.min(1,(performance.now()-meet.t0)/450);
+  ctx.fillStyle=`rgba(4,9,18,${0.62*fade})`; ctx.fillRect(0,0,W,H);  // dim the world to a dark room
+  // fit the table into the space the chat log doesn't use: a right rail on desktop, a bottom sheet on
+  // phones. Reserve the header/roster up top too, so seats + bubbles never collide with the chrome.
+  const rightRes=narrow?0:342*DPR, botRes=narrow?Math.round(H*0.42):0, topRes=(narrow?98:46)*DPR;
+  const aw=W-rightRes, ah=H-topRes-botRes, cx=aw/2, cy=topRes+ah/2;
+  const Rx=Math.min(aw*0.34,ah*0.42), Ry=Rx*0.58; meet.top=topRes;
+  const s=(narrow?15:23)*DPR;
+  ctx.save(); ctx.globalAlpha=fade;
+  // the table
+  const tg=ctx.createRadialGradient(cx,cy-Ry*0.3,4,cx,cy,Rx*1.1); tg.addColorStop(0,"#38475f"); tg.addColorStop(1,"#19222e");
+  ctx.fillStyle=tg; ctx.beginPath(); ctx.ellipse(cx,cy,Rx,Ry,0,0,TAU); ctx.fill();
+  ctx.lineWidth=3*DPR; ctx.strokeStyle="rgba(150,185,235,.22)"; ctx.beginPath(); ctx.ellipse(cx,cy,Rx,Ry,0,0,TAU); ctx.stroke();
+  ctx.lineWidth=1.4*DPR; ctx.strokeStyle="rgba(120,160,220,.12)"; ctx.beginPath(); ctx.ellipse(cx,cy,Rx*0.72,Ry*0.72,0,0,TAU); ctx.stroke();
+  // header
+  ctx.textAlign="center"; ctx.fillStyle="rgba(191,224,255,.92)"; ctx.font=`800 ${13*DPR}px Inter`;
+  ctx.fillText("EMERGENCY MEETING", cx, topRes+15*DPR);  // pinned under the chrome, clear of bubbles
+  ctx.fillStyle="rgba(160,185,220,.7)"; ctx.font=`600 ${10.5*DPR}px Inter`; ctx.fillText(meetLede(), cx, topRes+31*DPR);
+  // seats around the table
+  const ids=meet.ids, n=Math.max(1,ids.length), seats={};
+  ids.forEach((id,i)=>{ const ang=-Math.PI/2+i/n*TAU; seats[id]={x:cx+Math.cos(ang)*Rx*1.16, y:cy+Math.sin(ang)*Ry*1.28}; });
+  for(const id of [...ids].sort((a,b)=>seats[a].y-seats[b].y)){ const a=STATE.agents.find(x=>x.id===id); if(!a)continue; const p=seats[id];
+    let dy=0,al=1; const out=ejecting&&a.name===ejecting.name;
+    if(out){ const k=Math.min(1,(performance.now()-ejecting.t0)/EJECT_MS); dy=k*H*0.62; al=1-k; }
+    ctx.save(); ctx.globalAlpha=fade*al;
+    if(id===HILITE){ ctx.strokeStyle="rgba(150,215,255,.9)"; ctx.lineWidth=2.4*DPR; ctx.beginPath(); ctx.arc(p.x,p.y,s*1.05,0,TAU); ctx.stroke(); }
+    figure(p.x,p.y+dy,s,COLORS[a.c%COLORS.length],a.alive||out,false,t,look(a.name));
+    ctx.fillStyle="rgba(231,238,252,.95)"; ctx.textAlign="center"; ctx.font=`700 ${9.5*DPR}px Inter`;
+    ctx.fillText(a.name,p.x,p.y+dy+s*1.5); ctx.restore();
+    const vt=meet.votes&&meet.votes[a.name];
+    if(vt!==undefined&&!out){ ctx.globalAlpha=fade; bubble(p.x,p.y-s*1.25,vt==='skip'?'skips':'→ '+vt,'vote'); ctx.globalAlpha=1; }
+  }
+  // the speaker's live line
+  if(meet.bubble){ const sp=seats[meet.bubble.id]; if(sp){ ctx.globalAlpha=fade; bubble(sp.x,sp.y-s*1.5,meet.bubble.text,'say'); ctx.globalAlpha=1; } }
+  ctx.restore();
+}
+function frame(t){
+  if(meet){ drawSky(); drawMeeting(t); drawSnow(t); vignette(); requestAnimationFrame(frame); return; }
+  drawSky(); drawAmbient(t); drawStation(t); layoutAgents(); moveAgents(); drawAgents(t); applyLighting(); drawFx(); drawSnow(t); vignette(); requestAnimationFrame(frame); }
 
 function syncHud(){ $('hud-round').textContent=STATE.round; $('hud-tasks').style.width=(100*STATE.tasksDone/Math.max(1,STATE.tasksTotal))+'%';
   $('hud-alive').textContent=STATE.agents.filter(a=>a.alive).length; $('hud-total').textContent=STATE.agents.length;
@@ -494,9 +562,17 @@ function renderChat(s){ const chat=$('chat'), inMeet=['meeting','vote','ejection
   } else { chat.classList.remove('show'); ejecting=null; } }
 function applySnapshot(s){ if(s.station)buildStation(s.station);
   STATE.round=s.round; STATE.tasksDone=s.tasksDone; STATE.tasksTotal=s.tasksTotal; STATE.phase=s.phase;
-  STATE.winner=s.winner; STATE.win_by=s.win_by; STATE.scores=s.scores; applyAgents(s.agents||[]);
+  STATE.winner=s.winner; STATE.win_by=s.win_by; STATE.scores=s.scores; STATE.meeting=s.meeting; applyAgents(s.agents||[]);
   if(s.lastKill && s.lastKill.tick!==lastKillTick){ lastKillTick=s.lastKill.tick; pushKill(s.lastKill.room); }
+  updateMeet(s);
   setConn(s.paused?'paused':'live'); syncHud(); renderChat(s); }
+function updateMeet(s){ const inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
+  if(!inMeet){ meet=null; return; }
+  if(!meet){ meet={ t0:performance.now(), ids:STATE.agents.filter(a=>a.alive).map(a=>a.id), spoken:0, bubble:null, votes:{} }; }
+  const tr=s.meeting.transcript||[];   // newest revealed line → pop a fresh bubble over its speaker
+  if(tr.length>meet.spoken){ const last=tr[tr.length-1], sp=STATE.agents.find(a=>a.name===last.name);
+    meet.bubble={ id:sp?sp.id:-1, text:last.text }; meet.spoken=tr.length; }
+  meet.votes=s.meeting.votes||{}; }
 function setConn(state){ const c=$('conn'); if(!c)return; c.className=state; c.textContent=state==='down'?'offline':state; }
 function connect(){ const proto=location.protocol==='https:'?'wss:':'ws:'; let ws;
   try{ ws=new WebSocket(`${proto}//${location.host}/stream`); }catch(e){ return; }

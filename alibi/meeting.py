@@ -54,7 +54,7 @@ SYS_CREW = (
     "everyone else says, to figure out who the Thing is and get them ejected into the storm. Be "
     "skeptical: the Thing will lie, fake an alibi, and accuse the innocent. Corroborate — if two "
     "people vouch for each other's whereabouts they're probably both clear. Don't eject on a hunch; "
-    "a wrong ejection helps the Thing. Speak in ONE or TWO sentences, in character, plain talk."
+    "a wrong ejection helps the Thing. Speak in ONE short sentence (about 14 words max), in character, plain talk."
 )
 SYS_THING = (
     "You are {name}, and you are the Thing — an alien that has assimilated this researcher and is "
@@ -62,7 +62,7 @@ SYS_THING = (
     "meeting, blend in as a worried human: give a calm, plausible account of where you were, deflect "
     "suspicion, and if someone is onto you, cast doubt on them or point the group at someone else. "
     "Never admit what you are. If you witnessed your own kill, you may even 'report' it to look "
-    "helpful. Speak in ONE or TWO sentences, in character, plain talk."
+    "helpful. Speak in ONE short sentence (about 14 words max), in character, plain talk."
 )
 
 
@@ -120,7 +120,19 @@ def _transcript_str(game: Game, transcript: list) -> str:
     return "\n".join(f"{_name(game, sid)}: {text}" for sid, text in transcript)
 
 
-async def _statement_round(game, mt, transcript, opening: bool):
+def _trim(text: str) -> str:
+    # keep each line to a single short sentence so it fits in a speech bubble over the agent's head
+    text = (text or "").strip().strip('"').replace("\n", " ")
+    if len(text) > 120:
+        cut = max(text.find(". ", 30, 150), text.find("? ", 30, 150), text.find("! ", 30, 150))
+        if cut > 0:
+            text = text[: cut + 1]
+    return text[:150]
+
+
+async def _statement_round(game, mt, transcript, opening: bool, on_item=None):
+    # generate the whole round at once (one Groq call per agent, spread across rate buckets), then
+    # REVEAL the lines one at a time — the caller paces the reveal so the table talks, not data-dumps.
     living = game.living()
     public = _public(game, mt)
     jobs = []
@@ -128,20 +140,23 @@ async def _statement_round(game, mt, transcript, opening: bool):
         sys = (SYS_THING if a.impostor else SYS_CREW).format(name=a.name)
         convo = _transcript_str(game, transcript)
         ask = (
-            "Give your opening account: where were you, who can vouch for you, and anyone you suspect."
+            "Your account in ONE short line: where were you, who can vouch, or who you suspect."
             if opening
-            else "Respond to what's been said — defend yourself if accused, back a theory, or call out a lie."
+            else "Reply in ONE short line — defend yourself, back a theory, or call out a lie."
         )
         user = f"{public}\n\nWhat you know:\n{_brief(game, mt, a)}\n\nMeeting so far:\n{convo or '(nobody has spoken yet)'}\n\n{ask}"
         jobs.append((sys, user, _model(a)))
     outs = await llm.complete_many(jobs, temperature=0.8)
     for a, text in zip(living, outs):
-        text = (text or "").strip().replace("\n", " ")
-        if text:
-            transcript.append((a.id, text[:280]))
+        text = _trim(text)
+        if not text:
+            continue
+        transcript.append((a.id, text))
+        if on_item:
+            await on_item("statement", a.id, text)
 
 
-async def _vote_round(game, mt, transcript) -> dict:
+async def _vote_round(game, mt, transcript, on_item=None) -> dict:
     living = game.living()
     public = _public(game, mt)
     convo = _transcript_str(game, transcript)
@@ -165,26 +180,62 @@ async def _vote_round(game, mt, transcript) -> dict:
         jobs.append((sys, user, _model(a)))
     outs = await llm.complete_many(jobs, temperature=0.3)
     by_name = {a.name.lower(): a.id for a in living}
-    votes = {}
+    votes: dict = {}
     for a, text in zip(living, outs):
         parsed = llm.parse_json(text) or {}
         choice = str(parsed.get("vote", "skip")).strip().lower()
         votes[a.id] = by_name.get(choice, -1)
+        mt.votes = dict(votes)  # partial ballot, so the snapshot can reveal votes one by one
+        if on_item:
+            await on_item("vote", a.id, votes[a.id])
     return votes
 
 
-async def run_llm_meeting(game: Game, mt: Meeting, on_update=None) -> dict:
-    # on_update("statement"|"vote") fires after each round so a live viewer watches the chat build
+async def run_llm_meeting(game: Game, mt: Meeting, on_item=None) -> dict:
+    # on_item("statement"|"vote", agent_id, payload) fires per LINE/VOTE; the caller broadcasts + paces
+    # the reveal and mirrors each onto Artel. ROUNDS gives a real back-and-forth, not a one-shot.
     transcript: list = []
     mt.transcript = transcript
+    mt.votes = {}
     for r in range(ROUNDS):
-        await _statement_round(game, mt, transcript, opening=(r == 0))
-        if on_update:
-            await on_update("statement")
-    votes = await _vote_round(game, mt, transcript)
+        await _statement_round(game, mt, transcript, opening=(r == 0), on_item=on_item)
+    votes = await _vote_round(game, mt, transcript, on_item=on_item)
     mt.votes = votes
-    if on_update:
-        await on_update("vote")
+    return votes
+
+
+def _canned_statement(game: Game, a) -> str:
+    # a believable one-liner from what the agent privately saw — used when no LLM key is configured, so
+    # the meeting scene still plays (with the deterministic decider for the vote).
+    if not a.impostor and a.witnessed:
+        imps = [game.by_id(i).name for i in a.witnessed if game.by_id(i).alive]
+        if imps:
+            return f"I saw it — {imps[0]} is the Thing."
+    if a.found:
+        _, room, vic = a.found[-1]
+        return f"I found {game.by_id(vic).name} in the {room}."
+    if a.seen:
+        s = a.seen[-1]
+        who = ", ".join(game.by_id(i).name for i in s.present[:2])
+        return f"I was in the {s.room} with {who}." if who else f"I was over in the {s.room}."
+    return "I was on my own the whole time."
+
+
+async def run_canned_meeting(game: Game, mt: Meeting, decide, on_item=None) -> dict:
+    transcript: list = []
+    mt.transcript = transcript
+    mt.votes = {}
+    for a in game.living():
+        text = _canned_statement(game, a)
+        transcript.append((a.id, text))
+        if on_item:
+            await on_item("statement", a.id, text)
+    votes = decide(game, mt)
+    for a in game.living():
+        mt.votes[a.id] = votes.get(a.id, -1)
+        if on_item:
+            await on_item("vote", a.id, mt.votes[a.id])
+    mt.votes = votes
     return votes
 
 

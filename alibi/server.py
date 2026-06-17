@@ -11,9 +11,15 @@ from random import SystemRandom
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 
-from . import llm
+from . import artel, llm
 from .engine import MAX_TICKS, new_game
-from .meeting import CREW_POOL, THING_MODEL, assign_models, run_llm_meeting
+from .meeting import (
+    CREW_POOL,
+    THING_MODEL,
+    assign_models,
+    run_canned_meeting,
+    run_llm_meeting,
+)
 
 # Alibi runs one game after another, but ONLY while someone is watching (free-tier Groq, like phalanx):
 # no viewers → no ticks, no LLM calls. A game is a task phase (agents wander the station, the Thing
@@ -25,6 +31,10 @@ log = logging.getLogger("alibi")
 
 STATIC = Path(__file__).parent / "static"
 TASK_TICK = float(os.environ.get("ALIBI_TICK_INTERVAL", "1.4"))  # min seconds per task-phase tick
+STMT_DELAY = float(
+    os.environ.get("ALIBI_STMT_DELAY", "2.0")
+)  # seconds each spoken line holds on screen
+VOTE_DELAY = float(os.environ.get("ALIBI_VOTE_DELAY", "1.2"))  # seconds between revealed votes
 EJECT_LINGER = 6.0  # hold on the vote + airlock reveal so viewers read the result
 GAMEOVER_LINGER = 8.0  # hold on the final board before the next game
 _ADMIN_TOKEN = os.environ.get("WORLDS_ADMIN_TOKEN", "")
@@ -145,14 +155,17 @@ class Alibi:
                 "ejected": None,
                 "ejected_was_thing": None,
             }
-            if self.phase == "ejection":
+            if self.phase in (
+                "vote",
+                "ejection",
+            ):  # reveal the ballot as it fills, one vote at a time
                 meeting["votes"] = {
                     g.by_id(v).name: ("skip" if t == -1 else g.by_id(t).name)
                     for v, t in (mt.votes or {}).items()
                 }
-                if mt.ejected is not None:
-                    meeting["ejected"] = g.by_id(mt.ejected).name
-                    meeting["ejected_was_thing"] = g.by_id(mt.ejected).impostor
+            if self.phase == "ejection" and mt.ejected is not None:
+                meeting["ejected"] = g.by_id(mt.ejected).name
+                meeting["ejected_was_thing"] = g.by_id(mt.ejected).impostor
         return {
             "phase": self.phase,
             "round": len(g.meetings) + 1,
@@ -204,21 +217,33 @@ async def _broadcast(snap: dict | None = None):
 
 
 async def _run_meeting(mt) -> None:
+    G.g.reconvene()  # everyone — task-workers included — downs tools and gathers at the Mess Hall table
     G.phase = "meeting"
     G.meeting = mt
     await _broadcast()
 
-    async def on_update(kind):
-        G.phase = "vote" if kind == "vote" else "meeting"
-        await _broadcast()
+    async def on_item(kind: str, agent_id: int, payload) -> None:
+        # one line / one vote arrives → mirror it onto the Artel bus, push the frame, then HOLD so a
+        # viewer reads it before the next. The whole meeting builds line by line, not all at once.
+        name = G.g.by_id(agent_id).name
+        if kind == "statement":
+            G.phase = "meeting"
+            await artel.say(agent_id, name, payload)
+            await _broadcast()
+            await asyncio.sleep(STMT_DELAY)
+        else:
+            G.phase = "vote"
+            target = G.g.by_id(payload).name if payload is not None and payload >= 0 else "skip"
+            await artel.say(agent_id, name, f"I vote {target}.", subject="alibi-vote")
+            await _broadcast()
+            await asyncio.sleep(VOTE_DELAY)
 
     if llm.enabled():
-        votes = await run_llm_meeting(G.g, mt, on_update)
-    else:  # no key configured → fall back to the deterministic decider so the world still runs
+        votes = await run_llm_meeting(G.g, mt, on_item)
+    else:  # no key configured → canned statements + deterministic decider so the scene still plays
         from .brain import make_decider
 
-        votes = make_decider(share=True)(G.g, mt)
-        mt.votes = votes
+        votes = await run_canned_meeting(G.g, mt, make_decider(share=True), on_item)
     G.g.apply_votes(mt, votes)
     G.phase = "ejection"
     await _broadcast()
@@ -264,6 +289,7 @@ async def _lifespan(app: FastAPI):
         with contextlib.suppress(asyncio.CancelledError):
             await task
         G.persist_state()
+        await artel.aclose()
 
 
 app = FastAPI(title="Alibi — Artel Worlds", lifespan=_lifespan)
@@ -286,6 +312,7 @@ async def debug():
         "caption": G.caption(),
         "completed": G.completed,
         "phase": G.phase,
+        "artel": artel.status(),
     }
 
 
@@ -335,6 +362,11 @@ async def stream(ws: WebSocket):
         pass
     finally:
         G.viewers.discard(ws)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(STATIC / "favicon.ico")
 
 
 @app.get("/")
