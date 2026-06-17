@@ -48,19 +48,20 @@ class Tournament:
         self._draw()
 
     def _draw(self) -> None:
-        # build 8 club names by pairing a prefix (a soccer city or classic club word) with an AI/ML
-        # suffix. The SUFFIX is unique within an edition — you never get two "...Median" sides — but
-        # cities may repeat (a city naturally fields more than one club). Fresh field each tournament.
-        suf = list(AI_SUFFIXES)
-        self._rng.shuffle(suf)
-        c = [f"{self._rng.choice(CLUB_PREFIXES)} {suf[i]}" for i in range(16)]
+        # 16 club names, each a DISTINCT prefix (no two same-city/club sides in one cup) + a distinct
+        # AI/ML suffix — so no team name ever repeats within an edition. Fresh field each tournament.
+        pre = self._rng.sample(CLUB_PREFIXES, 16)
+        suf = self._rng.sample(AI_SUFFIXES, 16)
+        c = [f"{pre[i]} {suf[i]}" for i in range(16)]
         self.clubs = c
         # half the field is Artel-coached (the coordinated, LLM-led sides); the rest run the baseline
         self.artel_clubs = set(self._rng.sample(c, len(c) // 2))
-        # each club gets a unique-within-the-squad set of surnames; surnames may recur across clubs
-        # (two sides can both field a "Silva"), which keeps the pool small as squads grow.
-        for club in c:
-            self.rosters[club] = self._rng.sample(NAME_POOL, DEFAULT.team_size)
+        # one shared pool of DISTINCT surnames dealt out across the squads — a surname is never on
+        # two clubs in the same cup. Draws team_size * 16 unique names, then chunks them per club.
+        squad = DEFAULT.team_size
+        names = self._rng.sample(NAME_POOL, squad * 16)
+        for i, club in enumerate(c):
+            self.rosters[club] = names[i * squad : (i + 1) * squad]
         # 16-team single-elimination: Round of 16 -> quarter-finals -> semi-finals -> (third) -> final
         r16 = [Tie("Round of 16", i, c[2 * i], c[2 * i + 1]) for i in range(8)]
         qf = [Tie("Quarter-final", i, a_from=(0, 2 * i), b_from=(0, 2 * i + 1)) for i in range(4)]
@@ -208,12 +209,12 @@ AI_SUFFIXES = [
 ]
 
 
-# Player surnames — recognisable names from the great soccer nations, so the Golden Boot reads like
-# real stars, plus a handful of footballer x machine-learning pun ringers. Deliberately sized: ~80
-# names against the 144 roster slots an edition fields means familiar names recur tournament to
-# tournament (you start following a Haaland or a Salah), with moderate repeats and ~15% of the pool
-# rotating out each edition — overlap without it ever being the exact same field. A few Québécois
-# names for the Montréal angle.
+# Player surnames — recognisable names from the great soccer nations so the Golden Boot reads like
+# real stars, plus footballer x ML pun ringers and a few Québécois names for the Montréal angle. An
+# edition fields 16 squads of nine = 144 players and NO surname is used twice in a cup, so the pool
+# has to clear 144; sized just above (~170) it draws 144 each tournament with ~30 sitting out and
+# rotating — familiar faces carry an edition-to-edition Golden Boot story without the field ever
+# being identical.
 NAME_POOL = [
     # footballer/ML pun ringers
     "Embappé",
@@ -226,10 +227,24 @@ NAME_POOL = [
     "Silva",
     "Santos",
     "Costa",
+    "Pereira",
     "Fernandes",
     "Leão",
     "Cancelo",
-    "Pereira",
+    "Carvalho",
+    "Casemiro",
+    "Marquinhos",
+    "Rodrygo",
+    "Vinícius",
+    "Richarlison",
+    "Jesus",
+    "Alisson",
+    "Ederson",
+    "Neves",
+    "Dias",
+    "Bernardo",
+    "Jota",
+    "Félix",
     # Argentina / Uruguay / Chile / Mexico
     "Fernández",
     "González",
@@ -242,6 +257,14 @@ NAME_POOL = [
     "Jiménez",
     "Lozano",
     "Vela",
+    "Di María",
+    "Otamendi",
+    "Paredes",
+    "Mac Allister",
+    "Dybala",
+    "Molina",
+    "Valverde",
+    "Núñez",
     # Spain
     "García",
     "Torres",
@@ -250,12 +273,29 @@ NAME_POOL = [
     "Rodri",
     "Olmo",
     "Gavi",
+    "Pedri",
+    "Carvajal",
+    "Laporte",
+    "Llorente",
+    "Koke",
+    "Merino",
+    "Ferran",
+    "Williams",
     # Italy
     "Rossi",
     "Esposito",
     "Verratti",
     "Barella",
     "Chiesa",
+    "Donnarumma",
+    "Bonucci",
+    "Chiellini",
+    "Jorginho",
+    "Tonali",
+    "Locatelli",
+    "Immobile",
+    "Insigne",
+    "Bastoni",
     # England
     "Kane",
     "Saka",
@@ -264,24 +304,57 @@ NAME_POOL = [
     "Stones",
     "Bellingham",
     "Walker",
+    "Sterling",
+    "Grealish",
+    "Mount",
+    "Henderson",
+    "Maguire",
+    "Pickford",
+    "Sancho",
+    "Watkins",
+    "Palmer",
     # France
     "Giroud",
     "Kanté",
     "Dembélé",
     "Griezmann",
     "Tchouaméni",
+    "Benzema",
+    "Pogba",
+    "Varane",
+    "Coman",
+    "Thuram",
+    "Camavinga",
+    "Saliba",
+    "Konaté",
+    "Upamecano",
+    "Maignan",
     # Germany
     "Müller",
     "Werner",
     "Kroos",
     "Havertz",
     "Wirtz",
+    "Neuer",
+    "Rüdiger",
+    "Gnabry",
+    "Sané",
+    "Goretzka",
+    "Gündoğan",
+    "Musiala",
+    "Kimmich",
     # Netherlands
     "de Jong",
     "van Dijk",
     "Depay",
     "Gakpo",
     "Frimpong",
+    "Malen",
+    "Koopmeiners",
+    "Timber",
+    "de Vrij",
+    "de Ligt",
+    "Dumfries",
     # Africa
     "Touré",
     "Adeyemi",
@@ -291,6 +364,12 @@ NAME_POOL = [
     "Mané",
     "Salah",
     "Hakimi",
+    "Aubameyang",
+    "Partey",
+    "Kudus",
+    "Ndidi",
+    "Ziyech",
+    "Onana",
     # East Asia
     "Tanaka",
     "Nakamura",
@@ -299,6 +378,10 @@ NAME_POOL = [
     "Kim",
     "Lee",
     "Park",
+    "Kubo",
+    "Endo",
+    "Doan",
+    "Tomiyasu",
     # Balkans / Scandinavia
     "Modrić",
     "Vlahović",
@@ -307,8 +390,16 @@ NAME_POOL = [
     "Eriksen",
     "Larsson",
     "Isak",
+    "Kovačić",
+    "Brozović",
+    "Perišić",
+    "Gvardiol",
+    "Kramarić",
+    "Højlund",
+    "Schmeichel",
     # Québec / Montréal
     "Tremblay",
     "Roy",
     "Gagné",
+    "Bélanger",
 ]
