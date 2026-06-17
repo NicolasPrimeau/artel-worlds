@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import datetime
 import os
-import re
 import time
 from dataclasses import dataclass
 
@@ -9,6 +9,9 @@ from . import artel_client, bot, llm
 from .engine import Pitch, Player, _clamp
 
 LLM_EVERY = float(os.environ.get("PITCH_LLM_EVERY", "6"))  # seconds between coach LLM calls
+PLAN_TTL = float(os.environ.get("PITCH_PLAN_TTL", "12"))  # a directive expires this long after the
+# last successful read — so the coordination edge can't outlive the Artel bus that carries it
+DIRECTIVE = "pitch.directive"
 
 COACH_SYSTEM = (
     "You are the head coach of an AI soccer team in a live 2D match. Read the situation and set the "
@@ -126,11 +129,15 @@ def make_brain(artel_team: str | None):
 
 
 def combined_brain(coords: dict):
-    # route each player to its side's coordinator (Artel sides) or the baseline. With half the field
-    # Artel, a match can have two coordinators — both teams coached, each by its own line agents.
+    # route each player to its side's coordinator or the baseline. The coordination EDGE only applies
+    # when a live Artel directive is in hand (co.plan set); with no directive — Artel down, LLM not
+    # configured, or none authored yet — the side plays pure baseline. So the edge is genuinely
+    # Artel-borne: cut the bus and the coached team is indistinguishable from the rest.
     def brain(pitch: Pitch, p: Player) -> dict:
         co = coords.get(p.team)
-        return coordinated_decide(pitch, p, co.plan) if co else bot.decide(pitch, p)
+        if co is None or co.plan is None:
+            return bot.decide(pitch, p)
+        return coordinated_decide(pitch, p, co.plan)
 
     return brain
 
@@ -170,155 +177,110 @@ async def author_plan_llm(pitch: Pitch, team: str) -> Plan:
     )
 
 
-def _say_mid(club: str, commit: int, low_block: bool) -> str:
-    if low_block:
-        return f"{club} midfield: sitting in a low block to protect the lead."
-    if commit >= 2:
-        return f"{club} midfield: committing {commit} runners forward — chasing the game."
-    if commit == 1:
-        return f"{club} midfield: pushing 1 runner forward."
-    return f"{club} midfield: holding shape, controlling the middle."
+def _now_cursor() -> str:
+    # an Artel-event-format timestamp for "now", so a directive read only sees THIS match's calls
+    n = datetime.datetime.now(datetime.UTC)
+    return n.strftime("%Y-%m-%dT%H:%M:%S.") + f"{n.microsecond // 1000:03d}Z"
 
 
-def _say_fwd(club: str, side: str) -> str:
-    return f"{club} attack: overloading the {side} flank — the opponent's weakest side."
-
-
-def _parse_plan(rows: list, fallback: Plan, width: float) -> Plan:
-    # reassemble the Plan from the line agents' (natural-language) Artel posts
-    p = Plan(fallback.overload_y, fallback.commit, fallback.low_block)
-    for row in rows:
-        t = str(row.get("content", "")).lower()
-        m = re.search(r"committing (\d+)", t)
-        if m:
-            p.commit = int(m.group(1))
-        elif "holding shape" in t:
-            p.commit = 0
-        elif "pushing 1" in t:
-            p.commit = 1
-        if "low block" in t:
-            p.low_block, p.commit = True, 0
-        if "overloading the left" in t:
-            p.overload_y = width * 0.27
-        elif "overloading the right" in t:
-            p.overload_y = width * 0.73
-    return p
+def _say_directive(club: str, plan: Plan, side: str) -> str:
+    # a human-readable line of the coach's call, so the Artel project reads as real coaching
+    if plan.low_block:
+        return f"{club}: low block — protect the lead, stay compact and deny the space."
+    if plan.commit >= 2:
+        return f"{club}: overload the {side}, commit {plan.commit} runners — chase the game."
+    if plan.commit == 1:
+        return f"{club}: work the {side} flank and push a runner up in support."
+    return f"{club}: attack down the {side}, hold our shape."
 
 
 class Coordinator:
-    """The Artel team's coaching staff: a captain plus a defence / midfield / attack agent, each a
-    distinct Artel identity. The captain sets the lineup once; each window the line agents post
-    their piece of the plan to Artel and the team then executes the plan read BACK from Artel — so
-    the coordination genuinely flows through the server. Falls back to a local plan if Artel is
-    unconfigured or unreachable, so a match never depends on the network."""
+    """The Artel team's coach — an LLM tactical agent. Each window it reads the live match and
+    authors a coordinated directive (overload a flank, commit runners, drop into a low block), then
+    PUBLISHES it to Artel; the team plays whatever directive Artel currently holds, read straight
+    back out. There is no local fallback for the directive: no Artel, no configured LLM, or no call
+    yet => plan is None and the team plays pure baseline. So the coordination EDGE genuinely rides
+    on Artel — cut the bus (or the model) and the directive expires and the side is just a baseline
+    team again. Per-player execution stays deterministic; the LLM only sets the tactical policy."""
 
     def __init__(self, team: str, club: str = "") -> None:
         self.team = team
         self.club = club or team
-        self.plan = Plan(overload_y=40.0, commit=0, low_block=False)
-        self._last = Plan(overload_y=-1, commit=-1, low_block=False)
+        self.plan: Plan | None = None  # active directive; None = no edge -> baseline play
         self._artel = artel_client.Artel() if artel_client.configured() else None
-        self.live = self._artel is not None  # genuinely talking to Artel this match
-        self.llm = llm.enabled()  # the coach is an LLM (else the deterministic heuristic)
+        self.live = self._artel is not None
+        self.llm = llm.enabled()  # is an LLM coach configured to author directives?
         self._llm_at = 0.0
-        self._llm_plan: Plan | None = None
-        self._llm_busy = False
-
-    async def _author(self, pitch: Pitch) -> Plan:
-        # the coach's plan: an LLM authors it on a slow cadence (one call in flight, deterministic
-        # fallback); without an LLM it's the proven heuristic, recomputed every window.
-        if not self.llm:
-            return plan_for(pitch, self.team)
-        now = time.monotonic()
-        if not self._llm_busy and now - self._llm_at >= LLM_EVERY:
-            self._llm_busy = True
-            self._llm_at = now
-            try:
-                self._llm_plan = await author_plan_llm(pitch, self.team)
-            finally:
-                self._llm_busy = False
-        return self._llm_plan or plan_for(pitch, self.team)
+        self._busy = False
+        self._since = _now_cursor()
+        self._plan_at = 0.0  # monotonic time the current directive was last read (for TTL expiry)
 
     def optimize(self, pitch: Pitch) -> None:
-        # captain's team-sheet — must run before the first tick, so it's synchronous
+        # captain's team-sheet — fit the rolled attributes to roles before kickoff (synchronous)
         optimize_lineup([p for p in pitch.players if p.team == self.team])
 
     async def announce(self) -> None:
-        # the captain sets the match up in Artel: posts the plan to shared memory, broadcasts it to
-        # the squad, and creates a standing assignment per line which that line agent then CLAIMS —
-        # so the project shows real coordination (a plan, a team message, claimed tasks).
-        if not self._artel:
-            return
-        a, tag = self._artel, f"team:{self.team}"
-        await a.write_memory(
-            "captain",
-            f"{self.club} game plan: attack the opponent's weak flank, commit numbers when chasing, "
-            f"protect a lead. Press as a unit and hold the line.",
-            ["pitch", "plan", tag],
-        )
-        await a.send_message(
-            "captain",
-            f"project:{artel_client.PITCH_PROJECT}",
-            f"{self.club} — game plan",
-            "Attack their weak flank, press as a unit, commit when behind and see out a lead.",
-        )
-        for role, title in (
-            ("def", "hold the line and cover the channels"),
-            ("mid", "win the second balls and feed the attack"),
-            ("fwd", "overload the opponent's weak flank"),
-        ):
-            t = await a.create_task(
-                "captain", f"{self.club} {role.upper()}: {title}", ["pitch", tag]
+        if self._artel:
+            await self._artel.write_memory(
+                "captain",
+                f"{self.club}: coordinating through Artel — the coach calls overloads and presses live.",
+                ["pitch", "plan", f"team:{self.team}"],
             )
-            tid = (t or {}).get("id")
-            if tid:
-                await a.claim_task(role, tid)  # the line agent claims its assignment
 
     async def refresh(self, pitch: Pitch) -> None:
-        base = await self._author(pitch)  # LLM coach if configured, else the proven heuristic
         if self._artel is None:
-            self.plan = base
+            self.plan = None  # no bus -> no edge
             return
+        now = time.monotonic()
+        # the LLM coach authors a fresh directive on a slow cadence and PUBLISHES it to Artel
+        if self.llm and not self._busy and now - self._llm_at >= LLM_EVERY:
+            self._busy = True
+            self._llm_at = now
+            try:
+                plan = await author_plan_llm(pitch, self.team)
+                await self._publish(pitch, plan)
+            finally:
+                self._busy = False
+        # the team's plan IS whatever directive Artel hands back; expire it if none arrives in TTL so
+        # the edge can't outlive the bus (Artel/LLM down => no fresh directive => baseline)
+        got = await self._read()
+        if got is not None:
+            self.plan, self._plan_at = got, now
+        elif now - self._plan_at > PLAN_TTL:
+            self.plan = None
+
+    async def _publish(self, pitch: Pitch, plan: Plan) -> None:
         a, tag = self._artel, f"team:{self.team}"
-        side = "left" if base.overload_y < pitch.cfg.width / 2 else "right"
-        # the midfield agent posts its call and tells the defence what cover it needs
-        if base.commit != self._last.commit or base.low_block != self._last.low_block:
-            await a.write_memory(
-                "mid", _say_mid(self.club, base.commit, base.low_block), ["pitch", "line", tag]
-            )
-            if base.low_block:
-                await a.send_message(
-                    "mid",
-                    "pitch-def",
-                    f"{self.club} shape",
-                    "Dropping into a low block — stay compact, protect the lead.",
-                )
-            elif base.commit >= 2:
-                await a.send_message(
-                    "mid",
-                    "pitch-def",
-                    f"{self.club} shape",
-                    f"Committing {base.commit} forward to chase it — drop and cover behind me.",
-                )
-        # the attack agent posts its target and asks the midfield to feed that channel
-        if round(base.overload_y) != round(self._last.overload_y):
-            await a.write_memory("fwd", _say_fwd(self.club, side), ["pitch", "line", tag])
-            await a.send_message(
-                "fwd",
-                "pitch-mid",
-                f"{self.club} attack",
-                f"Overloading the {side} flank — feed me in that channel.",
-            )
-            await a.emit_event("fwd", "overload", {"team": self.team, "side": side})
-        self._last = base
-        # the team executes the plan as read BACK from Artel (the line agents read each other's
-        # posts, filtered to our team, and reassemble it) — genuine coordination through the server
-        rows = await a.search_memory("def", "midfield attack plan", tag=tag, limit=4)
-        self.plan = _parse_plan(rows, base, pitch.cfg.width)
+        side = "left" if plan.overload_y < pitch.cfg.width / 2 else "right"
+        # structured directive — the load-bearing channel the team reads back...
+        await a.emit_event(
+            "captain",
+            DIRECTIVE,
+            {
+                "team": self.team,
+                "overload_y": round(plan.overload_y, 1),
+                "commit": plan.commit,
+                "low_block": plan.low_block,
+            },
+        )
+        # ...plus a readable line so the Artel project shows genuine coaching, not tokens
+        await a.write_memory(
+            "captain", _say_directive(self.club, plan, side), ["pitch", "directive", tag]
+        )
+
+    async def _read(self) -> Plan | None:
+        rows = await self._artel.poll_events("captain", DIRECTIVE, self._since)
+        latest = None
+        for r in rows:
+            self._since = max(self._since, r.get("created_at", self._since))
+            p = r.get("payload", {})
+            if p.get("team") == self.team:
+                latest = p
+        if latest is None:
+            return None
+        return Plan(float(latest["overload_y"]), int(latest["commit"]), bool(latest["low_block"]))
 
     async def finish(self, summary: str) -> None:
-        # at full time: record the result as a persistent EVENT (the durable pitch record), then wipe
-        # this match's ephemeral coordination (memory, messages, tasks) so the project stays clean.
         if self._artel:
             await self._artel.emit_event("captain", "pitch.result", {"result": summary})
             await self._artel.clear_project("captain")
@@ -329,7 +291,7 @@ class Coordinator:
 
     def brain(self):
         def b(pitch: Pitch, p: Player) -> dict:
-            if p.team == self.team:
+            if p.team == self.team and self.plan is not None:
                 return coordinated_decide(pitch, p, self.plan)
             return bot.decide(pitch, p)
 
