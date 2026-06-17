@@ -118,16 +118,6 @@ def coordinated_decide(pitch: Pitch, p: Player, plan: Plan) -> dict:
     return bot.decide(pitch, p)  # defend / press / hold — all baseline
 
 
-def make_brain(artel_team: str | None):
-    def brain(pitch: Pitch, p: Player) -> dict:
-        if artel_team is not None and p.team == artel_team:
-            plan = getattr(pitch, "_plan", None) or plan_for(pitch, artel_team)
-            return coordinated_decide(pitch, p, plan)
-        return bot.decide(pitch, p)
-
-    return brain
-
-
 def combined_brain(coords: dict):
     # route each player to its side's coordinator or the baseline. The coordination EDGE only applies
     # when a live Artel directive is in hand (co.plan set); with no directive — Artel down, LLM not
@@ -212,6 +202,7 @@ class Coordinator:
         self.llm = llm.enabled()  # is an LLM coach configured to author directives?
         self._llm_at = 0.0
         self._busy = False
+        self._last_key: tuple | None = None  # last published tactic, so the readable log is sparse
         self._since = _now_cursor()
         self._plan_at = 0.0  # monotonic time the current directive was last read (for TTL expiry)
 
@@ -252,7 +243,7 @@ class Coordinator:
     async def _publish(self, pitch: Pitch, plan: Plan) -> None:
         a, tag = self._artel, f"team:{self.team}"
         side = "left" if plan.overload_y < pitch.cfg.width / 2 else "right"
-        # structured directive — the load-bearing channel the team reads back...
+        # structured directive — the load-bearing channel the team reads back EVERY window...
         await a.emit_event(
             "captain",
             DIRECTIVE,
@@ -263,10 +254,14 @@ class Coordinator:
                 "low_block": plan.low_block,
             },
         )
-        # ...plus a readable line so the Artel project shows genuine coaching, not tokens
-        await a.write_memory(
-            "captain", _say_directive(self.club, plan, side), ["pitch", "directive", tag]
-        )
+        # ...plus a readable line ONLY when the tactic actually changes — a sparse coaching narrative
+        # in the project (not a per-window flood), kept (not wiped) so it's visible in the Artel UI
+        key = (side, plan.commit, plan.low_block)
+        if key != self._last_key:
+            self._last_key = key
+            await a.write_memory(
+                "captain", _say_directive(self.club, plan, side), ["pitch", "directive", tag]
+            )
 
     async def _read(self) -> Plan | None:
         rows = await self._artel.poll_events("captain", DIRECTIVE, self._since)
@@ -281,9 +276,10 @@ class Coordinator:
         return Plan(float(latest["overload_y"]), int(latest["commit"]), bool(latest["low_block"]))
 
     async def finish(self, summary: str) -> None:
+        # record the result; KEEP the readable directive log (it's sparse and is the visible proof
+        # that coaching flowed through Artel), only sweep the ephemeral tasks/messages
         if self._artel:
             await self._artel.emit_event("captain", "pitch.result", {"result": summary})
-            await self._artel.clear_project("captain")
 
     async def aclose(self) -> None:
         if self._artel:

@@ -250,6 +250,18 @@ async def health():
 async def debug():
     from . import llm
 
+    def _plan(co) -> dict:
+        # the team's ACTIVE tactical plan and where it came from — None means the Artel edge isn't in
+        # hand (no directive read back), so the side is playing pure baseline
+        p = co.plan
+        return {
+            "edge_active": p is not None,
+            "source": "artel-directive" if p is not None else "baseline (no directive)",
+            "overload": (None if p is None else ("left" if p.overload_y < 40 else "right")),
+            "commit": (None if p is None else p.commit),
+            "low_block": (None if p is None else p.low_block),
+        }
+
     coach = {
         "model": llm.MODEL if llm.enabled() or llm.SPEND["calls"] else None,
         "fallback": llm.MODEL2 if llm._KEY2 else None,
@@ -259,6 +271,7 @@ async def debug():
         "throttled": llm.SPEND["throttled"],
         "spend_days": dict(llm.SPEND["days"]),
         "live": llm.enabled(),
+        "plans": {side: _plan(co) for side, co in getattr(G, "coords", {}).items()},
     }
     return {"viewers": len(G.viewers), "match": G.match_no, "coach": coach, **G.snapshot()}
 
