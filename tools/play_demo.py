@@ -28,17 +28,27 @@ def draw(cfg, f, hl):
     d.rectangle([_xy(0, 0), _xy(cfg.length, cfg.width)], outline=line, width=2)
     d.line([_xy(cfg.length / 2, 0), _xy(cfg.length / 2, cfg.width)], fill=line, width=2)
     cx, cy = _xy(cfg.length / 2, cfg.width / 2)
-    d.ellipse([cx - 9 * SCALE, cy - 9 * SCALE, cx + 9 * SCALE, cy + 9 * SCALE], outline=line, width=2)
+    d.ellipse(
+        [cx - 9 * SCALE, cy - 9 * SCALE, cx + 9 * SCALE, cy + 9 * SCALE], outline=line, width=2
+    )
     for pid, x, y, team, role, num in f["players"]:
         px, py = _xy(x, y)
         r = 6 * SCALE / 7
         if pid in hl:
             d.ellipse([px - r - 5, py - r - 5, px + r + 5, py + r + 5], outline=hl[pid], width=3)
-        d.ellipse([px - r, py - r, px + r, py + r], fill=(GK if role == "GK" else TEAM)[team], outline=(0, 0, 0))
+        d.ellipse(
+            [px - r, py - r, px + r, py + r],
+            fill=(GK if role == "GK" else TEAM)[team],
+            outline=(0, 0, 0),
+        )
         d.text((px - 3, py - 5), str(num), fill=(0, 0, 0))
     bx, by = _xy(*f["ball"])
     d.ellipse([bx - 4, by - 4, bx + 4, by + 4], fill=(255, 255, 255), outline=(0, 0, 0))
-    d.text((PAD, 2), f"{f['score']['home']}-{f['score']['away']}  {f.get('phase') or ''}", fill=(255, 255, 0))
+    d.text(
+        (PAD, 2),
+        f"{f['score']['home']}-{f['score']['away']}  {f.get('phase') or ''}",
+        fill=(255, 255, 0),
+    )
     return img, (W, H)
 
 
@@ -76,7 +86,9 @@ def main():
     for i, (im, _) in enumerate(tiles):
         montage.paste(im.resize((tw, th)), ((i % 2) * tw, (i // 2) * th))
     montage.save("/tmp/gg_montage.png")
-    print(f"rendered give-and-go ticks {st}..{en} (#{p.players[carrier].number} & #{p.players[wall].number}) -> /tmp/gg.gif, /tmp/gg_montage.png")
+    print(
+        f"rendered give-and-go ticks {st}..{en} (#{p.players[carrier].number} & #{p.players[wall].number}) -> /tmp/gg.gif, /tmp/gg_montage.png"
+    )
 
 
 if __name__ == "__main__":

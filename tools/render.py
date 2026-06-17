@@ -47,7 +47,9 @@ def draw(cfg, f) -> Image.Image:
     d.rectangle([_xy(0, 0, cfg), _xy(cfg.length, cfg.width, cfg)], outline=line, width=2)
     d.line([_xy(cfg.length / 2, 0, cfg), _xy(cfg.length / 2, cfg.width, cfg)], fill=line, width=2)
     cx, cy = _xy(cfg.length / 2, cfg.width / 2, cfg)
-    d.ellipse([cx - 9 * SCALE, cy - 9 * SCALE, cx + 9 * SCALE, cy + 9 * SCALE], outline=line, width=2)
+    d.ellipse(
+        [cx - 9 * SCALE, cy - 9 * SCALE, cx + 9 * SCALE, cy + 9 * SCALE], outline=line, width=2
+    )
     for gx in (0, cfg.length):  # goals + boxes
         d.rectangle(
             [
@@ -77,7 +79,13 @@ def main() -> None:
     imgs[0].save(gif, save_all=True, append_images=imgs[1:], duration=80, loop=0)
     # a montage of 8 key frames so a single still shows a sequence
     keys = [frames[i] for i in range(0, len(frames), max(1, len(frames) // 8))][:8]
-    tiles = [draw(cfg, k).resize((cfg and 0) or (int((PAD * 2 + cfg.length * SCALE) * 0.5), int((PAD * 2 + cfg.width * SCALE) * 0.5))) for k in keys]
+    tiles = [
+        draw(cfg, k).resize(
+            (cfg and 0)
+            or (int((PAD * 2 + cfg.length * SCALE) * 0.5), int((PAD * 2 + cfg.width * SCALE) * 0.5))
+        )
+        for k in keys
+    ]
     tw, th = tiles[0].size
     montage = Image.new("RGB", (tw * 2, th * 4), (0, 0, 0))
     for i, t in enumerate(tiles):

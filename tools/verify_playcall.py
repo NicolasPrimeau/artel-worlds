@@ -19,7 +19,9 @@ class FakeArtel:
         if self.down:
             return None
         self.t += 1
-        self.events.append({"created_at": f"2026-06-17T{self.t:013d}Z", "type": etype, "payload": payload})
+        self.events.append(
+            {"created_at": f"2026-06-17T{self.t:013d}Z", "type": etype, "payload": payload}
+        )
         return {}
 
     async def poll_events(self, role, etype, since):
