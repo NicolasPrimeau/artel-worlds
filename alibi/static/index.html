@@ -143,7 +143,7 @@ const ROOM_TINT={ "Mess Hall":[70,92,128],"Lab":[58,100,108],"Comms":[86,78,116]
 const COLORS=["#ff6a6a","#54a8ff","#46e0a0","#ffcf5a","#c98bff","#ff9f4a","#7ce0ff","#ff7ab8","#9be86a","#e0e0e0"];
 const SCALE=26;  // tile → world px; camera auto-fits
 function tint(n){ return ROOM_TINT[n]||[80,90,110]; }
-let ROOMS={}, CORRSET=new Set(), CORRTILES=[], DOORS={}, VENTS=[], OUTPOST=31, stationSig="", TB={x0:0,y0:0,x1:1248,y1:884}, OPEN={};
+let ROOMS={}, CORRSET=new Set(), CORRTILES=[], DOORS={}, VENTS=[], OUTPOST=31, stationSig="", TB={x0:0,y0:0,x1:1248,y1:884}, OPEN={}, WALKABLE=new Set();
 function inRoomTile(tx,ty){ for(const r of Object.values(ROOMS)){ if(tx>=r.tx&&tx<r.tx+r.tw&&ty>=r.ty&&ty<r.ty+r.th)return r; } return null; }
 // BSP rooms (rectangles) scattered + linked by corridor TILES — a building floor plan
 function buildStation(st){
@@ -155,6 +155,10 @@ function buildStation(st){
     ROOMS[n]={x:cx,y:cy,w:rw*SCALE,h:rh*SCALE,cx,cy,rad:Math.min(rw,rh)*SCALE*0.5,hub:n===HUB,c:tint(n),tx:rx,ty:ry,tw:rw,th:rh};
     x0=Math.min(x0,rx);y0=Math.min(y0,ry);x1=Math.max(x1,rx+rw);y1=Math.max(y1,ry+rh); }
   CORRTILES=st.corridor||[]; CORRSET=new Set(CORRTILES.map(t=>t[0]+'|'+t[1]));
+  // the WALKABLE tile set — room interiors + corridor tiles — that the path router travels (rooms and
+  // corridors touch only at doorways, so any route through it stays inside the building, never a wall).
+  WALKABLE=new Set(CORRSET);
+  for(const r of Object.values(ROOMS)){ for(let ty=r.ty; ty<r.ty+r.th; ty++) for(let tx=r.tx; tx<r.tx+r.tw; tx++) WALKABLE.add(tx+'|'+ty); }
   for(const [cx,cy] of CORRTILES){ x0=Math.min(x0,cx);y0=Math.min(y0,cy);x1=Math.max(x1,cx+1);y1=Math.max(y1,cy+1); }
   TB={x0:x0*SCALE,y0:y0*SCALE,x1:x1*SCALE,y1:y1*SCALE};
   DOORS={}; for(const [a,b,dx,dy] of (st.doors||[])){ (DOORS[a]=DOORS[a]||{})[b]={x:dx*SCALE,y:dy*SCALE}; (DOORS[b]=DOORS[b]||{})[a]={x:dx*SCALE,y:dy*SCALE}; }
@@ -340,14 +344,38 @@ function applyLighting(){ if(!lcv)lcv=document.createElement('canvas'); if(lcv.w
 }
 
 // ---- agents ----
+// path routing — BFS over the walkable tile set so an agent only ever travels rooms + corridors
+// (through doorways), never straight across a wall or the void.
+function nearestWalkable(tx,ty){ if(WALKABLE.has(tx+'|'+ty))return [tx,ty];
+  for(let r=1;r<=4;r++) for(let oy=-r;oy<=r;oy++) for(let ox=-r;ox<=r;ox++)
+    if(WALKABLE.has((tx+ox)+'|'+(ty+oy)))return [tx+ox,ty+oy];
+  return [tx,ty]; }
+function routePath(sx,sy,gx,gy){  // pixel start → pixel goal → walkable tile-centre waypoints
+  const s=nearestWalkable(Math.floor(sx/SCALE),Math.floor(sy/SCALE));
+  const g=nearestWalkable(Math.floor(gx/SCALE),Math.floor(gy/SCALE));
+  const sk=s[0]+'|'+s[1], gk=g[0]+'|'+g[1];
+  if(sk===gk) return [{x:gx,y:gy}];
+  const prev={[sk]:null}, q=[sk]; let found=false;
+  for(let h=0;h<q.length && !found;h++){ const [cx,cy]=q[h].split('|').map(Number);
+    for(const [ox,oy] of [[1,0],[-1,0],[0,1],[0,-1]]){ const nk=(cx+ox)+'|'+(cy+oy);
+      if(WALKABLE.has(nk) && !(nk in prev)){ prev[nk]=q[h]; if(nk===gk){found=true;break;} q.push(nk); } } }
+  if(!(gk in prev)) return [{x:gx,y:gy}];  // unreachable (shouldn't happen) → fall back to direct
+  const pts=[]; for(let c=gk; c!==null; c=prev[c]) pts.push(c.split('|').map(Number)); pts.reverse();
+  const simp=[pts[0]];  // keep only corners (drop collinear runs) so the walk glides
+  for(let i=1;i<pts.length-1;i++){ const a=simp[simp.length-1],b=pts[i],c=pts[i+1];
+    if((b[0]-a[0])*(c[1]-b[1])!==(b[1]-a[1])*(c[0]-b[0])) simp.push(b); }
+  simp.push(pts[pts.length-1]);
+  const wp=simp.slice(1).map(([tx,ty])=>({x:(tx+0.5)*SCALE,y:(ty+0.5)*SCALE}));
+  wp[wp.length-1]={x:gx,y:gy};  // land exactly on the slot
+  return wp;
+}
 function layoutAgents(){ const byRoom={}; for(const a of STATE.agents){ if(!a.alive&&!a.body)continue; (byRoom[a.room]=byRoom[a.room]||[]).push(a); }
   for(const [room,list] of Object.entries(byRoom)){ const r=ROOMS[room]; if(!r)continue; const n=list.length;
     const cols=Math.ceil(Math.sqrt(n)), rows=Math.ceil(n/cols), sp=Math.min(28,r.rad*0.6);
     list.forEach((a,i)=>{ const cxi=i%cols, cyi=Math.floor(i/cols);
       a.tx=r.cx+(cxi-(cols-1)/2)*sp; a.ty=r.cy+(cyi-(rows-1)/2)*sp;
-      // changed room → walk out through the shared doorway (corridor bend) before crossing to the new room
-      if(a.prevRoom && a.prevRoom!==room && ROOMS[a.prevRoom]){
-        const d=(DOORS[a.prevRoom]||{})[room]; a.path=d?[{x:d.x,y:d.y}]:null; }
+      // changed room → route a walkable path (out the door, along the corridor, in the new door)
+      if(a.prevRoom && a.prevRoom!==room && a.wx!=null){ a.path=routePath(a.wx,a.wy,a.tx,a.ty); }
       a.prevRoom=room; }); }
 }
 // move STRAIGHT toward the next waypoint, clamped so a step can never overshoot it — so an agent
@@ -358,9 +386,10 @@ function moveAgents(){ for(const a of STATE.agents){ if(a.tx==null)continue;
   if(a.wx==null){a.wx=a.tx;a.wy=a.ty;a.face=1.57;a.spd=0;}
   const tgt=(a.path&&a.path.length)?a.path[0]:{x:a.tx,y:a.ty};   // follow the corridor waypoints first
   const dx=tgt.x-a.wx, dy=tgt.y-a.wy, d=Math.hypot(dx,dy);
-  if(d<1.5){  // arrived: snap to the slot, stop, leave the heading alone (no idle spin)
-    a.wx=tgt.x; a.wy=tgt.y; a.spd=0; a.moving=false;
-    if(a.path&&a.path.length) a.path.shift(); continue; }
+  if(d<1.5){  // reached this point
+    if(a.path&&a.path.length){ a.path.shift(); }  // a corridor waypoint → carry momentum to the next
+    else { a.wx=tgt.x; a.wy=tgt.y; a.spd=0; a.moving=false; }  // final slot → settle (no idle spin)
+    continue; }
   const step=Math.min(WALK, d*0.5, d);   // ease in near the start, never step past the target
   if(a.alive) a.face=lerpA(a.face,Math.atan2(dy,dx),0.18);  // cone follows the walk, eased
   a.wx+=dx/d*step; a.wy+=dy/d*step; a.moving=step>0.4; } }
