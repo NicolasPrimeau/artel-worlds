@@ -409,6 +409,16 @@ class Pitch:
                 ux, uy = _unit(rec.x - b.x, rec.y - b.y)
                 sp = max(_len(b.vx, b.vy), c.pass_speed * 0.85)
                 b.vx, b.vy = ux * sp, uy * sp
+            elif (
+                _len(b.vx, b.vy) > 2.2
+                and b.last_touch is not None
+                and self._adv(b.last_touch, b.x) > c.length * 0.62
+            ):
+                # a struck ball (shot/cross) in the final third can be BLOCKED by a defender in its
+                # path — it deflects off them, often behind their own line for a corner
+                blocker = self._shot_blocker(b)
+                if blocker is not None:
+                    self._deflect(blocker)
             b.x += b.vx
             b.y += b.vy
             b.vx *= c.ball_friction
@@ -456,7 +466,10 @@ class Pitch:
         exempt = self._restart_no_offside  # a throw-in/corner/goal-kick delivery can't be offside
         self._restart_no_offside = False
         interceptor = self._lane_interceptor(owner, rec)
-        if interceptor is None and not exempt and self._offside_receiver(owner, rec):
+        if interceptor is not None:  # read in the lane — caroms loose off the defender, may run out
+            self._deflect(interceptor)
+            return
+        if not exempt and self._offside_receiver(owner, rec):
             defend = "away" if owner.team == "home" else "home"
             self.pass_to, self.pass_ttl = None, 0
             self._dead_ball(
@@ -466,9 +479,42 @@ class Pitch:
                 "offside",
             )
             return
-        self.pass_to = interceptor.id if interceptor is not None else receiver_id
+        self.pass_to = receiver_id
         dist = _len(rec.x - owner.x, rec.y - owner.y)
         self.pass_ttl = int(dist / c.pass_speed) + 6
+        self._offside, self._offside_team = set(), None
+
+    def _shot_blocker(self, b: Ball) -> Player | None:
+        # a defender (of the team NOT in possession) right in the path of a fast ball blocks it ~45%
+        best, bd = None, 2.4
+        for p in self.players:
+            if p.role == "GK" or p.team == b.last_touch:
+                continue
+            d = _len(p.x - b.x, p.y - b.y)
+            if d < bd:
+                best, bd = p, d
+        return best if best is not None and self._rng.random() < 0.45 else None
+
+    def _deflect(self, defender: Player) -> None:
+        # an intercepted pass CAROMS loose off the defender (their touch) instead of being cleanly
+        # gathered: mostly forward (a half-clearance) but with wide scatter, so some run out for a
+        # throw-in and one deflected back near their own line concedes a corner. This is the realistic
+        # source of balls leaving the pitch — the to-feet passing otherwise keeps it in almost always.
+        b = self.ball
+        rng = self._rng
+        c = self.cfg
+        fwd = 1.0 if defender.team == "home" else -1.0
+        own_goal_x = 0.0 if defender.team == "home" else c.length
+        # near their own goal a defender scrambles and can deflect the ball BEHIND (conceding a
+        # corner); in midfield they tend to half-clear it forward (stays in, or runs out for a throw)
+        bias = 0.15 if abs(defender.x - own_goal_x) < c.length * 0.28 else 0.7
+        ux, uy = _unit(fwd * bias + rng.uniform(-1.0, 1.0), rng.uniform(-1.0, 1.0))
+        speed = c.pass_speed * rng.uniform(0.6, 1.15)
+        b.vx, b.vy = ux * speed, uy * speed
+        b.last_touch = defender.team
+        b.last_kicker = defender.id
+        self.possessor = None
+        self.pass_to, self.pass_ttl = None, 0
         self._offside, self._offside_team = set(), None
 
     def _in_mouth(self, y: float) -> bool:
