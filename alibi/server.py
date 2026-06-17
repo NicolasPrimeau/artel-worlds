@@ -164,7 +164,15 @@ class Alibi:
             "agents": agents,
             "station": {
                 "outpost": g.outpost,
-                "rects": {n: list(r) for n, r in g.rects.items()},
+                "w": len(g.grid[0]) if g.grid else 0,
+                "h": len(g.grid),
+                "names": g.rooms,
+                # each row -> a string of base36 room indices (or '.' for void) — compact, parsed client-side
+                "grid": [
+                    "".join("." if c is None else format(g.rooms.index(c), "x") for c in row)
+                    for row in g.grid
+                ],
+                "centers": {n: list(c) for n, c in g.centers.items()},
                 "doors": [[a, b, dx, dy] for (a, b), (dx, dy) in g.doors.items()],
                 "vents": sorted({tuple(sorted((a, b))) for a, ns in g.vents.items() for b in ns}),
             },

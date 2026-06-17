@@ -56,84 +56,101 @@ _MIN_DOOR = 6  # min shared-wall length (tiles) for an EXTRA (loop) doorway
 
 
 def _generate_station(rng: random.Random):
-    # A real floorplan on an integer tile grid: recursively slice the grid into 12 rooms (BSP) so they
-    # TILE with NO gaps — rooms abut and share walls, never strung along hallways. Doors are cut where
-    # two rooms share a wall; a spanning tree keeps it connected, extra doors add loops, the rest wall
-    # off (chokepoints). Crawlspaces link a few far rooms. Integer cuts → exact tiling in isometric.
-    m = _ROOM_MIN
+    # An ORGANIC cluster, not a grid: scatter 12 seeds inside a blob (an ellipse) and grow them by
+    # multi-source flood fill, so each room is an IRREGULAR region of tiles that abuts its neighbours.
+    # The silhouette is a rough blob; rooms are non-rectangular and no two are alike. Doors sit on shared
+    # borders (spanning tree keeps it connected, extra doors add loops). Crawlspaces link a few far rooms.
+    import math
+    from collections import defaultdict, deque
 
-    def splittable(r):
-        return r[2] >= 2 * m or r[3] >= 2 * m
-
-    leaves = [(0, 0, GW, GH)]
-    while len(leaves) < 12:
-        cands = sorted(
-            (i for i in range(len(leaves)) if splittable(leaves[i])),
-            key=lambda i: -leaves[i][2] * leaves[i][3],
-        )
-        if not cands:
+    cx, cy, rx, ry = GW / 2, GH / 2, GW * 0.48, GH * 0.46
+    inmask = [
+        [((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / ry) ** 2 <= 1.0 for x in range(GW)]
+        for y in range(GH)
+    ]
+    mask = [(x, y) for y in range(GH) for x in range(GW) if inmask[y][x]]
+    seeds, mind = [], math.sqrt(len(mask) / 12) * 0.82  # 12 spread-out seeds
+    pool = mask[:]
+    rng.shuffle(pool)
+    for t in pool:
+        if all((t[0] - s[0]) ** 2 + (t[1] - s[1]) ** 2 >= mind * mind for s in seeds):
+            seeds.append(t)
+            if len(seeds) == 12:
+                break
+    for t in pool:  # relax if min-distance left us short
+        if len(seeds) == 12:
             break
-        x, y, w, h = leaves.pop(cands[rng.randrange(min(3, len(cands)))])
-        if w >= 2 * m and (h < 2 * m or w >= h or rng.random() < 0.5):
-            cut = rng.randint(m, w - m)
-            leaves += [(x, y, cut, h), (x + cut, y, w - cut, h)]
-        else:
-            cut = rng.randint(m, h - m)
-            leaves += [(x, y, w, cut), (x, y + cut, w, h - cut)]
-    leaves.sort(key=lambda r: -r[2] * r[3])
-    rects = {SIZE_ORDER[i]: tuple(leaves[i]) for i in range(12)}
-    names = list(rects)
-
-    def shared(ra, rb):  # (overlap_len, (door_x, door_y)) if the rects abut along a wall, else None
-        ax, ay, aw, ah = ra
-        bx, by, bw, bh = rb
-        if ax + aw == bx or bx + bw == ax:
-            lo, hi = max(ay, by), min(ay + ah, by + bh)
-            if hi - lo >= 1:
-                return (hi - lo, (ax + aw if ax + aw == bx else bx + bw, (lo + hi) / 2))
-        if ay + ah == by or by + bh == ay:
-            lo, hi = max(ax, bx), min(ax + aw, bx + bw)
-            if hi - lo >= 1:
-                return (hi - lo, ((lo + hi) / 2, ay + ah if ay + ah == by else by + bh))
-        return None
-
-    walls = {}  # (a,b) -> (overlap, door point) for every pair that physically shares a wall
-    for i, a in enumerate(names):
-        for b in names[i + 1 :]:
-            s = shared(rects[a], rects[b])
-            if s:
-                walls[(a, b)] = s
-    nbr: dict[str, list] = {n: [] for n in names}
+        if t not in seeds:
+            seeds.append(t)
+    owner = [[-1] * GW for _ in range(GH)]
+    q = deque()
+    for i, (s0, s1) in enumerate(seeds):
+        owner[s1][s0] = i
+        q.append((s0, s1))
+    while q:  # multi-source flood → 12 contiguous, irregular regions filling the blob
+        x, y = q.popleft()
+        o = owner[y][x]
+        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if 0 <= nx < GW and 0 <= ny < GH and inmask[ny][nx] and owner[ny][nx] == -1:
+                owner[ny][nx] = o
+                q.append((nx, ny))
+    sizes = [0] * 12
+    for row in owner:
+        for o in row:
+            if o >= 0:
+                sizes[o] += 1
+    by_size = sorted(range(12), key=lambda i: -sizes[i])  # biggest region -> Mess Hall, etc.
+    idx2name = {by_size[i]: SIZE_ORDER[i] for i in range(12)}
+    names = list(SIZE_ORDER)
+    grid = [
+        [idx2name[owner[y][x]] if owner[y][x] >= 0 else None for x in range(GW)] for y in range(GH)
+    ]
+    sx, sy, cnt = defaultdict(float), defaultdict(float), defaultdict(int)
+    walls = defaultdict(list)  # (a,b) sorted -> shared-border door points
+    for y in range(GH):
+        for x in range(GW):
+            n = grid[y][x]
+            if not n:
+                continue
+            sx[n] += x + 0.5
+            sy[n] += y + 0.5
+            cnt[n] += 1
+            for nx, ny, pt in ((x + 1, y, (x + 1, y + 0.5)), (x, y + 1, (x + 0.5, y + 1))):
+                if 0 <= nx < GW and 0 <= ny < GH and grid[ny][nx] and grid[ny][nx] != n:
+                    walls[tuple(sorted((n, grid[ny][nx])))].append(pt)
+    centers = {n: (round(sx[n] / cnt[n], 2), round(sy[n] / cnt[n], 2)) for n in names}
+    nbr: dict[str, list] = defaultdict(list)
     for a, b in walls:
         nbr[a].append(b)
         nbr[b].append(a)
     adj: dict[str, set] = {n: set() for n in names}
     doors: dict = {}
-    seen, q = {names[0]}, [names[0]]  # spanning tree over ALL shared walls → always connected
-    while q:
-        u = q.pop(0)
+
+    def mid(pts):
+        return sorted(pts)[len(pts) // 2]
+
+    seen, bq = {names[0]}, deque([names[0]])  # spanning tree over shared borders → connected
+    while bq:
+        u = bq.popleft()
         for v in nbr[u]:
             if v not in seen:
                 seen.add(v)
                 adj[u].add(v)
                 adj[v].add(u)
-                doors[(u, v)] = (walls.get((u, v)) or walls[(v, u)])[1]
-                q.append(v)
-    for (a, b), (
-        ov,
-        pt,
-    ) in walls.items():  # extra doors on the longer walls → loops; rest stay walled
-        if b not in adj[a] and ov >= _MIN_DOOR and rng.random() < 0.5:
+                doors[(u, v)] = mid(walls[tuple(sorted((u, v)))])
+                bq.append(v)
+    for (a, b), pts in walls.items():  # extra doors on longer borders -> loops; rest stay walled
+        if b not in adj[a] and len(pts) >= _MIN_DOOR and rng.random() < 0.5:
             adj[a].add(b)
             adj[b].add(a)
-            doors[(a, b)] = pt
+            doors[(a, b)] = mid(pts)
     vents: dict[str, list] = {}
     nonadj = [(a, b) for i, a in enumerate(names) for b in names[i + 1 :] if b not in adj[a]]
     rng.shuffle(nonadj)
     for a, b in nonadj[: rng.randint(2, 3)]:
         vents.setdefault(a, []).append(b)
         vents.setdefault(b, []).append(a)
-    return names, {k: sorted(v) for k, v in adj.items()}, vents, rects, doors
+    return names, {k: sorted(v) for k, v in adj.items()}, vents, grid, doors, centers
 
 
 TASKS_EACH = 5
@@ -226,8 +243,11 @@ class Game:
     rooms: list = field(default_factory=list)  # this game's room names
     adj: dict = field(default_factory=dict)  # generated connections (doored)
     vents: dict = field(default_factory=dict)  # generated crawlspaces
-    rects: dict = field(default_factory=dict)  # name -> (x,y,w,h) floorplan rectangle
-    doors: dict = field(default_factory=dict)  # (a,b) -> (x,y) doorway point on the shared wall
+    grid: list = field(
+        default_factory=list
+    )  # GH x GW tiles of room-name (or None) — organic regions
+    doors: dict = field(default_factory=dict)  # (a,b) -> (x,y) doorway point on the shared border
+    centers: dict = field(default_factory=dict)  # name -> (cx,cy) region centroid in tiles
     outpost: int = 31  # the station's number (randomized per game)
     bodies: dict = field(default_factory=dict)  # room -> victim id, undiscovered
     tick: int = 0
@@ -376,7 +396,7 @@ class Game:
 
 def new_game(seed: int, n=6, impostors=1) -> Game:
     rng = random.Random(seed)
-    rooms, adj, vents, rects, doors = _generate_station(rng)
+    rooms, adj, vents, grid, doors, centers = _generate_station(rng)
     order = list(range(n))
     rng.shuffle(order)
     imp_ids = set(order[:impostors])
@@ -389,8 +409,9 @@ def new_game(seed: int, n=6, impostors=1) -> Game:
         rooms=rooms,
         adj=adj,
         vents=vents,
-        rects=rects,
+        grid=grid,
         doors=doors,
+        centers=centers,
         outpost=rng.randint(1, 99),
     )
 

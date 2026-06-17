@@ -94,66 +94,64 @@ const TAU = Math.PI*2;
 
 // ---- station layout: BUILT PER GAME from the server's generated cluster (different every game).
 // connections come from grid-adjacent rooms, so every door is a short threshold — no long halls.
-const HUB="Mess Hall", DOORW=46;
-const PROPS={  // interior cover props [dx,dy,w,h] in room fractions
-  "Mess Hall":[[-.28,.12,.42,.15],[.30,-.16,.15,.46]], "Lab":[[-.32,-.12,.15,.54],[.28,.2,.2,.2]],
-  "Generator":[[-.14,0,.3,.32],[.34,-.05,.13,.5]], "Drill Site":[[0,-.04,.22,.5],[-.36,.3,.16,.15]],
-  "Comms":[[-.34,-.04,.15,.54],[.28,.3,.3,.13]], "Bunks":[[-.3,-.14,.46,.15],[-.3,.16,.46,.15]],
-  "Greenhouse":[[-.28,0,.18,.6],[.2,0,.18,.6]], "Infirmary":[[-.3,-.1,.46,.16],[.3,.16,.18,.4]],
-  "Storage":[[-.32,-.12,.18,.5],[0,.28,.5,.16],[.34,-.1,.16,.4]], "Reactor":[[-.05,0,.34,.34]],
-  "Garage":[[0,.05,.5,.32]], "Freezer":[[-.3,0,.16,.6],[.05,0,.16,.6]],
-};
-const STATION_OFF={ "Mess Hall":[.32,.28],"Lab":[.3,-.2],"Generator":[.34,.3],"Drill Site":[.34,-.28],
-  "Comms":[.3,-.28],"Bunks":[.34,.3],"Greenhouse":[0,-.3],"Infirmary":[-.3,-.28],"Storage":[-.3,.28],
-  "Reactor":[.34,-.3],"Garage":[-.34,-.28],"Freezer":[.34,.3] };
+const HUB="Mess Hall", WALLW=9;  // wall stroke (world px)
+// each room TYPE gets a steel/teal tint so the organic regions read distinctly
+const ROOM_TINT={ "Mess Hall":[70,92,128],"Lab":[58,100,108],"Comms":[86,78,116],"Bunks":[104,78,78],
+  "Storage":[86,90,60],"Generator":[112,84,52],"Reactor":[58,100,78],"Garage":[74,84,104],
+  "Greenhouse":[58,112,76],"Infirmary":[96,104,116],"Drill Site":[80,80,96],"Freezer":[70,96,120] };
 const COLORS=["#ff6a6a","#54a8ff","#46e0a0","#ffcf5a","#c98bff","#ff9f4a","#7ce0ff","#ff7ab8","#9be86a","#e0e0e0"];
-
-const SCALE=32;  // tile (fine grid ~48x34) → world pixels; camera auto-fits
-let ROOMS={}, CONN=[], DOORS={}, VENTS=[], STATIONS={}, PROP_RECTS=[], OUTPOST=31, stationSig="";
-const AG_R=15;  // agent radius for collision against props
-function blocked(x,y){ for(const p of PROP_RECTS){ if(Math.abs(x-p.x)<p.hw+AG_R && Math.abs(y-p.y)<p.hh+AG_R) return true; } return false; }
+const SCALE=26;  // tile → world px; camera auto-fits
+function tint(n){ return ROOM_TINT[n]||[80,90,110]; }
+let ROOMS={}, GRID=[], GW=48, GH=34, DOORS={}, doorEdges={}, VENTS=[], OUTPOST=31, stationSig="", TB={x0:0,y0:0,x1:48,y1:34};
+function rm(x,y){ return (y>=0&&y<GH&&x>=0&&x<GW&&GRID[y])?GRID[y][x]:null; }  // room at tile
+// the station is a tile map of ORGANIC regions (no rects): each tile belongs to a room (or void)
 function buildStation(st){
-  const sig=JSON.stringify([st.outpost,st.rects]); if(sig===stationSig)return; stationSig=sig;
+  const sig=(st.outpost)+'|'+((st.grid||[]).join('')); if(sig===stationSig)return; stationSig=sig;
   OUTPOST=st.outpost||31; const bb=$('hud-outpost'); if(bb)bb.textContent=OUTPOST;
-  ROOMS={};
-  for(const [name,[rx,ry,rw,rh]] of Object.entries(st.rects||{}))   // rooms TILE the plan — they abut
-    ROOMS[name]={ x:(rx+rw/2)*SCALE, y:(ry+rh/2)*SCALE, w:rw*SCALE, h:rh*SCALE, hub:name===HUB };
-  CONN=[]; DOORS={};
-  for(const [a,b,dx,dy] of (st.doors||[])){ if(!ROOMS[a]||!ROOMS[b])continue;
-    const p={x:dx*SCALE,y:dy*SCALE}; (DOORS[a]=DOORS[a]||{})[b]=p; (DOORS[b]=DOORS[b]||{})[a]=p;
-    const A=ROOMS[a],B=ROOMS[b]; CONN.push({x:p.x,y:p.y,vert:Math.abs(A.x-B.x)>Math.abs(A.y-B.y)}); }
+  GW=st.w||48; GH=st.h||34; const names=st.names||[];
+  GRID=[]; ROOMS={}; let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(let y=0;y<GH;y++){ const row=(st.grid&&st.grid[y])||""; const out=[];
+    for(let x=0;x<GW;x++){ const ch=row[x]||'.'; if(ch==='.'){ out.push(null); continue; }
+      const n=names[parseInt(ch,16)]; out.push(n);
+      (ROOMS[n]=ROOMS[n]||{tiles:0,c:tint(n)}).tiles++;
+      if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; }
+    GRID.push(out); }
+  TB={x0:x0*SCALE, y0:y0*SCALE, x1:(x1+1)*SCALE, y1:(y1+1)*SCALE};
+  for(const [n,c] of Object.entries(st.centers||{})) if(ROOMS[n]){ ROOMS[n].cx=c[0]*SCALE; ROOMS[n].cy=c[1]*SCALE;
+    ROOMS[n].rad=Math.sqrt(ROOMS[n].tiles)*SCALE*0.62; ROOMS[n].hub=n===HUB; }
+  DOORS={}; doorEdges={};
+  for(const [a,b,dx,dy] of (st.doors||[])){ (DOORS[a]=DOORS[a]||{})[b]={x:dx*SCALE,y:dy*SCALE}; (DOORS[b]=DOORS[b]||{})[a]={x:dx*SCALE,y:dy*SCALE};
+    if(Number.isInteger(dx)) doorEdges['V'+dx+','+Math.floor(dy)]=1; else doorEdges['H'+Math.floor(dx)+','+dy]=1; }
   VENTS=(st.vents||[]).filter(([a,b])=>ROOMS[a]&&ROOMS[b]);
-  STATIONS={}; for(const [n,r] of Object.entries(ROOMS)){ const o=STATION_OFF[n]||[.3,.3]; STATIONS[n]={x:r.x+o[0]*r.w,y:r.y+o[1]*r.h}; }
-  PROP_RECTS=[]; for(const [n,r] of Object.entries(ROOMS)){ for(const [dx,dy,pw,ph] of (PROPS[n]||[]))
-    PROP_RECTS.push({x:r.x+dx*r.w, y:r.y+dy*r.h, hw:pw*r.w/2, hh:ph*r.h/2}); }
-  for(const a of STATE.agents){ a.wx=null; a.prevRoom=null; }  // re-place on the new map
+  for(const a of STATE.agents){ a.wx=null; a.prevRoom=null; }
   userMoved=false; if(typeof cv!=='undefined'&&cv.width) fit();
 }
-// a baked tiled floorplan so the page renders before the socket connects (the live server sends the
-// real BSP-generated plan, which varies every game).
+// a baked grid placeholder so the page renders before the socket connects (the live server sends the
+// real organic-region plan, which varies every game).
 const STATION0=(()=>{
-  const CW=12,CH=11;  // tile cells matching the fine engine grid
-  const grid=[["Bunks","Infirmary","Lab","Greenhouse"],["Comms","Mess Hall","Storage","Reactor"],["Garage","Drill Site","Generator","Freezer"]];
-  const rects={}, pos={}; grid.forEach((row,r)=>row.forEach((n,c)=>{ rects[n]=[c*CW,r*CH,CW,CH]; pos[n]=[c,r]; }));
+  const names=["Mess Hall","Lab","Comms","Bunks","Storage","Generator","Reactor","Garage","Greenhouse","Infirmary","Drill Site","Freezer"];
+  const W=48,H=33, CW=12,CH=11; const idx={}; names.forEach((n,i)=>idx[n]=i);
+  const layout=[["Bunks","Infirmary","Lab","Greenhouse"],["Comms","Mess Hall","Storage","Reactor"],["Garage","Drill Site","Generator","Freezer"]];
+  const grid=[]; for(let y=0;y<H;y++){ let row=''; for(let x=0;x<W;x++){ const c=Math.min(3,(x/CW)|0), r=Math.min(2,(y/CH)|0); row+=idx[layout[r][c]].toString(16);} grid.push(row); }
+  const pos={},centers={}; layout.forEach((rr,r)=>rr.forEach((n,c)=>{ pos[n]=[c,r]; centers[n]=[c*CW+CW/2,r*CH+CH/2]; }));
   const edges=[["Bunks","Infirmary"],["Infirmary","Lab"],["Lab","Greenhouse"],["Bunks","Comms"],["Infirmary","Mess Hall"],
     ["Lab","Storage"],["Greenhouse","Reactor"],["Comms","Mess Hall"],["Mess Hall","Storage"],["Storage","Reactor"],
     ["Comms","Garage"],["Mess Hall","Drill Site"],["Storage","Generator"],["Reactor","Freezer"],["Garage","Drill Site"],["Drill Site","Generator"],["Generator","Freezer"]];
   const doors=edges.map(([a,b])=>{ const [ca,ra]=pos[a],[cb,rb]=pos[b];
     return [a,b, ca===cb?ca*CW+CW/2:Math.max(ca,cb)*CW, ra===rb?ra*CH+CH/2:Math.max(ra,rb)*CH]; });
-  return {outpost:31, rects, doors, vents:[["Greenhouse","Garage"],["Freezer","Bunks"]]};
+  return {outpost:31, w:W, h:H, names, grid, centers, doors, vents:[["Greenhouse","Garage"],["Freezer","Bunks"]]};
 })();
 
 let STATE={ round:1, tasksDone:7, tasksTotal:40, phase:"task", scores:{crew:0,thing:0}, agents:[] };
 let lastKillTick=-1, fx=[], ejecting=null, mouse={x:-1,y:-1}, userMoved=false;
 (function seed(){ const names=["Softmaxwell","Overfitz","Hallucinov","Frostbyte","ReLuther","Quantz","Attenborough","Embeddington","Adamson","Tokarev"];
-  const rk=Object.keys(STATION0.rects);
-  STATE.agents=names.map((n,i)=>({id:i,name:n,model:"gpt-oss-120b",room:rk[i%12],alive:i!==5,task:i%3===0,body:i===5,c:i})); })();
+  const rk=STATION0.names;
+  STATE.agents=names.map((n,i)=>({id:i,name:n,model:"gpt-oss-120b",room:rk[i%rk.length],alive:i!==5,task:i%3===0,body:i===5,c:i})); })();
 
 const cv=$('map'), ctx=cv.getContext('2d');
 let cam={x:0,y:0,z:1}, DPR=Math.min(1.75,window.devicePixelRatio||1);
 function resize(){ cv.width=innerWidth*DPR; cv.height=innerHeight*DPR; if(!userMoved) fit(); }  // rotate → refit
-function bounds(){ let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; for(const r of Object.values(ROOMS)){ x0=Math.min(x0,r.x-r.w/2);
-  y0=Math.min(y0,r.y-r.h/2); x1=Math.max(x1,r.x+r.w/2); y1=Math.max(y1,r.y+r.h/2);} return {x0:x0-70,y0:y0-70,x1:x1+70,y1:y1+90}; }
+function bounds(){ return {x0:TB.x0-50,y0:TB.y0-50,x1:TB.x1+50,y1:TB.y1+60}; }
 function fit(){ if(!Object.keys(ROOMS).length)return; const b=bounds(),ww=b.x1-b.x0,wh=b.y1-b.y0;
   cam.z=Math.min(cv.width/DPR/ww,cv.height/DPR/wh)*0.95; cam.x=(b.x0+b.x1)/2; cam.y=(b.y0+b.y1)/2; }
 function toScreen(wx,wy){ return [(wx-cam.x)*cam.z+cv.width/2,(wy-cam.y)*cam.z+cv.height/2]; }
@@ -203,54 +201,39 @@ function backdrop(t){
   ctx.fillStyle=sf; ctx.fillRect(0,cv.height*0.55,cv.width,cv.height*0.45);
 }
 
-// ---- station structure ----
-const WALL=18;
+// ---- station: organic tile regions ----
 function drawStation(t){
-  for(const [name,r] of Object.entries(ROOMS)){ const [sx,sy]=toScreen(r.x,r.y), w=r.w*cam.z, h=r.h*cam.z;
-    ctx.save(); rr(sx-w/2,sy-h/2,w,h,9*cam.z); ctx.clip();
-    const fg=ctx.createLinearGradient(sx,sy-h/2,sx,sy+h/2); fg.addColorStop(0,"#15202f"); fg.addColorStop(1,"#0d1422");
-    ctx.fillStyle=fg; ctx.fillRect(sx-w/2,sy-h/2,w,h);
-    ctx.strokeStyle="rgba(110,140,190,.06)"; ctx.lineWidth=1; const st=28*cam.z;
-    for(let y=sy-h/2+st;y<sy+h/2;y+=st){ctx.beginPath();ctx.moveTo(sx-w/2,y);ctx.lineTo(sx+w/2,y);ctx.stroke();}
-    for(let x=sx-w/2+st;x<sx+w/2;x+=st){ctx.beginPath();ctx.moveTo(x,sy-h/2);ctx.lineTo(x,sy+h/2);ctx.stroke();}
-    for(const [dx,dy,pw,ph] of (PROPS[name]||[])){ const px=sx+dx*w,py=sy+dy*h,ww=pw*w,hh=ph*h;
-      ctx.fillStyle="#1b2533"; rr(px-ww/2,py-hh/2,ww,hh,4*cam.z); ctx.fill();
-      ctx.fillStyle="rgba(150,180,230,.08)"; rr(px-ww/2,py-hh/2,ww,hh*0.4,4*cam.z); ctx.fill();
-      ctx.strokeStyle="rgba(8,13,22,.8)"; ctx.lineWidth=1.4*cam.z; rr(px-ww/2,py-hh/2,ww,hh,4*cam.z); ctx.stroke(); }
-    // task station console (blinking)
-    const s=STATIONS[name], [cx,cy]=toScreen(s.x,s.y), cs=16*cam.z;
-    ctx.fillStyle="#10202c"; rr(cx-cs,cy-cs*0.7,cs*2,cs*1.4,3*cam.z); ctx.fill();
-    ctx.strokeStyle="rgba(80,200,255,.4)"; ctx.lineWidth=1.4*cam.z; ctx.stroke();
-    const blink=0.4+0.6*Math.abs(Math.sin(t*0.004+r.x)); ctx.fillStyle=`rgba(80,210,255,${blink})`;
-    ctx.fillRect(cx-cs*0.6,cy-cs*0.4,cs*1.2,cs*0.25);
-    ctx.restore();
-  }
-  for(const r of Object.values(ROOMS)){ const [sx,sy]=toScreen(r.x,r.y),w=r.w*cam.z,h=r.h*cam.z;
-    ctx.strokeStyle="#39465c"; ctx.lineWidth=WALL*cam.z; rr(sx-w/2,sy-h/2,w,h,9*cam.z); ctx.stroke();
-    ctx.strokeStyle="rgba(150,185,235,.16)"; ctx.lineWidth=2*cam.z; rr(sx-w/2,sy-h/2,w,h,9*cam.z); ctx.stroke(); }
-  // carve doorways through the shared wall at each door point (rooms abut, so one cut opens both)
-  ctx.fillStyle="#121d2e";
-  for(const c of CONN){ const [sx,sy]=toScreen(c.x,c.y);
-    if(c.vert) ctx.fillRect(sx-(WALL+3)*cam.z,sy-DOORW/2*cam.z,(WALL+3)*2*cam.z,DOORW*cam.z);
-    else ctx.fillRect(sx-DOORW/2*cam.z,sy-(WALL+3)*cam.z,DOORW*cam.z,(WALL+3)*2*cam.z); }
-  // vent hatches
-  for(const [a,b] of VENTS){ for(const room of [a,b]){ const r=ROOMS[room],o=ROOMS[room===a?b:a];
-    const [sx,sy]=toScreen(r.x+(o.x-r.x)*0.3,r.y+(o.y-r.y)*0.3), s=11*cam.z;
-    ctx.fillStyle="#241f33"; rr(sx-s,sy-s,s*2,s*2,3*cam.z); ctx.fill(); ctx.strokeStyle="rgba(170,140,220,.5)"; ctx.lineWidth=1.3*cam.z;
-    for(let i=-1;i<=1;i++){ctx.beginPath();ctx.moveTo(sx-s+3,sy+i*s*0.6);ctx.lineTo(sx+s-3,sy+i*s*0.6);ctx.stroke();} } }
-  for(const [name,r] of Object.entries(ROOMS)){ const [sx,sy]=toScreen(r.x,r.y),w=r.w*cam.z,h=r.h*cam.z;
-    ctx.fillStyle="rgba(150,180,225,.5)"; ctx.font=`700 ${9.5*cam.z}px Inter`; ctx.textAlign="left"; ctx.textBaseline="top";
-    ctx.fillText(name.toUpperCase(),sx-w/2+10*cam.z,sy-h/2+8*cam.z); }
+  const w=SCALE*cam.z+1;
+  for(let y=0;y<GH;y++){ const row=GRID[y]; if(!row)continue; for(let x=0;x<GW;x++){ const n=row[x]; if(!n)continue;
+    const p=toScreen(x*SCALE,y*SCALE), c=ROOMS[n].c, d=((x+y)&1)?6:-6;
+    ctx.fillStyle=`rgb(${c[0]+d},${c[1]+d},${c[2]+d})`; ctx.fillRect(p[0],p[1],w,w); } }
+  // walls on region borders, skipping door edges (rooms abut → an open border is a doorway)
+  ctx.strokeStyle="#3a475c"; ctx.lineWidth=WALLW*cam.z; ctx.lineCap="round";
+  const seg=(x0,y0,x1,y1)=>{ const a=toScreen(x0*SCALE,y0*SCALE),b=toScreen(x1*SCALE,y1*SCALE); ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke(); };
+  for(let y=0;y<GH;y++)for(let x=0;x<GW;x++){ const n=rm(x,y); if(!n)continue;
+    if(rm(x+1,y)!==n && !doorEdges['V'+(x+1)+','+y]) seg(x+1,y,x+1,y+1);
+    if(rm(x-1,y)!==n && !doorEdges['V'+x+','+y]) seg(x,y,x,y+1);
+    if(rm(x,y+1)!==n && !doorEdges['H'+x+','+(y+1)]) seg(x,y+1,x+1,y+1);
+    if(rm(x,y-1)!==n && !doorEdges['H'+x+','+y]) seg(x,y,x+1,y); }
+  // vent hatches near centroids
+  for(const [a,b] of VENTS){ for(const room of [a,b]){ const r=ROOMS[room],o=ROOMS[room===a?b:a]; if(!r||!o||r.cx==null)continue;
+    const p=toScreen(r.cx+(o.cx-r.cx)*0.28,r.cy+(o.cy-r.cy)*0.28), s=10*cam.z;
+    ctx.fillStyle="#241f33"; ctx.fillRect(p[0]-s,p[1]-s,s*2,s*2); ctx.strokeStyle="rgba(170,140,220,.5)"; ctx.lineWidth=1.3*cam.z;
+    for(let i=-1;i<=1;i++){ctx.beginPath();ctx.moveTo(p[0]-s+3,p[1]+i*s*0.6);ctx.lineTo(p[0]+s-3,p[1]+i*s*0.6);ctx.stroke();} } }
+  // task consoles (blinking) + labels at centroids
+  for(const [n,r] of Object.entries(ROOMS)){ if(r.cx==null)continue; const p=toScreen(r.cx,r.cy), cs=11*cam.z;
+    ctx.fillStyle="#10202c"; ctx.fillRect(p[0]-cs,p[1]+cs*1.3,cs*2,cs); const blink=0.4+0.6*Math.abs(Math.sin(t*0.004+r.cx));
+    ctx.fillStyle=`rgba(80,210,255,${blink})`; ctx.fillRect(p[0]-cs*0.7,p[1]+cs*1.45,cs*1.4,cs*0.35);
+    ctx.fillStyle="rgba(155,185,228,.55)"; ctx.font=`700 ${9*cam.z}px Inter`; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(n.toUpperCase(),p[0],p[1]); }
 }
 
 // ---- lighting ----
 // warm light spilling from each room's ceiling lamp + station glow (drawn additively, before darkness)
 function drawAmbient(t){ ctx.save(); ctx.globalCompositeOperation="lighter";
-  for(const [name,r] of Object.entries(ROOMS)){ const [sx,sy]=toScreen(r.x,r.y), rad=Math.max(r.w,r.h)*0.55*cam.z;
-    const g=ctx.createRadialGradient(sx,sy,2,sx,sy,rad); g.addColorStop(0,"rgba(255,205,140,.16)"); g.addColorStop(1,"rgba(255,205,140,0)");
-    ctx.fillStyle=g; ctx.fillRect(sx-rad,sy-rad,rad*2,rad*2);
-    const s=STATIONS[name]; if(s){ const [cx,cy]=toScreen(s.x,s.y), cr=46*cam.z; const cg=ctx.createRadialGradient(cx,cy,1,cx,cy,cr);
-      cg.addColorStop(0,"rgba(90,210,255,.18)"); cg.addColorStop(1,"rgba(90,210,255,0)"); ctx.fillStyle=cg; ctx.fillRect(cx-cr,cy-cr,cr*2,cr*2); } }
+  for(const r of Object.values(ROOMS)){ if(r.cx==null)continue; const [sx,sy]=toScreen(r.cx,r.cy), rad=r.rad*1.6*cam.z;
+    const g=ctx.createRadialGradient(sx,sy,2,sx,sy,rad); g.addColorStop(0,"rgba(255,205,140,.15)"); g.addColorStop(1,"rgba(255,205,140,0)");
+    ctx.fillStyle=g; ctx.fillRect(sx-rad,sy-rad,rad*2,rad*2); }
   ctx.restore();
 }
 let lcv;
@@ -258,7 +241,7 @@ function applyLighting(){ if(!lcv)lcv=document.createElement('canvas'); if(lcv.w
   const lx=lcv.getContext('2d'); lx.setTransform(1,0,0,1,0,0); lx.clearRect(0,0,lcv.width,lcv.height);
   lx.fillStyle="rgba(4,8,16,0.42)"; lx.fillRect(0,0,lcv.width,lcv.height); lx.globalCompositeOperation="destination-out";
   const soft=(x,y,r,a)=>{ const g=lx.createRadialGradient(x,y,0,x,y,r); g.addColorStop(0,`rgba(255,255,255,${a})`); g.addColorStop(.65,`rgba(255,255,255,${a*0.55})`); g.addColorStop(1,"rgba(255,255,255,0)"); lx.fillStyle=g; lx.beginPath(); lx.arc(x,y,r,0,TAU); lx.fill(); };
-  for(const r of Object.values(ROOMS)){ const [sx,sy]=toScreen(r.x,r.y); soft(sx,sy,Math.max(r.w,r.h)*0.62*cam.z,0.86); }
+  for(const r of Object.values(ROOMS)){ if(r.cx==null)continue; const [sx,sy]=toScreen(r.cx,r.cy); soft(sx,sy,r.rad*1.7*cam.z,0.86); }
   for(const a of STATE.agents){ if(a.wx==null)continue; const [sx,sy]=toScreen(a.wx,a.wy); soft(sx,sy,66*cam.z,a.alive?0.95:0.5);
     if(a.alive){ const len=230*cam.z; const cg=lx.createRadialGradient(sx,sy,0,sx,sy,len); cg.addColorStop(0,"rgba(255,255,255,.95)"); cg.addColorStop(1,"rgba(255,255,255,0)");
       lx.fillStyle=cg; lx.beginPath(); lx.moveTo(sx,sy); lx.arc(sx,sy,len,a.face-0.6,a.face+0.6); lx.closePath(); lx.fill(); } }
@@ -267,10 +250,10 @@ function applyLighting(){ if(!lcv)lcv=document.createElement('canvas'); if(lcv.w
 
 // ---- agents ----
 function layoutAgents(){ const byRoom={}; for(const a of STATE.agents){ if(!a.alive&&!a.body)continue; (byRoom[a.room]=byRoom[a.room]||[]).push(a); }
-  for(const [room,list] of Object.entries(byRoom)){ const r=ROOMS[room],n=list.length;
-    list.forEach((a,i)=>{ if(a.task && a.alive){ const s=STATIONS[room]; a.tx=s.x-22+(i%2)*18; a.ty=s.y+28; }
-      else { const cols=Math.ceil(Math.sqrt(n)),cx=i%cols,cy=Math.floor(i/cols),rows=Math.ceil(n/cols);
-        a.tx=r.x+(cx-(cols-1)/2)*Math.min(64,r.w/(cols+1.5)); a.ty=r.y+8+(cy-(rows-1)/2)*Math.min(54,r.h/(rows+1.7)); }
+  for(const [room,list] of Object.entries(byRoom)){ const r=ROOMS[room]; if(!r||r.cx==null)continue; const n=list.length;
+    const cols=Math.ceil(Math.sqrt(n)), rows=Math.ceil(n/cols), sp=Math.min(26,r.rad*0.5);
+    list.forEach((a,i)=>{ const cxi=i%cols, cyi=Math.floor(i/cols);
+      a.tx=r.cx+(cxi-(cols-1)/2)*sp; a.ty=r.cy+(cyi-(rows-1)/2)*sp;
       if(a.prevRoom&&a.prevRoom!==room){ const d=(DOORS[a.prevRoom]||{})[room]; a.via=d?{x:d.x,y:d.y}:null; } a.prevRoom=room; }); }
 }
 // a drivetrain (phalanx-style): steer the heading toward the next waypoint, ease speed up to a walk
@@ -284,12 +267,10 @@ function moveAgents(){ for(const a of STATE.agents){ if(a.tx==null)continue;
     if(a.alive) a.face=lerpA(a.face,Math.atan2(dy,dx),0.2);
     const want=Math.min(WALK, d*0.45);          // ease out near the target
     a.spd += (want-a.spd)*0.22;                  // ease in
-    const nx=a.wx+Math.cos(a.face)*a.spd, ny=a.wy+Math.sin(a.face)*a.spd;  // props block movement
-    if(!blocked(nx,a.wy)) a.wx=nx; else a.spd*=0.5;   // wall-slide around tables/consoles
-    if(!blocked(a.wx,ny)) a.wy=ny;
+    a.wx+=Math.cos(a.face)*a.spd; a.wy+=Math.sin(a.face)*a.spd;
     a.moving=a.spd>0.7;
   } else { a.spd*=0.6; a.moving=false; }
-  if(a.via && Math.hypot(a.via.x-a.wx,a.via.y-a.wy)<DOORW*0.7) a.via=null; } }
+  if(a.via && Math.hypot(a.via.x-a.wx,a.via.y-a.wy)<22) a.via=null; } }
 // each agent gets a stable randomized "look" from its name hash — a parka'd researcher, not an eyeball
 const LOOKS={};
 function look(name){ if(LOOKS[name])return LOOKS[name]; let h=2166136261;
@@ -344,7 +325,7 @@ function drawAgents(t){
 }
 
 // ---- fx: kill flash, snow, vignette ----
-function pushKill(room){ const r=ROOMS[room]; if(!r)return; fx.push({x:r.x,y:r.y,t0:performance.now()}); }
+function pushKill(room){ const r=ROOMS[room]; if(!r||r.cx==null)return; fx.push({x:r.cx,y:r.cy,t0:performance.now()}); }
 function drawFx(){ const now=performance.now(); fx=fx.filter(f=>now-f.t0<900);
   for(const f of fx){ const k=(now-f.t0)/900, [sx,sy]=toScreen(f.x,f.y);
     ctx.save(); ctx.globalAlpha=(1-k)*0.8; ctx.strokeStyle="#ff4040"; ctx.lineWidth=(3+6*(1-k))*cam.z;
