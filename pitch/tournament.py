@@ -208,10 +208,12 @@ AI_SUFFIXES = [
 ]
 
 
-# Player surnames drawn from the great soccer nations — Brazil, Argentina, Spain, Italy, England,
-# France, Germany, Portugal, the Netherlands, Africa, East Asia, the Balkans, Scandinavia, Mexico
-# — plus Québécois names for the Montréal angle, and a handful of footballer x machine-learning
-# puns sprinkled in as star ringers. A big pool so each edition fields fresh, unique rosters.
+# Player surnames — recognisable names from the great soccer nations, so the Golden Boot reads like
+# real stars, plus a handful of footballer x machine-learning pun ringers. Deliberately sized: ~80
+# names against the 144 roster slots an edition fields means familiar names recur tournament to
+# tournament (you start following a Haaland or a Salah), with moderate repeats and ~15% of the pool
+# rotating out each edition — overlap without it ever being the exact same field. A few Québécois
+# names for the Montréal angle.
 NAME_POOL = [
     # footballer/ML pun ringers
     "Embappé",
@@ -223,37 +225,25 @@ NAME_POOL = [
     # Brazil / Portugal
     "Silva",
     "Santos",
-    "Souza",
-    "Oliveira",
     "Costa",
-    "Pereira",
-    "Ribeiro",
-    "Gomes",
     "Fernandes",
-    "Carvalho",
-    "Ferreira",
-    "Mendes",
     "Leão",
     "Cancelo",
+    "Pereira",
     # Argentina / Uruguay / Chile / Mexico
     "Fernández",
     "González",
     "Rodríguez",
     "Martínez",
-    "López",
     "Álvarez",
     "Suárez",
-    "Romero",
     "Cavani",
     "Forlán",
     "Jiménez",
     "Lozano",
     "Vela",
-    "Reyes",
-    "Vargas",
     # Spain
     "García",
-    "Hernández",
     "Torres",
     "Busquets",
     "Morata",
@@ -263,24 +253,18 @@ NAME_POOL = [
     # Italy
     "Rossi",
     "Esposito",
-    "Greco",
-    "Ferrari",
-    "Romano",
     "Verratti",
     "Barella",
     "Chiesa",
     # England
-    "Smith",
-    "Walker",
     "Kane",
     "Saka",
     "Foden",
     "Rice",
     "Stones",
     "Bellingham",
+    "Walker",
     # France
-    "Dubois",
-    "Moreau",
     "Giroud",
     "Kanté",
     "Dembélé",
@@ -288,8 +272,6 @@ NAME_POOL = [
     "Tchouaméni",
     # Germany
     "Müller",
-    "Schmidt",
-    "Wagner",
     "Werner",
     "Kroos",
     "Havertz",
@@ -301,12 +283,8 @@ NAME_POOL = [
     "Gakpo",
     "Frimpong",
     # Africa
-    "Okafor",
-    "Adeyemi",
-    "Mensah",
-    "Diallo",
     "Touré",
-    "Hassan",
+    "Adeyemi",
     "Mahrez",
     "Osimhen",
     "Koulibaly",
@@ -315,18 +293,13 @@ NAME_POOL = [
     "Hakimi",
     # East Asia
     "Tanaka",
-    "Yamamoto",
     "Nakamura",
-    "Sato",
     "Mitoma",
     "Son",
     "Kim",
     "Lee",
     "Park",
-    "Kang",
     # Balkans / Scandinavia
-    "Novak",
-    "Petrović",
     "Modrić",
     "Vlahović",
     "Haaland",
@@ -336,15 +309,6 @@ NAME_POOL = [
     "Isak",
     # Québec / Montréal
     "Tremblay",
-    "Gagné",
     "Roy",
-    "Bouchard",
-    "Lévesque",
-    "Côté",
-    "Gauthier",
-    "Pelletier",
-    "Bélanger",
-    "Lavoie",
-    "Bergeron",
-    "Fortin",
+    "Gagné",
 ]
