@@ -230,7 +230,7 @@ const STATION0=(()=>{
 })();
 
 let STATE={ round:1, tasksDone:7, tasksTotal:40, phase:"task", scores:{crew:0,thing:0}, agents:[] };
-let lastKillTick=-1, fx=[], ejecting=null, mouse={x:-1,y:-1}, userMoved=false, HILITE=null, meet=null, disco=null, killPulse=0;
+let lastKillTick=-1, fx=[], ejecting=null, mouse={x:-1,y:-1}, userMoved=false, HILITE=null, meet=null, disco=null, killPulse=0, meetWasActive=false;
 let curPhase='', phaseT0=0;  // phaseT0 stamps phase changes so intro/end can fade in
 let thoughtOf={}, thoughtHist={}, lastThought={}, downC=null, tapC=null;  // ambient thoughts + click-to-inspect
 const EJECT_MS=3600;  // how long the ejected researcher takes to trudge off into the storm
@@ -939,8 +939,11 @@ function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.statio
   STATE.round=s.round; STATE.tasksDone=s.tasksDone; STATE.tasksTotal=s.tasksTotal; STATE.phase=s.phase;
   STATE.winner=s.winner; STATE.win_by=s.win_by; STATE.scores=s.scores; STATE.meeting=s.meeting; applyAgents(s.agents||[]);
   if(s.phase==='intro') removedBodies.clear();  // new game → bodies can appear again
-  // once a body has sat through a meeting it's recovered: drop it from the station for the rest of the game
-  if(['meeting','vote','ejection'].includes(s.phase)) for(const a of STATE.agents) if(!a.alive) removedBodies.add(a.id);
+  // recover bodies only when the meeting is OVER (not while it runs — the body must stay visible for the
+  // "body found" discovery zoom AND for the table-centre display). On the meeting→task edge, drop the dead.
+  const meetingNow=['meeting','vote','ejection'].includes(s.phase);
+  if(meetWasActive && !meetingNow) for(const a of STATE.agents) if(!a.alive) removedBodies.add(a.id);
+  meetWasActive=meetingNow;
   if(s.lastKill && s.lastKill.tick!==lastKillTick){ lastKillTick=s.lastKill.tick;
     pushKill(s.lastKill.room, STATE.agents.find(a=>a.name===s.lastKill.victim)); killPulse=performance.now(); }
   updateMeet(s);
