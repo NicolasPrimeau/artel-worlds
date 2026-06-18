@@ -1,42 +1,14 @@
 from __future__ import annotations
 
-import os
 import re
 
 from alibi import llm
 from alibi.engine import HUB, MAX_TICKS, Game, Meeting, new_game
 
-# The Thing has the hard job — sustain a lie, fake a checkable alibi, steer the vote — so it gets the
-# smartest reasoner. The crew each get a DIFFERENT capable-but-lighter model: on Groq every model is its
-# own rate-limit bucket, so one model per agent means a meeting's calls barely contend, and a mesh of
-# heterogeneous LLMs reasoning together (and fighting groupthink) is exactly what Artel is for.
-THING_MODEL = os.environ.get("ALIBI_THING_MODEL", "openai/gpt-oss-120b")
-DEFAULT_CREW_POOL = [
-    "llama-3.3-70b-versatile",
-    "meta-llama/llama-4-scout-17b-16e-instruct",
-    "qwen/qwen3-32b",
-    "qwen/qwen3.6-27b",
-    "openai/gpt-oss-20b",
-    "llama-3.1-8b-instant",
-]
-CREW_POOL = [
-    m for m in os.environ.get("ALIBI_CREW_POOL", ",".join(DEFAULT_CREW_POOL)).split(",") if m
-]
-
-
-def assign_models(game: Game) -> None:
-    # one distinct model per crew (cycled if the crew outnumbers the pool); the Thing gets the best.
-    crew_i = 0
-    for a in game.agents:
-        if a.impostor:
-            a.model = THING_MODEL
-        else:
-            a.model = CREW_POOL[crew_i % len(CREW_POOL)]
-            crew_i += 1
-
-
-def _model(agent) -> str:
-    return agent.model or (THING_MODEL if agent.impostor else CREW_POOL[0])
+# Agents are decoupled from any specific model: every line and every vote is a standardized request to
+# the llm router, which round-robins it across a heterogeneous pool of free-tier models and steps over
+# whichever one is rate-limited right now. A mesh of different LLMs reasoning together (and fighting
+# groupthink) is exactly what Artel is for — and round-robin means no single tier's RPM is the wall.
 
 
 # The meeting, as an actual conversation. Each survivor speaks from its OWN partial log — where it went,
@@ -225,10 +197,7 @@ async def _agent_act(game, mt, transcript, dms, a) -> dict:
         f"Survivors: {', '.join(others)}.\n"
         'Reply ONLY as JSON: {"act":"say|whisper|pass","to":"<name, only if whisper>","text":"<one short line>"}'
     )
-    m = _model(a)
-    out = await llm.complete(
-        sys, user + ("\n/no_think" if "qwen" in m else ""), m, temperature=0.85, timeout=10.0
-    )
+    out = await llm.complete(sys, user, temperature=0.85, timeout=10.0)
     ok = bool(
         out
     )  # False = the call failed/timed out (rate limited) — the meeting bails on a run of these
@@ -273,8 +242,7 @@ async def _vote_round(game, mt, transcript, dms=None, on_item=None) -> dict:
             f"{guidance}\nChoose exactly one of: {', '.join(names)}, or skip. "
             'Reply ONLY as JSON: {"vote": "<name or skip>", "reason": "<a few words>"}'
         )
-        m = _model(a)
-        jobs.append((sys, user + ("\n/no_think" if "qwen" in m else ""), m))
+        jobs.append((sys, user))
     outs = await llm.complete_many(jobs, temperature=0.3)
     by_name = {a.name.lower(): a.id for a in living}
     votes: dict = {}
@@ -376,7 +344,6 @@ async def run_canned_meeting(game: Game, mt: Meeting, decide, on_item=None) -> d
 
 async def play_llm(seed: int, n=6, impostors=1) -> Game:
     g = new_game(seed, n, impostors)
-    assign_models(g)
     while g.winner is None and g.tick < MAX_TICKS:
         mt = g.step()
         if mt is not None:

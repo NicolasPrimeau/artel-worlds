@@ -1,91 +1,66 @@
 from __future__ import annotations
 
-import asyncio
-import datetime
-import json
 import os
-import re
 
-import httpx
+from llmrouter import Request, Router, build_models, parse_json
 
-# The meeting's LLM. Same shape as pitch: an OpenAI-compatible chat endpoint (Groq by default) with an
-# optional fallback. Off unless a key is configured — with no key the world falls back to the
-# deterministic decider. Many agents speak per meeting, so calls are issued concurrently.
+# Alibi's binding to the shared llmrouter. The generic Router owns round-robin, 429-skip, capability
+# filtering and telemetry; this module just resolves Alibi's keys/pool from the environment and exposes
+# the small functional surface the meeting code already calls. Alibi doesn't use tool calling — it parses
+# JSON out of plain completions — so requests leave requires_tools=False.
 
-_GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+_KEYS = {
+    "groq": os.environ.get("ALIBI_LLM_KEY", ""),
+    "cerebras": os.environ.get("ALIBI_CEREBRAS_KEY", ""),
+    "sambanova": os.environ.get("ALIBI_SAMBANOVA_KEY", ""),
+    "nvidia": os.environ.get("ALIBI_NVIDIA_KEY", ""),
+    "gemini": os.environ.get("ALIBI_LLM2_KEY", ""),
+}
 
-_KEY = os.environ.get("ALIBI_LLM_KEY", "")
-_URL = os.environ.get("ALIBI_LLM_URL", "https://api.groq.com/openai/v1/chat/completions")
-MODEL = os.environ.get("ALIBI_MODEL", "openai/gpt-oss-120b")
-_KEY2 = os.environ.get("ALIBI_LLM2_KEY", "")
-_URL2 = os.environ.get("ALIBI_LLM2_URL", _GEMINI_URL)
-MODEL2 = os.environ.get("ALIBI_MODEL2", "gemini-2.0-flash")
-
-# Many agents speak per meeting; firing them all at once trips the provider's rate limit and calls come
-# back empty. Cap in-flight calls and retry 429s with backoff so a meeting never silently loses votes.
-_CONCURRENCY = int(os.environ.get("ALIBI_CONCURRENCY", "8"))
-_RETRIES = 2  # fail fast on rate limits — a meeting must never crawl on backoff (it bails instead)
-_sem: asyncio.Semaphore | None = None
-
-# token + cost ledger for the ops cost metric. Groq's gpt-oss is cheap (often free tier), so this is a
-# small estimate using a single blended rate; the point is a real, non-zero spend figure on the page.
-_COST_IN = float(os.environ.get("ALIBI_COST_IN_PER_M", "0.15")) / 1e6
-_COST_OUT = float(os.environ.get("ALIBI_COST_OUT_PER_M", "0.60")) / 1e6
-SPEND: dict = {"usd": 0.0, "in": 0, "out": 0, "calls": 0, "days": {}}
-
-
-def _account(usage: dict) -> None:
-    pin = int(usage.get("prompt_tokens", 0) or 0)
-    pout = int(usage.get("completion_tokens", 0) or 0)
-    cost = pin * _COST_IN + pout * _COST_OUT
-    SPEND["usd"] = round(SPEND["usd"] + cost, 6)
-    SPEND["in"] += pin
-    SPEND["out"] += pout
-    SPEND["calls"] += 1
-    day = datetime.date.today().isoformat()
-    SPEND["days"][day] = round(SPEND["days"].get(day, 0.0) + cost, 6)
-    for old in sorted(SPEND["days"])[:-30]:
-        del SPEND["days"][old]
+# the pool the router cycles through, each entry "provider:model". The default spreads across every free
+# tier that has a key so concurrent calls land in independent rate buckets. Override with ALIBI_POOL.
+_DEFAULT_POOL = [
+    "groq:openai/gpt-oss-120b",
+    "groq:llama-3.3-70b-versatile",
+    "groq:llama-3.1-8b-instant",
+    "groq:qwen/qwen3-32b",
+    "groq:openai/gpt-oss-20b",
+    "groq:meta-llama/llama-4-scout-17b-16e-instruct",
+    "cerebras:gpt-oss-120b",
+    "cerebras:zai-glm-4.7",
+    "sambanova:gpt-oss-120b",
+    "sambanova:Meta-Llama-3.3-70B-Instruct",
+    "nvidia:meta/llama-3.3-70b-instruct",
+    "gemini:gemini-2.5-flash",
+    "gemini:gemini-flash-lite-latest",
+]
+_POOL = [s for s in os.environ.get("ALIBI_POOL", ",".join(_DEFAULT_POOL)).split(",") if s.strip()]
 
 
-def _gate() -> asyncio.Semaphore:
-    global _sem
-    if _sem is None:
-        _sem = asyncio.Semaphore(_CONCURRENCY)
-    return _sem
+def _shape(user: str, model: str) -> str:
+    # Qwen3 reasons unless told not to; centralise that quirk in the router rather than the agent code.
+    return user + ("\n/no_think" if "qwen" in model.lower() else "")
+
+
+ROUTER = Router(
+    build_models(_POOL, _KEYS),
+    concurrency=int(os.environ.get("ALIBI_CONCURRENCY", "8")),
+    cooldown=float(os.environ.get("ALIBI_COOLDOWN", "8.0")),
+    cost_in_per_m=float(os.environ.get("ALIBI_COST_IN_PER_M", "0.15")),
+    cost_out_per_m=float(os.environ.get("ALIBI_COST_OUT_PER_M", "0.60")),
+    shaper=_shape,
+)
+
+SPEND = ROUTER.spend  # the server persists/reads this dict; same object, so it stays in sync
+POOL_DESC = ROUTER.describe()
 
 
 def enabled() -> bool:
-    return bool(_KEY or _KEY2)
+    return ROUTER.enabled()
 
 
-async def _ask(h, key, url, model, system, user, temperature):
-    if not key:
-        return ""
-    r = await h.post(
-        url,
-        headers={"Authorization": f"Bearer {key}"},
-        json={
-            "model": model,
-            "temperature": temperature,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-        },
-    )
-    if r.status_code == 429:
-        raise _RateLimited(float(r.headers.get("retry-after", "0") or 0))
-    if r.status_code >= 300:
-        raise httpx.HTTPStatusError("bad status", request=r.request, response=r)
-    data = r.json()
-    _account(data.get("usage") or {})
-    return data["choices"][0]["message"]["content"]
-
-
-class _RateLimited(Exception):
-    def __init__(self, retry_after: float):
-        self.retry_after = retry_after
+def metrics() -> list[dict]:
+    return ROUTER.metrics()
 
 
 async def complete(
@@ -95,37 +70,25 @@ async def complete(
     temperature: float = 0.7,
     timeout: float = 16.0,
 ) -> str:
-    primary = model or MODEL  # per-agent override (a distinct model per role/crew member)
-    # chain: the agent's model → the default Groq model (covers a bad/deprecated id) → the fallback provider
-    chain = [(_KEY, _URL, primary), (_KEY, _URL, MODEL), (_KEY2, _URL2, MODEL2)]
-    async with _gate(), httpx.AsyncClient(timeout=timeout) as h:
-        for attempt in range(_RETRIES):
-            for key, url, mdl in chain:
-                try:
-                    out = await _ask(h, key, url, mdl, system, user, temperature)
-                    if out:
-                        return out
-                except _RateLimited as e:
-                    await asyncio.sleep(
-                        min(max(e.retry_after, 0.5 * (2**attempt)), 3.0)
-                    )  # capped backoff
-                    break  # back off, then retry the whole provider chain
-                except Exception:
-                    continue
-    return ""
+    # model is ignored — the router owns model choice (agents are decoupled). Kept for call-site compat.
+    return await ROUTER.complete(
+        Request(system=system, user=user, temperature=temperature, timeout=timeout)
+    )
 
 
-async def complete_many(jobs: list[tuple[str, str, str]], temperature: float = 0.7) -> list[str]:
-    # jobs = [(system, user, model), ...]; the semaphore in complete() bounds real concurrency
-    return await asyncio.gather(*(complete(s, u, m, temperature) for s, u, m in jobs))
+async def complete_many(jobs: list[tuple[str, str]], temperature: float = 0.7) -> list[str]:
+    return await ROUTER.complete_many(
+        [Request(system=s, user=u, temperature=temperature) for s, u in jobs]
+    )
 
 
-def parse_json(text: str) -> dict | None:
-    m = re.search(r"\{.*\}", text or "", re.S)
-    if not m:
-        return None
-    try:
-        out = json.loads(m.group(0))
-        return out if isinstance(out, dict) else None
-    except Exception:
-        return None
+__all__ = [
+    "POOL_DESC",
+    "ROUTER",
+    "SPEND",
+    "complete",
+    "complete_many",
+    "enabled",
+    "metrics",
+    "parse_json",
+]

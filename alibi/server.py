@@ -14,9 +14,6 @@ from fastapi.responses import FileResponse, JSONResponse
 from . import artel, llm
 from .engine import MAX_TICKS, new_game
 from .meeting import (
-    CREW_POOL,
-    THING_MODEL,
-    assign_models,
     run_canned_meeting,
     run_llm_meeting,
 )
@@ -105,7 +102,6 @@ class Alibi:
 
     def _new_game(self) -> None:
         self.g = new_game(_rng.randint(1, 2**31 - 1), n=N_AGENTS, impostors=N_IMPOSTORS)
-        assign_models(self.g)
         self.tasks_total = self.g.tasks_goal
         self.phase = "task"
         self.meeting = None
@@ -170,7 +166,6 @@ class Alibi:
             d = {
                 "id": a.id,
                 "name": a.name,
-                "model": a.model,
                 "room": a.room,
                 "alive": a.alive,
                 "tasking": a.tasking,
@@ -187,10 +182,7 @@ class Alibi:
                 "room": mt.room,
                 "reporter": g.by_id(mt.reporter).name if mt.reporter >= 0 else None,
                 "victim": g.by_id(mt.victim).name if mt.victim is not None else None,
-                "transcript": [
-                    {"name": g.by_id(s).name, "model": g.by_id(s).model, "text": t}
-                    for s, t in mt.transcript
-                ],
+                "transcript": [{"name": g.by_id(s).name, "text": t} for s, t in mt.transcript],
                 "votes": {},
                 "ejected": None,
                 "ejected_was_thing": None,
@@ -318,6 +310,9 @@ async def _run_meeting(mt) -> None:
     G.revealed = True  # the airlock reveal
     await _broadcast()
     await asyncio.sleep(EJECT_REVEAL)
+    if G.g.winner is None:  # meeting's over and the game goes on → back to the station
+        G.phase = "task"
+        await _broadcast()
 
 
 _TASK_VERBS = (
@@ -418,7 +413,8 @@ async def debug():
         "paused": G.paused,
         "viewers": len(G.viewers),
         "live": bool(G.viewers) and llm.enabled(),
-        "model": f"{THING_MODEL} (Thing) + {len(CREW_POOL)}-model crew mesh",
+        "model": llm.POOL_DESC,
+        "router": llm.metrics(),
         "spend": round(llm.SPEND["usd"], 5),
         "cap": None,
         "spend_days": dict(llm.SPEND["days"]),
