@@ -21,8 +21,9 @@
   .pill{display:flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--line);
     border-radius:999px;padding:5px 10px;backdrop-filter:blur(8px);font-size:12px}
   .pill b{font-variant-numeric:tabular-nums}
-  .taskbar{width:110px;height:7px;border-radius:999px;background:#16213a;overflow:hidden;border:1px solid var(--line)}
-  .taskbar i{display:block;height:100%;background:linear-gradient(90deg,#2fa1ff,#39d98a);transition:width .4s}
+  .taskbar{width:84px;height:8px;border-radius:999px;background:#16213a;overflow:hidden;border:1px solid var(--line)}
+  .taskbar i{display:block;height:100%;background:linear-gradient(90deg,#2fa1ff,#39d98a);transition:width .4s;min-width:2px}
+  #hud-tasksn{color:var(--good);font-weight:800;font-variant-numeric:tabular-nums}
   .spacer{flex:1}
   .hint{color:var(--dim);font-size:11px}
   .roster{position:fixed;left:12px;top:60px;width:172px;z-index:9;display:flex;flex-direction:column;gap:4px}
@@ -136,7 +137,7 @@
 <div id="stage"><canvas id="map"></canvas></div>
 <div class="hud">
   <div class="brand">VERGLAS <small>· OUTPOST <b id="hud-outpost">31</b></small></div>
-  <div class="pill"><span class="plabel">Tasks</span> <div class="taskbar"><i id="hud-tasks" style="width:30%"></i></div></div>
+  <div class="pill" title="The crew win the instant every task is done — the Cold has to thin them out first"><span class="plabel">Tasks</span> <div class="taskbar"><i id="hud-tasks" style="width:0%"></i></div> <b id="hud-tasksn">0/40</b></div>
   <div class="pill">Alive <b id="hud-alive">10</b>/<b id="hud-total">10</b></div>
   <div class="spacer"></div>
   <div class="pill"><span id="conn" class="live">live</span></div>
@@ -942,6 +943,7 @@ function drawEnd(t){
 }
 
 function syncHud(){ $('hud-tasks').style.width=(100*STATE.tasksDone/Math.max(1,STATE.tasksTotal))+'%';
+  $('hud-tasksn').textContent=(STATE.tasksDone||0)+'/'+(STATE.tasksTotal||0);
   $('hud-alive').textContent=STATE.agents.filter(a=>a.alive).length; $('hud-total').textContent=STATE.agents.length;
   const ros=$('roster'); ros.innerHTML=''; for(const a of STATE.agents){ const d=document.createElement('div'); d.className='who'+(a.alive?'':' dead')+(a.id===HILITE?' sel':'');
     d.innerHTML=`<span class="dot" style="color:${COLORS[a.c%COLORS.length]};background:${COLORS[a.c%COLORS.length]}"></span><span><div class="nm">${a.name}</div></span>`;
