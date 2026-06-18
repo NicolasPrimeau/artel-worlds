@@ -202,8 +202,8 @@ NAMES = [
     "LeCunvolution",  # Yann LeCun × convolution
     "Ngram",  # Andrew Ng × n-gram
     "Hintsight",  # Geoffrey Hinton × hindsight
-    "Schmidhubris",  # Jürgen Schmidhuber × hubris
-    "Hassabias",  # Demis Hassabis × bias
+    "Abbeelation",  # Pieter Abbeel × ablation
+    "Hassafold",  # Demis Hassabis × AlphaFold
     "Mikolovec",  # Tomas Mikolov × word2vec
     "Vapnikernel",  # Vladimir Vapnik × (SVM) kernel
     "Rosenblattron",  # Frank Rosenblatt × perceptron
@@ -212,11 +212,11 @@ NAMES = [
     "Pearlprior",  # Judea Pearl × (Bayesian) prior
     "Suttonbarto",  # Richard Sutton × Barto (RL)
     "Russelu",  # Stuart Russell × ReLU
-    "Hebbias",  # Donald Hebb × bias
+    "Silvermax",  # David Silver × softmax
     "Samueloss",  # Arthur Samuel × loss
     "Sutskeverflow",  # Ilya Sutskever × TensorFlow
     "Karpathfinder",  # Andrej Karpathy × pathfinder
-    "Bengioverfit",  # Yoshua Bengio × overfit
+    "Bengradient",  # Yoshua Bengio × gradient
     "Goodfellow",  # Ian Goodfellow × GAN (the adversary who's a "good fellow")
     "Halturin",  # Alan Turing × the halting problem
     "Norvigation",  # Peter Norvig × navigation
