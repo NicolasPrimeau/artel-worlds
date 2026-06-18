@@ -792,7 +792,7 @@ function drawMeeting(t){
       ctx.strokeStyle="rgba(190,150,245,.6)"; ctx.lineWidth=1*DPR; rr(mx-30*DPR,my-9*DPR,60*DPR,18*DPR,9*DPR); ctx.stroke();
       ctx.fillStyle="rgba(216,196,255,.96)"; ctx.font=`700 ${10*DPR}px Inter`; ctx.textAlign="center"; ctx.textBaseline="middle";
       ctx.fillText("whisper", mx, my); ctx.restore(); } }
-  // airlock reveal — after the ejected is walked out, reveal what they were
+  // storm-door reveal — after the ejected is walked out, reveal what they were
   const mm=STATE.meeting;
   if(mm && mm.ejected && mm.ejected_was_thing!=null){ const th=mm.ejected_was_thing, cyR=cy;
     ctx.fillStyle="rgba(6,10,20,.66)"; ctx.fillRect(0,cyR-40*DPR,aw,80*DPR);
@@ -909,7 +909,7 @@ function renderChat(s){ const chat=$('chat'), inMeet=['meeting','vote','ejection
     if(s.phase==='ejection'){ const tally=Object.entries(m.votes||{}).map(([a,b])=>`${a}→${b}`).join(' · ');
       v.style.display='';
       if(m.ejected){
-        if(m.ejected_was_thing==null) v.innerHTML=`<div class="big">${m.ejected} is ejected…</div><div class="tally">the airlock cycles open</div>`;
+        if(m.ejected_was_thing==null) v.innerHTML=`<div class="big">${m.ejected} is ejected…</div><div class="tally">the storm door swings open</div>`;
         else { const th=m.ejected_was_thing; v.innerHTML=`<div class="big ${th?'thing':'clear'}">${m.ejected} ${th?'WAS the Cold':'was NOT the Cold'}</div><div class="tally">${tally}</div>`; }
         if(!ejecting||ejecting.name!==m.ejected) ejecting={name:m.ejected,t0:performance.now()};
       } else v.innerHTML=`<div class="big">No one is ejected</div><div class="tally">${tally}</div>`;

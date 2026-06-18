@@ -33,7 +33,7 @@ PRE_VOTE = float(os.environ.get("ALIBI_PRE_VOTE", "3.5"))  # the table settles b
 VOTE_DELAY = float(os.environ.get("ALIBI_VOTE_DELAY", "1.9"))  # seconds between revealed votes
 WHISPER_DELAY = 1.6  # how long a private-whisper indicator flashes before play moves on
 EJECT_WALK = (
-    4.0  # the ejected researcher is walked into the airlock — BEFORE we reveal what they were
+    4.0  # the ejected researcher is walked out into the storm — BEFORE we reveal what they were
 )
 EJECT_REVEAL = 4.0  # then hold on the human/Cold reveal
 GAMEOVER_LINGER = 14.0  # hold on the result screen before the next game (esp. a sudden task win)
@@ -331,7 +331,7 @@ async def _run_meeting(mt) -> None:
     await _broadcast()
     if mt.ejected is not None and G.viewers:  # skip the suspense beats if nobody's watching
         await asyncio.sleep(EJECT_WALK)
-    G.revealed = True  # the airlock reveal
+    G.revealed = True  # the storm-door reveal
     await _broadcast()
     if G.viewers:
         await asyncio.sleep(EJECT_REVEAL)
