@@ -30,7 +30,9 @@ STATIC = Path(__file__).parent / "static"
 TASK_TICK = float(env("TICK_INTERVAL", "4.2"))  # min seconds per task-phase tick
 STMT_DELAY = float(env("STMT_DELAY", "4.6"))  # seconds each spoken line holds
 PRE_VOTE = float(env("PRE_VOTE", "3.5"))  # the table settles before the vote opens
-DISCO_HOLD = float(env("DISCO_HOLD", "5.2"))  # hold for the client's "body found" beat before the talk starts
+DISCO_HOLD = float(
+    env("DISCO_HOLD", "5.2")
+)  # hold for the client's "body found" beat before the talk starts
 VOTE_DELAY = float(env("VOTE_DELAY", "1.9"))  # seconds between revealed votes
 WHISPER_DELAY = 1.6  # how long a private-whisper indicator flashes before play moves on
 EJECT_WALK = (
@@ -296,7 +298,9 @@ async def _run_meeting(mt) -> None:
     G.whisper = None
     G.meeting = mt
     await _broadcast()
-    if mt.victim is not None and G.viewers:  # let the client's "body found" beat play before the talk
+    if (
+        mt.victim is not None and G.viewers
+    ):  # let the client's "body found" beat play before the talk
         await asyncio.sleep(DISCO_HOLD)
 
     async def on_item(kind: str, agent_id: int, payload) -> None:
