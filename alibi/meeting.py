@@ -155,34 +155,61 @@ def _trim(text: str) -> str:
     return text[:150]
 
 
-async def _statement_round(game, mt, transcript, opening: bool, on_item=None):
-    # generate the whole round at once (one Groq call per agent, spread across rate buckets), then
-    # REVEAL the lines one at a time — the caller paces the reveal so the table talks, not data-dumps.
-    living = game.living()
-    public = _public(game, mt)
-    jobs = []
-    for a in living:
-        sys = (SYS_THING if a.impostor else SYS_CREW).format(name=a.name)
-        convo = _transcript_str(game, transcript)
-        ask = (
-            "Your account in ONE short line: where were you, who can vouch, or who you suspect."
-            if opening
-            else "ONE short line ONLY if you have something to add or must defend yourself."
-        )
-        user = (
-            f"{public}\n\nWhat you know:\n{_brief(game, mt, a)}\n\nMeeting so far:\n{convo or '(nobody has spoken yet)'}\n\n"
-            f"{ask} You don't have to speak — reply exactly (pass) to stay quiet."
-        )
-        m = _model(a)
-        jobs.append((sys, user + ("\n/no_think" if "qwen" in m else ""), m))
-    outs = await llm.complete_many(jobs, temperature=0.8)
-    for a, text in zip(living, outs):
-        text = _trim(text)
-        if not text or _is_pass(text):  # an agent may sit a round out
-            continue
-        transcript.append((a.id, text))
-        if on_item:
-            await on_item("statement", a.id, text)
+_DANGLERS = {
+    "with",
+    "and",
+    "the",
+    "to",
+    "at",
+    "in",
+    "of",
+    "a",
+    "an",
+    "but",
+    "or",
+    "for",
+    "that",
+    "was",
+    "is",
+    "near",
+    "my",
+    "his",
+    "her",
+    "their",
+    "by",
+    "from",
+    "on",
+}
+
+
+def _looks_truncated(text: str) -> bool:
+    words = text.rstrip(".!?").split()
+    return bool(words) and (text.rstrip().endswith(",") or words[-1].lower() in _DANGLERS)
+
+
+async def _one_statement(game, mt, transcript, a) -> str:
+    # ONE turn in the conversation: the agent sees EVERYTHING said so far and reacts — backs someone,
+    # accuses a shaky story, defends itself, or lies. Generated on its turn (not in parallel) so it's a
+    # real back-and-forth, not nine alibis read out in a row.
+    sys = (SYS_THING if a.impostor else SYS_CREW).format(name=a.name)
+    convo = _transcript_str(game, transcript) or "(you're the first to speak)"
+    spoken = any(sid == a.id for sid, _ in transcript)
+    nudge = (
+        "Respond to what's been said: back someone, ACCUSE whoever's story doesn't add up, point out a "
+        "contradiction, or defend yourself if you were named. Don't just repeat an alibi already given."
+        if spoken or transcript
+        else "Give your account: where you were and who can vouch for you."
+    )
+    user = (
+        f"{_public(game, mt)}\n\nWhat you know:\n{_brief(game, mt, a)}\n\nThe meeting so far:\n{convo}\n\n"
+        f"It's your turn. {nudge} ONE short line, name names. You may stay silent — reply exactly (pass)."
+    )
+    m = _model(a)
+    out = await llm.complete(
+        sys, user + ("\n/no_think" if "qwen" in m else ""), m, temperature=0.85, timeout=14.0
+    )
+    text = _trim(out)
+    return "" if (not text or _is_pass(text) or _looks_truncated(text)) else text
 
 
 async def _vote_round(game, mt, transcript, on_item=None) -> dict:
@@ -222,13 +249,24 @@ async def _vote_round(game, mt, transcript, on_item=None) -> dict:
 
 
 async def run_llm_meeting(game: Game, mt: Meeting, on_item=None) -> dict:
-    # on_item("statement"|"vote", agent_id, payload) fires per LINE/VOTE; the caller broadcasts + paces
-    # the reveal and mirrors each onto Artel. ROUNDS gives a real back-and-forth, not a one-shot.
+    # the deliberation is a turn-by-turn CONVERSATION: each living agent, in turn, sees the whole
+    # transcript and replies (or passes). ROUNDS passes give a real back-and-forth — accusations,
+    # defences, lies — not nine alibis at once. Each line is revealed + paced by the caller.
     transcript: list = []
     mt.transcript = transcript
     mt.votes = {}
-    for r in range(ROUNDS):
-        await _statement_round(game, mt, transcript, opening=(r == 0), on_item=on_item)
+    order = game.living()[:]
+    for _ in range(ROUNDS):
+        game.rng.shuffle(order)  # vary who opens each pass
+        for a in order:
+            if not a.alive:
+                continue
+            text = await _one_statement(game, mt, transcript, a)
+            if not text:
+                continue  # the agent passed (or its line was unusable)
+            transcript.append((a.id, text))
+            if on_item:
+                await on_item("statement", a.id, text)
     if on_item:
         await on_item("settle", -1, None)  # deliberation done — the table settles before the vote
     votes = await _vote_round(game, mt, transcript, on_item=on_item)
