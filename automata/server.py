@@ -722,10 +722,11 @@ async def hub_status():
     # the public hub badges reflect REAL state (live / paused / offline). Proxied server-side so
     # the landing page reads phalanx/watchtower paused flags without CORS.
     async with httpx.AsyncClient() as client:
-        ph, wt, pi = await asyncio.gather(
+        ph, wt, pi, al = await asyncio.gather(
             _fetch_json(client, f"{PHALANX_DEBUG}/debug"),
             _fetch_json(client, f"{WATCHTOWER_DEBUG}/debug"),
             _fetch_json(client, f"{PITCH_DEBUG}/debug"),
+            _fetch_json(client, f"{ALIBI_DEBUG}/debug"),
         )
     return JSONResponse(
         {
@@ -733,6 +734,7 @@ async def hub_status():
             "phalanx": {"paused": bool((ph or {}).get("paused")), "up": ph is not None},
             "watchtower": {"paused": bool((wt or {}).get("paused")), "up": wt is not None},
             "pitch": {"paused": False, "up": pi is not None},
+            "alibi": {"paused": bool((al or {}).get("paused")), "up": al is not None},
         },
         headers={"Cache-Control": "public, max-age=15"},
     )
@@ -797,7 +799,7 @@ _UI_SECRET = (os.environ.get("WORLDS_UI_SECRET") or UI_PASSWORD or "artel-worlds
 _UI_TTL = 7 * 24 * 3600
 PHALANX_DEBUG = os.environ.get("PHALANX_DEBUG_URL", "https://phalanx.artel.run").rstrip("/")
 PITCH_DEBUG = os.environ.get("PITCH_DEBUG_URL", "https://pitch.artel.run").rstrip("/")
-ALIBI_DEBUG = os.environ.get("ALIBI_DEBUG_URL", "https://alibi.artel.run").rstrip("/")
+ALIBI_DEBUG = os.environ.get("ALIBI_DEBUG_URL", "https://verglas.artel.run").rstrip("/")
 WATCHTOWER_DEBUG = os.environ.get("WATCHTOWER_DEBUG_URL", "https://watchtower.artel.run").rstrip(
     "/"
 )
@@ -1122,7 +1124,7 @@ async def ui_stats(request: Request):
                 "key": "alibi",
                 "name": "Verglas",
                 "world": 5,
-                "url": "https://alibi.artel.run",
+                "url": "https://verglas.artel.run",
                 "status": "live" if al.get("live") else "idle",
                 "paused": al.get("paused", False),
                 "model": al.get("model"),
@@ -1147,7 +1149,7 @@ async def ui_stats(request: Request):
                 "name": "Verglas",
                 "world": 5,
                 "status": "unreachable",
-                "url": "https://alibi.artel.run",
+                "url": "https://verglas.artel.run",
                 "spend": None,
                 "cap": None,
             }
