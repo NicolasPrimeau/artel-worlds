@@ -142,15 +142,20 @@
   /* phones: compact the HUD so nothing clips off the right edge */
   @media (max-width:540px){ .hud{gap:6px;padding:0 8px;height:48px} .pill{padding:4px 7px;font-size:11px}
     .taskbar{width:52px} .plabel{display:none} #conn{font-size:0} #conn::before{width:9px;height:9px} }
-  /* narrow phones: drop the outpost tag + tighten the wordmark so Tasks/Alive/LIVE never clip */
-  @media (max-width:480px){ .brand small{display:none} .brand{letter-spacing:.08em;font-size:13px} }
+  /* narrow phones: keep "OUTPOST N" beside the wordmark, but slim everything (labels off, tighter pills)
+     so Tasks/Alive/LIVE still fit on one line */
+  @media (max-width:480px){ .brand{letter-spacing:.05em;font-size:13px} .brand small{letter-spacing:.02em;margin-left:1px}
+    .pill{padding:3px 6px} .hud{gap:5px} .taskbar{width:42px} }
+  /* tiny phones: only here does the outpost yield, to guarantee nothing clips */
+  @media (max-width:359px){ .brand small{display:none} }
   @media (max-width:540px){ #inspect{width:198px;top:52px;right:8px;max-height:52vh} }
-  /* phone portrait: chat is a bottom sheet, roster a slim scrollable strip up top-left */
+  /* phone portrait: chat is a bottom sheet; the roster WRAPS into a compact chip grid (all players
+     visible at once — no awkward sideways scroll), with a vertical scroll only if it ever overflows */
   @media (orientation:portrait) and (max-width:760px){
     #chat{ left:8px; right:8px; width:auto; max-width:none; top:auto; bottom:8px; height:42vh; }
-    .roster{ top:58px; width:auto; left:8px; right:8px; flex-direction:row; overflow-x:auto; gap:6px;
-      padding-bottom:2px; -webkit-overflow-scrolling:touch; }
-    .who{ flex:0 0 auto; } .who .md{ display:none; }
+    .roster{ top:54px; width:auto; left:8px; right:8px; flex-flow:row wrap; gap:5px;
+      max-height:30vh; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+    .who{ flex:0 0 auto; padding:3px 9px 3px 6px; } .who .md{ display:none; } .who .nm{ font-size:11px; }
   }
   /* phone landscape: chat docks right (narrow), roster left, both short */
   @media (orientation:landscape) and (max-height:560px){
@@ -165,7 +170,7 @@
 <div class="hud">
   <div class="brand">VERGLAS <small>· OUTPOST <b id="hud-outpost">31</b></small></div>
   <div class="pill" title="Tasks restore the outpost — power, heat, comms. Finish them all and Verglas is lit, warm and sealed: conditions the Cold can't survive. It has to thin the crew before they get there."><span class="plabel">Tasks</span> <div class="taskbar"><i id="hud-tasks" style="width:0%"></i></div> <b id="hud-tasksn">0/40</b></div>
-  <div class="pill">Alive <b id="hud-alive">10</b>/<b id="hud-total">10</b></div>
+  <div class="pill"><span class="plabel">Alive</span> <b id="hud-alive">10</b>/<b id="hud-total">10</b></div>
   <div class="spacer"></div>
   <div class="pill"><span id="conn" class="live">live</span></div>
 </div>
