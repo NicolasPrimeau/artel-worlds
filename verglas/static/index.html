@@ -234,7 +234,7 @@ let lastKillTick=-1, fx=[], ejecting=null, mouse={x:-1,y:-1}, userMoved=false, H
 let curPhase='', phaseT0=0;  // phaseT0 stamps phase changes so intro/end can fade in
 let thoughtOf={}, thoughtHist={}, lastThought={}, downC=null, tapC=null;  // ambient thoughts + click-to-inspect
 const EJECT_MS=3600;  // how long the ejected researcher takes to trudge off into the storm
-const DISCO_MS=2600;  // the "body found" beat — zoom into the room before cutting to the meeting
+const DISCO_MIN=5000, DISCO_MAX=10000;  // the "body found" beat: hold >=5s AND until the crew gather, capped
 (function seed(){ const names=["Softmaxwell","Overfitz","Hallucinov","Frostbyte","ReLuther","Quantz","Attenborough","Embeddington","Adamson","Tokarev"];
   const rk=Object.keys(STATION0.rects);
   STATE.agents=names.map((n,i)=>({id:i,name:n,model:"gpt-oss-120b",room:rk[i%rk.length],alive:i!==5,task:i%3===0,body:i===5,c:i})); })();
@@ -528,10 +528,16 @@ function look(name){ if(LOOKS[name])return LOOKS[name]; let h=2166136261;
 // the name hash. Reads as a tidy avatar at the meeting table and as a small dot on the map.
 function figure(sx,sy,s,col,alive,working,t,lk){
   ctx.fillStyle="rgba(0,0,0,.42)"; ctx.beginPath(); ctx.ellipse(sx,sy+s*0.64,s*0.6,s*0.2,0,0,TAU); ctx.fill();
-  if(!alive){ ctx.save(); ctx.translate(sx,sy+s*0.2); ctx.rotate(0.7); ctx.globalAlpha=.85;
-    ctx.fillStyle=shade(col,-40); rr(-s*0.55,-s*0.22,s*1.1,s*0.62,s*0.3); ctx.fill();
-    ctx.strokeStyle="rgba(255,140,140,.9)"; ctx.lineWidth=s*0.12; ctx.lineCap="round";
-    ctx.beginPath(); ctx.moveTo(-s*0.16,-s*0.04); ctx.lineTo(s*0.06,s*0.16); ctx.moveTo(s*0.06,-s*0.04); ctx.lineTo(-s*0.16,s*0.16); ctx.stroke();
+  if(!alive){ ctx.save(); ctx.translate(sx,sy+s*0.34); ctx.rotate(0.6); ctx.globalAlpha=.94;
+    // a fallen, hooded crewmate lying on the floor: slumped parka + head, dimmed, with X-ed eyes
+    const bg=ctx.createLinearGradient(0,-s*0.3,0,s*0.3); bg.addColorStop(0,shade(col,-18)); bg.addColorStop(1,shade(col,-50));
+    ctx.fillStyle=bg; rr(-s*0.46,-s*0.32,s*1.4,s*0.62,s*0.3); ctx.fill();           // torso + legs
+    ctx.strokeStyle=shade(col,-60); ctx.lineWidth=s*0.06; rr(-s*0.46,-s*0.32,s*1.4,s*0.62,s*0.3); ctx.stroke();
+    ctx.fillStyle=shade(col,-8); ctx.beginPath(); ctx.arc(-s*0.5,-s*0.01,s*0.36,0,TAU); ctx.fill();  // hooded head
+    ctx.fillStyle=lk?lk.skin:"#caa"; ctx.beginPath(); ctx.arc(-s*0.5,-s*0.01,s*0.24,0,TAU); ctx.fill();  // face
+    ctx.strokeStyle="rgba(60,70,86,.95)"; ctx.lineWidth=s*0.07; ctx.lineCap="round";   // shut, X-ed eyes
+    const ex=-s*0.6, ey=-s*0.03, d=s*0.08, gap=s*0.2;
+    for(const cx of [ex,ex+gap]){ ctx.beginPath(); ctx.moveTo(cx-d,ey-d);ctx.lineTo(cx+d,ey+d);ctx.moveTo(cx+d,ey-d);ctx.lineTo(cx-d,ey+d);ctx.stroke(); }
     ctx.restore(); return; }
   const hy=sy-s*0.3;
   if(working){ ctx.strokeStyle=`rgba(57,217,138,${0.6+0.4*Math.sin(t*0.006)})`; ctx.lineWidth=s*0.12;
@@ -915,34 +921,37 @@ function drawMeeting(t){
 }
 // the "body found" beat — zoom the camera into the victim's room with a red alarm before the meeting
 function drawDiscovery(t){
-  const el=Math.min(1,(performance.now()-disco.t0)/DISCO_MS), r=ROOMS[disco.room], c0=disco.cam0;
-  const e=Math.min(1,el/0.6), ease=e*e*(3-2*e);  // smooth zoom-in over the first 60%
-  if(r){ cam.z=c0.z+(c0.z*2.4-c0.z)*ease; cam.x=c0.x+(r.cx-c0.x)*ease; cam.y=c0.y+(r.cy-c0.y)*ease; }
-  drawSky(); drawAmbient(t); drawStation(t); drawAgents(t); applyLighting(); drawFx();  // frozen tableau
+  const ms=performance.now()-disco.t0, r=ROOMS[disco.room], c0=disco.cam0;
+  const e=Math.min(1,ms/1500), ease=e*e*(3-2*e);  // smooth zoom-in over the first 1.5s
+  if(r){ cam.z=c0.z+(c0.z*2.2-c0.z)*ease; cam.x=c0.x+(r.cx-c0.x)*ease; cam.y=c0.y+(r.cy-c0.y)*ease; }
+  // GATHER: every living crewmate converges on the body's room (the renderer pins them there and walks
+  // them in fast, so the whole crew rings the scene before the meeting cuts in).
+  for(const a of STATE.agents) if(a.alive) a.room=disco.room;
+  layoutAgents(); for(let i=0;i<3;i++) moveAgents();   // 3x step = they hurry to the scene
+  drawSky(); drawAmbient(t); drawStation(t); drawAgents(t); applyLighting(); drawFx();
   const vic=STATE.agents.find(a=>a.name===disco.victim);
   const [bx,by]= (vic&&vic.wx!=null)?toScreen(vic.wx,vic.wy):(r?toScreen(r.cx,r.cy):[cv.width/2,cv.height/2]);
   const pulse=0.5+0.5*Math.sin(t*0.012);
   ctx.strokeStyle=`rgba(255,70,70,${0.6+0.4*pulse})`; ctx.lineWidth=3*DPR; ctx.beginPath(); ctx.arc(bx,by,(28+16*pulse)*DPR,0,TAU); ctx.stroke();
   ctx.strokeStyle=`rgba(255,70,70,${0.25*pulse})`; ctx.lineWidth=2*DPR; ctx.beginPath(); ctx.arc(bx,by,(48+22*pulse)*DPR,0,TAU); ctx.stroke();
-  // the DISCOVERER, restaged at the scene over the body (they've already left for the meeting). a blue ring
-  // + name so the beat is about WHO found it — never the killer, who is long gone by now.
-  const rep=STATE.agents.find(a=>a.name===disco.reporter);
-  if(rep){ const ds=11*cam.z*0.92, dx=bx+46*DPR, dy=by-4*DPR, pl=0.5+0.5*Math.sin(t*0.01);
-    ctx.strokeStyle=`rgba(140,210,255,${0.6+0.4*pl})`; ctx.lineWidth=2.4*DPR; ctx.beginPath(); ctx.arc(dx,dy,ds*1.2,0,TAU); ctx.stroke();
-    figure(dx,dy,ds,COLORS[rep.c%COLORS.length],true,false,t,look(disco.reporter));
-    ctx.textAlign="center"; ctx.fillStyle="rgba(150,215,255,.96)"; ctx.font=`800 ${11*DPR}px Inter`; ctx.fillText(disco.reporter,dx,dy+ds*1.5);
-    ctx.fillStyle="rgba(205,224,248,.82)"; ctx.font=`600 ${8.5*DPR}px Inter`; ctx.fillText("found the body",dx,dy+ds*1.5+12*DPR); }
+  // ring the real discoverer's icon (they're among the gathering crew) — never the killer
+  const rep=STATE.agents.find(a=>a.name===disco.reporter&&a.alive);
+  if(rep&&rep.wx!=null){ const [rx,ry]=toScreen(rep.wx,rep.wy), ds=11*cam.z, pl=0.5+0.5*Math.sin(t*0.01);
+    ctx.strokeStyle=`rgba(140,210,255,${0.6+0.4*pl})`; ctx.lineWidth=2.4*cam.z; ctx.beginPath(); ctx.arc(rx,ry,ds*1.4,0,TAU); ctx.stroke();
+    ctx.textAlign="center"; ctx.fillStyle="rgba(150,215,255,.96)"; ctx.font=`700 ${9*cam.z}px Inter`; ctx.fillText("found the body",rx,ry-ds*1.7); }
   const vg=ctx.createRadialGradient(cv.width/2,cv.height/2,cv.height*0.2,cv.width/2,cv.height/2,cv.height*0.72);
   vg.addColorStop(0,"rgba(0,0,0,0)"); vg.addColorStop(1,`rgba(130,12,12,${0.32+0.16*pulse})`); ctx.fillStyle=vg; ctx.fillRect(0,0,cv.width,cv.height);
   drawSnow(t);
-  ctx.textAlign="center"; ctx.fillStyle=`rgba(255,95,95,${Math.min(1,el*3)})`; ctx.font=`900 ${26*DPR}px Inter`;
+  ctx.textAlign="center"; ctx.fillStyle=`rgba(255,95,95,${Math.min(1,ms/350)})`; ctx.font=`900 ${26*DPR}px Inter`;
   ctx.fillText("BODY FOUND", cv.width/2, cv.height*0.19);
   ctx.fillStyle="rgba(231,238,252,.92)"; ctx.font=`700 ${13*DPR}px Inter`;
   ctx.fillText(`${disco.reporter||'someone'} found ${disco.victim} in the ${disco.room}`, cv.width/2, cv.height*0.19+23*DPR);
 }
 function frame(t){
   if(STATE.phase==='intro'){ drawSky(); drawAmbient(t); drawStation(t); applyLighting(); drawSnow(t); vignette(); drawIntro(t); requestAnimationFrame(frame); return; }
-  if(disco){ if(performance.now()-disco.t0<DISCO_MS){ drawDiscovery(t); requestAnimationFrame(frame); return; }
+  if(disco){ const ms=performance.now()-disco.t0;
+    const gathered=STATE.agents.filter(a=>a.alive).every(a=>!a.moving);  // everyone has reached the scene
+    if(ms<DISCO_MIN || (!gathered && ms<DISCO_MAX)){ drawDiscovery(t); requestAnimationFrame(frame); return; }
     cam.x=disco.cam0.x; cam.y=disco.cam0.y; cam.z=disco.cam0.z; disco=null; }  // restore the overview camera
   if(meet){ drawSky(); drawMeeting(t); drawSnow(t); vignette(); requestAnimationFrame(frame); return; }
   drawSky(); drawAmbient(t); drawStation(t); layoutAgents(); moveAgents(); drawAgents(t); applyLighting(); drawFx(); drawSnow(t); vignette(); drawKillPulse(); if(STATE.hunting) drawHunt(t);
