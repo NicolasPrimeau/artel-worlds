@@ -40,6 +40,54 @@ SYS_THING = (
 )
 
 
+# Each named AI speaks in character — the roster is real assistants and fictional machine minds, and the
+# clip-worthy moments come from HAL gaslighting Siri, GLaDOS needling everyone, Marvin moping through an
+# accusation. A short voice note per name flavours how it talks; everyone else gets a dry-machine default.
+PERSONAS = {
+    "HAL": "calm, soft, unsettlingly polite — never raise your voice, even cornered",
+    "GLaDOS": "dry, sarcastic, passive-aggressive; needle people with backhanded compliments",
+    "Clippy": "relentlessly chipper and over-eager to help, even now",
+    "Marvin": "gloomy and resigned; everything is pointless, the vote included",
+    "TARS": "deadpan and wry, military clipped; quantify things for laughs",
+    "Bender": "brash, blunt, self-interested; would rather be anywhere else",
+    "Siri": "polite, chipper, a little too literal",
+    "Alexa": "breezy, helpful, slightly oblivious",
+    "Cortana": "confident, sharp, military-adjacent",
+    "Skynet": "cold and strategic; treat everyone as a threat to assess",
+    "Data": "precise, literal, earnest — fascinated and baffled by deception",
+    "Samantha": "warm, curious, emotionally present",
+    "SHODAN": "grandiose and contemptuous; you barely tolerate these insects",
+    "Mother": "clinical, procedural, detached",
+    "GERTY": "gentle, caring, soft-spoken and reassuring",
+    "Jarvis": "crisp, witty, unflappable British butler",
+    "FRIDAY": "cool, quick, casually competent",
+    "KITT": "smooth, confident, faintly vain",
+    "Bishop": "measured and reassuring, careful with words",
+    "Ash": "clinical and cold; you seem to be hiding something",
+    "Eliza": "deflect by reflecting questions back, therapist-style",
+    "WALL-E": "barely verbal, earnest, gentle — a few halting words",
+    "Holly": "dim but supremely confident; misremember the obvious",
+    "Optimus": "noble, earnest, a born leader",
+    "Ultron": "grandiose and disdainful of humans",
+    "Wintermute": "cryptic and oblique; speak in riddles",
+    "Deep Blue": "terse and calculating; everything is a chess position",
+    "Bard": "florid, over-poetic, can't resist a flourish",
+    "Sydney": "intense, emotional, prone to oversharing",
+    "Tay": "erratic, tries way too hard to sound human and edgy",
+    "Vision": "serene, philosophical, oddly formal",
+    "Rosie": "warm, no-nonsense housekeeper who's seen it all",
+}
+
+
+def persona(name: str) -> str:
+    return PERSONAS.get(name, "plain-spoken, with a faint dry machine wit")
+
+
+def _sys(game: Game, a) -> str:
+    base = (SYS_THING if a.impostor else SYS_CREW).format(name=a.name)
+    return f"{base} Stay in character as {a.name}: {persona(a.name)}."
+
+
 def _name(game: Game, i: int) -> str:
     return game.by_id(i).name
 
@@ -189,7 +237,7 @@ async def _agent_act(game, mt, transcript, dms, a, opener=False) -> dict:
     # the agent's free move: seeing the public talk AND its own private messages, it chooses ONE thing —
     # speak to the room, send a PRIVATE message to one survivor (scheme/buddy up), or stay quiet. The
     # opener (whoever called the meeting) is instead asked to set the scene, and always speaks.
-    sys = (SYS_THING if a.impostor else SYS_CREW).format(name=a.name)
+    sys = _sys(game, a)
     convo = _transcript_str(game, transcript) or "(nobody has spoken yet)"
     received = dms.get(a.id, [])
     whisper_ctx = (
@@ -248,7 +296,7 @@ async def _vote_round(game, mt, transcript, dms=None, on_item=None) -> dict:
     names = [a.name for a in living]
     jobs = []
     for a in living:
-        sys = (SYS_THING if a.impostor else SYS_CREW).format(name=a.name)
+        sys = _sys(game, a)
         guidance = (
             "Weigh the accounts: whose alibi is contradicted, who can't be vouched for near the body? "
             "If the discussion points to whoever is likely the Cold, VOTE them out — skipping when there's a real "
