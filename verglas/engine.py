@@ -8,7 +8,8 @@ from dataclasses import dataclass, field
 # IMPOSTOR kills on a cooldown and can vent to slip away from a body. Vision is LOCAL: you only see who
 # shares your room, so every agent leaves the task phase with a DIFFERENT, partial log of who-was-where.
 # A found body (or the emergency button) calls a meeting: everyone reconvenes, pools what they saw, and
-# votes someone out. Crew win by clearing every task OR ejecting every impostor; impostors win at parity.
+# votes someone out. Crew win by clearing every task OR ejecting every impostor; the Cold wins only by
+# taking the LAST crewmate — no parity shortcut, so the endgame plays out as a final hunt.
 #
 # Two phases, two Artel primitives. The task board is Artel TASKS (claim/complete shared work); the
 # meeting runs on Artel EVENTS/MESSAGES (pool testimony). The engine here is offline-pure — per-agent
@@ -354,7 +355,9 @@ class Game:
     tick: int = 0
     cd: int = 0  # shared impostor kill cooldown
     winner: str | None = None  # "crew" | "impostor"
-    win_by: str | None = None  # "tasks" | "ejection" | "parity" | "timeout"
+    win_by: str | None = None  # "tasks" | "ejection" | "extinction" | "timeout"
+    hunting: bool = False  # the final hunt is on: one crew left, the Cold has dropped the mask
+    hunt_ticks: int = 0  # how long the final hunt has run (the flee can't last forever)
     meetings: list = field(default_factory=list)
     ejected_impostors: int = 0
     wrong_ejections: int = 0
@@ -430,6 +433,10 @@ class Game:
         self.events = []  # fresh per tick; the live server drains these onto Artel after each step
         if self.cd > 0:
             self.cd -= 1
+        if self.living(impostor=True) and len(self.living(impostor=False)) <= 1:
+            self._final_hunt()  # one crew left → the scripted final hunt takes over the tick
+            self._check_win()
+            return None
 
         # keep tasks-in-play topped up to a few short of the living headcount, so most crew always have
         # something to do but a couple are free to buddy — and as the crew thins out the board tightens
@@ -548,9 +555,9 @@ class Game:
         occ = self._occ(a.room)
         return len(occ) <= 3 and bool([c for c in occ if not c.impostor])
 
-    def do_kill(self, m, victim_id: int) -> bool:
+    def do_kill(self, m, victim_id: int, force: bool = False) -> bool:
         victim = next((c for c in self._occ(m.room) if c.id == victim_id and not c.impostor), None)
-        if victim is None or self.cd > 0:
+        if victim is None or (self.cd > 0 and not force):
             return False
         victim.alive = False
         self.bodies[m.room] = victim.id
@@ -562,6 +569,32 @@ class Game:
         if m.room in self.vents and self.rng.random() < 0.6:
             m.room = self.rng.choice(self.vents[m.room])  # vent off the body
         return True
+
+    def _final_hunt(self) -> None:
+        # the mask comes off. With one crewmate left, the Cold stops pretending — it makes straight for
+        # them and takes them the moment it shares the room (no cooldown, no caution). The lone survivor
+        # bolts to a room with no hunter in it, but the chase can't last: after a few ticks it's run down.
+        crew = self.living(impostor=False)
+        if len(crew) != 1:
+            self.hunting = False
+            return
+        self.hunting = True
+        self.hunt_ticks += 1
+        victim = crew[0]
+        imps = self.living(impostor=True)
+        here = next((m for m in imps if m.room == victim.room), None)
+        if here or self.hunt_ticks >= 6:  # cornered, or the Cold simply outruns the flee
+            killer = here or imps[0]
+            killer.room = victim.room
+            self.do_kill(killer, victim.id, force=True)
+            return
+        safe = [r for r in self.adj.get(victim.room, []) if not any(m.room == r for m in imps)]
+        opts = safe or self.adj.get(victim.room, [])
+        if opts:
+            victim.room = self.rng.choice(opts)
+            victim.dest = victim.goto = victim.follow = None
+        for m in imps:
+            self._toward_room(m, victim.room)
 
     def claim_room(self, a, room: str) -> bool:
         # take a console off the board for this agent and set it walking (the Artel claim is the server's
@@ -607,11 +640,16 @@ class Game:
     def execute(self) -> Meeting | None:
         # one tick of MECHANICS only: move each agent along its committed intent, progress tasks, record
         # sightings, then check for a body/win. No decisions and no kills are made here — those arrive as
-        # tool calls the server applies before calling this.
+        # tool calls the server applies before calling this. The lone-survivor final hunt is the exception:
+        # once one crew remains the engine scripts the chase to its end rather than waiting on tool calls.
         self.tick += 1
         self.events = []
         if self.cd > 0:
             self.cd -= 1
+        if self.living(impostor=True) and len(self.living(impostor=False)) <= 1:
+            self._final_hunt()
+            self._check_win()
+            return None
         cap = max(2, len(self.living()) - TASK_SLACK)
         while self._active_tasks() < cap:
             before = len(self.open_tasks)
@@ -672,8 +710,8 @@ class Game:
         if not self.living(impostor=True):
             self.winner, self.win_by = "crew", "ejection"
             return True
-        if len(self.living(impostor=True)) >= len(self.living(impostor=False)):
-            self.winner, self.win_by = "impostor", "parity"
+        if not self.living(impostor=False):  # the Cold has taken the last of the crew
+            self.winner, self.win_by = "impostor", "extinction"
             return True
         if self.tasks_left() == 0:
             self.winner, self.win_by = "crew", "tasks"

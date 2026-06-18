@@ -953,7 +953,7 @@ function drawIntro(t){
 function drawEnd(t){
   const k=Math.min(1,(performance.now()-phaseT0)/600), crew=STATE.winner==='crew';
   const cold=(STATE.agents||[]).filter(a=>a.thing).map(a=>a.name).join(' & ');
-  const by={tasks:"the outpost is restored to full power — light and heat the Cold can't survive",ejection:"the Cold was cast into the storm",parity:"the Cold outnumbered the living",timeout:"the long night swallowed the outpost"}[STATE.win_by]||'';
+  const by={tasks:"the outpost is restored to full power — light and heat the Cold can't survive",ejection:"the Cold was cast into the storm",extinction:"the Cold took the last of the crew — Verglas is its own now",parity:"the Cold took the last of the crew — Verglas is its own now",timeout:"the long night swallowed the outpost"}[STATE.win_by]||'';
   ctx.save(); ctx.textAlign="center";
   ctx.fillStyle=`rgba(4,9,18,${0.66*k})`; ctx.fillRect(0,0,cv.width,cv.height);
   const cx=cv.width/2, cy=cv.height*0.40, big=Math.min(56,cv.width/10/DPR);

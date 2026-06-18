@@ -89,3 +89,52 @@ def test_meetings_only_happen_on_a_body():
                 break
             if g.winner is not None:
                 break
+
+
+def test_no_parity_shortcut():
+    # two Cold vs two crew used to be an instant impostor win; now it plays on
+    g = new_game(3, 8, 2)
+    crew = [a for a in g.agents if not a.impostor]
+    for a in crew[2:]:
+        a.alive = False
+    g._check_win()
+    assert g.winner is None
+
+
+def test_cold_wins_only_by_taking_the_last_crewmate():
+    g = new_game(3, 8, 2)
+    crew = [a for a in g.agents if not a.impostor]
+    for a in crew[1:]:
+        a.alive = False  # one crew left, the Cold still standing
+    g._check_win()
+    assert g.winner is None  # not a win yet — no parity shortcut
+    for _ in range(12):
+        g.step()
+        if g.winner:
+            break
+    assert g.winner == "impostor" and g.win_by == "extinction"
+    assert not [a for a in g.agents if a.alive and not a.impostor]  # the last crew is gone
+
+
+def test_final_hunt_flags_and_runs_down_the_survivor():
+    g = new_game(5, 8, 2)
+    crew = [a for a in g.agents if not a.impostor]
+    for a in crew[1:]:
+        a.alive = False
+    g.step()
+    assert g.hunting is True  # the mask is off
+    # the hunt can't last forever — within a few ticks the survivor is run down
+    for _ in range(8):
+        g.step()
+        if g.winner:
+            break
+    assert g.winner == "impostor"
+
+
+def test_crew_still_win_by_ejecting_the_cold():
+    g = new_game(3, 8, 2)
+    for a in g.agents:
+        if a.impostor:
+            a.alive = False
+    g._check_win()
+    assert g.winner == "crew" and g.win_by == "ejection"

@@ -21,7 +21,7 @@ from .meeting import (
 # Verglas runs one game after another, but ONLY while someone is watching (free-tier Groq, like phalanx):
 # no viewers → no ticks, no LLM calls. A game is a task phase (agents wander the station, the Cold
 # kills) punctuated by meetings — which are streamed statement-by-statement so the chat builds live on
-# the page. Crew win by clearing the task board or ejecting the Cold; the Cold wins at parity.
+# the page. Crew win by clearing the task board or ejecting the Cold; the Cold wins by taking the last.
 
 _rng = SystemRandom()
 log = logging.getLogger("verglas")
