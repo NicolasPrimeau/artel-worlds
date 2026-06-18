@@ -118,7 +118,6 @@
 <div id="stage"><canvas id="map"></canvas></div>
 <div class="hud">
   <div class="brand">VERGLAS <small>· OUTPOST <b id="hud-outpost">31</b></small></div>
-  <div class="pill">Round <b id="hud-round">1</b></div>
   <div class="pill"><span class="plabel">Tasks</span> <div class="taskbar"><i id="hud-tasks" style="width:30%"></i></div></div>
   <div class="pill">Alive <b id="hud-alive">10</b>/<b id="hud-total">10</b></div>
   <div class="spacer"></div>
@@ -759,7 +758,7 @@ function drawEnd(t){
   ctx.restore();
 }
 
-function syncHud(){ $('hud-round').textContent=STATE.round; $('hud-tasks').style.width=(100*STATE.tasksDone/Math.max(1,STATE.tasksTotal))+'%';
+function syncHud(){ $('hud-tasks').style.width=(100*STATE.tasksDone/Math.max(1,STATE.tasksTotal))+'%';
   $('hud-alive').textContent=STATE.agents.filter(a=>a.alive).length; $('hud-total').textContent=STATE.agents.length;
   const ros=$('roster'); ros.innerHTML=''; for(const a of STATE.agents){ const d=document.createElement('div'); d.className='who'+(a.alive?'':' dead')+(a.id===HILITE?' sel':'');
     d.innerHTML=`<span class="dot" style="color:${COLORS[a.c%COLORS.length]};background:${COLORS[a.c%COLORS.length]}"></span><span><div class="nm">${a.name}</div></span>`;

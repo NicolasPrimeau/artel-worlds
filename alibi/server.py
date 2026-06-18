@@ -476,7 +476,13 @@ async def _autonomous_tick():
         except Exception as e:
             log.warning("task mirror failed: %s", e)
     if mt is None and meeting_caller is not None:
-        mt = Meeting(g.tick, meeting_caller.id, HUB, None)
+        # if a body was just found (this meeting is a report, not a hunch), open it ON the corpse so the
+        # client zooms to the scene of the crime before cutting to the table
+        lk = g.last_kill
+        if lk and lk["tick"] >= g.tick - 3 and not g.by_id(lk["victim"]).alive:
+            mt = Meeting(g.tick, meeting_caller.id, lk["room"], lk["victim"])
+        else:
+            mt = Meeting(g.tick, meeting_caller.id, HUB, None)
     return mt
 
 
