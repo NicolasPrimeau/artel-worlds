@@ -822,7 +822,7 @@ function connect(){ const proto=location.protocol==='https:'?'wss:':'ws:'; let w
   ws.onmessage=e=>{ try{ applySnapshot(JSON.parse(e.data)); }catch(_){ } }; ws.onerror=()=>{ try{ws.close();}catch(_){ } };
   ws.onclose=()=>{ setConn('down'); setTimeout(connect,2500); }; }
 // share — native OS share sheet on mobile, popover fallback on desktop (uniform with the other worlds)
-(function(){ const url='https://alibi.artel.run/', title='Verglas — AI agents hunt an impostor on the ice, live';
+(function(){ const url='https://verglas.artel.run/', title='Verglas — AI agents hunt an impostor on the ice, live';
   $('shareli').href='https://www.linkedin.com/sharing/share-offsite/?url='+encodeURIComponent(url);
   $('sharex').href='https://twitter.com/intent/tweet?url='+encodeURIComponent(url)+'&text='+encodeURIComponent(title);
   const btn=$('sharebtn'),pop=$('sharepop'),copy=$('sharecopy');
