@@ -127,15 +127,39 @@ async def create_task(title: str) -> str | None:
         return None
 
 
-async def claim_task(index: int, task_id: str) -> None:
+async def list_open_tasks() -> list[dict]:
+    # read the live board straight off Artel — the open tasks ARE the source of truth for what's claimable
+    if not enabled():
+        return []
+    agent = AGENTS[0]
+    await _ensure_joined(agent)
+    try:
+        r = await _client().get(
+            f"{ARTEL_URL}/tasks",
+            headers=_headers(agent),
+            params={"project": PROJECT, "status": "open"},
+        )
+        return r.json() if r.status_code < 300 else []
+    except Exception as e:
+        log.warning("artel list_open_tasks failed: %s", e)
+        return []
+
+
+async def claim_task(index: int, task_id: str) -> bool:
+    # returns True only if THIS agent won the claim — Artel answers 409 if another seat got there first,
+    # so the claim is the real contention arbiter, not a local flag.
     if not enabled() or not task_id:
-        return
+        return False
     agent = _seat(index)
     await _ensure_joined(agent)
     try:
-        await _client().post(f"{ARTEL_URL}/tasks/{task_id}/claim", headers=_headers(agent), json={})
+        r = await _client().post(
+            f"{ARTEL_URL}/tasks/{task_id}/claim", headers=_headers(agent), json={}
+        )
+        return r.status_code < 300
     except Exception as e:
         log.warning("artel claim failed for %s: %s", agent["id"], e)
+        return False
 
 
 async def complete_task(index: int, task_id: str) -> None:

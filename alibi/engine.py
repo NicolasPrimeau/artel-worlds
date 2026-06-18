@@ -158,6 +158,7 @@ TASK_SLACK = 4  # keep this many fewer tasks-in-play than living players, so a c
 KILL_CD = 9  # ticks between kills — crew walk to tasks (spread out), so kills come easy; slow them
 OPP_KILL_P = 0.12  # chance the Thing risks a kill with WITNESSES present (vs only when truly alone)
 START_GRACE = 8  # no kill on the first few ticks, so a real task phase builds movement + alibis
+FOLLOW_TICKS = 6  # how long an autonomous agent tails a buddy before it stops to decide again
 EMERGENCY_P = 0.02  # per-tick chance a crew calls a meeting on suspicion alone
 MAX_TICKS = 600
 
@@ -219,6 +220,9 @@ class Agent:
     tasking: bool = False  # working a task this tick (transient, for the renderer)
     work: int = 0  # ticks left on the current task — while >0 the crew stays put at the console
     dest: str | None = None  # the room of a claimed task it's walking to (None = nothing to do)
+    goto: str | None = None  # a plain move-to-room intent (no task) — used by autonomous agents
+    follow: int | None = None  # an agent id this one is tailing (buddy up) — autonomous intent
+    follow_ticks: int = 0  # ticks left tailing before the agent re-decides (follow isn't forever)
     # what this agent privately observed — the raw material for its testimony in a meeting
     trail: list = field(default_factory=list)  # (tick, room) — its own movements this round
     seen: list = field(default_factory=list)  # list[Sighting]
@@ -428,6 +432,150 @@ class Game:
 
         return None
 
+    # --- autonomous mode: agents DECIDE via the LLM (tool calls); the engine only EXECUTES intents. ---
+    # The live server reads the board from Artel, asks each free/interrupted agent for one tool call, then
+    # sets the resulting intent here. step() above is kept for the offline/no-LLM path. These helpers are
+    # the contract: what's a legal action right now, and how an action becomes movement/state.
+
+    def needs_decision(self, a) -> bool:
+        # an agent is at a decision point when nothing is committed — not working, walking, or following
+        return a.alive and a.work == 0 and a.dest is None and a.goto is None and a.follow is None
+
+    def legal_kills(self, m) -> list[int]:
+        # crew the Thing `m` could kill THIS tick: cooldown ready, past the grace period, co-located
+        if self.cd > 0 or self.tick < START_GRACE:
+            return []
+        return [c.id for c in self._occ(m.room) if not c.impostor]
+
+    def prime_kill(self, a) -> bool:
+        # the Thing's shot: off cooldown, past grace, alone-ish with one or two crew (not in a crowd). The
+        # server uses this to pull the Thing into a decision even mid-task, so it never sleeps through an
+        # opportunity — it still chooses, and the prompt tells it not to kill while others watch.
+        if not (a.impostor and self.cd == 0 and self.tick >= START_GRACE):
+            return False
+        occ = self._occ(a.room)
+        return len(occ) <= 3 and bool([c for c in occ if not c.impostor])
+
+    def do_kill(self, m, victim_id: int) -> bool:
+        victim = next((c for c in self._occ(m.room) if c.id == victim_id and not c.impostor), None)
+        if victim is None or self.cd > 0:
+            return False
+        victim.alive = False
+        self.bodies[m.room] = victim.id
+        self.last_kill = {"tick": self.tick, "victim": victim.id, "room": m.room}
+        for w in self._occ(m.room):
+            if w.id != m.id:
+                w.witnessed.add(m.id)  # any survivor present made the Thing
+        self.cd = KILL_CD
+        if m.room in self.vents and self.rng.random() < 0.6:
+            m.room = self.rng.choice(self.vents[m.room])  # vent off the body
+        return True
+
+    def claim_room(self, a, room: str) -> bool:
+        # take a console off the board for this agent and set it walking (the Artel claim is the server's
+        # job — it's the real contention arbiter; this just records the local intent + emits the event)
+        if room not in self.open_tasks:
+            return False
+        self.open_tasks.remove(room)
+        a.dest = room
+        a.goto = None
+        a.follow = None
+        return True
+
+    def set_goto(self, a, room: str) -> bool:
+        if room not in self.adj.get(a.room, []) and room != a.room:
+            return False
+        a.goto = None if room == a.room else room
+        a.dest = None
+        a.follow = None
+        return True
+
+    def set_follow(self, a, target_id: int) -> bool:
+        t = next((o for o in self.living() if o.id == target_id and o.id != a.id), None)
+        if t is None:
+            return False
+        a.follow = target_id
+        a.follow_ticks = FOLLOW_TICKS
+        a.dest = None
+        a.goto = None
+        return True
+
+    def default_action(self, a) -> dict:
+        # the safe fallback when the LLM is unavailable or returns no/invalid tool call: claim the nearest
+        # open task, else buddy the nearest survivor. Keeps the game flowing without judgement.
+        if self.open_tasks:
+            room = min(self.open_tasks, key=lambda r: self._room_dist(a.room, r))
+            return {"name": "go_to_task", "args": {"room": room}}
+        others = [o for o in self.living() if o.id != a.id]
+        if others:
+            tgt = min(others, key=lambda o: self._room_dist(a.room, o.room))
+            return {"name": "follow", "args": {"who": tgt.name}}
+        return {"name": "wait", "args": {}}
+
+    def execute(self) -> Meeting | None:
+        # one tick of MECHANICS only: move each agent along its committed intent, progress tasks, record
+        # sightings, then check for a body/win. No decisions and no kills are made here — those arrive as
+        # tool calls the server applies before calling this.
+        self.tick += 1
+        self.events = []
+        if self.cd > 0:
+            self.cd -= 1
+        cap = max(2, len(self.living()) - TASK_SLACK)
+        while self._active_tasks() < cap:
+            before = len(self.open_tasks)
+            self._spawn_task()
+            if len(self.open_tasks) == before:
+                break
+        for a in self.living():
+            a.tasking = False
+            if a.work > 0:
+                a.work -= 1
+                a.tasking = True
+                if a.work == 0:
+                    self.tasks_done += 1
+                    a.dest = None
+                    self.events.append(("complete", a.id))
+            elif a.dest is not None:
+                if a.room == a.dest:
+                    a.work = WORK_TICKS - 1
+                    a.tasking = True
+                    if a.work == 0:
+                        self.tasks_done += 1
+                        a.dest = None
+                        self.events.append(("complete", a.id))
+                else:
+                    self._toward_room(a, a.dest)
+            elif a.goto is not None:
+                if a.room == a.goto:
+                    a.goto = None
+                else:
+                    self._toward_room(a, a.goto)
+            elif a.follow is not None:
+                a.follow_ticks -= 1
+                buddy = next((o for o in self.living() if o.id == a.follow), None)
+                if buddy is None or a.follow_ticks <= 0:
+                    a.follow = None  # buddy gone, or time to stop and reassess
+                elif buddy.room != a.room:
+                    self._toward_room(a, buddy.room)
+        for a in self.living():
+            a.trail.append((self.tick, a.room))
+        for room in self.rooms:
+            occ = self._occ(room)
+            if len(occ) > 1:
+                ids = [o.id for o in occ]
+                for a in occ:
+                    a.seen.append(Sighting(self.tick, room, tuple(x for x in ids if x != a.id)))
+        if self._check_win():
+            return None
+        for room, victim in list(self.bodies.items()):
+            finders = [a for a in self.living() if a.room == room]
+            if finders:
+                del self.bodies[room]
+                for f in finders:
+                    f.found.append((self.tick, room, victim))
+                return Meeting(self.tick, finders[0].id, room, victim)
+        return None
+
     def _check_win(self) -> bool:
         if not self.living(impostor=True):
             self.winner, self.win_by = "crew", "ejection"
@@ -447,6 +595,8 @@ class Game:
             a.room = HUB
             a.work = 0
             a.dest = None
+            a.goto = None
+            a.follow = None
             a.tasking = False
 
     # --- meeting: collect votes via `decide`, eject the plurality, reconvene. ---
@@ -481,6 +631,8 @@ class Game:
             a.trail.clear()
             a.work = 0  # drop any in-progress task; everyone reconvened at the hub
             a.dest = None
+            a.goto = None
+            a.follow = None
         self.cd = KILL_CD
         self._check_win()
 

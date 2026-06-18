@@ -82,10 +82,16 @@ async def complete_many(jobs: list[tuple[str, str]], temperature: float = 0.7) -
     )
 
 
+async def act_many(reqs: list) -> list:
+    # batch of tool-calling decisions; each returns {"name", "args"} or None (the caller falls back)
+    return await ROUTER.act_many(reqs)
+
+
 __all__ = [
     "POOL_DESC",
     "ROUTER",
     "SPEND",
+    "act_many",
     "complete",
     "complete_many",
     "enabled",

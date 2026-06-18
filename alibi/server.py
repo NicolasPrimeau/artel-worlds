@@ -11,8 +11,8 @@ from random import SystemRandom
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 
-from . import artel, llm
-from .engine import MAX_TICKS, new_game
+from . import artel, autonomy, llm
+from .engine import HUB, MAX_TICKS, Meeting, new_game
 from .meeting import (
     run_canned_meeting,
     run_llm_meeting,
@@ -76,6 +76,10 @@ class Alibi:
         self.task_q: asyncio.Queue = asyncio.Queue()  # engine task events → mirrored onto Artel
         self.task_pool: dict = {}  # room -> [open Artel task ids waiting to be claimed]
         self.task_working: dict = {}  # agent id -> the Artel task id it's currently doing
+        self.task_room: dict = {}  # Artel task id -> room (to map the board back to rooms)
+        self.inbox: dict = {}  # agent id -> [(from_name, text)] task-phase whispers received
+        self.interrupted: set = set()  # agent ids that got a whisper → re-decide next tick
+        self.deciding = 0  # agents that asked the LLM for an action this tick (for the ops board)
         self._restore_state()
         self._new_game()
 
@@ -93,6 +97,9 @@ class Alibi:
         await artel.clear_project()
         self.task_pool.clear()
         self.task_working.clear()
+        self.task_room.clear()
+        self.inbox.clear()
+        self.interrupted.clear()
         while not self.task_q.empty():
             try:
                 self.task_q.get_nowait()
@@ -355,14 +362,108 @@ async def _task_worker():
             log.warning("task mirror failed: %s", e)
 
 
+def _task_title(room: str) -> str:
+    return f"{_TASK_VERBS[hash(room) % len(_TASK_VERBS)]} the {room}"
+
+
+def _target_id(g, name):
+    a = next((o for o in g.living() if o.name == name), None)
+    return a.id if a else None
+
+
+async def _apply_action(g, a, action) -> str | None:
+    # turn one tool call into engine intent + real Artel side-effects. Returns "meeting" if the agent
+    # called one. Unknown/garbled actions are no-ops — the agent simply re-decides next tick.
+    name = action.get("name")
+    args = action.get("args") or {}
+    if name == "go_to_task":
+        room = args.get("room")
+        if room in g.open_tasks:
+            pool = G.task_pool.get(room) or []
+            tid = pool.pop(0) if pool else None
+            won = (await artel.claim_task(a.id, tid)) if (artel.enabled() and tid) else True
+            if won and g.claim_room(a, room) and tid:
+                G.task_working[a.id] = tid
+            if tid:
+                G.task_room.pop(tid, None)
+    elif name == "follow":
+        tid = _target_id(g, args.get("who"))
+        if tid is not None:
+            g.set_follow(a, tid)
+    elif name == "move_to":
+        g.set_goto(a, args.get("room", ""))
+    elif name == "whisper":
+        to = _target_id(g, args.get("who"))
+        text = str(args.get("message", "")).strip()
+        if to is not None and text:
+            await artel.dm(a.id, to, f"{a.name}: {text}"[:280])
+            G.inbox.setdefault(to, []).append((a.name, text[:120]))
+            G.interrupted.add(to)
+            G.whisper = [a.name, g.by_id(to).name]
+    elif name == "eliminate":
+        vid = _target_id(g, args.get("who"))
+        if vid is not None and g.do_kill(a, vid):
+            # any survivor who saw it re-decides next tick — they'll likely sound the alarm
+            G.interrupted.update(w.id for w in g.living() if a.id in w.witnessed)
+    elif name == "call_meeting":
+        return "meeting"
+    return None
+
+
+async def _autonomous_tick():
+    # the agents DECIDE (LLM tool calls), the engine EXECUTES. Free or just-whispered agents each pick one
+    # action; committed agents (walking/working) keep going. Claims hit Artel for real contention; a body
+    # or an agent-called alarm opens a meeting.
+    g = G.g
+    G.whisper = None
+    meeting_caller = None
+    deciders = [
+        a for a in g.living() if g.needs_decision(a) or a.id in G.interrupted or g.prime_kill(a)
+    ]
+    G.interrupted.clear()
+    G.deciding = len(deciders)
+    if deciders:
+        reqs = [autonomy.build_request(g, a, G.inbox.get(a.id)) for a in deciders]
+        for a in deciders:
+            G.inbox.pop(a.id, None)  # whispers are consumed into this decision
+        actions = await llm.act_many(reqs)
+        for a, action in zip(deciders, actions):
+            act = action if action is not None else g.default_action(a)
+            if await _apply_action(g, a, act) == "meeting":
+                meeting_caller = a
+    mt = g.execute()
+    for (
+        ev
+    ) in g.events:  # spawns → create Artel tasks, completes → complete them (claims done inline)
+        try:
+            if ev[0] == "spawn":
+                room = ev[1]
+                tid = await artel.create_task(_task_title(room))
+                if tid:
+                    G.task_pool.setdefault(room, []).append(tid)
+                    G.task_room[tid] = room
+            elif ev[0] == "complete":
+                tid = G.task_working.pop(ev[1], None)
+                if tid:
+                    await artel.complete_task(ev[1], tid)
+        except Exception as e:
+            log.warning("task mirror failed: %s", e)
+    if mt is None and meeting_caller is not None:
+        mt = Meeting(g.tick, meeting_caller.id, HUB, None)
+    return mt
+
+
 async def _game_loop():
     loop = asyncio.get_running_loop()
     while True:
         start = loop.time()
         if not G.paused and G.viewers:
             async with G.lock:
-                mt = G.g.step()
-                G.enqueue_task_events()  # mirror this tick's task spawns/claims/completes onto Artel
+                if llm.enabled():
+                    mt = await _autonomous_tick()  # full-autonomous: agents drive the task phase
+                else:
+                    mt = G.g.step()  # offline / unprovisioned: the deterministic engine drives
+                    G.enqueue_task_events()
                 if mt is not None and G.g.winner is None:
                     await _run_meeting(mt)
                 if G.g.winner is not None:
@@ -415,6 +516,7 @@ async def debug():
         "live": bool(G.viewers) and llm.enabled(),
         "model": llm.POOL_DESC,
         "router": llm.metrics(),
+        "deciding": G.deciding,
         "spend": round(llm.SPEND["usd"], 5),
         "cap": None,
         "spend_days": dict(llm.SPEND["days"]),

@@ -25,7 +25,7 @@ class Request:
     timeout: float = 16.0
     requires_tools: bool = False  # if set, only models whose caps mark tool support are eligible
     allow_paid: bool = False  # if unset (default), paid-tier models are never routed to
-    # room to grow: tools=[...], json_mode, max_tokens, model_hint, ...
+    tools: list | None = None  # OpenAI tool schemas; when set, act() returns the model's tool call
 
 
 class RateLimited(Exception):
@@ -146,46 +146,48 @@ class Router:
         for old in sorted(self.spend["days"])[:-30]:
             del self.spend["days"][old]
 
-    async def _ask(self, h: httpx.AsyncClient, m: Model, req: Request) -> str:
+    async def _call(self, h: httpx.AsyncClient, m: Model, req: Request) -> dict:
+        # one POST; returns the assistant message (content and/or tool_calls). Raises on 429 / bad status.
         user = self._shaper(req.user, m.model) if self._shaper else req.user
-        r = await h.post(
-            m.url,
-            headers={"Authorization": f"Bearer {m.key}"},
-            json={
-                "model": m.model,
-                "temperature": req.temperature,
-                "messages": [
-                    {"role": "system", "content": req.system},
-                    {"role": "user", "content": user},
-                ],
-            },
-        )
+        payload = {
+            "model": m.model,
+            "temperature": req.temperature,
+            "messages": [
+                {"role": "system", "content": req.system},
+                {"role": "user", "content": user},
+            ],
+        }
+        if req.tools:
+            payload["tools"] = req.tools
+            payload["tool_choice"] = "auto"
+        r = await h.post(m.url, headers={"Authorization": f"Bearer {m.key}"}, json=payload)
         if r.status_code == 429:
             raise RateLimited(float(r.headers.get("retry-after", "0") or 0))
         if r.status_code >= 300:
             raise httpx.HTTPStatusError("bad status", request=r.request, response=r)
         data = r.json()
         self._account(data.get("usage") or {})
-        return data["choices"][0]["message"]["content"]
+        return data["choices"][0]["message"]
 
-    async def complete(self, req: Request) -> str:
+    async def _run(self, req: Request, extract):
+        # shared round-robin/cooldown loop; `extract(msg)` returns the result or None (a miss → next model)
         eligible = self._eligible(req)
         if not eligible:
-            return ""
+            return None
         tries = max(4, len(eligible) + 1)
         async with self._sem, httpx.AsyncClient(timeout=req.timeout) as h:
             for _ in range(tries):
                 m = await self._pick(eligible)
                 if m is None:
-                    return ""
+                    return None
                 wait = m.cooldown - time.monotonic()
                 if wait > 0:
                     await asyncio.sleep(min(wait, self._max_wait))
                 try:
-                    out = await self._ask(h, m, req)
-                    if out:
+                    got = extract(await self._call(h, m, req))
+                    if got is not None:
                         self._record(m, "ok")
-                        return out
+                        return got
                     self._record(m, "err")
                 except RateLimited as ex:
                     m.cooldown = time.monotonic() + min(
@@ -194,10 +196,37 @@ class Router:
                     self._record(m, "429")
                 except Exception:
                     self._record(m, "err")
-        return ""
+        return None
+
+    async def complete(self, req: Request) -> str:
+        def text(msg):
+            out = (msg.get("content") or "").strip()
+            return out or None
+
+        return await self._run(req, text) or ""
+
+    async def act(self, req: Request) -> dict | None:
+        # returns the first tool call as {"name": str, "args": dict}, or None if no model produced one.
+        def tool(msg):
+            for tc in msg.get("tool_calls") or []:
+                fn = tc.get("function") or {}
+                name = fn.get("name")
+                if not name:
+                    continue
+                try:
+                    args = json.loads(fn.get("arguments") or "{}")
+                except Exception:
+                    args = {}
+                return {"name": name, "args": args if isinstance(args, dict) else {}}
+            return None
+
+        return await self._run(req, tool)
 
     async def complete_many(self, reqs: list[Request]) -> list[str]:
         return await asyncio.gather(*(self.complete(r) for r in reqs))
+
+    async def act_many(self, reqs: list[Request]) -> list[dict | None]:
+        return await asyncio.gather(*(self.act(r) for r in reqs))
 
 
 def parse_json(text: str) -> dict | None:
