@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 from .agent import HeuristicAgent
 from .config import DEFAULT
+from .hub import WORLDS, remote_worlds, render_cards, world_by_key
 from .genome import TARGETS, VARIABLES, VERBS, random_genome, to_dict
 from .llm import CACHE as LLM_CACHE
 from .llm import PERSONAS, AnthropicClient, ClaudeSDKClient, author_genome
@@ -704,8 +705,9 @@ async def hub_watchtower():
     # cached so the landing page can't hammer the world
     now = time.time()
     if _WT_CACHE["data"] is None or now - _WT_CACHE["ts"] > 60:
+        wt_url = world_by_key("watchtower").debug_url
         async with httpx.AsyncClient() as client:
-            state = await _fetch_json(client, f"{WATCHTOWER_DEBUG}/state")
+            state = await _fetch_json(client, f"{wt_url}/state")
         if state:
             _WT_CACHE["data"] = {
                 "wedge": state.get("wedge") or [],
@@ -720,24 +722,20 @@ async def hub_watchtower():
 @app.get("/hub/status.json", include_in_schema=False)
 async def hub_status():
     # the public hub badges reflect REAL state (live / paused / offline). Proxied server-side so
-    # the landing page reads phalanx/watchtower paused flags without CORS.
+    # the landing page reads each world's paused flag without CORS. Driven by the worlds registry.
+    remotes = remote_worlds()
     async with httpx.AsyncClient() as client:
-        ph, wt, pi, al = await asyncio.gather(
-            _fetch_json(client, f"{PHALANX_DEBUG}/debug"),
-            _fetch_json(client, f"{WATCHTOWER_DEBUG}/debug"),
-            _fetch_json(client, f"{PITCH_DEBUG}/debug"),
-            _fetch_json(client, f"{ALIBI_DEBUG}/debug"),
+        debugs = await asyncio.gather(
+            *(_fetch_json(client, f"{w.debug_url}/debug") for w in remotes)
         )
-    return JSONResponse(
-        {
-            "automata": {"paused": G.paused, "up": True},
-            "phalanx": {"paused": bool((ph or {}).get("paused")), "up": ph is not None},
-            "watchtower": {"paused": bool((wt or {}).get("paused")), "up": wt is not None},
-            "pitch": {"paused": False, "up": pi is not None},
-            "alibi": {"paused": bool((al or {}).get("paused")), "up": al is not None},
-        },
-        headers={"Cache-Control": "public, max-age=15"},
-    )
+    out = {}
+    for w in WORLDS:
+        if w.local:
+            out[w.key] = {"paused": G.paused, "up": True}
+    for w, dbg in zip(remotes, debugs):
+        paused = bool((dbg or {}).get("paused")) if w.reports_paused else False
+        out[w.key] = {"paused": paused, "up": dbg is not None}
+    return JSONResponse(out, headers={"Cache-Control": "public, max-age=15"})
 
 
 @app.get("/thumbs/{name}.webp", include_in_schema=False)
@@ -758,6 +756,21 @@ def _automata_ui():
     return JSONResponse({"world": "Automata", "ui": "static/index.html not built yet"})
 
 
+# the hub page is rendered once from the worlds registry: the template carries everything but the
+# cards, and render_cards() fills the <!--WORLDS--> marker. Cached because the registry is static.
+_HUB_HTML: str | None = None
+
+
+def _hub_response():
+    global _HUB_HTML
+    hub = STATIC / "worlds.html"
+    if not hub.exists():
+        return JSONResponse({"worlds": [w.key for w in WORLDS]})
+    if _HUB_HTML is None:
+        _HUB_HTML = hub.read_text(encoding="utf-8").replace("<!--WORLDS-->", render_cards())
+    return HTMLResponse(_HUB_HTML)
+
+
 @app.get("/worlds")
 async def worlds_hub(request: Request):
     # the hub lives at the ROOT of worlds.artel.run — canonicalize /worlds -> / there. On Automata's
@@ -765,12 +778,7 @@ async def worlds_hub(request: Request):
     host = request.headers.get("host", "").split(":")[0]
     if host.startswith("worlds."):
         return RedirectResponse("/", status_code=308)
-    hub = STATIC / "worlds.html"
-    return (
-        FileResponse(hub)
-        if hub.exists()
-        else JSONResponse({"worlds": ["automata", "phalanx", "watchtower"]})
-    )
+    return _hub_response()
 
 
 @app.get("/automata")
@@ -784,9 +792,7 @@ async def root(request: Request):
     # hub; on Automata's own host the root stays the game, so nothing about World 1 changes.
     host = request.headers.get("host", "").split(":")[0]
     if host.startswith("worlds."):
-        hub = STATIC / "worlds.html"
-        if hub.exists():
-            return FileResponse(hub)
+        return _hub_response()
     return _automata_ui()
 
 
@@ -797,12 +803,6 @@ async def root(request: Request):
 UI_PASSWORD = os.environ.get("WORLDS_UI_PASSWORD", "")
 _UI_SECRET = (os.environ.get("WORLDS_UI_SECRET") or UI_PASSWORD or "artel-worlds-dev").encode()
 _UI_TTL = 7 * 24 * 3600
-PHALANX_DEBUG = os.environ.get("PHALANX_DEBUG_URL", "https://phalanx.artel.run").rstrip("/")
-PITCH_DEBUG = os.environ.get("PITCH_DEBUG_URL", "https://pitch.artel.run").rstrip("/")
-ALIBI_DEBUG = os.environ.get("ALIBI_DEBUG_URL", "https://verglas.artel.run").rstrip("/")
-WATCHTOWER_DEBUG = os.environ.get("WATCHTOWER_DEBUG_URL", "https://watchtower.artel.run").rstrip(
-    "/"
-)
 ADMIN_TOKEN = os.environ.get("WORLDS_ADMIN_TOKEN", "")
 
 _LOGIN_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -953,207 +953,57 @@ async def ui_stats(request: Request):
     # server-side aggregation of every world's live cost + status. Auth-gated like the page itself.
     if UI_PASSWORD and not _authed(request):
         raise HTTPException(status_code=401, detail="sign in")
+    remotes = remote_worlds()
     async with httpx.AsyncClient() as client:
-        ph, wt, wt_state, pi, al = await asyncio.gather(
-            _fetch_json(client, f"{PHALANX_DEBUG}/debug"),
-            _fetch_json(client, f"{WATCHTOWER_DEBUG}/debug"),
-            _fetch_json(client, f"{WATCHTOWER_DEBUG}/state"),
-            _fetch_json(client, f"{PITCH_DEBUG}/debug"),
-            _fetch_json(client, f"{ALIBI_DEBUG}/debug"),
-        )
-    worlds = []
-    a = G.snapshot()
-    worlds.append(
-        {
-            "key": "automata",
-            "name": "Automata",
-            "world": 1,
-            "url": "https://automata.artel.run",
-            "status": "live",
-            "paused": G.paused,
-            "cache_ratio": round(LLM_CACHE["cached_in"] / max(1, LLM_CACHE["input"]), 3)
-            if G.llm
-            else None,
-            "model": LLM_MODEL if LLM_ENABLED else "heuristic CA (no LLM)",
-            "spend": round(getattr(G.llm, "spent", 0.0), 4) if G.llm else None,
-            "spend_label": "since boot",
-            "cap": None,
-            "viewers": len(G.viewers),
-            "facts": {"tick": a.get("tick"), "population": a.get("population")},
-        }
-    )
-    if ph:
-        sq = ph.get("squad") or {}
-        red = ph.get("red_squad") or {}
-        spend = (sq.get("spent_usd") or 0.0) + (red.get("spent_usd") or 0.0)
-        worlds.append(
-            {
-                "key": "phalanx",
-                "name": "Phalanx",
-                "world": 2,
-                "url": "https://phalanx.artel.run",
-                "status": "live" if ph.get("live_artel") else "idle",
-                "paused": ph.get("paused", False),
-                "model": sq.get("model"),
-                "fallback": sq.get("fallback_model"),
-                "spend": round(spend, 4),
-                "spend_label": "all time",
-                "cap": sq.get("cap_usd"),
-                "cache_ratio": sq.get("cache_ratio"),
-                "viewers": ph.get("viewers"),
-                "spend_days": ph.get("spend_days") or {},
-                "facts": {
-                    "match": ph.get("completed", ph.get("match")),
-                    "scores": ph.get("scores") or {},
-                    "recent": [
-                        {"winner": h.get("winner"), "live": h.get("live_artel")}
-                        for h in (ph.get("history") or [])[:10]
-                    ],
-                    "throttled": sq.get("throttled_429s"),
-                },
-            }
-        )
-    else:
-        worlds.append(
-            {
-                "key": "phalanx",
-                "name": "Phalanx",
-                "world": 2,
-                "status": "unreachable",
-                "url": "https://phalanx.artel.run",
-                "spend": None,
-                "cap": None,
-            }
-        )
-    if wt:
-        s = {
-            k: wt.get(k)
-            for k in (
-                "incidents",
-                "artel_mttr_all",
-                "solo_mttr_all",
-                "artel_mttr_recent",
-                "solo_mttr_recent",
-                "artel_win_rate",
-                "artel_misses",
-                "solo_misses",
+
+        async def _fetch_world(w):
+            dbg = await _fetch_json(client, f"{w.debug_url}/debug")
+            extra = {}
+            for ep in w.extra:
+                extra[ep] = await _fetch_json(client, f"{w.debug_url}{ep}")
+            return dbg, extra
+
+        fetched = dict(
+            zip(
+                (w.key for w in remotes),
+                await asyncio.gather(*(_fetch_world(w) for w in remotes)),
             )
+        )
+
+    a = G.snapshot()
+    worlds = []
+    for w in sorted(WORLDS, key=lambda x: x.num):
+        base = {
+            "key": w.key,
+            "name": w.name,
+            "world": w.num,
+            "url": w.url.rstrip("/"),
+            "pausable": w.pausable,
+            "resettable": w.resettable,
         }
-        worlds.append(
-            {
-                "key": "watchtower",
-                "name": "Watchtower",
-                "world": 3,
-                "url": "https://watchtower.artel.run",
-                "status": "live" if wt.get("enabled") else "idle",
-                "paused": wt.get("paused", False),
-                "model": wt.get("model"),
-                "fallback": wt.get("fallback_model"),
-                "spend": wt.get("spent_total", wt.get("spent_today")),
-                "spend_label": "all time",
-                "spend_today": wt.get("spent_today"),
-                "cap": wt.get("cap_daily"),
-                "cache_ratio": wt.get("cache_ratio"),
-                "viewers": wt.get("viewers"),
-                "spend_days": wt.get("spend_days") or {},
-                "facts": {
-                    "incidents": s.get("incidents"),
-                    "artel_mttr": s.get("artel_mttr_recent"),
-                    "solo_mttr": s.get("solo_mttr_recent"),
-                    "win_rate": s.get("artel_win_rate"),
-                    "misses": [s.get("artel_misses"), s.get("solo_misses")],
-                    "wedge": (wt_state or {}).get("wedge") or [],
-                },
-            }
-        )
-    else:
-        worlds.append(
-            {
-                "key": "watchtower",
-                "name": "Watchtower",
-                "world": 3,
-                "status": "unreachable",
-                "url": "https://watchtower.artel.run",
-                "spend": None,
-                "cap": None,
-            }
-        )
-    if pi:
-        h, aw = pi.get("home") or {}, pi.get("away") or {}
-        co = pi.get("coach") or {}
-        worlds.append(
-            {
-                "key": "pitch",
-                "name": "Pitch",
-                "world": 4,
-                "url": "https://pitch.artel.run",
-                "status": "live",
-                "paused": False,
-                "model": co.get("model") or "deterministic motor (no LLM)",
-                "fallback": co.get("fallback"),
-                "spend": round(co.get("spent_usd") or 0.0, 5),
-                "spend_label": "since boot",
-                "cap": co.get("cap"),
-                "cache_ratio": None,
-                "spend_days": co.get("spend_days") or {},
-                "facts": {
-                    "match": pi.get("match_no"),
-                    "fixture": f"{h.get('club', '?')} {h.get('score', 0)}–{aw.get('score', 0)} {aw.get('club', '?')}",
-                    "viewers": pi.get("viewers"),
-                    "artel_live": pi.get("artel_live"),
-                    "coach_calls": co.get("calls"),
-                    "throttled": co.get("throttled"),
-                },
-            }
-        )
-    else:
-        worlds.append(
-            {
-                "key": "pitch",
-                "name": "Pitch",
-                "world": 4,
-                "status": "unreachable",
-                "url": "https://pitch.artel.run",
-                "spend": None,
-                "cap": None,
-            }
-        )
-    if al:
-        worlds.append(
-            {
-                "key": "alibi",
-                "name": "Verglas",
-                "world": 5,
-                "url": "https://verglas.artel.run",
-                "status": "live" if al.get("live") else "idle",
-                "paused": al.get("paused", False),
-                "model": al.get("model"),
-                "spend": round(al.get("spend") or 0.0, 5),
-                "spend_label": "all time",
-                "cap": al.get("cap"),
-                "cache_ratio": None,
-                "viewers": al.get("viewers"),
-                "spend_days": al.get("spend_days") or {},
-                "facts": {
-                    "results": al.get("results") or {},
-                    "recent": al.get("recent") or [],
-                    "caption": al.get("caption"),
-                    "router": al.get("router") or [],
-                },
-            }
-        )
-    else:
-        worlds.append(
-            {
-                "key": "alibi",
-                "name": "Verglas",
-                "world": 5,
-                "status": "unreachable",
-                "url": "https://verglas.artel.run",
-                "spend": None,
-                "cap": None,
-            }
-        )
+        if w.local:
+            worlds.append(
+                {
+                    **base,
+                    "status": "live",
+                    "paused": G.paused,
+                    "cache_ratio": round(LLM_CACHE["cached_in"] / max(1, LLM_CACHE["input"]), 3)
+                    if G.llm
+                    else None,
+                    "model": LLM_MODEL if LLM_ENABLED else "heuristic CA (no LLM)",
+                    "spend": round(getattr(G.llm, "spent", 0.0), 4) if G.llm else None,
+                    "spend_label": "since boot",
+                    "cap": None,
+                    "viewers": len(G.viewers),
+                    "facts": {"tick": a.get("tick"), "population": a.get("population")},
+                }
+            )
+            continue
+        dbg, extra = fetched[w.key]
+        if dbg is None:
+            worlds.append({**base, "status": "unreachable", "spend": None, "cap": None})
+        else:
+            worlds.append({**base, **w.shape(dbg, extra)})
     _normalize_world_metrics(worlds)
     total = sum(w["spend"] for w in worlds if isinstance(w.get("spend"), (int, float)))
     days: dict[str, dict[str, float]] = {}
@@ -1187,20 +1037,16 @@ async def ui_pause(request: Request, world: str = "", paused: int = 1):
     if UI_PASSWORD and not _authed(request):
         raise HTTPException(status_code=401, detail="sign in")
     want = bool(paused)
-    if world == "automata":
+    w = world_by_key(world)
+    if not w or not w.pausable:
+        raise HTTPException(status_code=400, detail="unknown or non-pausable world")
+    if w.local:
         G.set_paused(want)
-        return {"ok": True, "world": "automata", "paused": want}
-    target = {
-        "phalanx": PHALANX_DEBUG,
-        "watchtower": WATCHTOWER_DEBUG,
-        "alibi": ALIBI_DEBUG,
-    }.get(world)
-    if not target:
-        raise HTTPException(status_code=400, detail="unknown world")
+        return {"ok": True, "world": world, "paused": want}
     async with httpx.AsyncClient() as client:
         try:
             r = await client.post(
-                f"{target}/admin/pause",
+                f"{w.debug_url}/admin/pause",
                 json={"paused": want},
                 headers={"x-admin-token": ADMIN_TOKEN},
                 timeout=15,
@@ -1221,22 +1067,17 @@ async def ui_reset(request: Request, world: str = ""):
     # call. Auth-gated like the rest of the board.
     if UI_PASSWORD and not _authed(request):
         raise HTTPException(status_code=401, detail="sign in")
-    if world == "automata":
+    w = world_by_key(world)
+    if not w or not w.resettable:
+        raise HTTPException(status_code=400, detail="unknown or non-resettable world")
+    if w.local:
         async with G.lock:
             G.reset()
         await _reset_artel_project()
-        return {"ok": True, "world": "automata"}
-    target = {
-        "phalanx": PHALANX_DEBUG,
-        "watchtower": WATCHTOWER_DEBUG,
-        "pitch": PITCH_DEBUG,
-        "alibi": ALIBI_DEBUG,
-    }.get(world)
-    if not target:
-        raise HTTPException(status_code=400, detail="unknown world")
+        return {"ok": True, "world": world}
     async with httpx.AsyncClient() as client:
         try:
-            r = await client.post(f"{target}/reset", timeout=20)
+            r = await client.post(f"{w.debug_url}/reset", timeout=20)
             return {"ok": r.status_code < 300, "world": world, "status": r.status_code}
         except Exception as e:
             return {"ok": False, "world": world, "error": str(e)}
