@@ -225,6 +225,7 @@ class Verglas:
         return {
             "phase": self.phase,
             "revealed": self.revealed,
+            "hunting": g.hunting,
             "round": len(g.meetings) + 1,
             "tick": g.tick,
             "tasksDone": g.tasks_done,

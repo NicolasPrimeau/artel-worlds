@@ -701,6 +701,13 @@ function drawAgents(t){
       ctx.fillStyle="rgba(150,22,30,.34)"; ctx.beginPath(); ctx.ellipse(sx,sy+s*0.5,s*0.95,s*0.34,0,0,TAU); ctx.fill();
       const pr=s*1.25+Math.sin(t*0.004)*2.4*cam.z; ctx.strokeStyle=`rgba(255,74,74,${0.22+0.16*(0.5+0.5*Math.sin(t*0.004))})`;
       ctx.lineWidth=2*cam.z; ctx.beginPath(); ctx.arc(sx,sy,pr,0,TAU); ctx.stroke(); }
+    if(STATE.hunting && a.alive && a.thing){ // mask off: the Cold drops the disguise and burns red
+      const g=ctx.createRadialGradient(sx,sy,0,sx,sy,s*2.6); g.addColorStop(0,"rgba(255,42,42,.5)"); g.addColorStop(1,"rgba(255,42,42,0)");
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(sx,sy,s*2.6,0,TAU); ctx.fill();
+      const pr=s*1.3+Math.sin(t*0.012)*3*cam.z; ctx.strokeStyle="rgba(255,70,70,.9)"; ctx.lineWidth=2.4*cam.z; ctx.beginPath(); ctx.arc(sx,sy,pr,0,TAU); ctx.stroke(); }
+    else if(STATE.hunting && a.alive){ // the lone survivor: a trembling pale ring of dread
+      const pr=s*1.2+Math.sin(t*0.02)*2*cam.z; ctx.setLineDash([4*cam.z,4*cam.z]); ctx.strokeStyle="rgba(190,225,255,.85)";
+      ctx.lineWidth=2*cam.z; ctx.beginPath(); ctx.arc(sx,sy,pr,0,TAU); ctx.stroke(); ctx.setLineDash([]); }
     figure(sx,sy,s,col,a.alive,working,t,look(a.name));
     const near=Math.hypot(mouse.x-sx,mouse.y-sy)<40*cam.z;
     if(!a.alive){ ctx.textAlign="center"; ctx.font=`800 ${9.5*cam.z}px Inter`; ctx.fillStyle="rgba(255,120,120,.96)";
@@ -744,6 +751,14 @@ function drawSnow(t){ ctx.save(); ctx.fillStyle="#eaf3ff"; const gust=Math.sin(t
     const x=drift*cv.width, y=((f.y+t*(f.near?0.00013:0.00007)*f.d)%1)*cv.height;
     ctx.globalAlpha=(f.near?0.28:0.13)+0.18*f.s/2.7; const r=(f.near?f.s*1.6:f.s)*DPR;
     ctx.beginPath(); ctx.arc(x,y,r,0,TAU); ctx.fill(); } ctx.restore(); }
+function drawHunt(t){ const a=0.5+0.5*Math.sin(t*0.004);  // the final-hunt overlay: a creeping red, a stark line
+  const vg=ctx.createRadialGradient(cv.width/2,cv.height/2,cv.height*0.24,cv.width/2,cv.height/2,cv.height*0.82);
+  vg.addColorStop(0,"rgba(0,0,0,0)"); vg.addColorStop(1,`rgba(150,10,10,${0.20+0.12*a})`); ctx.fillStyle=vg; ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.save(); ctx.textAlign="center";
+  ctx.fillStyle=`rgba(255,90,90,${0.85+0.15*a})`; ctx.font=`900 ${Math.min(22,cv.width/22/DPR)*DPR}px Inter`;
+  ctx.fillText("THE MASK COMES OFF", cv.width/2, 86*DPR);
+  ctx.fillStyle="rgba(231,238,252,.82)"; ctx.font=`600 ${12*DPR}px Inter`;
+  ctx.fillText("one left — and nowhere to run", cv.width/2, 106*DPR); ctx.restore(); }
 function vignette(){ const g=ctx.createRadialGradient(cv.width/2,cv.height*0.46,cv.height*0.28,cv.width/2,cv.height*0.5,cv.height*0.9);
   g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(.7,"rgba(4,10,22,.10)"); g.addColorStop(1,"rgba(2,6,16,.46)"); ctx.fillStyle=g; ctx.fillRect(0,0,cv.width,cv.height);
   // cold blue cast over the whole frame
@@ -930,7 +945,7 @@ function frame(t){
   if(disco){ if(performance.now()-disco.t0<DISCO_MS){ drawDiscovery(t); requestAnimationFrame(frame); return; }
     cam.x=disco.cam0.x; cam.y=disco.cam0.y; cam.z=disco.cam0.z; disco=null; }  // restore the overview camera
   if(meet){ drawSky(); drawMeeting(t); drawSnow(t); vignette(); requestAnimationFrame(frame); return; }
-  drawSky(); drawAmbient(t); drawStation(t); layoutAgents(); moveAgents(); drawAgents(t); applyLighting(); drawFx(); drawSnow(t); vignette(); drawKillPulse();
+  drawSky(); drawAmbient(t); drawStation(t); layoutAgents(); moveAgents(); drawAgents(t); applyLighting(); drawFx(); drawSnow(t); vignette(); drawKillPulse(); if(STATE.hunting) drawHunt(t);
   if(STATE.phase==='gameover') drawEnd(t);
   requestAnimationFrame(frame); }
 // opening card — the frozen outpost, then the dread, fading in over the blowing snow
@@ -1014,7 +1029,7 @@ function renderChat(s){ const chat=$('chat'), inMeet=['meeting','vote','ejection
 function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.station.openTasks||{}; }
   if(s.phase!==curPhase){ curPhase=s.phase; phaseT0=performance.now(); }  // fresh fade for intro/gameover
   STATE.round=s.round; STATE.tasksDone=s.tasksDone; STATE.tasksTotal=s.tasksTotal; STATE.phase=s.phase;
-  STATE.winner=s.winner; STATE.win_by=s.win_by; STATE.scores=s.scores; STATE.meeting=s.meeting; applyAgents(s.agents||[]);
+  STATE.hunting=s.hunting; STATE.winner=s.winner; STATE.win_by=s.win_by; STATE.scores=s.scores; STATE.meeting=s.meeting; applyAgents(s.agents||[]);
   if(s.phase==='intro') removedBodies.clear();  // new game → bodies can appear again
   // recover bodies only when the meeting is OVER (not while it runs — the body must stay visible for the
   // "body found" discovery zoom AND for the table-centre display). On the meeting→task edge, drop the dead.
