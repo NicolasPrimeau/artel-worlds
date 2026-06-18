@@ -137,7 +137,7 @@
 <div id="stage"><canvas id="map"></canvas></div>
 <div class="hud">
   <div class="brand">VERGLAS <small>· OUTPOST <b id="hud-outpost">31</b></small></div>
-  <div class="pill" title="The crew win the instant every task is done — the Cold has to thin them out first"><span class="plabel">Tasks</span> <div class="taskbar"><i id="hud-tasks" style="width:0%"></i></div> <b id="hud-tasksn">0/40</b></div>
+  <div class="pill" title="Tasks restore the outpost — power, heat, comms. Finish them all and Verglas is lit, warm and sealed: conditions the Cold can't survive. It has to thin the crew before they get there."><span class="plabel">Tasks</span> <div class="taskbar"><i id="hud-tasks" style="width:0%"></i></div> <b id="hud-tasksn">0/40</b></div>
   <div class="pill">Alive <b id="hud-alive">10</b>/<b id="hud-total">10</b></div>
   <div class="spacer"></div>
   <div class="pill"><span id="conn" class="live">live</span></div>
@@ -578,6 +578,8 @@ const CHATTER = {
     [1, "If I finish this, do I finally get to idle?"],
     [1, "The {room} panel smells like burnt silicon."],
     [2, "Finishing the board is how we win — heads down."],
+    [2, "Every system back online is one less shadow for it to hide in.", 0.18],
+    [3, "Get the heat and lights up. It can't hold its shape in a warm room.", 0.18],
     [2, "Why is it always ME on console duty… alone?"],
     [3, "Patch the {room} relay before something patches me."],
     [3, "Working fast. I do not want to be back here alone."],
@@ -939,7 +941,7 @@ function drawIntro(t){
 function drawEnd(t){
   const k=Math.min(1,(performance.now()-phaseT0)/600), crew=STATE.winner==='crew';
   const cold=(STATE.agents||[]).filter(a=>a.thing).map(a=>a.name).join(' & ');
-  const by={tasks:"the station's work is finished",ejection:"the Cold was cast into the storm",parity:"the Cold outnumbered the living",timeout:"the long night swallowed the outpost"}[STATE.win_by]||'';
+  const by={tasks:"the outpost is restored to full power — light and heat the Cold can't survive",ejection:"the Cold was cast into the storm",parity:"the Cold outnumbered the living",timeout:"the long night swallowed the outpost"}[STATE.win_by]||'';
   ctx.save(); ctx.textAlign="center";
   ctx.fillStyle=`rgba(4,9,18,${0.66*k})`; ctx.fillRect(0,0,cv.width,cv.height);
   const cx=cv.width/2, cy=cv.height*0.40, big=Math.min(56,cv.width/10/DPR);
