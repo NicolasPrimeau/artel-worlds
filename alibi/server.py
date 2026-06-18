@@ -36,7 +36,7 @@ EJECT_WALK = (
     4.0  # the ejected researcher is walked into the airlock — BEFORE we reveal what they were
 )
 EJECT_REVEAL = 4.0  # then hold on the human/Cold reveal
-GAMEOVER_LINGER = 8.0  # hold on the final board before the next game
+GAMEOVER_LINGER = 14.0  # hold on the result screen before the next game (esp. a sudden task win)
 INTRO_LINGER = (
     5.5  # the opening card (frozen outpost, "something came in from the cold") before play
 )
