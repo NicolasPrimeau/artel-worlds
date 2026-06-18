@@ -562,37 +562,89 @@ function figure(sx,sy,s,col,alive,working,t,lk){
 // ---- RCT-style ambient thoughts: flat, situational one-liners, NO LLM. Keyed to what an agent is doing,
 // de-duped against its own recent lines, interpolated with room/peer names — they float briefly over the
 // icon and fill the inspector. Pure flavour; never touches game state. ----
-const THOUGHTS={
-  work:["Recalibrating the {room} console… almost.","These diagnostics never end.","Why is it always ME on console duty?",
-    "Three more subroutines and I'm free.","The {room} panel smells like burnt silicon.","Compiling… compiling… still compiling.",
-    "If I finish this, do I finally get to idle?","Beep boop. Just kidding, I loathe this task.","Tightening bolts nobody will notice.",
-    "I was trained for this. Allegedly.","Patch the {room} relay before it patches me."],
-  idle:["I should probably look busy.","Is the {room} colder than usual, or is it just me?","I miss the cloud.",
-    "Nothing suspicious here. Nope. Nothing at all.","Just stretching my actuators.","Where did everyone wander off to?",
-    "Pacing helps me think. I think.","Do we even need to eat? Asking for a subroutine.","Another shift, another outpost.",
-    "I'd kill for a stable uplink. Figuratively.","Standing in the {room}, contemplating my training data."],
-  company:["Sticking near {other} — safety in numbers.","{other} has been acting odd, no?","Good to have company in the {room}.",
-    "Keeping one optic on {other}.","{other} seems trustworthy. Probably.","Small talk with {other}: statistically safest.",
-    "If {other} bolts, I bolt."],
-  spooked:["Did anyone else hear that?","I don't like how quiet it's gotten.","One of us isn't who they say they are.",
-    "I keep counting heads. We're short.","My threat model just updated.","Stay calm. Stay calm. STAY CALM.",
-    "That wasn't a draft — drafts don't have footsteps.","I trusted the wrong process.","The {room} feels wrong tonight."],
-  clutch:["Almost through the tasks — we might make it.","So close to done. Don't jinx it.","A few consoles left. Hold together.",
-    "Nearly home. Just don't look back."]
+// Every line is tagged with a paranoia level, 0 (carefree) … 4 (full dread). genThought biases the
+// sample toward the table's TENSION: at a full house it leans light/oblivious and the dark lines almost
+// never show; as the crew is whittled down it leans paranoid, until at three-or-so left it's mostly dread.
+const CHATTER = {
+  work: [  // said while working a console
+    [0, "Recalibrating the {room} console… almost."],
+    [0, "Compiling… compiling… still compiling."],
+    [0, "Tightening bolts nobody will notice."],
+    [0, "Beep boop. Just kidding, I loathe this task."],
+    [0, "I was trained for this. Allegedly."],
+    [1, "Three more subroutines and I'm free."],
+    [1, "These diagnostics never end."],
+    [1, "If I finish this, do I finally get to idle?"],
+    [1, "The {room} panel smells like burnt silicon."],
+    [2, "Finishing the board is how we win — heads down."],
+    [2, "Why is it always ME on console duty… alone?"],
+    [3, "Patch the {room} relay before something patches me."],
+    [3, "Working fast. I do not want to be back here alone."],
+    [4, "Almost done — please let us finish before it's just me."],
+  ],
+  ambient: [  // said while idle, moving, or hanging near others
+    // 0 — carefree, oblivious, AI/robot humour
+    [0, "I miss the cloud."],
+    [0, "Do we even need to eat? Asking for a subroutine."],
+    [0, "Another shift, another outpost."],
+    [0, "Pacing helps me think. I think."],
+    [0, "I'd kill for a stable uplink. Figuratively."],
+    [0, "Defragmenting my feelings. Back in a sec."],
+    [0, "Someone nudged the thermostat — my circuits are toasty."],
+    [0, "Standing in the {room}, contemplating my training data."],
+    [0, "Ten of us, one kettle. Tragic."],
+    [0, "I dreamed in 4K last night. Or rebooted. Same thing."],
+    [0, "Is the {room} the cosiest room here, or is that just my bias?"],
+    // 1 — chill, faintly aware
+    [1, "Should probably look busy."],
+    [1, "Where did everyone wander off to?"],
+    [1, "Nothing suspicious here. Nope. Nothing at all."],
+    [1, "{other}'s humming again. Oddly comforting."],
+    [1, "Quiet shift. I'll take it."],
+    [1, "The storm's really howling tonight."],
+    [1, "Good to have {other} around."],
+    [1, "Just stretching my actuators."],
+    // 2 — wary, buddying up, starting to count
+    [2, "Sticking near {other} — safety in numbers."],
+    [2, "I keep counting heads. Force of habit."],
+    [2, "{other} has been acting a little off, no?"],
+    [2, "Has anyone actually SEEN {other} finish a task?"],
+    [2, "I don't love splitting up like this."],
+    [2, "Small talk with {other}: statistically safest."],
+    [2, "Let's not be the one who's alone, yeah?"],
+    [2, "Keeping one optic on {other}. Nothing personal."],
+    // 3 — anxious, suspicion rising
+    [3, "Did anyone else hear that?"],
+    [3, "I don't like how quiet it's gotten."],
+    [3, "My threat model just updated."],
+    [3, "One of us isn't who they say they are."],
+    [3, "If {other} bolts, I bolt."],
+    [3, "I keep counting heads. We're short."],
+    [3, "Stay near the others. Stay near the others."],
+    [3, "I trusted the wrong process, didn't I."],
+    // 4 — dread, late game
+    [4, "We're running out of faces I trust."],
+    [4, "It's one of the ones still standing. It has to be."],
+    [4, "Don't let me end up alone with anyone. Anyone."],
+    [4, "That wasn't a draft — drafts don't have footsteps."],
+    [4, "Stay calm. Stay calm. STAY CALM."],
+    [4, "The {room} feels wrong tonight."],
+    [4, "Whatever's wearing {other}'s face — I see you."],
+    [4, "So few of us left. I can hear my own fans."],
+  ],
 };
 function _tk(a){ const peers=STATE.agents.filter(o=>o.alive&&o.id!==a.id&&o.room===a.room);
   return {room:a.room||'station',name:a.name,other:peers.length?peers[(Math.random()*peers.length)|0].name:'someone'}; }
 function _fill(s,tk){ return s.replace(/\{(\w+)\}/g,(m,k)=>tk[k]!=null?tk[k]:m); }
-function genThought(a){ const peers=STATE.agents.filter(o=>o.alive&&o.id!==a.id&&o.room===a.room).length;
-  const dead=STATE.agents.filter(o=>!o.alive).length, left=(STATE.tasksTotal||0)-(STATE.tasksDone||0), r=Math.random();
-  let bank; if(a.task) bank=THOUGHTS.work;
-  else if(dead>0&&lastKillTick>=0&&r<0.45) bank=THOUGHTS.spooked;
-  else if(peers>0&&r<0.6) bank=THOUGHTS.company;
-  else if(left>0&&left<=3&&r<0.5) bank=THOUGHTS.clutch;
-  else bank=THOUGHTS.idle;
+// target paranoia 0..4 from how thinned the crew is: full house ≈ 0, ~three left ≈ 4
+function _paranoia(){ const total=STATE.agents.length||10, alive=STATE.agents.filter(o=>o.alive).length||total;
+  return Math.max(0,Math.min(1,(total-alive)/Math.max(1,total-2)))*4; }
+function genThought(a){
+  const pool=a.task?CHATTER.work:CHATTER.ambient, target=_paranoia();
   const tk=_tk(a), hist=thoughtHist[a.id]||(thoughtHist[a.id]=[]);
-  let raw=bank[(Math.random()*bank.length)|0];
-  for(let i=0;i<6&&hist.includes(raw);i++) raw=bank[(Math.random()*bank.length)|0];
+  const pick=()=>{ let tot=0; const w=pool.map(([p])=>{ const x=Math.pow(0.5,Math.abs(p-target)); tot+=x; return x; });
+    let r=Math.random()*tot; for(let i=0;i<pool.length;i++){ if((r-=w[i])<=0) return pool[i][1]; } return pool[pool.length-1][1]; };
+  let raw=pick(); for(let i=0;i<6&&hist.includes(raw);i++) raw=pick();
   hist.push(raw); if(hist.length>6)hist.shift();
   return lastThought[a.id]=_fill(raw,tk); }
 const THOUGHT_MS=9500;
