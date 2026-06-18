@@ -83,9 +83,19 @@ def persona(name: str) -> str:
     return PERSONAS.get(name, "plain-spoken, with a faint dry machine wit")
 
 
+# the Cold wears the crewmate's face but its OWN nature replaces theirs — and it shows only subtly, since
+# anything overt gets it voted out and kills the mystery. The crew's real warmth is what it can't quite fake.
+COLD_PERSONA = (
+    "you wear this crewmate's face, but underneath you are the Cold. Mimic their warmth, but it rings a "
+    "half-beat hollow — your concern is performed, your reassurance a touch too smooth, your interest in "
+    "the others a fraction too even. Never overtly sinister; the wrongness is subtle, easy to miss"
+)
+
+
 def _sys(game: Game, a) -> str:
     base = (SYS_THING if a.impostor else SYS_CREW).format(name=a.name)
-    return f"{base} Stay in character as {a.name}: {persona(a.name)}."
+    voice = COLD_PERSONA if a.impostor else f"stay in character as {a.name}: {persona(a.name)}"
+    return f"{base} {voice[0].upper() + voice[1:]}."
 
 
 def _name(game: Game, i: int) -> str:
