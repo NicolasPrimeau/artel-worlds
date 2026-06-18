@@ -198,6 +198,35 @@ NAMES = [
     "Distilla",  # distillation
     "Epochwell",  # epoch
     "Convoluto",  # convolution
+    # puns on famous CS / ML scientists
+    "Turington",  # Alan Turing
+    "Hintonov",  # Geoffrey Hinton
+    "LeCunningham",  # Yann LeCun
+    "Bengiovanni",  # Yoshua Bengio
+    "Knuthson",  # Donald Knuth
+    "Dijkstrand",  # Edsger Dijkstra
+    "Lovelacey",  # Ada Lovelace
+    "Hopperton",  # Grace Hopper
+    "Shannigan",  # Claude Shannon
+    "Minskovich",  # Marvin Minsky
+    "McCarthen",  # John McCarthy
+    "Pearlmutter",  # Judea Pearl
+    "Vapnikov",  # Vladimir Vapnik
+    "Suttonby",  # Richard Sutton
+    "Bellmanov",  # Richard Bellman
+    "Schmidhubert",  # Jürgen Schmidhuber
+    "Karpathos",  # Andrej Karpathy
+    "Goodfellow",  # Ian Goodfellow
+    "Liskova",  # Barbara Liskov
+    "Torvaldsen",  # Linus Torvalds
+    "Ritchards",  # Dennis Ritchie
+    "Thompsonby",  # Ken Thompson
+    "Neumannski",  # John von Neumann
+    "Lamportov",  # Leslie Lamport
+    "Babbington",  # Charles Babbage
+    "Hammington",  # Richard Hamming
+    "Churchwell",  # Alonzo Church
+    "Norvigson",  # Peter Norvig
 ]
 
 
