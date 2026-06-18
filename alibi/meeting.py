@@ -298,7 +298,7 @@ async def run_llm_meeting(game: Game, mt: Meeting, on_item=None) -> dict:
     quiet = 0
     spoken_actions = 0
     n = len(game.living())
-    cap = min(2 * n, 16)
+    cap = min(n + 1, 9)  # keep the LLM call count modest — free-tier-Groq-friendly
     for _ in range(cap):
         actor = _next_actor(game, transcript, last_actor)
         if actor is None:
@@ -319,7 +319,7 @@ async def run_llm_meeting(game: Game, mt: Meeting, on_item=None) -> dict:
                 await on_item("whisper", actor.id, {"to": action["to"], "text": action["text"]})
         else:
             quiet += 1
-        if quiet >= 3 and spoken_actions >= max(4, n // 2):  # the floor petered out
+        if quiet >= 2 and spoken_actions >= 3:  # the floor petered out
             break
     if on_item:
         await on_item("settle", -1, None)  # discussion's over — the vote opens

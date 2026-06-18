@@ -549,7 +549,8 @@ function vignette(){ const g=ctx.createRadialGradient(cv.width/2,cv.height*0.46,
 // real CC0 Antarctic-aurora wallpaper (NASA/CC0) as the backdrop, cover-fit, lightly dimmed
 // a generated bleak Antarctic landscape (The Thing): cold twilight sky, low sun haze, dark snow-capped
 // peaks on the horizon, a vast pale snow plain, blizzard fog. Screen-fixed with a hint of parallax.
-const ridge=[...Array(60)].map((_,i)=>({h:0.30+0.5*Math.abs(Math.sin(i*1.7)*Math.sin(i*0.6+1.3)), x:i/59}));
+// fewer, wider peaks + a gentle height → broad rolling ridgeline, not a row of sharp spikes
+const ridge=[...Array(16)].map((_,i)=>({h:0.35+0.45*Math.abs(Math.sin(i*1.7)*Math.sin(i*0.6+1.3)), x:i/15}));
 function drawSky(t){
   const sky=ctx.createLinearGradient(0,0,0,cv.height*0.62);
   sky.addColorStop(0,"#13243c"); sky.addColorStop(.55,"#274764"); sky.addColorStop(1,"#5e7894");
@@ -564,13 +565,13 @@ function drawSky(t){
   const hz=cv.height*0.6;
   ctx.save(); ctx.translate(px,0);
   ctx.beginPath(); ctx.moveTo(-40,hz);
-  for(const r of ridge) ctx.lineTo(r.x*(cv.width+80)-40, hz - r.h*cv.height*0.30);
+  for(const r of ridge) ctx.lineTo(r.x*(cv.width+80)-40, hz - r.h*cv.height*0.17);
   ctx.lineTo(cv.width+40,hz); ctx.closePath();
   ctx.fillStyle="#42566f"; ctx.fill();
   ctx.fillStyle="rgba(225,236,252,.24)"; ctx.fill();  // snow sheen on peaks
   // a brighter near ridge for depth + readability
   ctx.beginPath(); ctx.moveTo(-40,hz);
-  for(const r of ridge) ctx.lineTo(r.x*(cv.width+80)-40, hz - r.h*cv.height*0.18);
+  for(const r of ridge) ctx.lineTo(r.x*(cv.width+80)-40, hz - r.h*cv.height*0.10);
   ctx.lineTo(cv.width+40,hz); ctx.closePath();
   ctx.fillStyle="#54688360"; ctx.fill();
   ctx.restore();
