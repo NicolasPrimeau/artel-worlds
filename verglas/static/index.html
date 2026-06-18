@@ -273,7 +273,7 @@ function callCold(id){ myGuess=(myGuess===id?null:id); syncHud(); renderInspecto
 let curPhase='', phaseT0=0;  // phaseT0 stamps phase changes so intro/end can fade in
 let thoughtOf={}, thoughtHist={}, lastThought={}, downC=null, tapC=null;  // ambient thoughts + click-to-inspect
 const EJECT_MS=3600;  // how long the ejected researcher takes to trudge off into the storm
-const DISCO_MIN=5000, DISCO_MAX=10000;  // the "body found" beat: hold >=5s AND until the crew gather, capped
+const DISCO_MS=5000;  // the "body found" beat — a fixed 5s; the server holds the discussion until it's done
 (function seed(){ const names=["Softmaxwell","Overfitz","Hallucinov","Frostbyte","ReLuther","Quantz","Attenborough","Embeddington","Adamson","Tokarev"];
   const rk=Object.keys(STATION0.rects);
   STATE.agents=names.map((n,i)=>({id:i,name:n,model:"gpt-oss-120b",room:rk[i%rk.length],alive:i!==5,task:i%3===0,body:i===5,c:i})); })();
@@ -738,7 +738,7 @@ function drawThought(sx,sy,s,text,al){ const f=13.5*DPR; ctx.font=`600 ${f}px In
 function drawAgents(t){
   const list=STATE.agents.filter(a=>a.wx!=null && !removedBodies.has(a.id) && !(ejecting&&a.name===ejecting.name));
   for(const a of [...list].sort((x,y)=>x.wy-y.wy)){ const [sx,sy]=toScreen(a.wx,a.wy), s=11*cam.z, col=COLORS[a.c%COLORS.length];
-    const working=a.task&&a.alive&&!a.moving;
+    const working=a.task&&a.alive&&!a.moving&&!['meeting','vote','ejection'].includes(STATE.phase);
     if(a.id===HILITE){ const pr=s*1.0+Math.sin(t*0.006)*2.2*cam.z;   // pulsing ring on the rostered pick
       ctx.strokeStyle="rgba(120,200,255,.32)"; ctx.lineWidth=7*cam.z; ctx.beginPath(); ctx.arc(sx,sy,pr,0,TAU); ctx.stroke();
       ctx.strokeStyle="rgba(150,215,255,.95)"; ctx.lineWidth=2.4*cam.z; ctx.beginPath(); ctx.arc(sx,sy,pr,0,TAU); ctx.stroke(); }
@@ -965,7 +965,7 @@ function drawDiscovery(t){
   if(r){ cam.z=c0.z+(c0.z*2.2-c0.z)*ease; cam.x=c0.x+(r.cx-c0.x)*ease; cam.y=c0.y+(r.cy-c0.y)*ease; }
   // GATHER: every living crewmate converges on the body's room (the renderer pins them there and walks
   // them in fast, so the whole crew rings the scene before the meeting cuts in).
-  for(const a of STATE.agents) if(a.alive) a.room=disco.room;
+  for(const a of STATE.agents) if(a.alive){ a.room=disco.room; a.task=false; }  // gather as a crowd, not at consoles
   layoutAgents(); for(let i=0;i<3;i++) moveAgents();   // 3x step = they hurry to the scene
   drawSky(); drawAmbient(t); drawStation(t); drawAgents(t); applyLighting(); drawFx();
   const vic=STATE.agents.find(a=>a.name===disco.victim);
@@ -988,9 +988,7 @@ function drawDiscovery(t){
 }
 function frame(t){
   if(STATE.phase==='intro'){ drawSky(); drawAmbient(t); drawStation(t); applyLighting(); drawSnow(t); vignette(); drawIntro(t); requestAnimationFrame(frame); return; }
-  if(disco){ const ms=performance.now()-disco.t0;
-    const gathered=STATE.agents.filter(a=>a.alive).every(a=>!a.moving);  // everyone has reached the scene
-    if(ms<DISCO_MIN || (!gathered && ms<DISCO_MAX)){ drawDiscovery(t); requestAnimationFrame(frame); return; }
+  if(disco){ if(performance.now()-disco.t0<DISCO_MS){ drawDiscovery(t); requestAnimationFrame(frame); return; }
     cam.x=disco.cam0.x; cam.y=disco.cam0.y; cam.z=disco.cam0.z; disco=null; }  // restore the overview camera
   if(meet){ drawSky(); drawMeeting(t); drawSnow(t); vignette(); requestAnimationFrame(frame); return; }
   drawSky(); drawAmbient(t); drawStation(t); layoutAgents(); moveAgents(); drawAgents(t); applyLighting(); drawFx(); drawSnow(t); vignette(); drawKillPulse(); if(STATE.hunting) drawHunt(t);
