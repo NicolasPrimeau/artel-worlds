@@ -94,7 +94,7 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-  deploy-alibi:
+  deploy-verglas:
     needs: test
     if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
@@ -103,8 +103,8 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Deploy Alibi
+      - name: Deploy Verglas
         # single machine + volume (in-memory game) → immediate, like the other stateful worlds
-        run: flyctl deploy --app artel-alibi --config fly-alibi.toml --remote-only --yes --strategy immediate
+        run: flyctl deploy --app artel-alibi --config fly-verglas.toml --remote-only --yes --strategy immediate
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

@@ -11,26 +11,26 @@ from random import SystemRandom
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 
-from . import artel, autonomy, llm
+from . import artel, autonomy, env, llm
 from .engine import HUB, MAX_TICKS, Meeting, new_game
 from .meeting import (
     run_canned_meeting,
     run_llm_meeting,
 )
 
-# Alibi runs one game after another, but ONLY while someone is watching (free-tier Groq, like phalanx):
+# Verglas runs one game after another, but ONLY while someone is watching (free-tier Groq, like phalanx):
 # no viewers → no ticks, no LLM calls. A game is a task phase (agents wander the station, the Cold
 # kills) punctuated by meetings — which are streamed statement-by-statement so the chat builds live on
 # the page. Crew win by clearing the task board or ejecting the Cold; the Cold wins at parity.
 
 _rng = SystemRandom()
-log = logging.getLogger("alibi")
+log = logging.getLogger("verglas")
 
 STATIC = Path(__file__).parent / "static"
-TASK_TICK = float(os.environ.get("ALIBI_TICK_INTERVAL", "4.2"))  # min seconds per task-phase tick
-STMT_DELAY = float(os.environ.get("ALIBI_STMT_DELAY", "4.6"))  # seconds each spoken line holds
-PRE_VOTE = float(os.environ.get("ALIBI_PRE_VOTE", "3.5"))  # the table settles before the vote opens
-VOTE_DELAY = float(os.environ.get("ALIBI_VOTE_DELAY", "1.9"))  # seconds between revealed votes
+TASK_TICK = float(env("TICK_INTERVAL", "4.2"))  # min seconds per task-phase tick
+STMT_DELAY = float(env("STMT_DELAY", "4.6"))  # seconds each spoken line holds
+PRE_VOTE = float(env("PRE_VOTE", "3.5"))  # the table settles before the vote opens
+VOTE_DELAY = float(env("VOTE_DELAY", "1.9"))  # seconds between revealed votes
 WHISPER_DELAY = 1.6  # how long a private-whisper indicator flashes before play moves on
 EJECT_WALK = (
     4.0  # the ejected researcher is walked out into the storm — BEFORE we reveal what they were
@@ -41,12 +41,12 @@ INTRO_LINGER = (
     5.5  # the opening card (frozen outpost, "something came in from the cold") before play
 )
 _ADMIN_TOKEN = os.environ.get("WORLDS_ADMIN_TOKEN", "")
-N_AGENTS = int(os.environ.get("ALIBI_AGENTS", "10"))
-N_IMPOSTORS = int(os.environ.get("ALIBI_IMPOSTORS", "2"))
+N_AGENTS = int(env("AGENTS", "10"))
+N_IMPOSTORS = int(env("IMPOSTORS", "2"))
 
 
 def _state_path() -> Path:
-    p = Path(os.environ.get("ALIBI_STATE", "/data/alibi_state.json"))
+    p = Path(env("STATE", "/data/alibi_state.json"))
     return p if p.parent.exists() else Path(p.name)
 
 
@@ -64,7 +64,7 @@ def _task_rooms(g) -> dict:
     return rooms
 
 
-class Alibi:
+class Verglas:
     def __init__(self):
         self.lock = asyncio.Lock()
         self.viewers: set[WebSocket] = set()
@@ -154,7 +154,7 @@ class Alibi:
             )
             tmp.replace(path)
         except Exception as e:
-            log.warning("alibi state persist failed: %s", e)
+            log.warning("verglas state persist failed: %s", e)
 
     def record_result(self) -> None:
         g = self.g
@@ -260,7 +260,7 @@ class Alibi:
         }
 
 
-G = Alibi()
+G = Verglas()
 
 
 async def _broadcast(snap: dict | None = None):
@@ -313,7 +313,7 @@ async def _run_meeting(mt) -> None:
         else:
             G.phase = "vote"
             target = G.g.by_id(payload).name if payload is not None and payload >= 0 else "abstains"
-            await artel.say(agent_id, name, f"votes {target}.", subject="alibi-vote")
+            await artel.say(agent_id, name, f"votes {target}.", subject="verglas-vote")
             G.push_feed("msg", frm=name, to=None, text=f"votes {target}")
             await _broadcast()
             await asyncio.sleep(VOTE_DELAY)
@@ -545,7 +545,7 @@ async def _lifespan(app: FastAPI):
         await artel.aclose()
 
 
-app = FastAPI(title="Alibi — Artel Worlds", lifespan=_lifespan)
+app = FastAPI(title="Verglas — Artel Worlds", lifespan=_lifespan)
 
 
 @app.get("/debug")
@@ -629,4 +629,4 @@ async def root():
     index = STATIC / "index.html"
     if index.exists():
         return FileResponse(index)
-    return {"world": "Alibi", "ui": "static/index.html not built yet"}
+    return {"world": "Verglas", "ui": "static/index.html not built yet"}

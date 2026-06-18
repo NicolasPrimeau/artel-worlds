@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from llmrouter import Request
 
-from alibi.engine import Game
+from verglas.engine import Game
 
 # The autonomous task phase: each free (or just-interrupted) agent is asked for ONE action, as a tool
 # call. The tools are deliberately dead-simple — every target is an enum the model picks from a short

@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 
-# Alibi — a faithful Among Us shape. N agents walk a ship of rooms. Crew work a shared task board; the
+# Verglas — a faithful Among Us shape. N agents walk a ship of rooms. Crew work a shared task board; the
 # IMPOSTOR kills on a cooldown and can vent to slip away from a body. Vision is LOCAL: you only see who
 # shares your room, so every agent leaves the task phase with a DIFFERENT, partial log of who-was-where.
 # A found body (or the emergency button) calls a meeting: everyone reconvenes, pools what they saw, and

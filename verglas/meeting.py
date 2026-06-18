@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import re
 
-from alibi import llm
-from alibi.engine import HUB, MAX_TICKS, Game, Meeting, new_game
+from verglas import llm
+from verglas.engine import HUB, MAX_TICKS, Game, Meeting, new_game
 
 # Agents are decoupled from any specific model: every line and every vote is a standardized request to
 # the llm router, which round-robins it across a heterogeneous pool of free-tier models and steps over

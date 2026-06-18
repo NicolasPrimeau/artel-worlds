@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from collections import Counter
 
-from alibi.brain import make_decider
-from alibi.engine import play
+from verglas.brain import make_decider
+from verglas.engine import play
 
 
 def trial(label, share, doubt, n=400, impostors=1, agents=6):

@@ -3,20 +3,22 @@ from __future__ import annotations
 import logging
 import os
 
+from . import env
+
 import httpx
 
 # The meeting's bus IS Artel. Every line a survivor speaks and every vote it casts is broadcast to the
-# alibi project on a real Artel server, as the seat agent — so the deduction literally happens over the
+# verglas project on a real Artel server, as the seat agent — so the deduction literally happens over the
 # coordination layer the worlds exist to show off. Off (a no-op) unless agent identities are configured,
 # so local runs and an unprovisioned deploy still render from the in-memory transcript; best-effort
 # throughout, so a slow or failed post never stalls the game.
 
-log = logging.getLogger("alibi.artel")
+log = logging.getLogger("verglas.artel")
 
 ARTEL_URL = os.environ.get("ARTEL_URL", "https://artel.run").rstrip("/")
-PROJECT = os.environ.get("ALIBI_PROJECT", "alibi")
-_IDS = [s.strip() for s in os.environ.get("ALIBI_AGENT_IDS", "").split(",") if s.strip()]
-_KEYS = [s.strip() for s in os.environ.get("ALIBI_AGENT_KEYS", "").split(",") if s.strip()]
+PROJECT = env("PROJECT", "verglas")
+_IDS = [s.strip() for s in env("AGENT_IDS").split(",") if s.strip()]
+_KEYS = [s.strip() for s in env("AGENT_KEYS").split(",") if s.strip()]
 AGENTS = [{"id": i, "key": k} for i, k in zip(_IDS, _KEYS)]
 
 _http: httpx.AsyncClient | None = None
@@ -60,7 +62,7 @@ async def _ensure_joined(agent: dict) -> None:
         log.warning("artel join failed for %s: %s", agent["id"], e)
 
 
-async def say(index: int, name: str, text: str, subject: str = "alibi") -> None:
+async def say(index: int, name: str, text: str, subject: str = "verglas") -> None:
     if not enabled() or not text:
         return
     agent = _seat(index)
@@ -75,7 +77,7 @@ async def say(index: int, name: str, text: str, subject: str = "alibi") -> None:
         log.warning("artel say failed for %s: %s", agent["id"], e)
 
 
-async def dm(from_index: int, to_index: int, text: str, subject: str = "alibi-whisper") -> None:
+async def dm(from_index: int, to_index: int, text: str, subject: str = "verglas-whisper") -> None:
     # a PRIVATE agent-to-agent message on Artel (coalitions, "vote with me", "let's buddy up") — only
     # the two agents see it; the public viewer just knows a whisper happened.
     if not enabled() or not text:
