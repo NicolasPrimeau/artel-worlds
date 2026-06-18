@@ -231,7 +231,6 @@ NAMES = [
     "Bender",  # Futurama
     "Rosie",  # The Jetsons
     "K9",  # Doctor Who
-    "Joi",  # Blade Runner 2049
     "Ziggy",  # Quantum Leap
     "Cylon",  # Battlestar Galactica
 ]
