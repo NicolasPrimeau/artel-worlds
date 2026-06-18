@@ -1136,6 +1136,7 @@ async def ui_stats(request: Request):
                     "results": al.get("results") or {},
                     "recent": al.get("recent") or [],
                     "caption": al.get("caption"),
+                    "router": al.get("router") or [],
                 },
             }
         )
