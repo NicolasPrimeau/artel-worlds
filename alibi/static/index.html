@@ -812,13 +812,21 @@ function drawDiscovery(t){
   const pulse=0.5+0.5*Math.sin(t*0.012);
   ctx.strokeStyle=`rgba(255,70,70,${0.6+0.4*pulse})`; ctx.lineWidth=3*DPR; ctx.beginPath(); ctx.arc(bx,by,(28+16*pulse)*DPR,0,TAU); ctx.stroke();
   ctx.strokeStyle=`rgba(255,70,70,${0.25*pulse})`; ctx.lineWidth=2*DPR; ctx.beginPath(); ctx.arc(bx,by,(48+22*pulse)*DPR,0,TAU); ctx.stroke();
+  // the DISCOVERER, restaged at the scene over the body (they've already left for the meeting). a blue ring
+  // + name so the beat is about WHO found it — never the killer, who is long gone by now.
+  const rep=STATE.agents.find(a=>a.name===disco.reporter);
+  if(rep){ const ds=11*cam.z*0.92, dx=bx+46*DPR, dy=by-4*DPR, pl=0.5+0.5*Math.sin(t*0.01);
+    ctx.strokeStyle=`rgba(140,210,255,${0.6+0.4*pl})`; ctx.lineWidth=2.4*DPR; ctx.beginPath(); ctx.arc(dx,dy,ds*1.2,0,TAU); ctx.stroke();
+    figure(dx,dy,ds,COLORS[rep.c%COLORS.length],true,false,t,look(disco.reporter));
+    ctx.textAlign="center"; ctx.fillStyle="rgba(150,215,255,.96)"; ctx.font=`800 ${11*DPR}px Inter`; ctx.fillText(disco.reporter,dx,dy+ds*1.5);
+    ctx.fillStyle="rgba(205,224,248,.82)"; ctx.font=`600 ${8.5*DPR}px Inter`; ctx.fillText("found the body",dx,dy+ds*1.5+12*DPR); }
   const vg=ctx.createRadialGradient(cv.width/2,cv.height/2,cv.height*0.2,cv.width/2,cv.height/2,cv.height*0.72);
   vg.addColorStop(0,"rgba(0,0,0,0)"); vg.addColorStop(1,`rgba(130,12,12,${0.32+0.16*pulse})`); ctx.fillStyle=vg; ctx.fillRect(0,0,cv.width,cv.height);
   drawSnow(t);
   ctx.textAlign="center"; ctx.fillStyle=`rgba(255,95,95,${Math.min(1,el*3)})`; ctx.font=`900 ${26*DPR}px Inter`;
   ctx.fillText("BODY FOUND", cv.width/2, cv.height*0.19);
   ctx.fillStyle="rgba(231,238,252,.92)"; ctx.font=`700 ${13*DPR}px Inter`;
-  ctx.fillText(`${disco.victim} found dead in the ${disco.room}`, cv.width/2, cv.height*0.19+23*DPR);
+  ctx.fillText(`${disco.reporter||'someone'} found ${disco.victim} in the ${disco.room}`, cv.width/2, cv.height*0.19+23*DPR);
 }
 function frame(t){
   if(STATE.phase==='intro'){ drawSky(); drawAmbient(t); drawStation(t); applyLighting(); drawSnow(t); vignette(); drawIntro(t); requestAnimationFrame(frame); return; }
@@ -932,7 +940,7 @@ function updateMeet(s){ const inMeet=['meeting','vote','ejection'].includes(s.ph
   if(!inMeet){ meet=null; disco=null; return; }
   if(!meet){ meet={ t0:performance.now(), ids:STATE.agents.filter(a=>a.alive).map(a=>a.id), spoken:0, bubble:null, votes:{} };
     if(s.phase==='meeting' && s.meeting.victim && ROOMS[s.meeting.room])  // a body report → play the discovery beat first
-      disco={ room:s.meeting.room, victim:s.meeting.victim, t0:performance.now(), cam0:{x:cam.x,y:cam.y,z:cam.z} }; }
+      disco={ room:s.meeting.room, victim:s.meeting.victim, reporter:s.meeting.reporter, t0:performance.now(), cam0:{x:cam.x,y:cam.y,z:cam.z} }; }
   const tr=s.meeting.transcript||[];   // newest revealed line → pop a fresh bubble over its speaker
   if(tr.length>meet.spoken){ const last=tr[tr.length-1], sp=STATE.agents.find(a=>a.name===last.name);
     meet.bubble={ id:sp?sp.id:-1, text:last.text }; meet.spoken=tr.length; }
