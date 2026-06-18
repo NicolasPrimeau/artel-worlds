@@ -136,6 +136,15 @@ def _strip_think(text: str) -> str:
     return text.strip()
 
 
+def _is_pass(text: str) -> bool:
+    t = re.sub(r"[^a-z]", "", text.lower())
+    return t in {"pass", "nothing", "nocomment", "skip", "silent"} or text.strip() in {
+        "-",
+        "—",
+        "...",
+    }
+
+
 def _trim(text: str) -> str:
     # keep each line to a single short sentence so it fits in a speech bubble over the agent's head
     text = _strip_think(text).strip().strip('"').replace("\n", " ")
@@ -158,15 +167,18 @@ async def _statement_round(game, mt, transcript, opening: bool, on_item=None):
         ask = (
             "Your account in ONE short line: where were you, who can vouch, or who you suspect."
             if opening
-            else "Reply in ONE short line — defend yourself, back a theory, or call out a lie."
+            else "ONE short line ONLY if you have something to add or must defend yourself."
         )
-        user = f"{public}\n\nWhat you know:\n{_brief(game, mt, a)}\n\nMeeting so far:\n{convo or '(nobody has spoken yet)'}\n\n{ask}"
+        user = (
+            f"{public}\n\nWhat you know:\n{_brief(game, mt, a)}\n\nMeeting so far:\n{convo or '(nobody has spoken yet)'}\n\n"
+            f"{ask} You don't have to speak — reply exactly (pass) to stay quiet."
+        )
         m = _model(a)
         jobs.append((sys, user + ("\n/no_think" if "qwen" in m else ""), m))
     outs = await llm.complete_many(jobs, temperature=0.8)
     for a, text in zip(living, outs):
         text = _trim(text)
-        if not text:
+        if not text or _is_pass(text):  # an agent may sit a round out
             continue
         transcript.append((a.id, text))
         if on_item:
@@ -217,6 +229,8 @@ async def run_llm_meeting(game: Game, mt: Meeting, on_item=None) -> dict:
     mt.votes = {}
     for r in range(ROUNDS):
         await _statement_round(game, mt, transcript, opening=(r == 0), on_item=on_item)
+    if on_item:
+        await on_item("settle", -1, None)  # deliberation done — the table settles before the vote
     votes = await _vote_round(game, mt, transcript, on_item=on_item)
     mt.votes = votes
     return votes
@@ -248,6 +262,8 @@ async def run_canned_meeting(game: Game, mt: Meeting, decide, on_item=None) -> d
         transcript.append((a.id, text))
         if on_item:
             await on_item("statement", a.id, text)
+    if on_item:
+        await on_item("settle", -1, None)
     votes = decide(game, mt)
     for a in game.living():
         mt.votes[a.id] = votes.get(a.id, -1)

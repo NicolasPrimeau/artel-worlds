@@ -30,12 +30,14 @@ _rng = SystemRandom()
 log = logging.getLogger("alibi")
 
 STATIC = Path(__file__).parent / "static"
-TASK_TICK = float(os.environ.get("ALIBI_TICK_INTERVAL", "2.0"))  # min seconds per task-phase tick
-STMT_DELAY = float(
-    os.environ.get("ALIBI_STMT_DELAY", "2.0")
-)  # seconds each spoken line holds on screen
-VOTE_DELAY = float(os.environ.get("ALIBI_VOTE_DELAY", "1.2"))  # seconds between revealed votes
-EJECT_LINGER = 6.0  # hold on the vote + airlock reveal so viewers read the result
+TASK_TICK = float(os.environ.get("ALIBI_TICK_INTERVAL", "3.0"))  # min seconds per task-phase tick
+STMT_DELAY = float(os.environ.get("ALIBI_STMT_DELAY", "3.4"))  # seconds each spoken line holds
+PRE_VOTE = float(os.environ.get("ALIBI_PRE_VOTE", "3.5"))  # the table settles before the vote opens
+VOTE_DELAY = float(os.environ.get("ALIBI_VOTE_DELAY", "1.9"))  # seconds between revealed votes
+EJECT_WALK = (
+    4.0  # the ejected researcher is walked into the airlock — BEFORE we reveal what they were
+)
+EJECT_REVEAL = 4.0  # then hold on the human/Thing reveal
 GAMEOVER_LINGER = 8.0  # hold on the final board before the next game
 _ADMIN_TOKEN = os.environ.get("WORLDS_ADMIN_TOKEN", "")
 N_AGENTS = int(os.environ.get("ALIBI_AGENTS", "10"))
@@ -70,6 +72,7 @@ class Alibi:
         self.completed = 0
         self.paused = False
         self.phase = "task"  # task | meeting | vote | ejection | gameover
+        self.revealed = False  # during ejection: has the human/Thing reveal happened yet?
         self.meeting = None
         self._restore_state()
         self._new_game()
@@ -138,7 +141,8 @@ class Alibi:
 
     def snapshot(self) -> dict:
         g = self.g
-        reveal = self.phase in ("ejection", "gameover")  # only unmask the Thing on a reveal
+        # the Thing is unmasked only at the dramatic reveal (after the walk-out) or on the final board
+        reveal = (self.phase == "ejection" and self.revealed) or self.phase == "gameover"
         agents = []
         for a in g.agents:
             d = {
@@ -178,10 +182,14 @@ class Alibi:
                     for v, t in (mt.votes or {}).items()
                 }
             if self.phase == "ejection" and mt.ejected is not None:
-                meeting["ejected"] = g.by_id(mt.ejected).name
-                meeting["ejected_was_thing"] = g.by_id(mt.ejected).impostor
+                meeting["ejected"] = g.by_id(
+                    mt.ejected
+                ).name  # who walks out (shown during the walk)
+                if self.revealed:  # ...but WHAT they were is withheld until the reveal beat
+                    meeting["ejected_was_thing"] = g.by_id(mt.ejected).impostor
         return {
             "phase": self.phase,
+            "revealed": self.revealed,
             "round": len(g.meetings) + 1,
             "tick": g.tick,
             "tasksDone": g.tasks_done,
@@ -234,12 +242,18 @@ async def _broadcast(snap: dict | None = None):
 async def _run_meeting(mt) -> None:
     G.g.reconvene()  # everyone — task-workers included — downs tools and gathers at the Mess Hall table
     G.phase = "meeting"
+    G.revealed = False
     G.meeting = mt
     await _broadcast()
 
     async def on_item(kind: str, agent_id: int, payload) -> None:
-        # one line / one vote arrives → mirror it onto the Artel bus, push the frame, then HOLD so a
-        # viewer reads it before the next. The whole meeting builds line by line, not all at once.
+        # paces the meeting: deliberation lines hold on screen, the table SETTLES before the vote opens,
+        # then votes land one at a time. Each line/vote is mirrored onto the Artel bus.
+        if kind == "settle":  # deliberation over → a beat before the vote
+            G.phase = "vote"
+            await _broadcast()
+            await asyncio.sleep(PRE_VOTE)
+            return
         name = G.g.by_id(agent_id).name
         if kind == "statement":
             G.phase = "meeting"
@@ -248,8 +262,8 @@ async def _run_meeting(mt) -> None:
             await asyncio.sleep(STMT_DELAY)
         else:
             G.phase = "vote"
-            target = G.g.by_id(payload).name if payload is not None and payload >= 0 else "skip"
-            await artel.say(agent_id, name, f"I vote {target}.", subject="alibi-vote")
+            target = G.g.by_id(payload).name if payload is not None and payload >= 0 else "abstains"
+            await artel.say(agent_id, name, f"votes {target}.", subject="alibi-vote")
             await _broadcast()
             await asyncio.sleep(VOTE_DELAY)
 
@@ -260,9 +274,15 @@ async def _run_meeting(mt) -> None:
 
         votes = await run_canned_meeting(G.g, mt, make_decider(share=True), on_item)
     G.g.apply_votes(mt, votes)
+    # ejection: walk the ejected out (suspense), THEN reveal whether they were the Thing
     G.phase = "ejection"
+    G.revealed = False
     await _broadcast()
-    await asyncio.sleep(EJECT_LINGER)
+    if mt.ejected is not None:
+        await asyncio.sleep(EJECT_WALK)
+    G.revealed = True  # the airlock reveal
+    await _broadcast()
+    await asyncio.sleep(EJECT_REVEAL)
 
 
 async def _game_loop():
