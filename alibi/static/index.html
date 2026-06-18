@@ -492,6 +492,7 @@ function layoutAgents(){ const byRoom={}; for(const a of STATE.agents){ if(!a.al
 // is purely cosmetic (it aims the headlamp cone) and only eases toward the direction of actual motion.
 const WALK=2.0;
 function moveAgents(){ for(const a of STATE.agents){ if(a.tx==null)continue;
+  if(thoughtOf[a.id]){ a.moving=false; continue; }  // hold still while a thought is up, so the bubble stays readable
   if(a.wx==null){a.wx=a.tx;a.wy=a.ty;a.face=1.57;a.spd=0;}
   const tgt=(a.path&&a.path.length)?a.path[0]:{x:a.tx,y:a.ty};   // follow the corridor waypoints first
   const dx=tgt.x-a.wx, dy=tgt.y-a.wy, d=Math.hypot(dx,dy);
@@ -587,8 +588,9 @@ const THOUGHT_MS=9500;
 function thinkTick(){ if(STATE.phase!=='task'||STATE.paused) return; const now=performance.now();
   for(const k in thoughtOf) if(now-thoughtOf[k].t0>THOUGHT_MS) delete thoughtOf[k];
   if(Object.keys(thoughtOf).length>=2) return;
-  const live=STATE.agents.filter(a=>a.alive&&a.wx!=null&&!thoughtOf[a.id]); if(!live.length) return;
-  const a=live[(Math.random()*live.length)|0]; thoughtOf[a.id]={text:genThought(a),t0:now};
+  const avail=STATE.agents.filter(a=>a.alive&&a.wx!=null&&!thoughtOf[a.id]);
+  const still=avail.filter(a=>!a.moving); const pool=still.length?still:avail; if(!pool.length) return;
+  const a=pool[(Math.random()*pool.length)|0]; thoughtOf[a.id]={text:genThought(a),t0:now};
   if(HILITE===a.id) renderInspector(); }
 setInterval(thinkTick,4200);
 function drawThought(sx,sy,s,text,al){ const f=Math.max(9.5,10*cam.z); ctx.font=`600 ${f}px Inter`;

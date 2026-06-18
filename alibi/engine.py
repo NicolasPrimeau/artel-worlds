@@ -157,7 +157,8 @@ WORK_TICKS = 3  # a task occupies its crew for several ticks — they linger at 
 TASK_SLACK = 4  # keep this many fewer tasks-in-play than living players, so a couple are always free to buddy
 KILL_CD = 9  # ticks between kills — crew walk to tasks (spread out), so kills come easy; slow them
 OPP_KILL_P = 0.12  # chance the Cold risks a kill with WITNESSES present (vs only when truly alone)
-START_GRACE = 8  # no kill on the first few ticks, so a real task phase builds movement + alibis
+START_GRACE = 12  # first-kill grace, reset every new game (new_game sets cd=START_GRACE): the Cold must
+# wait this many ticks before its first kill, so a fresh round opens calm and alibis can form
 FOLLOW_TICKS = 6  # how long an autonomous agent tails a buddy before it stops to decide again
 EMERGENCY_P = 0.02  # per-tick chance a crew calls a meeting on suspicion alone
 MAX_TICKS = 600
