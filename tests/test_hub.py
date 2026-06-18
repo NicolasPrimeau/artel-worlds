@@ -15,7 +15,8 @@ def test_render_cards_covers_every_world():
         assert f'id="st-{w.key}"' in cards
         assert w.url in cards
     assert "wt-thumb" in cards and "wt-live" in cards  # watchtower live-chart overlay
-    assert "⚽" in cards and "❄" in cards  # glyph fallbacks (pitch, verglas)
+    for w in WORLDS:  # each card shows either its thumbnail image or its glyph fallback
+        assert (w.thumb and w.thumb in cards) or (w.glyph and w.glyph in cards), w.key
 
 
 def test_hub_status_keys_match_registry(monkeypatch):
