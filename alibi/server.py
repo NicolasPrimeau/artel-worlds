@@ -80,8 +80,15 @@ class Alibi:
         self.inbox: dict = {}  # agent id -> [(from_name, text)] task-phase whispers received
         self.interrupted: set = set()  # agent ids that got a whisper → re-decide next tick
         self.deciding = 0  # agents that asked the LLM for an action this tick (for the ops board)
+        self.feed: list = []  # rolling log of real Artel events (messages, claims, completes)
+        self.feed_seq = 0  # monotonic id so the client appends only what's new
         self._restore_state()
         self._new_game()
+
+    def push_feed(self, kind: str, **data) -> None:
+        self.feed_seq += 1
+        self.feed.append({"seq": self.feed_seq, "kind": kind, **data})
+        del self.feed[:-60]
 
     def set_paused(self, value: bool) -> None:
         self.paused = bool(value)
@@ -100,6 +107,7 @@ class Alibi:
         self.task_room.clear()
         self.inbox.clear()
         self.interrupted.clear()
+        self.feed.clear()
         while not self.task_q.empty():
             try:
                 self.task_q.get_nowait()
@@ -229,6 +237,7 @@ class Alibi:
                 "openTasks": _task_rooms(g),  # room -> lit consoles (unclaimed + in-progress)
             },
             "meeting": meeting,
+            "feed": self.feed[-40:],  # live Artel event ticker
             "winner": g.winner,
             "win_by": g.win_by,
             "scores": dict(self.scores),
@@ -285,6 +294,7 @@ async def _run_meeting(mt) -> None:
             G.phase = "meeting"
             await artel.dm(agent_id, payload["to"], payload["text"])
             G.whisper = [name, G.g.by_id(payload["to"]).name]
+            G.push_feed("msg", frm=name, to=G.g.by_id(payload["to"]).name, text=payload["text"])
             await _broadcast()
             await asyncio.sleep(WHISPER_DELAY)
             G.whisper = None
@@ -292,12 +302,14 @@ async def _run_meeting(mt) -> None:
         if kind == "statement":
             G.phase = "meeting"
             await artel.say(agent_id, name, payload)
+            G.push_feed("msg", frm=name, to=None, text=payload)
             await _broadcast()
             await asyncio.sleep(STMT_DELAY)
         else:
             G.phase = "vote"
             target = G.g.by_id(payload).name if payload is not None and payload >= 0 else "abstains"
             await artel.say(agent_id, name, f"votes {target}.", subject="alibi-vote")
+            G.push_feed("msg", frm=name, to=None, text=f"votes {target}")
             await _broadcast()
             await asyncio.sleep(VOTE_DELAY)
 
@@ -383,8 +395,10 @@ async def _apply_action(g, a, action) -> str | None:
             pool = G.task_pool.get(room) or []
             tid = pool.pop(0) if pool else None
             won = (await artel.claim_task(a.id, tid)) if (artel.enabled() and tid) else True
-            if won and g.claim_room(a, room) and tid:
-                G.task_working[a.id] = tid
+            if won and g.claim_room(a, room):
+                if tid:
+                    G.task_working[a.id] = tid
+                G.push_feed("task", action="claimed", who=a.name, room=room)
             if tid:
                 G.task_room.pop(tid, None)
     elif name == "follow":
@@ -401,6 +415,7 @@ async def _apply_action(g, a, action) -> str | None:
             G.inbox.setdefault(to, []).append((a.name, text[:120]))
             G.interrupted.add(to)
             G.whisper = [a.name, g.by_id(to).name]
+            G.push_feed("msg", frm=a.name, to=g.by_id(to).name, text=text[:120])
     elif name == "eliminate":
         vid = _target_id(g, args.get("who"))
         if vid is not None and g.do_kill(a, vid):
@@ -451,6 +466,8 @@ async def _autonomous_tick():
                 tid = G.task_working.pop(ev[1], None)
                 if tid:
                     await artel.complete_task(ev[1], tid)
+                done = G.g.by_id(ev[1])
+                G.push_feed("task", action="completed", who=done.name, room=done.room)
         except Exception as e:
             log.warning("task mirror failed: %s", e)
     if mt is None and meeting_caller is not None:
