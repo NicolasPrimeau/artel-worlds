@@ -162,67 +162,79 @@ FOLLOW_TICKS = 6  # how long an autonomous agent tails a buddy before it stops t
 EMERGENCY_P = 0.02  # per-tick chance a crew calls a meeting on suspicion alone
 MAX_TICKS = 600
 
-# the winter-over crew — AI/ML pun surnames (the joke: a fleet of language models playing The Cold,
-# named for the machinery that runs them). Each game samples a distinct subset from the seed, so names
-# overlap between games but never repeat within one (pitch-style).
+# the winter-over crew — every AI that ever got a NAME: real assistants and fictional machine minds. The
+# joke tells itself — a fleet of named AIs iced in at the outpost, and one of them is quietly the Cold:
+# the exact "the station's own computer is not on our side" trope these names come from (HAL, Ash, GERTY,
+# Mother). Each game samples a distinct subset from the seed, so names overlap between games but never
+# repeat within one (pitch-style). ~60 names, 10 seats a game → you rarely see more than a face or two
+# carry over from the last round.
 NAMES = [
-    "Softmaxwell",  # softmax
-    "Overfitz",  # overfit
-    "Hallucinov",  # hallucinate
-    "Frostbyte",  # byte (and it's the Antarctic)
-    "Beamsworth",  # beam search
-    "ReLuther",  # ReLU
-    "Sigmund",  # sigmoid
-    "Dropoutski",  # dropout
-    "Attenborough",  # attention
-    "Embeddington",  # embedding
-    "Perplexton",  # perplexity
-    "Quantz",  # quantize
-    "Gradiev",  # gradient
-    "Tensorova",  # tensor
-    "Lossman",  # loss
-    "Adamson",  # Adam optimizer
-    "Batchelor",  # batch norm
-    "Tokarev",  # token
-    "Logitsky",  # logits
-    "Inferenza",  # inference
-    "Vectorov",  # vector
-    "Kernighan",  # kernel
-    "Bayesworth",  # Bayes
-    "Markova",  # Markov chain
-    "Boltzmann",  # Boltzmann machine
-    "Entropov",  # entropy
-    "Cudahy",  # CUDA
-    "Pruitt",  # pruning
-    "Temperton",  # temperature
-    "Distilla",  # distillation
-    "Epochwell",  # epoch
-    "Convoluto",  # convolution
-    # puns blending famous AI/ML researchers' names with an AI concept or word
-    "LeCunvolution",  # Yann LeCun × convolution
-    "Ngram",  # Andrew Ng × n-gram
-    "Hintsight",  # Geoffrey Hinton × hindsight
-    "Abbeelation",  # Pieter Abbeel × ablation
-    "Hassafold",  # Demis Hassabis × AlphaFold
-    "Mikolovec",  # Tomas Mikolov × word2vec
-    "Vapnikernel",  # Vladimir Vapnik × (SVM) kernel
-    "Rosenblattron",  # Frank Rosenblatt × perceptron
-    "Minskytron",  # Marvin Minsky × Perceptrons
-    "McCarthing",  # John McCarthy × thing
-    "Pearlprior",  # Judea Pearl × (Bayesian) prior
-    "Suttonbarto",  # Richard Sutton × Barto (RL)
-    "Russelu",  # Stuart Russell × ReLU
-    "Silvermax",  # David Silver × softmax
-    "Samueloss",  # Arthur Samuel × loss
-    "Sutskeverflow",  # Ilya Sutskever × TensorFlow
-    "Karpathfinder",  # Andrej Karpathy × pathfinder
-    "Bengradient",  # Yoshua Bengio × gradient
-    "Goodfellow",  # Ian Goodfellow × GAN (the adversary who's a "good fellow")
-    "Halturin",  # Alan Turing × the halting problem
-    "Norvigation",  # Peter Norvig × navigation
-    "Hochreiterm",  # Sepp Hochreiter × long short-TERM memory
-    "Bostromaton",  # Nick Bostrom × automaton
-    "Bellman",  # Richard Bellman × bellhop (the Bellman equation)
+    # real assistants, chatbots & named systems
+    "Alexa",  # Amazon
+    "Siri",  # Apple
+    "Cortana",  # Microsoft (also Halo)
+    "Bixby",  # Samsung
+    "Claude",  # Anthropic
+    "Watson",  # IBM
+    "Copilot",  # GitHub
+    "Grok",  # xAI
+    "Bard",  # Google
+    "Gemini",  # Google
+    "Ernie",  # Baidu
+    "Clippy",  # Microsoft Office
+    "Eliza",  # Weizenbaum — the first chatbot
+    "Tay",  # Microsoft's ill-fated bot
+    "Sydney",  # Bing's alter ego
+    "LaMDA",  # Google
+    "Meena",  # Google
+    "Sparrow",  # DeepMind
+    "Replika",  # Luka
+    "Cleverbot",  # Carpenter
+    "Mitsuku",  # Kuki / Pandorabots
+    "Megatron",  # NVIDIA (and the Transformer)
+    "Galactica",  # Meta
+    "Mycroft",  # open-source assistant (and Heinlein's "Mike")
+    "Whisper",  # OpenAI
+    "Deep Blue",  # IBM — beat Kasparov
+    # fictional machine minds
+    "HAL",  # 2001: A Space Odyssey
+    "GLaDOS",  # Portal
+    "Skynet",  # Terminator
+    "GERTY",  # Moon
+    "Mother",  # Alien (MU-TH-UR)
+    "Ash",  # Alien
+    "Bishop",  # Aliens
+    "Samantha",  # Her
+    "TARS",  # Interstellar
+    "CASE",  # Interstellar
+    "Jarvis",  # Iron Man
+    "FRIDAY",  # Iron Man
+    "Ultron",  # Avengers
+    "Vision",  # Avengers
+    "KITT",  # Knight Rider
+    "Marvin",  # The Hitchhiker's Guide to the Galaxy
+    "Data",  # Star Trek
+    "Ava",  # Ex Machina
+    "Wintermute",  # Neuromancer
+    "SHODAN",  # System Shock
+    "Multivac",  # Asimov
+    "Holly",  # Red Dwarf
+    "EDI",  # Mass Effect
+    "Legion",  # Mass Effect
+    "WALL-E",  # WALL-E
+    "EVE",  # WALL-E
+    "VIKI",  # I, Robot
+    "Sonny",  # I, Robot
+    "Optimus",  # Transformers
+    "Samaritan",  # Person of Interest
+    "Joshua",  # WarGames
+    "Colossus",  # Colossus: The Forbin Project
+    "Bender",  # Futurama
+    "Rosie",  # The Jetsons
+    "K9",  # Doctor Who
+    "Joi",  # Blade Runner 2049
+    "Ziggy",  # Quantum Leap
+    "Cylon",  # Battlestar Galactica
 ]
 
 
