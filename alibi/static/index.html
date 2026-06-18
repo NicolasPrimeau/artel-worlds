@@ -122,7 +122,6 @@
   <div class="pill"><span class="plabel">Tasks</span> <div class="taskbar"><i id="hud-tasks" style="width:30%"></i></div></div>
   <div class="pill">Alive <b id="hud-alive">10</b>/<b id="hud-total">10</b></div>
   <div class="spacer"></div>
-  <div class="pill" id="wins" title="games won — crew vs the Cold"><span class="c">CREW <b id="w-crew">0</b></span><s>·</s><span class="t"><b id="w-thing">0</b> COLD</span></div>
   <div class="pill"><span id="conn" class="live">live</span></div>
 </div>
 <div class="roster" id="roster"></div>
@@ -762,7 +761,6 @@ function drawEnd(t){
 
 function syncHud(){ $('hud-round').textContent=STATE.round; $('hud-tasks').style.width=(100*STATE.tasksDone/Math.max(1,STATE.tasksTotal))+'%';
   $('hud-alive').textContent=STATE.agents.filter(a=>a.alive).length; $('hud-total').textContent=STATE.agents.length;
-  const sc=STATE.scores||{}; $('w-crew').textContent=sc.crew||0; $('w-thing').textContent=sc.thing||0;
   const ros=$('roster'); ros.innerHTML=''; for(const a of STATE.agents){ const d=document.createElement('div'); d.className='who'+(a.alive?'':' dead')+(a.id===HILITE?' sel':'');
     d.innerHTML=`<span class="dot" style="color:${COLORS[a.c%COLORS.length]};background:${COLORS[a.c%COLORS.length]}"></span><span><div class="nm">${a.name}</div></span>`;
     d.onclick=()=>{ HILITE=(HILITE===a.id?null:a.id); syncHud(); }; ros.appendChild(d); } }
