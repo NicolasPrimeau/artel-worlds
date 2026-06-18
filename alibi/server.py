@@ -74,12 +74,32 @@ class Alibi:
         self.phase = "task"  # task | meeting | vote | ejection | gameover
         self.revealed = False  # during ejection: has the human/Thing reveal happened yet?
         self.meeting = None
+        self.task_q: asyncio.Queue = asyncio.Queue()  # engine task events → mirrored onto Artel
+        self.task_pool: dict = {}  # room -> [open Artel task ids waiting to be claimed]
+        self.task_working: dict = {}  # agent id -> the Artel task id it's currently doing
         self._restore_state()
         self._new_game()
 
     def set_paused(self, value: bool) -> None:
         self.paused = bool(value)
         self.persist_state()
+
+    def enqueue_task_events(self) -> None:
+        for ev in self.g.events:
+            self.task_q.put_nowait(ev)
+
+    async def reset_artel(self) -> None:
+        # restart the project on Artel for the new game: wipe its tasks/messages, drop stale state,
+        # then queue the freshly-seeded board so it's re-created as Artel tasks.
+        await artel.clear_project()
+        self.task_pool.clear()
+        self.task_working.clear()
+        while not self.task_q.empty():
+            try:
+                self.task_q.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+        self.enqueue_task_events()
 
     def _new_game(self) -> None:
         self.g = new_game(_rng.randint(1, 2**31 - 1), n=N_AGENTS, impostors=N_IMPOSTORS)
@@ -285,6 +305,46 @@ async def _run_meeting(mt) -> None:
     await asyncio.sleep(EJECT_REVEAL)
 
 
+_TASK_VERBS = (
+    "Run diagnostics in",
+    "Reroute power in",
+    "Recalibrate",
+    "Service the rig in",
+    "Log readings in",
+)
+
+
+async def _mirror_event(ev) -> None:
+    # turn one engine task event into a real Artel task action (create on spawn, claim by the agent,
+    # complete when done). Runs in a single serial worker, so task_pool/task_working never race.
+    kind = ev[0]
+    if kind == "spawn":
+        room = ev[1]
+        tid = await artel.create_task(f"{_TASK_VERBS[hash(room) % len(_TASK_VERBS)]} the {room}")
+        if tid:
+            G.task_pool.setdefault(room, []).append(tid)
+    elif kind == "claim":
+        _, agent_id, room = ev
+        pool = G.task_pool.get(room) or []
+        tid = pool.pop(0) if pool else await artel.create_task(f"Work the {room}")
+        if tid:
+            await artel.claim_task(agent_id, tid)
+            G.task_working[agent_id] = tid
+    elif kind == "complete":
+        tid = G.task_working.pop(ev[1], None)
+        if tid:
+            await artel.complete_task(ev[1], tid)
+
+
+async def _task_worker():
+    while True:
+        ev = await G.task_q.get()
+        try:
+            await _mirror_event(ev)
+        except Exception as e:
+            log.warning("task mirror failed: %s", e)
+
+
 async def _game_loop():
     loop = asyncio.get_running_loop()
     while True:
@@ -292,6 +352,7 @@ async def _game_loop():
         if not G.paused and G.viewers:
             async with G.lock:
                 mt = G.g.step()
+                G.enqueue_task_events()  # mirror this tick's task spawns/claims/completes onto Artel
                 if mt is not None and G.g.winner is None:
                     await _run_meeting(mt)
                 if G.g.winner is not None:
@@ -302,6 +363,7 @@ async def _game_loop():
                 await asyncio.sleep(GAMEOVER_LINGER)
                 async with G.lock:
                     G._new_game()
+                    await G.reset_artel()  # restart the project on Artel for the next game
                 await _broadcast()
                 continue
             if G.g.tick >= MAX_TICKS:  # safety: stalemate → Thing wins
@@ -316,13 +378,17 @@ async def _game_loop():
 
 @contextlib.asynccontextmanager
 async def _lifespan(app: FastAPI):
+    worker = asyncio.create_task(_task_worker())
+    await G.reset_artel()  # clear the project + queue the opening board for the first game
     task = asyncio.create_task(_game_loop())
     try:
         yield
     finally:
         task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
+        worker.cancel()
+        for t in (task, worker):
+            with contextlib.suppress(asyncio.CancelledError):
+                await t
         G.persist_state()
         await artel.aclose()
 

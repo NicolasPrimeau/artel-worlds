@@ -263,6 +263,9 @@ class Game:
     )  # rooms with an unclaimed task console (the board)
     tasks_done: int = 0  # tasks completed this game (cumulative)
     tasks_goal: int = 0  # completions the crew need to win by tasks
+    events: list = field(
+        default_factory=list
+    )  # task lifecycle this step → mirrored onto Artel tasks
 
     def living(self, impostor=None):
         return [a for a in self.agents if a.alive and (impostor is None or a.impostor == impostor)]
@@ -298,15 +301,16 @@ class Game:
         # light up one more console, in a room that has spare capacity, weighted toward bigger rooms
         cands = [r for r in self.rooms if self.open_tasks.count(r) < self._task_cap(r)]
         if cands:
-            self.open_tasks.append(
-                self.rng.choices(cands, weights=[self._area(r) for r in cands])[0]
-            )
+            room = self.rng.choices(cands, weights=[self._area(r) for r in cands])[0]
+            self.open_tasks.append(room)
+            self.events.append(("spawn", room))  # → create an Artel task for this console
 
     def _claim_task(self, a):
         # take the nearest open task off the board and head for it
         room = min(self.open_tasks, key=lambda r: self._room_dist(a.room, r))
         self.open_tasks.remove(room)
         a.dest = room
+        self.events.append(("claim", a.id, room))  # → claim the Artel task as this agent
 
     def _approach_buddy(self, a):
         # nothing to do → close on the nearest other survivor (safety in numbers); stay if already together
@@ -322,6 +326,7 @@ class Game:
     # --- task phase: one tick of move / task / kill. Returns a Meeting trigger or None. ---
     def step(self) -> Meeting | None:
         self.tick += 1
+        self.events = []  # fresh per tick; the live server drains these onto Artel after each step
         if self.cd > 0:
             self.cd -= 1
 
@@ -348,6 +353,7 @@ class Game:
                 if a.work == 0:
                     self.tasks_done += 1  # COMPLETE — one off the board
                     a.dest = None
+                    self.events.append(("complete", a.id))
             elif a.dest is not None:  # walking to a claimed task
                 if a.room == a.dest:
                     a.work = WORK_TICKS - 1  # arrived — start working the console
@@ -355,6 +361,7 @@ class Game:
                     if a.work == 0:
                         self.tasks_done += 1
                         a.dest = None
+                        self.events.append(("complete", a.id))
                 else:
                     self._toward_room(a, a.dest)
             elif self.open_tasks:
@@ -365,6 +372,7 @@ class Game:
                     if a.work == 0:
                         self.tasks_done += 1
                         a.dest = None
+                        self.events.append(("complete", a.id))
                 else:
                     self._toward_room(a, a.dest)
             else:

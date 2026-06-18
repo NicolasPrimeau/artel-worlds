@@ -75,6 +75,64 @@ async def say(index: int, name: str, text: str, subject: str = "alibi") -> None:
         log.warning("artel say failed for %s: %s", agent["id"], e)
 
 
+async def clear_project() -> None:
+    # wipe the project's tasks + messages so each game starts on a clean Artel board (owner-only — the
+    # first seat created the project on join, so it owns it).
+    if not enabled():
+        return
+    agent = AGENTS[0]
+    await _ensure_joined(agent)
+    try:
+        await _client().post(
+            f"{ARTEL_URL}/projects/{PROJECT}/clear",
+            headers=_headers(agent),
+            json={"tasks": True, "messages": True},
+        )
+    except Exception as e:
+        log.warning("artel clear failed: %s", e)
+
+
+async def create_task(title: str) -> str | None:
+    # a task lit up on the board → a real open Artel task (created by the first seat, the "station")
+    if not enabled():
+        return None
+    agent = AGENTS[0]
+    await _ensure_joined(agent)
+    try:
+        r = await _client().post(
+            f"{ARTEL_URL}/tasks",
+            headers=_headers(agent),
+            json={"title": title[:140], "project": PROJECT, "priority": "low"},
+        )
+        return r.json().get("id") if r.status_code < 300 else None
+    except Exception as e:
+        log.warning("artel create_task failed: %s", e)
+        return None
+
+
+async def claim_task(index: int, task_id: str) -> None:
+    if not enabled() or not task_id:
+        return
+    agent = _seat(index)
+    await _ensure_joined(agent)
+    try:
+        await _client().post(f"{ARTEL_URL}/tasks/{task_id}/claim", headers=_headers(agent), json={})
+    except Exception as e:
+        log.warning("artel claim failed for %s: %s", agent["id"], e)
+
+
+async def complete_task(index: int, task_id: str) -> None:
+    if not enabled() or not task_id:
+        return
+    agent = _seat(index)
+    try:
+        await _client().post(
+            f"{ARTEL_URL}/tasks/{task_id}/complete", headers=_headers(agent), json={}
+        )
+    except Exception as e:
+        log.warning("artel complete failed for %s: %s", agent["id"], e)
+
+
 async def aclose() -> None:
     global _http
     if _http is not None:
