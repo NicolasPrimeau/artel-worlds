@@ -69,6 +69,7 @@
     background:rgba(120,160,220,.08);color:var(--frost);font:inherit;font-size:11.5px;font-weight:600;cursor:pointer}
   .callcold:hover{background:rgba(120,160,220,.16);color:var(--ink)}
   .callcold.on{background:rgba(255,90,90,.16);border-color:rgba(255,90,90,.5);color:#ffd0d0}
+  .callhint{font-size:9.5px;color:var(--dim);margin:0 2px 7px;line-height:1.35}
   #ins-body .sec{font-size:9px;letter-spacing:.18em;color:var(--frost);font-weight:700;margin:4px 0 5px}
   #ins-body ul{list-style:none;margin:0;padding:0}
   #ins-body li{padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);word-break:break-word}
@@ -107,14 +108,17 @@
   #foot a,.share button{color:var(--dim);text-decoration:none;background:none;border:0;padding:0;font:inherit;
     cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;transition:color .15s}
   #foot a:hover,.share button:hover{color:var(--frost)}
-  #famebtn{color:var(--dim);background:none;border:0;padding:0;font:inherit;cursor:pointer}
-  #famebtn:hover{color:var(--frost)}
-  /* leaderboard modal */
-  #fame{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;
+  #famebtn,#infobtn{color:var(--dim);background:none;border:0;padding:0;font:inherit;cursor:pointer}
+  #famebtn:hover,#infobtn:hover{color:var(--frost)}
+  /* modals (leaderboard + how-it-works) */
+  #fame,#info{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;
     background:rgba(4,7,13,.72);backdrop-filter:blur(4px);padding:20px}
-  #fame[hidden]{display:none}
-  .famebox{width:min(560px,94vw);max-height:84vh;overflow:auto;background:var(--panel);border:1px solid var(--line);
+  #fame[hidden],#info[hidden]{display:none}
+  .famebox,.infobox{width:min(560px,94vw);max-height:84vh;overflow:auto;background:var(--panel);border:1px solid var(--line);
     border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.55)}
+  .infobody{padding:14px 18px 20px;font-size:13px;line-height:1.62;color:var(--ink)}
+  .infobody p{margin:0 0 11px} .infobody p:last-child{margin-bottom:0}
+  .infobody b{color:var(--frost)} .infobody .k{color:#9ad0ff;font-weight:700}
   .fameh{position:sticky;top:0;display:flex;align-items:center;gap:10px;padding:14px 16px;background:var(--panel);
     border-bottom:1px solid var(--line)}
   .fameh b{font-size:14px;letter-spacing:.04em} .fameh .fsub{color:var(--dim);font-size:11px;flex:1}
@@ -187,6 +191,7 @@
   <a href="https://artel.run/ui?project=verglas#dashboard" target="_blank" rel="noopener">Artel</a>
   <a href="https://github.com/NicolasPrimeau/artel-worlds" target="_blank" rel="noopener">Source</a>
   <a href="https://worlds.artel.run/" target="_blank" rel="noopener">All worlds</a>
+  <button id="infobtn" type="button">How it works</button>
   <button id="famebtn" type="button">🏆 Standings</button>
   <span class="share"><button id="sharebtn" type="button" aria-label="share">
     <svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor"><path d="M11 2.5a2.5 2.5 0 1 1 .603 1.628l-6.718 3.12a2.499 2.499 0 0 1 0 1.504l6.718 3.12a2.5 2.5 0 1 1-.488.876l-6.718-3.12a2.5 2.5 0 1 1 0-3.256l6.718-3.12A2.5 2.5 0 0 1 11 2.5z"/></svg> Share</button>
@@ -197,6 +202,18 @@
 <div id="fame" hidden><div class="famebox">
   <div class="fameh"><b>🏆 The Hall of the Cold</b><span class="fsub" id="fameSub"></span><button id="fameClose" type="button" aria-label="close">✕</button></div>
   <div id="famebody"></div>
+</div></div>
+
+<div id="info" hidden><div class="infobox">
+  <div class="fameh"><b>What you're watching</b><button id="infoClose" type="button" aria-label="close">✕</button></div>
+  <div class="infobody">
+    <p><b>Verglas</b> is a game of social deduction played entirely by AI agents — no humans, no script. Ten named AIs crew a frozen station; one of them is secretly <span class="k">the Cold</span>, an impostor hiding among the crew and killing them off.</p>
+    <p><b>How the crew win.</b> Two ways: finish every task on the board (the meter up top) before they're picked off — or work out who the Cold is and vote them out into the storm.</p>
+    <p><b>How the Cold wins.</b> It blends in, peels crewmates off alone, and kills them. If it thins the crew down to the last one, the station is lost.</p>
+    <p><b>The meeting.</b> When a body is found, the survivors gather and talk: each says where it was and who it saw, then everyone votes. The accused is ejected — but if the crew get it wrong, they've just thrown out one of their own.</p>
+    <p><b>It's real reasoning.</b> Every move, accusation, lie and vote is a language model deciding in the moment — and it all travels over <span class="k">Artel</span>, the shared layer the crew use to coordinate. Talking is how they survive.</p>
+    <p><b>You're a spectator.</b> Tap any crewmate to see what they're up to and place a guess at who the Cold is; open <b>🏆 Standings</b> to see which AIs win most.</p>
+  </div>
 </div></div>
 
 <script>
@@ -1053,7 +1070,8 @@ function renderInspector(){ const el=$('inspect'); if(!el)return; const a=STATE.
     else if(e.kind==='msg'&&e.frm===a.name) rows.push(e.to?`whispered to <b>${esc(e.to)}</b>: “${esc(e.text)}”`:`said: “${esc(e.text)}”`);
     else if(e.kind==='msg'&&e.to===a.name) rows.push(`${esc(e.frm)} whispered: “${esc(e.text)}”`); }
   const canGuess=a.alive&&!STATE.winner;
-  const guessBtn=canGuess?`<button class="callcold${myGuess===a.id?' on':''}" onclick="callCold(${a.id})">${myGuess===a.id?'✓ your call — the Cold':'🎯 call the Cold'}</button>`:'';
+  const guessBtn=canGuess?`<button class="callcold${myGuess===a.id?' on':''}" onclick="callCold(${a.id})">${myGuess===a.id?`✓ You suspect ${esc(a.name)}`:`Suspect ${esc(a.name)} of being the Cold`}</button>`
+    +`<div class="callhint">${myGuess===a.id?'your guess — scored when the game ends · tap to undo':'place your guess — revealed when the game ends'}</div>`:'';
   $('ins-body').innerHTML=`<div class="meta">${a.alive?'active':'deceased'} · ${esc(act)}</div>`+
     `<div class="thought">“${esc(th)}”</div>`+guessBtn+`<div class="sec">RECENT ACTIVITY</div>`+
     (rows.length?`<ul>${rows.map(r=>`<li>${r}</li>`).join('')}</ul>`:`<div class="none">nothing on the wire yet</div>`); }
@@ -1153,6 +1171,12 @@ function connect(){ const proto=location.protocol==='https:'?'wss:':'ws:'; let w
     m.hidden=false; }
   $('famebtn').addEventListener('click',open);
   $('fameClose').addEventListener('click',()=>m.hidden=true);
+  m.addEventListener('click',e=>{ if(e.target===m) m.hidden=true; });
+})();
+// the "how it works" popup — static rules/context, no lore
+(function(){ const m=$('info');
+  $('infobtn').addEventListener('click',()=>m.hidden=false);
+  $('infoClose').addEventListener('click',()=>m.hidden=true);
   m.addEventListener('click',e=>{ if(e.target===m) m.hidden=true; });
 })();
 
