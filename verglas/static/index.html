@@ -726,15 +726,15 @@ function thinkTick(){ if(STATE.phase!=='task'||STATE.paused) return; const now=p
   thoughtOf[a.id]={text:genThought(a,lore),t0:now};
   if(HILITE===a.id) renderInspector(); }
 setInterval(thinkTick,4200);
-function drawThought(sx,sy,s,text,al){ const f=Math.max(9.5,10*cam.z); ctx.font=`600 ${f}px Inter`;
-  const tw=Math.min(ctx.measureText(text).width,170*DPR), w=tw+15*DPR, h=f+13*DPR, bx=sx-w/2, by=sy-s*1.8-h;
-  ctx.save(); ctx.globalAlpha=0.94*al;
-  ctx.fillStyle="rgba(13,21,35,.93)"; ctx.strokeStyle="rgba(150,190,240,.42)"; ctx.lineWidth=1*DPR;
-  rr(bx,by,w,h,8*DPR); ctx.fill(); ctx.stroke();
-  ctx.beginPath(); ctx.arc(sx,by+h+4*DPR,2.4*DPR,0,TAU); ctx.fill(); ctx.stroke();
-  ctx.beginPath(); ctx.arc(sx+3*DPR,by+h+11*DPR,1.5*DPR,0,TAU); ctx.fill(); ctx.stroke();
-  ctx.fillStyle="#dde8fb"; ctx.textAlign="center"; ctx.textBaseline="middle";
-  ctx.fillText(text,sx,by+h/2,168*DPR); ctx.restore(); }
+function drawThought(sx,sy,s,text,al){ const f=13.5*DPR; ctx.font=`600 ${f}px Inter`;  // fixed, readable size
+  const tw=Math.min(ctx.measureText(text).width,210*DPR), w=tw+17*DPR, h=f+15*DPR, bx=sx-w/2, by=sy-s*1.7-h;
+  ctx.save(); ctx.globalAlpha=0.95*al;
+  ctx.fillStyle="rgba(13,21,35,.95)"; ctx.strokeStyle="rgba(150,190,240,.45)"; ctx.lineWidth=1*DPR;
+  rr(bx,by,w,h,9*DPR); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(sx,by+h+4*DPR,2.6*DPR,0,TAU); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(sx+3*DPR,by+h+12*DPR,1.6*DPR,0,TAU); ctx.fill(); ctx.stroke();
+  ctx.fillStyle="#e6eefc"; ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillText(text,sx,by+h/2,206*DPR); ctx.restore(); }
 function drawAgents(t){
   const list=STATE.agents.filter(a=>a.wx!=null && !removedBodies.has(a.id) && !(ejecting&&a.name===ejecting.name));
   for(const a of [...list].sort((x,y)=>x.wy-y.wy)){ const [sx,sy]=toScreen(a.wx,a.wy), s=11*cam.z, col=COLORS[a.c%COLORS.length];
