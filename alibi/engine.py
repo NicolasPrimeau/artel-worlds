@@ -15,11 +15,11 @@ from dataclasses import dataclass, field
 # LLM agents. The live runner mirrors task completion and testimony onto a real Artel server.
 
 # An Antarctic research station, blizzard outside, nobody leaving. One of the team isn't human anymore
-# — the Thing wears a friend's face. The Mess Hall is the hub where everyone reconvenes for a meeting.
+# — the Cold wears a friend's face. The Mess Hall is the hub where everyone reconvenes for a meeting.
 HUB = "Mess Hall"
 # The 12 rooms of the outpost. Their floorplan and connections are generated fresh every game
 # (_generate_station) — a rectangle recursively sliced into abutting rooms, never the same twice — so
-# no two outposts look or play alike. 12 rooms is enough that the Thing can get a victim ALONE, so most
+# no two outposts look or play alike. 12 rooms is enough that the Cold can get a victim ALONE, so most
 # kills have no eyewitness and the meeting turns on deduction (alibis, who-was-where), not "I saw it".
 ROOM_NAMES = [
     "Bunks",
@@ -156,13 +156,13 @@ TASK_SPAWN_P = (
 WORK_TICKS = 3  # a task occupies its crew for several ticks — they linger at the console
 TASK_SLACK = 4  # keep this many fewer tasks-in-play than living players, so a couple are always free to buddy
 KILL_CD = 9  # ticks between kills — crew walk to tasks (spread out), so kills come easy; slow them
-OPP_KILL_P = 0.12  # chance the Thing risks a kill with WITNESSES present (vs only when truly alone)
+OPP_KILL_P = 0.12  # chance the Cold risks a kill with WITNESSES present (vs only when truly alone)
 START_GRACE = 8  # no kill on the first few ticks, so a real task phase builds movement + alibis
 FOLLOW_TICKS = 6  # how long an autonomous agent tails a buddy before it stops to decide again
 EMERGENCY_P = 0.02  # per-tick chance a crew calls a meeting on suspicion alone
 MAX_TICKS = 600
 
-# the winter-over crew — AI/ML pun surnames (the joke: a fleet of language models playing The Thing,
+# the winter-over crew — AI/ML pun surnames (the joke: a fleet of language models playing The Cold,
 # named for the machinery that runs them). Each game samples a distinct subset from the seed, so names
 # overlap between games but never repeat within one (pitch-style).
 NAMES = [
@@ -442,14 +442,14 @@ class Game:
         return a.alive and a.work == 0 and a.dest is None and a.goto is None and a.follow is None
 
     def legal_kills(self, m) -> list[int]:
-        # crew the Thing `m` could kill THIS tick: cooldown ready, past the grace period, co-located
+        # crew the Cold `m` could kill THIS tick: cooldown ready, past the grace period, co-located
         if self.cd > 0 or self.tick < START_GRACE:
             return []
         return [c.id for c in self._occ(m.room) if not c.impostor]
 
     def prime_kill(self, a) -> bool:
-        # the Thing's shot: off cooldown, past grace, alone-ish with one or two crew (not in a crowd). The
-        # server uses this to pull the Thing into a decision even mid-task, so it never sleeps through an
+        # the Cold's shot: off cooldown, past grace, alone-ish with one or two crew (not in a crowd). The
+        # server uses this to pull the Cold into a decision even mid-task, so it never sleeps through an
         # opportunity — it still chooses, and the prompt tells it not to kill while others watch.
         if not (a.impostor and self.cd == 0 and self.tick >= START_GRACE):
             return False
@@ -465,7 +465,7 @@ class Game:
         self.last_kill = {"tick": self.tick, "victim": victim.id, "room": m.room}
         for w in self._occ(m.room):
             if w.id != m.id:
-                w.witnessed.add(m.id)  # any survivor present made the Thing
+                w.witnessed.add(m.id)  # any survivor present made the Cold
         self.cd = KILL_CD
         if m.room in self.vents and self.rng.random() < 0.6:
             m.room = self.rng.choice(self.vents[m.room])  # vent off the body

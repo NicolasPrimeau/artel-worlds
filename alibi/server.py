@@ -19,9 +19,9 @@ from .meeting import (
 )
 
 # Alibi runs one game after another, but ONLY while someone is watching (free-tier Groq, like phalanx):
-# no viewers → no ticks, no LLM calls. A game is a task phase (agents wander the station, the Thing
+# no viewers → no ticks, no LLM calls. A game is a task phase (agents wander the station, the Cold
 # kills) punctuated by meetings — which are streamed statement-by-statement so the chat builds live on
-# the page. Crew win by clearing the task board or ejecting the Thing; the Thing wins at parity.
+# the page. Crew win by clearing the task board or ejecting the Cold; the Cold wins at parity.
 
 _rng = SystemRandom()
 log = logging.getLogger("alibi")
@@ -35,8 +35,11 @@ WHISPER_DELAY = 1.6  # how long a private-whisper indicator flashes before play 
 EJECT_WALK = (
     4.0  # the ejected researcher is walked into the airlock — BEFORE we reveal what they were
 )
-EJECT_REVEAL = 4.0  # then hold on the human/Thing reveal
+EJECT_REVEAL = 4.0  # then hold on the human/Cold reveal
 GAMEOVER_LINGER = 8.0  # hold on the final board before the next game
+INTRO_LINGER = (
+    5.5  # the opening card (frozen outpost, "something came in from the cold") before play
+)
 _ADMIN_TOKEN = os.environ.get("WORLDS_ADMIN_TOKEN", "")
 N_AGENTS = int(os.environ.get("ALIBI_AGENTS", "10"))
 N_IMPOSTORS = int(os.environ.get("ALIBI_IMPOSTORS", "2"))
@@ -70,7 +73,7 @@ class Alibi:
         self.completed = 0
         self.paused = False
         self.phase = "task"  # task | meeting | vote | ejection | gameover
-        self.revealed = False  # during ejection: has the human/Thing reveal happened yet?
+        self.revealed = False  # during ejection: has the human/Cold reveal happened yet?
         self.whisper = None  # [from, to] while a private DM indicator is flashing
         self.meeting = None
         self.task_q: asyncio.Queue = asyncio.Queue()  # engine task events → mirrored onto Artel
@@ -118,7 +121,7 @@ class Alibi:
     def _new_game(self) -> None:
         self.g = new_game(_rng.randint(1, 2**31 - 1), n=N_AGENTS, impostors=N_IMPOSTORS)
         self.tasks_total = self.g.tasks_goal
-        self.phase = "task"
+        self.phase = "intro"  # opening card first; the loop holds it, then play begins
         self.meeting = None
 
     def _restore_state(self) -> None:
@@ -164,6 +167,8 @@ class Alibi:
 
     def caption(self) -> str:
         g = self.g
+        if self.phase == "intro":
+            return "the outpost wakes — something came in with the storm"
         if self.phase == "gameover":
             return f"{g.winner} won by {g.win_by} · {len(g.living())} left standing"
         if self.meeting is not None and self.phase in ("meeting", "vote", "ejection"):
@@ -174,7 +179,7 @@ class Alibi:
 
     def snapshot(self) -> dict:
         g = self.g
-        # the Thing is unmasked only at the dramatic reveal (after the walk-out) or on the final board
+        # the Cold is unmasked only at the dramatic reveal (after the walk-out) or on the final board
         reveal = (self.phase == "ejection" and self.revealed) or self.phase == "gameover"
         agents = []
         for a in g.agents:
@@ -320,7 +325,7 @@ async def _run_meeting(mt) -> None:
 
         votes = await run_canned_meeting(G.g, mt, make_decider(share=True), on_item)
     G.g.apply_votes(mt, votes)
-    # ejection: walk the ejected out (suspense), THEN reveal whether they were the Thing
+    # ejection: walk the ejected out (suspense), THEN reveal whether they were the Cold
     G.phase = "ejection"
     G.revealed = False
     await _broadcast()
@@ -480,6 +485,14 @@ async def _game_loop():
     while True:
         start = loop.time()
         if not G.paused and G.viewers:
+            if (
+                G.phase == "intro"
+            ):  # play the opening card, then begin (no ticks, no LLM during intro)
+                await _broadcast()
+                await asyncio.sleep(INTRO_LINGER)
+                G.phase = "task"
+                await _broadcast()
+                continue
             async with G.lock:
                 if llm.enabled():
                     mt = await _autonomous_tick()  # full-autonomous: agents drive the task phase
@@ -499,7 +512,7 @@ async def _game_loop():
                     await G.reset_artel()  # restart the project on Artel for the next game
                 await _broadcast()
                 continue
-            if G.g.tick >= MAX_TICKS:  # safety: stalemate → Thing wins
+            if G.g.tick >= MAX_TICKS:  # safety: stalemate → Cold wins
                 async with G.lock:
                     G.g.winner, G.g.win_by = "impostor", "timeout"
                 continue

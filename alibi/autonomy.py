@@ -11,13 +11,14 @@ from alibi.engine import Game
 
 SYS_CREW = (
     "You are {name}, overwintering at an isolated Antarctic research station. Do your share of the "
-    "station's tasks, but stay alive: one crewmate is secretly the Thing and kills anyone caught alone. "
+    "station's tasks, but stay alive: one crewmate is secretly the Cold and kills anyone caught alone. "
     "Stick near others, work tasks off the board, whisper to line up a buddy, and call an emergency "
     "meeting if you find a body or really suspect someone. Pick exactly ONE action by calling a tool."
 )
 SYS_THING = (
-    "You are {name}. Secretly you ARE the Thing — an alien wearing a crewmate's face, hunting the "
-    "station. Blend in: claim and pretend to do tasks, move with the group, act like a worried human. "
+    "You are {name}. Secretly you ARE the Cold — something that came in from the storm and now wears a "
+    "crewmate's face, hunting the station. Blend in: claim and pretend to do tasks, move with the group, "
+    "act like a worried human. "
     "Hunt patiently: FOLLOW a crewmate who is drifting off alone, and the moment you are alone with just "
     "one of them and able, eliminate them and slip away. If others are watching, do NOT kill — just act "
     "normal. Never look suspicious. Pick exactly ONE action by calling a tool."
@@ -116,7 +117,7 @@ def _context(g: Game, a, inbox: list) -> str:
     if not a.impostor and a.witnessed:
         seen = [g.by_id(i).name for i in a.witnessed if g.by_id(i).alive]
         if seen:
-            lines.append(f"You SAW {seen[0]} kill — they are the Thing.")
+            lines.append(f"You SAW {seen[0]} kill — they are the Cold.")
     if inbox:
         lines.append("Private messages to you: " + " | ".join(f"{s}: {t}" for s, t in inbox))
     return "\n".join(lines)

@@ -13,7 +13,7 @@ from alibi.engine import HUB, MAX_TICKS, Game, Meeting, new_game
 
 # The meeting, as an actual conversation. Each survivor speaks from its OWN partial log — where it went,
 # who it was with, anything it saw — then everyone votes. The crew are trying to reason past the lies;
-# the Thing is trying to blend in, fake an alibi, and steer a vote onto someone innocent. This is the
+# the Cold is trying to blend in, fake an alibi, and steer a vote onto someone innocent. This is the
 # part no fixed rule can do (the A/B shows rules stall at ~30%): telling a true account from a
 # convincing lie is judgement, not a threshold. Artel is the conduit (the shared transcript every agent
 # reads); the LLM is the brain (what each agent says and how it weighs what everyone else said).
@@ -22,16 +22,17 @@ ROUNDS = 2  # opening statements, then one round of replies, then the vote
 
 SYS_CREW = (
     "You are {name}, a researcher overwintering at an isolated Antarctic station. One of the crew is "
-    "no longer human — the Thing, wearing a teammate's face, killing the rest of you one by one. You "
-    "are NOT the Thing. In this emergency meeting you must use what you personally saw, plus what "
-    "everyone else says, to figure out who the Thing is and get them ejected into the storm. Be "
-    "skeptical: the Thing will lie, fake an alibi, and accuse the innocent. Corroborate — if two "
+    "no longer human — the Cold, wearing a teammate's face, killing the rest of you one by one. You "
+    "are NOT the Cold. In this emergency meeting you must use what you personally saw, plus what "
+    "everyone else says, to figure out who the Cold is and get them ejected into the storm. Be "
+    "skeptical: the Cold will lie, fake an alibi, and accuse the innocent. Corroborate — if two "
     "people vouch for each other's whereabouts they're probably both clear. Don't eject on a hunch; "
-    "a wrong ejection helps the Thing. Speak in ONE short sentence (about 14 words max), in character, plain talk."
+    "a wrong ejection helps the Cold. Speak in ONE short sentence (about 14 words max), in character, plain talk."
 )
 SYS_THING = (
-    "You are {name}, and you are the Thing — an alien that has assimilated this researcher and is "
-    "killing the crew at an isolated Antarctic station. You must NOT be found out. In this emergency "
+    "You are {name}, and you are the Cold — something that came in from the storm, now wearing this "
+    "researcher's face and killing the crew at an isolated Antarctic station. You must NOT be found out. "
+    "In this emergency "
     "meeting, blend in as a worried human: give a calm, plausible account of where you were, deflect "
     "suspicion, and if someone is onto you, cast doubt on them or point the group at someone else. "
     "Never admit what you are. If you witnessed your own kill, you may even 'report' it to look "
@@ -67,16 +68,14 @@ def _brief(game: Game, mt: Meeting, a) -> str:
     if not a.impostor and a.witnessed:
         for imp in a.witnessed:
             if game.by_id(imp).alive:
-                lines.append(
-                    f"YOU SAW IT HAPPEN: {_name(game, imp)} is the Thing — you watched them kill."
-                )
+                lines.append(f"{_name(game, imp)} is the Cold — you watched them kill.")
     if a.found:
         t, room, victim = a.found[-1]
         lines.append(f"You found {_name(game, victim)}'s body in {room}.")
     if a.impostor:
         if mt.victim is not None:
             lines.append(f"(Secret: you killed {_name(game, mt.victim)} in {mt.room}. Hide it.)")
-        lines.append("(Secret: you are the Thing. Construct an innocent-sounding alibi.)")
+        lines.append("(Secret: you are the Cold. Construct an innocent-sounding alibi.)")
     return "\n".join(lines)
 
 
@@ -224,7 +223,7 @@ async def _vote_round(game, mt, transcript, dms=None, on_item=None) -> dict:
         sys = (SYS_THING if a.impostor else SYS_CREW).format(name=a.name)
         guidance = (
             "Weigh the accounts: whose alibi is contradicted, who can't be vouched for near the body? "
-            "If the discussion points to a likely Thing, VOTE them out — skipping when there's a real "
+            "If the discussion points to whoever is likely the Cold, VOTE them out — skipping when there's a real "
             "lead just lets it kill again. Skip only if it's a genuine coin-flip."
             if not a.impostor
             else "Vote to protect yourself: pile onto whoever the group already suspects (not yourself), "
@@ -319,7 +318,7 @@ def _canned_statement(game: Game, a) -> str:
     if not a.impostor and a.witnessed:
         imps = [game.by_id(i).name for i in a.witnessed if game.by_id(i).alive]
         if imps:
-            return f"I saw it — {imps[0]} is the Thing."
+            return f"I saw it — {imps[0]} is the Cold."
     if a.found:
         _, room, vic = a.found[-1]
         return f"I found {game.by_id(vic).name} in the {room}."

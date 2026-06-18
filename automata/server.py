@@ -1120,7 +1120,7 @@ async def ui_stats(request: Request):
         worlds.append(
             {
                 "key": "alibi",
-                "name": "Alibi",
+                "name": "Verglas",
                 "world": 5,
                 "url": "https://alibi.artel.run",
                 "status": "live" if al.get("live") else "idle",
@@ -1144,7 +1144,7 @@ async def ui_stats(request: Request):
         worlds.append(
             {
                 "key": "alibi",
-                "name": "Alibi",
+                "name": "Verglas",
                 "world": 5,
                 "status": "unreachable",
                 "url": "https://alibi.artel.run",
