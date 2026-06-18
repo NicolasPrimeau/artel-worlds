@@ -43,6 +43,14 @@ with sync_playwright() as p:
     b.close()
 
 frames = [f.resize((800, 500), Image.LANCZOS) for f in frames]
-frames[0].save(OUT, save_all=True, append_images=frames[1:], duration=MS, loop=0,
-               format="WEBP", quality=QUALITY, method=6)
+frames[0].save(
+    OUT,
+    save_all=True,
+    append_images=frames[1:],
+    duration=MS,
+    loop=0,
+    format="WEBP",
+    quality=QUALITY,
+    method=6,
+)
 print(f"saved {OUT}: {os.path.getsize(OUT)} bytes, {len(frames)} frames")
