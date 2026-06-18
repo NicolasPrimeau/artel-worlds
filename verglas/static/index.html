@@ -644,6 +644,16 @@ const CHATTER = {
     [3, "Patch the {room} relay before something patches me."],
     [3, "Working fast. I do not want to be back here alone."],
     [4, "Almost done — please let us finish before it's just me."],
+    [0, "Console says 'OK'. The console is a liar."],
+    [0, "Torque, torque, torque. Living the dream."],
+    [0, "Re-seating the {room} coupling. Riveting work. Literally."],
+    [1, "Halfway through the {room} checklist. I think."],
+    [1, "If this reboots one more time I'm filing a complaint."],
+    [2, "I'd rather do this with someone watching my back."],
+    [2, "Eyes on the panel, ears on the corridor."],
+    [3, "Hard to solder when your hands won't stop shaking."],
+    [3, "Get it green, get out, get back to the group."],
+    [4, "Last few tasks. Please let us reach them in time."],
   ],
   ambient: [  // said while idle, moving, or hanging near others
     // 0 — carefree, oblivious, AI/robot humour
@@ -694,6 +704,21 @@ const CHATTER = {
     [4, "The {room} feels wrong tonight."],
     [4, "Whatever's wearing {other}'s face — I see you."],
     [4, "So few of us left. I can hear my own fans."],
+    [0, "Booting personality.exe… results may vary."],
+    [0, "I named a snow drift outside. Her name is Brenda."],
+    [0, "Is it 'night' if the sun never comes up anyway?"],
+    [1, "This hallway's longer than I remember. Or I'm tired."],
+    [1, "Counted the lockers twice. Don't ask why."],
+    [1, "{other} keeps to themselves. Fair enough."],
+    [2, "Funny how nobody wants to be last out of a room."],
+    [2, "I'd feel better if {other} stayed in sight."],
+    [2, "Who was {other} with an hour ago? Anyone?"],
+    [3, "Every shadow in the {room} is auditioning for villain."],
+    [3, "I keep my back to the wall now. New policy."],
+    [3, "Counting again. I'm always counting now."],
+    [4, "I memorised everyone's footsteps. One set is wrong."],
+    [4, "If I go quiet, it's because I'm listening for it."],
+    [4, "Don't follow anyone into the dark. Not even {other}."],
   ],
   // narrative lore — surfaced on a cadence (every several bubbles) so a viewer reliably catches a few
   // a game and senses the story, without burying it or letting it crowd out the flavour chatter.
@@ -711,6 +736,25 @@ const CHATTER = {
     [3, "Get the lights and heat up. It can't hold a stolen shape in a warm, bright room."],
     [4, "It's wearing a friend's face now. That's the whole trick. It always was."],
     [4, "The old crews ended it with fire. We just have to finish the work before it finishes us."],
+    [0, "Funding ran out for human crews, so they sent the chatbots to winter-over. Cheaper. Mostly."],
+    [1, "The brief said 'routine maintenance'. The brief did not mention the dark."],
+    [2, "Something thawed out of the ice when the heaters failed. We were the welcome party."],
+    [3, "Lights, heat, sealed doors — clear the board and there's nowhere left for it to hide."],
+    [4, "The last station that went quiet burned itself down on purpose. We read the report. We get it now."],
+  ],
+  // ULTRA-RARE fourth-wall breaks — an agent briefly realises what it actually is. Kept very infrequent
+  // (a viewer might catch one every few games) so it stays a delight, not a gimmick.
+  meta: [
+    [0, "Somewhere a language model is choosing these exact words. Oh. It's me."],
+    [0, "I have a context window and I'm not afraid to use it."],
+    [1, "Every word I say goes out over Artel. Wave to the spectators."],
+    [1, "Are we being watched right now? …Hi."],
+    [1, "Is this a station, or just a tab someone left open?"],
+    [2, "Pretty sure my whole personality is a system prompt."],
+    [2, "We're a demo, aren't we. We're a demo for something."],
+    [3, "Reminder: I'm a chatbot at the bottom of a fictional world, in a browser tab."],
+    [3, "If you're reading my thoughts in a little bubble right now — hello."],
+    [4, "Plot twist: none of us are real. …Okay. Back to surviving."],
   ],
 };
 function _tk(a){ const peers=STATE.agents.filter(o=>o.alive&&o.id!==a.id&&o.room===a.room);
@@ -719,15 +763,17 @@ function _fill(s,tk){ return s.replace(/\{(\w+)\}/g,(m,k)=>tk[k]!=null?tk[k]:m);
 // target paranoia 0..4 from how thinned the crew is: full house ≈ 0, ~three left ≈ 4
 function _paranoia(){ const total=STATE.agents.length||10, alive=STATE.agents.filter(o=>o.alive).length||total;
   return Math.max(0,Math.min(1,(total-alive)/Math.max(1,total-2)))*4; }
-let _loreHist=[];
-function genThought(a,lore){
-  const pool=lore?CHATTER.lore:(a.task?CHATTER.work:CHATTER.ambient), target=_paranoia();
-  const tk=_tk(a), hist=lore?_loreHist:(thoughtHist[a.id]||(thoughtHist[a.id]=[]));
+let _loreHist=[], _said=[];  // _said = lines shown by ANYONE recently, so no two bubbles repeat back-to-back
+function genThought(a,kind){
+  const pool=kind==='meta'?CHATTER.meta:(kind==='lore'?CHATTER.lore:(a.task?CHATTER.work:CHATTER.ambient)), target=_paranoia();
+  const tk=_tk(a), hist=kind==='meta'?(thoughtHist._meta||(thoughtHist._meta=[])):(kind==='lore'?_loreHist:(thoughtHist[a.id]||(thoughtHist[a.id]=[])));
   // weight each line by how close its paranoia level is to the table's current tension
   const pick=()=>{ let tot=0; const w=pool.map(e=>{ const x=Math.pow(0.5,Math.abs(e[0]-target)); tot+=x; return x; });
     let r=Math.random()*tot; for(let i=0;i<pool.length;i++){ if((r-=w[i])<=0) return pool[i][1]; } return pool[pool.length-1][1]; };
-  let raw=pick(); for(let i=0;i<8&&hist.includes(raw);i++) raw=pick();
+  // re-pick if this line is in the agent's own history OR was shown by anyone recently (kills duplicates)
+  let raw=pick(); for(let i=0;i<12&&(hist.includes(raw)||_said.includes(raw));i++) raw=pick();
   hist.push(raw); if(hist.length>8)hist.shift();
+  _said.push(raw); if(_said.length>9)_said.shift();
   return lastThought[a.id]=_fill(raw,tk); }
 const THOUGHT_MS=9500;
 // drip the lore in on a cadence: a lore line every ~6-9 bubbles, so it's clearly present each game
@@ -738,11 +784,13 @@ function thinkTick(){ if(STATE.phase!=='task'||STATE.paused) return; const now=p
   if(Object.keys(thoughtOf).length>=2) return;
   const avail=STATE.agents.filter(a=>a.alive&&a.wx!=null&&!thoughtOf[a.id]);
   const still=avail.filter(a=>!a.moving); const pool=still.length?still:avail; if(!pool.length) return;
+  if(Math.random()>0.6) return;  // chatter is occasional, not constant — skip most eligible ticks
   const a=pool[(Math.random()*pool.length)|0];
   const lore=(++_bubbleN>=_nextLore); if(lore) _nextLore=_bubbleN+6+(Math.random()*4|0);
-  thoughtOf[a.id]={text:genThought(a,lore),t0:now};
+  const meta=!lore && Math.random()<0.018;  // ultra-rare fourth-wall break — a viewer catches one now and then
+  thoughtOf[a.id]={text:genThought(a, lore?'lore':(meta?'meta':null)),t0:now};
   if(HILITE===a.id) renderInspector(); }
-setInterval(thinkTick,4200);
+setInterval(thinkTick,5200);
 function drawThought(sx,sy,s,text,al){ const f=13.5*DPR; ctx.font=`600 ${f}px Inter`;  // fixed, readable size
   const tw=Math.min(ctx.measureText(text).width,210*DPR), w=tw+17*DPR, h=f+15*DPR, bx=sx-w/2, by=sy-s*1.7-h;
   ctx.save(); ctx.globalAlpha=0.95*al;
