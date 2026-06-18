@@ -198,35 +198,31 @@ NAMES = [
     "Distilla",  # distillation
     "Epochwell",  # epoch
     "Convoluto",  # convolution
-    # puns on famous AI / ML researchers
-    "Turington",  # Alan Turing
-    "Hintonov",  # Geoffrey Hinton
-    "LeCunningham",  # Yann LeCun
-    "Bengiovanni",  # Yoshua Bengio
-    "Schmidhubert",  # Jürgen Schmidhuber
-    "Hochreiterson",  # Sepp Hochreiter
-    "Sutskeverov",  # Ilya Sutskever
-    "Karpathos",  # Andrej Karpathy
-    "Goodfellow",  # Ian Goodfellow
-    "Krizhevskov",  # Alex Krizhevsky
-    "Mikolova",  # Tomas Mikolov
-    "Suttonby",  # Richard Sutton
-    "Bellmanov",  # Richard Bellman
-    "Minskovich",  # Marvin Minsky
-    "McCarthen",  # John McCarthy
-    "Pearlmutter",  # Judea Pearl
-    "Vapnikov",  # Vladimir Vapnik
-    "Bishopworth",  # Christopher Bishop
-    "Russelovich",  # Stuart Russell
-    "Norvigson",  # Peter Norvig
-    "Rumelhartman",  # David Rumelhart
-    "Hopfielding",  # John Hopfield
-    "Hebberton",  # Donald Hebb
-    "Samuelson",  # Arthur Samuel (coined "machine learning")
-    "Jordanov",  # Michael I. Jordan
-    "Thrunton",  # Sebastian Thrun
-    "Hassabison",  # Demis Hassabis
-    "Shannigan",  # Claude Shannon
+    # puns blending famous AI/ML researchers' names with an AI concept or word
+    "LeCunvolution",  # Yann LeCun × convolution
+    "Ngram",  # Andrew Ng × n-gram
+    "Hintsight",  # Geoffrey Hinton × hindsight
+    "Schmidhubris",  # Jürgen Schmidhuber × hubris
+    "Hassabias",  # Demis Hassabis × bias
+    "Mikolovec",  # Tomas Mikolov × word2vec
+    "Vapnikernel",  # Vladimir Vapnik × (SVM) kernel
+    "Rosenblattron",  # Frank Rosenblatt × perceptron
+    "Minskytron",  # Marvin Minsky × Perceptrons
+    "McCarthing",  # John McCarthy × thing
+    "Pearlprior",  # Judea Pearl × (Bayesian) prior
+    "Suttonbarto",  # Richard Sutton × Barto (RL)
+    "Russelu",  # Stuart Russell × ReLU
+    "Hebbias",  # Donald Hebb × bias
+    "Samueloss",  # Arthur Samuel × loss
+    "Sutskeverflow",  # Ilya Sutskever × TensorFlow
+    "Karpathfinder",  # Andrej Karpathy × pathfinder
+    "Bengioverfit",  # Yoshua Bengio × overfit
+    "Goodfellow",  # Ian Goodfellow × GAN (the adversary who's a "good fellow")
+    "Halturin",  # Alan Turing × the halting problem
+    "Norvigation",  # Peter Norvig × navigation
+    "Hochreiterm",  # Sepp Hochreiter × long short-TERM memory
+    "Bostromaton",  # Nick Bostrom × automaton
+    "Bellman",  # Richard Bellman × bellhop (the Bellman equation)
 ]
 
 
