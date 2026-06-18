@@ -78,30 +78,14 @@ def test_body_finder_opens_the_meeting_with_context():
     assert victim.name in opening and victim.room in opening  # ...and gives the who + where
 
 
-def test_emergency_caller_opens_the_meeting():
-    g = new_game(7, 8, 2)
-    caller = next(a for a in g.living() if not a.impostor)
-    mt = Meeting(g.tick, caller.id, E.HUB, None)
-
-    _run(run_canned_meeting(g, mt, make_decider(share=True)))
-
-    assert mt.transcript[0][0] == caller.id
-
-
-def test_impostor_can_call_an_emergency_meeting(monkeypatch):
-    g = new_game(5, 8, 2)
-    monkeypatch.setattr(E, "EMERGENCY_P", 0.0)
-    monkeypatch.setattr(E, "IMPOSTOR_EMERGENCY_P", 1.0)
-    g.cd = 4  # after this tick's decrement -> 3: no kill (needs 0) and past the post-kill delay
-    mt = g.step()
-    assert mt is not None
-    assert g.by_id(mt.reporter).impostor
-    assert mt.victim is None
-
-
-def test_impostor_will_not_call_one_right_after_a_kill(monkeypatch):
-    g = new_game(5, 8, 2)
-    monkeypatch.setattr(E, "EMERGENCY_P", 0.0)
-    monkeypatch.setattr(E, "IMPOSTOR_EMERGENCY_P", 1.0)
-    g.cd = E.KILL_CD  # just killed -> still inside the post-kill delay window
-    assert g.step() is None
+def test_meetings_only_happen_on_a_body():
+    # no emergency button: a meeting only ever opens as a body report, so every meeting carries a victim
+    for seed in range(40):
+        g = new_game(seed, 8, 2)
+        for _ in range(E.MAX_TICKS):
+            mt = g.step()
+            if mt is not None:
+                assert mt.victim is not None, seed
+                break
+            if g.winner is not None:
+                break

@@ -78,10 +78,15 @@ def _generate_station(rng: random.Random):
             c = rng.randint(_ROOM_MIN, h - _ROOM_MIN)
             cells += [(x, y, w, c), (x, y + c, w, h - c)]
     rooms = []
-    for x, y, w, h in cells:  # inset room inside the cell → varied size, gaps between rooms
-        rw = max(_ROOM_MIN - 2, w - rng.randint(1, max(1, w // 3)))
-        rh = max(_ROOM_MIN - 2, h - rng.randint(1, max(1, h // 3)))
-        rooms.append((x + rng.randint(0, w - rw), y + rng.randint(0, h - rh), rw, rh))
+    for x, y, w, h in cells:
+        # inset the room with a GUARANTEED >=1-tile margin on every side, so rooms in adjacent cells can
+        # never touch. Abutting rooms would share a walkable border with no drawn door — reading as a
+        # sealed cluster and letting agents cross the wall. A gap forces every link to be a real corridor.
+        rw = min(w - 2, max(_ROOM_MIN - 2, w - rng.randint(1, max(1, w // 3))))
+        rh = min(h - 2, max(_ROOM_MIN - 2, h - rng.randint(1, max(1, h // 3))))
+        ox = rng.randint(1, w - rw - 1) if w - rw - 1 >= 1 else 1
+        oy = rng.randint(1, h - rh - 1) if h - rh - 1 >= 1 else 1
+        rooms.append((x + ox, y + oy, rw, rh))
     order = sorted(range(12), key=lambda i: -rooms[i][2] * rooms[i][3])  # biggest -> Mess Hall
     names = list(SIZE_ORDER)
     rects = {SIZE_ORDER[k]: rooms[order[k]] for k in range(12)}
@@ -214,10 +219,7 @@ KILL_CD = 9  # ticks between kills — crew walk to tasks (spread out), so kills
 OPP_KILL_P = 0.12  # chance the Cold risks a kill with WITNESSES present (vs only when truly alone)
 START_GRACE = 12  # ticks before the first kill, reset each new game (cd=START_GRACE)
 FOLLOW_TICKS = 6  # how long an autonomous agent tails a buddy before it stops to decide again
-EMERGENCY_P = 0.02  # per-tick chance a crew calls a meeting on suspicion alone
-# the Cold may pull the alarm too — rarer than the crew (calling often = stalling = suspicious), and
-# never right on the heels of its own kill. Never calling at all is its own tell, so it does, sometimes.
-IMPOSTOR_EMERGENCY_P = 0.008
+# meetings happen ONLY on a body report — there is no emergency button (no calling a meeting with no body)
 MAX_TICKS = 600
 
 # the winter-over crew — every AI that ever got a NAME: real assistants and fictional machine minds. The
@@ -511,7 +513,7 @@ class Game:
         if self._check_win():
             return None
 
-        # a body is found when a living agent shares its room → meeting
+        # a meeting happens ONLY when a body is found — a living agent shares the room with a corpse
         for room, victim in list(self.bodies.items()):
             finders = [a for a in self.living() if a.room == room]
             if finders:
@@ -519,16 +521,6 @@ class Game:
                 for f in finders:
                     f.found.append((self.tick, room, victim))
                 return Meeting(self.tick, finders[0].id, room, victim)
-
-        # emergency button: a crew gets suspicious and calls everyone in
-        if self.living(impostor=True) and self.rng.random() < EMERGENCY_P:
-            caller = self.rng.choice(self.living(impostor=False))
-            return Meeting(self.tick, caller.id, HUB, None)
-
-        # the Cold occasionally calls one too — for cover — but not fresh off a kill (that's a giveaway)
-        imps = self.living(impostor=True)
-        if imps and self.cd <= KILL_CD - 3 and self.rng.random() < IMPOSTOR_EMERGENCY_P:
-            return Meeting(self.tick, self.rng.choice(imps).id, HUB, None)
 
         return None
 

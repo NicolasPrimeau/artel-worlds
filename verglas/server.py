@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse, JSONResponse
 
 from . import artel, autonomy, env, llm
-from .engine import HUB, MAX_TICKS, Meeting, new_game
+from .engine import MAX_TICKS, new_game
 from .meeting import (
     run_canned_meeting,
     run_llm_meeting,
@@ -424,20 +424,18 @@ async def _apply_action(g, a, action) -> str | None:
     elif name == "eliminate":
         vid = _target_id(g, args.get("who"))
         if vid is not None and g.do_kill(a, vid):
-            # any survivor who saw it re-decides next tick — they'll likely sound the alarm
+            # any survivor who saw it re-decides next tick — they may flee, and the body opens a meeting
+            # the moment a living crewmate walks in on it (g.execute); there is no manual alarm
             G.interrupted.update(w.id for w in g.living() if a.id in w.witnessed)
-    elif name == "call_meeting":
-        return "meeting"
     return None
 
 
 async def _autonomous_tick():
     # the agents DECIDE (LLM tool calls), the engine EXECUTES. Free or just-whispered agents each pick one
-    # action; committed agents (walking/working) keep going. Claims hit Artel for real contention; a body
-    # or an agent-called alarm opens a meeting.
+    # action; committed agents (walking/working) keep going. Claims hit Artel for real contention; a meeting
+    # opens only when a body is found (g.execute), never on a hunch.
     g = G.g
     G.whisper = None
-    meeting_caller = None
     deciders = [
         a for a in g.living() if g.needs_decision(a) or a.id in G.interrupted or g.prime_kill(a)
     ]
@@ -454,9 +452,8 @@ async def _autonomous_tick():
         actions = await llm.act_many(reqs)
         for a, action in zip(deciders, actions):
             act = action if action is not None else g.default_action(a)
-            if await _apply_action(g, a, act) == "meeting":
-                meeting_caller = a
-    mt = g.execute()
+            await _apply_action(g, a, act)
+    mt = g.execute()  # a meeting opens here ONLY when a body is found (no emergency button)
     for (
         ev
     ) in g.events:  # spawns → create Artel tasks, completes → complete them (claims done inline)
@@ -475,14 +472,6 @@ async def _autonomous_tick():
                 G.push_feed("task", action="completed", who=done.name, room=done.room)
         except Exception as e:
             log.warning("task mirror failed: %s", e)
-    if mt is None and meeting_caller is not None:
-        # if a body was just found (this meeting is a report, not a hunch), open it ON the corpse so the
-        # client zooms to the scene of the crime before cutting to the table
-        lk = g.last_kill
-        if lk and lk["tick"] >= g.tick - 3 and not g.by_id(lk["victim"]).alive:
-            mt = Meeting(g.tick, meeting_caller.id, lk["room"], lk["victim"])
-        else:
-            mt = Meeting(g.tick, meeting_caller.id, HUB, None)
     return mt
 
 

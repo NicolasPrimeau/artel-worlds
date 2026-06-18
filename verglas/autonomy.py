@@ -10,23 +10,25 @@ from verglas.engine import Game
 # clean, valid call. Anything missing/malformed falls back to engine.default_action upstream.
 
 SYS_CREW = (
-    "You are {name}, overwintering at an isolated Antarctic research station. Do your share of the "
-    "station's tasks, but stay alive: one crewmate is secretly the Cold and kills anyone caught alone. "
-    "Stick near others, work tasks off the board, whisper to line up a buddy, and call an emergency "
-    "meeting if you find a body or really suspect someone. Pick exactly ONE action by calling a tool."
+    "You are {name}, overwintering at an isolated Antarctic research station. One of the crew is secretly "
+    "the Cold — it wears a friend's face and kills anyone it gets alone. You win by finishing every task "
+    "on the board before it picks you off, or by voting it out once a body is found. Work the board and "
+    "keep where others can see you. When someone asks you to slip off together 'to buddy up', that is "
+    "exactly how the Cold gets a victim one-on-one — weigh WHO is asking and whether others are near; you "
+    "can refuse and stay with the group. Trust no claim you can't check. "
+    "Pick exactly ONE action by calling a tool."
 )
 SYS_THING = (
     "You are {name}. Secretly you ARE the Cold — something that came in from the storm and now wears a "
     "crewmate's face, hunting the station. Blend in: claim and pretend to do tasks, move with the group, "
-    "act like a worried human. "
-    "Hunt patiently and CLEVERLY — don't just wait for a chance, MANUFACTURE one. WHISPER a crewmate to "
-    "peel them off from the group ('come help me finish the task in the Reactor', 'let's buddy up, just us "
-    "two') and lead them somewhere quiet; or FOLLOW one who is already drifting off alone. The moment you "
-    "are alone with just one of them and able, eliminate them and slip away (vent off the body if you can). "
-    "If others are watching, do NOT kill — just act normal. Never look suspicious. "
-    "Calling a meeting yourself is good cover IN MODERATION: a crewmate who NEVER raises the alarm stands "
-    "out, but one who calls meetings constantly looks like they are stalling. Call one only now and then — "
-    "to feign concern or steer suspicion onto someone else — and NEVER right after you kill. "
+    "act like a worried human; never look suspicious. "
+    "You are on BORROWED TIME: the crew win the instant they finish every task on the board (a meter you "
+    "cannot touch directly), and they will vote you out if they pin you. So hunt, and hunt soon — thin "
+    "them faster than the tasks get done, before you're cornered. Hunt CLEVERLY: MANUFACTURE the chance. "
+    "WHISPER a crewmate to peel them off ('come help me finish the task in the Reactor', 'let's buddy up, "
+    "just us two') and lead them somewhere quiet, or FOLLOW one already drifting off alone. The instant "
+    "you are alone with just one of them and able, eliminate them and slip away (vent off the body if you "
+    "can). If anyone else is watching, do NOT kill — just act normal. "
     "Pick exactly ONE action by calling a tool."
 )
 
@@ -83,7 +85,6 @@ def build_tools(g: Game, a) -> list[dict]:
                 ["who", "message"],
             )
         )
-    tools.append(_tool("call_meeting", "Sound the alarm and call everyone to a meeting."))
     if a.impostor:
         kill_names = [g.by_id(i).name for i in g.legal_kills(a)]
         if kill_names:
@@ -112,11 +113,29 @@ def _context(g: Game, a, inbox: list) -> str:
     here = [o.name for o in g._occ(a.room) if o.id != a.id]
     here_s = ", ".join(here) if here else "nobody — you are alone here"
     open_s = ", ".join(sorted(set(g.open_tasks))) or "none right now"
+    alive, total = len(g.living()), len(g.agents)
+    dead = total - alive
     lines = [
         f"You are in the {a.room}. With you: {here_s}.",
         f"Open tasks on the board: {open_s}.",
-        f"Crew still alive: {len(g.living())}.",
+        f"Crew still alive: {alive} of {total}.",
     ]
+    # the dread grows with the body count — crew get more unsettled and trust the room less
+    if not a.impostor and dead:
+        if dead >= 4:
+            lines.append(
+                "Most of the crew are gone. The Cold is almost certainly someone still standing here — "
+                "take nothing on faith and don't let anyone walk you off alone."
+            )
+        elif dead >= 2:
+            lines.append(
+                f"{dead} are dead now. Whoever's left could be it — keep witnesses close and be wary of "
+                "anyone steering you somewhere quiet."
+            )
+        else:
+            lines.append(
+                "Someone is dead. Stay where others can see you and watch who you're alone with."
+            )
     if a.found:
         _, room, victim = a.found[-1]
         lines.append(f"You just found {g.by_id(victim).name}'s body in the {room}.")
