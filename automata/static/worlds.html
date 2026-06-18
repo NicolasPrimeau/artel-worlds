@@ -28,6 +28,12 @@
   .brand svg { display:block; }
   .nav { display:flex; gap:18px; font-size:13px; color:var(--dim); }
   .nav a:hover { color:#fff; }
+  .search { flex:1 1 auto; max-width:480px; margin:0 8px; height:38px; padding:0 14px; border-radius:19px;
+    border:1px solid var(--line); background:#121212; color:var(--fg); font:inherit; font-size:14px; outline:none; }
+  .search:focus { border-color:#3d6; }
+  .search::placeholder { color:#777; }
+  #noresults { display:none; color:var(--dim); padding:8px 24px 60px; }
+  @media (max-width:620px){ .search { max-width:none; } .nav { display:none; } }
   /* featured showcase hero */
   .featured { padding:22px 24px 8px; max-width:1700px; }
   .hero { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(260px,1fr); gap:26px; align-items:center; }
@@ -77,6 +83,7 @@
     <svg viewBox="0 0 400 400" width="24" height="24" aria-hidden="true"><polygon points="200,40 360,200 200,360 40,200" fill="none" stroke="#D4AF37" stroke-width="30" stroke-linejoin="round"/><circle cx="200" cy="200" r="46" fill="#D4AF37"/></svg>
     Artel Worlds
   </div>
+  <input id="search" class="search" type="search" placeholder="Search worlds — name or kind" aria-label="Search worlds" autocomplete="off">
   <nav class="nav">
     <a href="/ui">Operations</a>
     <a href="https://artel.run/ui" target="_blank" rel="noopener">Artel</a>
@@ -91,6 +98,7 @@
 <main class="grid">
     <!--WORLDS-->
 </main>
+<p id="noresults">No worlds match that search.</p>
 
 <div class="foot">
   <a href="/ui">Operations &amp; cost →</a>
@@ -110,11 +118,42 @@ async function refreshStatus() {
       if (s.up === false) { el.textContent = "OFFLINE"; el.className = "st"; }
       else if (s.paused) { el.textContent = "PAUSED"; el.className = "st paused"; }
       else { el.textContent = "LIVE"; el.className = "st live"; }
+      const card = document.querySelector('.ytcard[data-key="' + key + '"]');
+      if (card) card.dataset.views = (s.up === false ? -1 : (s.viewers || 0));
     }
+    sortGrid();
   } catch (e) { /* leave the static badges */ }
+}
+// popularity sort: most viewers first; offline last; curated rank breaks ties
+function sortGrid() {
+  const grid = document.querySelector(".grid");
+  if (!grid) return;
+  [...grid.querySelectorAll(".ytcard")]
+    .sort((a, b) => (+b.dataset.views - +a.dataset.views) || (+a.dataset.rank - +b.dataset.rank))
+    .forEach(c => grid.appendChild(c));
 }
 refreshStatus();
 setInterval(refreshStatus, 30000);
+
+// search: filter the hero + grid by name/kind; hide the framing while a query is active
+const search = document.getElementById("search");
+function applySearch() {
+  const q = (search.value || "").trim().toLowerCase();
+  let any = false;
+  document.querySelectorAll("[data-q]").forEach(el => {
+    const show = !q || el.dataset.q.includes(q);
+    el.style.display = show ? "" : "none";
+    if (show) any = true;
+  });
+  const hero = document.querySelector(".hero");
+  const heroOn = hero && hero.style.display !== "none";
+  const feat = document.querySelector(".featured");
+  if (feat) feat.style.display = (!q || heroOn) ? "" : "none";
+  document.querySelectorAll(".section-h").forEach(h => h.style.display = q ? "none" : "");
+  const nr = document.getElementById("noresults");
+  if (nr) nr.style.display = any ? "none" : "";
+}
+if (search) search.addEventListener("input", applySearch);
 
 // the Watchtower card is not a screenshot — it draws the experiment's REAL live curve,
 // and keeps it live: refetched every minute while the page is open

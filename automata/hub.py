@@ -24,6 +24,7 @@ class WorldDef:
     local: bool = False
     reports_paused: bool = True
     featured: bool = False
+    rank: int = 100  # curated display order (lower = first); featured worlds lead the hero
     shape: Callable[[dict, dict], dict] | None = None
 
     @property
@@ -165,6 +166,7 @@ WORLDS: list[WorldDef] = [
         glyph_bg="repeating-linear-gradient(90deg,#123a1c 0 14px,#15431f 14px 28px)",
         pausable=False,
         reports_paused=False,
+        rank=4,
         shape=_shape_pitch,
     ),
     WorldDef(
@@ -180,6 +182,7 @@ WORLDS: list[WorldDef] = [
         debug_env="PHALANX_DEBUG_URL",
         debug_default="https://phalanx.artel.run",
         thumb="/thumbs/phalanx.webp?v=3",
+        rank=1,
         shape=_shape_phalanx,
     ),
     WorldDef(
@@ -194,6 +197,7 @@ WORLDS: list[WorldDef] = [
         ),
         thumb="/thumbs/automata.webp?v=2",
         local=True,
+        rank=3,
     ),
     WorldDef(
         key="watchtower",
@@ -210,6 +214,7 @@ WORLDS: list[WorldDef] = [
         extra=("/state",),
         thumb="/thumbs/watchtower.webp?v=3",
         live_chart=True,
+        rank=2,
         shape=_shape_watchtower,
     ),
     WorldDef(
@@ -254,17 +259,21 @@ def _thumb_inner(w: WorldDef) -> str:
     return f'<div class="gl" style="background:{w.glyph_bg}">{w.glyph}</div>{badge}'
 
 
+def _searchable(w: WorldDef) -> str:
+    return html.escape(f"{w.name} {w.tag}".lower())
+
+
 def render_cards() -> str:
     # the thumbnail grid: a 16:9 thumbnail with a LIVE badge, then an avatar + title + tag row.
-    # Featured worlds are shown in the hero above, so they're left out of the grid.
+    # Featured worlds are shown in the hero above, so they're left out of the grid. Initial order is
+    # the curated rank; the client re-sorts live by viewer count (popularity), rank as the tiebreaker.
     cards = []
-    for w in WORLDS:
-        if w.featured:
-            continue
+    for w in sorted((w for w in WORLDS if not w.featured), key=lambda w: (w.rank, w.name)):
         thumb_id = ' id="wt-thumb"' if w.live_chart else ""
         ava = html.escape(w.glyph or w.name[:1])
         cards.append(
-            f'<a class="ytcard" href="{w.url}">\n'
+            f'<a class="ytcard" href="{w.url}" data-key="{w.key}" data-rank="{w.rank}" '
+            f'data-views="0" data-q="{_searchable(w)}">\n'
             f'      <div class="thumb"{thumb_id}>{_thumb_inner(w)}</div>\n'
             f'      <div class="meta"><span class="ava">{ava}</span>\n'
             f'        <div class="info"><div class="title">{html.escape(w.name)}</div>'
@@ -278,9 +287,7 @@ def render_cards() -> str:
 def render_featured() -> str:
     # the showcase hero: a big thumbnail beside a title/blurb/CTA panel, for the featured world(s).
     out = []
-    for w in WORLDS:
-        if not w.featured:
-            continue
+    for w in sorted((w for w in WORLDS if w.featured), key=lambda w: (w.rank, w.name)):
         badge = f'<span class="st live" id="st-{w.key}">LIVE</span>'
         alt = html.escape(f"{w.name} — {w.tag}")
         media = (
@@ -289,7 +296,7 @@ def render_featured() -> str:
             else f'<div class="gl" style="background:{w.glyph_bg}">{w.glyph}</div>'
         )
         out.append(
-            f'<a class="hero" href="{w.url}">\n'
+            f'<a class="hero" href="{w.url}" data-q="{_searchable(w)}">\n'
             f'      <div class="hero-thumb">{media}{badge}</div>\n'
             f'      <div class="hero-info">\n'
             f'        <div class="hero-eyebrow">Featured world · {html.escape(w.tag)}</div>\n'

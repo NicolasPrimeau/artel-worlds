@@ -731,10 +731,11 @@ async def hub_status():
     out = {}
     for w in WORLDS:
         if w.local:
-            out[w.key] = {"paused": G.paused, "up": True}
+            out[w.key] = {"paused": G.paused, "up": True, "viewers": len(G.viewers)}
     for w, dbg in zip(remotes, debugs):
         paused = bool((dbg or {}).get("paused")) if w.reports_paused else False
-        out[w.key] = {"paused": paused, "up": dbg is not None}
+        viewers = (dbg or {}).get("viewers")
+        out[w.key] = {"paused": paused, "up": dbg is not None, "viewers": viewers or 0}
     return JSONResponse(out, headers={"Cache-Control": "public, max-age=15"})
 
 
