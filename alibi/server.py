@@ -27,8 +27,8 @@ _rng = SystemRandom()
 log = logging.getLogger("alibi")
 
 STATIC = Path(__file__).parent / "static"
-TASK_TICK = float(os.environ.get("ALIBI_TICK_INTERVAL", "3.0"))  # min seconds per task-phase tick
-STMT_DELAY = float(os.environ.get("ALIBI_STMT_DELAY", "3.4"))  # seconds each spoken line holds
+TASK_TICK = float(os.environ.get("ALIBI_TICK_INTERVAL", "4.2"))  # min seconds per task-phase tick
+STMT_DELAY = float(os.environ.get("ALIBI_STMT_DELAY", "4.6"))  # seconds each spoken line holds
 PRE_VOTE = float(os.environ.get("ALIBI_PRE_VOTE", "3.5"))  # the table settles before the vote opens
 VOTE_DELAY = float(os.environ.get("ALIBI_VOTE_DELAY", "1.9"))  # seconds between revealed votes
 WHISPER_DELAY = 1.6  # how long a private-whisper indicator flashes before play moves on

@@ -583,14 +583,14 @@ function genThought(a){ const peers=STATE.agents.filter(o=>o.alive&&o.id!==a.id&
   for(let i=0;i<6&&hist.includes(raw);i++) raw=bank[(Math.random()*bank.length)|0];
   hist.push(raw); if(hist.length>6)hist.shift();
   return lastThought[a.id]=_fill(raw,tk); }
-const THOUGHT_MS=5000;
+const THOUGHT_MS=9500;
 function thinkTick(){ if(STATE.phase!=='task'||STATE.paused) return; const now=performance.now();
   for(const k in thoughtOf) if(now-thoughtOf[k].t0>THOUGHT_MS) delete thoughtOf[k];
-  if(Object.keys(thoughtOf).length>=3) return;
+  if(Object.keys(thoughtOf).length>=2) return;
   const live=STATE.agents.filter(a=>a.alive&&a.wx!=null&&!thoughtOf[a.id]); if(!live.length) return;
   const a=live[(Math.random()*live.length)|0]; thoughtOf[a.id]={text:genThought(a),t0:now};
   if(HILITE===a.id) renderInspector(); }
-setInterval(thinkTick,1500);
+setInterval(thinkTick,4200);
 function drawThought(sx,sy,s,text,al){ const f=Math.max(9.5,10*cam.z); ctx.font=`600 ${f}px Inter`;
   const tw=Math.min(ctx.measureText(text).width,170*DPR), w=tw+15*DPR, h=f+13*DPR, bx=sx-w/2, by=sy-s*1.8-h;
   ctx.save(); ctx.globalAlpha=0.94*al;
