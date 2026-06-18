@@ -176,6 +176,8 @@ const COLORS=["#ff6a6a","#54a8ff","#46e0a0","#ffcf5a","#c98bff","#ff9f4a","#7ce0
 const SCALE=26;  // tile → world px; camera auto-fits
 function tint(n){ return ROOM_TINT[n]||[80,90,110]; }
 let ROOMS={}, CORRSET=new Set(), CORRTILES=[], DOORS={}, VENTS=[], OUTPOST=31, stationSig="", TB={x0:0,y0:0,x1:1248,y1:884}, OPEN={}, WALKABLE=new Set(), TERMINALS={};
+// agents whose body has already been through a meeting — once recovered, never drawn on the floor again
+const removedBodies=new Set();
 function inRoomTile(tx,ty){ for(const r of Object.values(ROOMS)){ if(tx>=r.tx&&tx<r.tx+r.tw&&ty>=r.ty&&ty<r.ty+r.th)return r; } return null; }
 // BSP rooms (rectangles) scattered + linked by corridor TILES — a building floor plan
 function buildStation(st){
@@ -210,6 +212,7 @@ function buildStation(st){
   DOORS={}; for(const [a,b,dx,dy] of (st.doors||[])){ (DOORS[a]=DOORS[a]||{})[b]={x:dx*SCALE,y:dy*SCALE}; (DOORS[b]=DOORS[b]||{})[a]={x:dx*SCALE,y:dy*SCALE}; }
   VENTS=(st.vents||[]).filter(([a,b])=>ROOMS[a]&&ROOMS[b]);
   for(const a of STATE.agents){ a.wx=null; a.prevRoom=null; a.path=null; }
+  removedBodies.clear();
   userMoved=false; if(typeof cv!=='undefined'&&cv.width) fit();
 }
 // a baked BSP-ish station so the page renders before the socket connects (live server sends the real one)
@@ -477,15 +480,24 @@ function routePath(sx,sy,gx,gy){  // pixel start → pixel goal → walkable til
   return wp;
 }
 function setPath(a,room){ if(a.prevRoom && a.prevRoom!==room && a.wx!=null){ a.path=routePath(a.wx,a.wy,a.tx,a.ty); } a.prevRoom=room; }
-function layoutAgents(){ const byRoom={}; for(const a of STATE.agents){ if(!a.alive&&!a.body)continue; (byRoom[a.room]=byRoom[a.room]||[]).push(a); }
+// every present agent gets its OWN tile — no two avatars share a cell. Workers take their task terminal
+// when it's free; everyone else fills the nearest free interior tile to the room centre.
+function layoutAgents(){ const byRoom={}; for(const a of STATE.agents){ if(removedBodies.has(a.id))continue; if(!a.alive&&!a.body)continue; (byRoom[a.room]=byRoom[a.room]||[]).push(a); }
   for(const [room,list] of Object.entries(byRoom)){ const r=ROOMS[room]; if(!r)continue;
-    const terms=TERMINALS[room]||[], working=list.filter(a=>a.task), idle=list.filter(a=>!a.task);
-    // a crew working a task stands ON its terminal cell; everyone else fans out in a grid near the centre
-    working.forEach((a,i)=>{ const tm=terms.length?terms[i%terms.length]:null;
-      if(tm){ a.tx=tm.x; a.ty=tm.y; } else { a.tx=r.cx; a.ty=r.cy; } setPath(a,room); });
-    const n=idle.length, cols=Math.ceil(Math.sqrt(n))||1, rows=Math.ceil(n/cols)||1, sp=Math.min(28,r.rad*0.6);
-    idle.forEach((a,i)=>{ const cxi=i%cols, cyi=Math.floor(i/cols);
-      a.tx=r.cx+(cxi-(cols-1)/2)*sp; a.ty=r.cy+(cyi-(rows-1)/2)*sp; setPath(a,room); }); }
+    let cells=[]; for(let ty=r.ty+1; ty<r.ty+r.th-1; ty++) for(let tx=r.tx+1; tx<r.tx+r.tw-1; tx++) cells.push([tx,ty]);
+    if(cells.length<list.length){ cells=[]; for(let ty=r.ty; ty<r.ty+r.th; ty++) for(let tx=r.tx; tx<r.tx+r.tw; tx++) cells.push([tx,ty]); }
+    const mcx=r.tx+r.tw/2, mcy=r.ty+r.th/2;
+    cells.sort((a,b)=>(Math.abs(a[0]+0.5-mcx)+Math.abs(a[1]+0.5-mcy))-(Math.abs(b[0]+0.5-mcx)+Math.abs(b[1]+0.5-mcy)));
+    const used=new Set();
+    const place=(a,pref)=>{ let cell=null;
+      if(pref){ const k=pref[0]+'|'+pref[1]; if(!used.has(k)) cell=pref; }
+      if(!cell) for(const c of cells){ const k=c[0]+'|'+c[1]; if(!used.has(k)){ cell=c; break; } }
+      if(!cell) cell=[r.tx+1,r.ty+1];
+      used.add(cell[0]+'|'+cell[1]); a.tx=(cell[0]+0.5)*SCALE; a.ty=(cell[1]+0.5)*SCALE; setPath(a,room); };
+    const terms=TERMINALS[room]||[];
+    list.filter(a=>a.task).forEach((a,i)=>place(a, terms[i]?[terms[i].tx,terms[i].ty]:null));
+    list.filter(a=>!a.task).forEach(a=>place(a,null));
+  }
 }
 // move STRAIGHT toward the next waypoint, clamped so a step can never overshoot it — so an agent
 // converges and stops instead of skidding past and snapping back (which read as spinning). The heading
@@ -603,7 +615,7 @@ function drawThought(sx,sy,s,text,al){ const f=Math.max(9.5,10*cam.z); ctx.font=
   ctx.fillStyle="#dde8fb"; ctx.textAlign="center"; ctx.textBaseline="middle";
   ctx.fillText(text,sx,by+h/2,168*DPR); ctx.restore(); }
 function drawAgents(t){
-  const list=STATE.agents.filter(a=>a.wx!=null && !(ejecting&&a.name===ejecting.name));
+  const list=STATE.agents.filter(a=>a.wx!=null && !removedBodies.has(a.id) && !(ejecting&&a.name===ejecting.name));
   for(const a of [...list].sort((x,y)=>x.wy-y.wy)){ const [sx,sy]=toScreen(a.wx,a.wy), s=11*cam.z, col=COLORS[a.c%COLORS.length];
     const working=a.task&&a.alive&&!a.moving;
     if(a.id===HILITE){ const pr=s*1.0+Math.sin(t*0.006)*2.2*cam.z;   // pulsing ring on the rostered pick
@@ -763,6 +775,13 @@ function drawMeeting(t){
   const lede=meetLede();
   ctx.fillStyle="rgba(172,198,232,.82)"; fit(lede, narrow?13.5:16, 600);
   ctx.fillText(lede, cx, topRes+(narrow?39:48)*DPR);
+  // the discovered victim is laid out in the CENTRE of the table for the meeting (gone once it's over)
+  const mv=STATE.meeting&&STATE.meeting.victim;
+  if(mv){ const va=STATE.agents.find(a=>a.name===mv);
+    ctx.save(); ctx.globalAlpha=fade;
+    figure(cx,cy,s,va?COLORS[va.c%COLORS.length]:'#8a93a6',false,false,t,look(mv));
+    ctx.fillStyle="rgba(255,150,150,.92)"; ctx.textAlign="center"; ctx.font=`700 ${9*DPR}px Inter`;
+    ctx.fillText(mv+" — dead",cx,cy+s*1.7); ctx.restore(); }
   // seats around the table
   const ids=meet.ids, n=Math.max(1,ids.length), seats={};
   const ringx=narrow?1.08:1.16, ringy=narrow?1.12:1.28;
@@ -919,6 +938,9 @@ function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.statio
   if(s.phase!==curPhase){ curPhase=s.phase; phaseT0=performance.now(); }  // fresh fade for intro/gameover
   STATE.round=s.round; STATE.tasksDone=s.tasksDone; STATE.tasksTotal=s.tasksTotal; STATE.phase=s.phase;
   STATE.winner=s.winner; STATE.win_by=s.win_by; STATE.scores=s.scores; STATE.meeting=s.meeting; applyAgents(s.agents||[]);
+  if(s.phase==='intro') removedBodies.clear();  // new game → bodies can appear again
+  // once a body has sat through a meeting it's recovered: drop it from the station for the rest of the game
+  if(['meeting','vote','ejection'].includes(s.phase)) for(const a of STATE.agents) if(!a.alive) removedBodies.add(a.id);
   if(s.lastKill && s.lastKill.tick!==lastKillTick){ lastKillTick=s.lastKill.tick;
     pushKill(s.lastKill.room, STATE.agents.find(a=>a.name===s.lastKill.victim)); killPulse=performance.now(); }
   updateMeet(s);
