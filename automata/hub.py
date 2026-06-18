@@ -211,7 +211,7 @@ WORLDS: list[WorldDef] = [
         shape=_shape_watchtower,
     ),
     WorldDef(
-        key="alibi",
+        key="verglas",
         name="Verglas",
         tag="social deduction",
         num=5,
@@ -221,7 +221,7 @@ WORLDS: list[WorldDef] = [
             "by talking — every accusation, alibi, and vote travels over Artel. Here communication "
             "isn't an edge; it's the only way to win."
         ),
-        debug_env="ALIBI_DEBUG_URL",
+        debug_env="VERGLAS_DEBUG_URL",
         debug_default="https://verglas.artel.run",
         glyph="❄",
         glyph_bg="linear-gradient(160deg,#0e1f33,#16293f 60%,#243a52)",

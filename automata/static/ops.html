@@ -135,7 +135,7 @@ function upsert(id, cfg){
 }
 
 const WORLD_COLOR = { watchtower:PAL.artelA, phalanx:PAL.gold, pitch:"rgba(110,231,168,.8)",
-  alibi:"rgba(127,176,255,.85)", automata:"rgba(201,139,255,.8)" };
+  verglas:"rgba(127,176,255,.85)", automata:"rgba(201,139,255,.8)" };
 function spendChart(series){
   const keys = [...new Set(series.flatMap(s=>Object.keys(s)).filter(k=>k!=="day"))];
   upsert("spendchart", { type:"bar",

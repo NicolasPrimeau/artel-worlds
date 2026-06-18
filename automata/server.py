@@ -928,7 +928,7 @@ def _normalize_world_metrics(worlds: list) -> None:
                 "recent": [],
             }
             caption = f.get("fixture")
-        elif key == "alibi":
+        elif key == "verglas":
             r = f.get("results") or {}
             results = {
                 "record": f"{r.get('crew', 0)}–{r.get('thing', 0)}",

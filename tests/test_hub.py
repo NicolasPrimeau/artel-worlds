@@ -52,4 +52,4 @@ def test_hub_served_with_cards_injected(monkeypatch):
     r = c.get("/", headers={"host": "worlds.artel.run"})
     assert r.status_code == 200
     assert "<!--WORLDS-->" not in r.text
-    assert 'id="st-alibi"' in r.text and 'id="st-watchtower"' in r.text
+    assert 'id="st-verglas"' in r.text and 'id="st-watchtower"' in r.text
