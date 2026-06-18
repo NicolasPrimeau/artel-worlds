@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <link rel="icon" type="image/x-icon" href="/favicon.ico">
-<title>Verglas · Outpost 31</title>
+<title>Verglas</title>
 <style>
   :root{ --panel:rgba(12,18,30,.78); --line:rgba(120,160,220,.16); --ink:#e7eefc; --dim:#8aa0c4;
     --warn:#ff5a5a; --good:#39d98a; --frost:#bfe0ff; }
@@ -17,7 +17,7 @@
   .hud{position:fixed;top:0;left:0;right:0;height:52px;display:flex;align-items:center;gap:12px;
     padding:0 14px;background:linear-gradient(#060a12ee,#060a1200);z-index:10;pointer-events:none}
   .brand{font-weight:800;letter-spacing:.16em;font-size:14px}
-  .brand small{color:var(--frost);font-weight:600;letter-spacing:.2em}
+  .brand small{color:var(--dim);font-weight:600;letter-spacing:.2em;opacity:.85}
   .pill{display:flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--line);
     border-radius:999px;padding:5px 10px;backdrop-filter:blur(8px);font-size:12px}
   .pill b{font-variant-numeric:tabular-nums}
@@ -123,7 +123,6 @@
     .roster{ top:58px; width:auto; left:8px; right:8px; flex-direction:row; overflow-x:auto; gap:6px;
       padding-bottom:2px; -webkit-overflow-scrolling:touch; }
     .who{ flex:0 0 auto; } .who .md{ display:none; }
-    .brand small{ display:none; }
   }
   /* phone landscape: chat docks right (narrow), roster left, both short */
   @media (orientation:landscape) and (max-height:560px){
