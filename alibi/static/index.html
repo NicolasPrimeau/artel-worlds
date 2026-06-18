@@ -614,7 +614,7 @@ function drawAgents(t){
     figure(sx,sy,s,col,a.alive,working,t,look(a.name));
     const near=Math.hypot(mouse.x-sx,mouse.y-sy)<40*cam.z;
     if(!a.alive){ ctx.textAlign="center"; ctx.font=`800 ${9.5*cam.z}px Inter`; ctx.fillStyle="rgba(255,120,120,.96)";
-      ctx.fillText("✝ "+a.name,sx,sy+s*1.4); }   // always label the dead so you can find the body
+      ctx.fillText("✕ "+a.name,sx,sy+s*1.4); }   // always label the dead so you can find the body
     else if(cam.z>1.05||near||a.id===HILITE){ ctx.textAlign="center"; ctx.font=`700 ${9.5*cam.z}px Inter`;
       ctx.fillStyle="rgba(231,238,252,.95)"; ctx.fillText(a.name,sx,sy+s*1.3); } }
   // ambient thoughts float over the icons, drawn last so no figure overlaps them
