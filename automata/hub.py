@@ -242,33 +242,28 @@ def remote_worlds() -> list[WorldDef]:
     return [w for w in WORLDS if not w.local]
 
 
-def _thumb_html(w: WorldDef) -> str:
+def _thumb_inner(w: WorldDef) -> str:
     badge = f'<span class="st live" id="st-{w.key}">LIVE</span>'
     alt = html.escape(f"{w.name} — {w.tag}")
     if w.live_chart:
-        return (
-            f'<div class="thumb" id="wt-thumb"><img src="{w.thumb}" alt="{alt}" loading="lazy">'
-            f'<canvas id="wt-live" hidden></canvas>{badge}</div>'
-        )
+        return f'<img src="{w.thumb}" alt="{alt}" loading="lazy"><canvas id="wt-live" hidden></canvas>{badge}'
     if w.thumb:
-        return f'<div class="thumb"><img src="{w.thumb}" alt="{alt}" loading="lazy">{badge}</div>'
-    style = (
-        "display:flex;align-items:center;justify-content:center;font-size:52px;"
-        f"background:{w.glyph_bg}"
-    )
-    return f'<div class="thumb" style="{style}">{w.glyph}{badge}</div>'
+        return f'<img src="{w.thumb}" alt="{alt}" loading="lazy">{badge}'
+    return f'<div class="gl" style="background:{w.glyph_bg}">{w.glyph}</div>{badge}'
 
 
 def render_cards() -> str:
+    # YouTube-style cards: a 16:9 thumbnail with a LIVE badge, then an avatar + title + tag row.
     cards = []
     for w in WORLDS:
+        thumb_id = ' id="wt-thumb"' if w.live_chart else ""
+        ava = html.escape(w.glyph or w.name[:1])
         cards.append(
-            f'<a class="world" href="{w.url}">\n'
-            f"      {_thumb_html(w)}\n"
-            f'      <div class="body">\n'
-            f'        <div class="top"><span class="n">{html.escape(w.name.upper())}</span>'
-            f'<span class="tag">{html.escape(w.tag)}</span></div>\n'
-            f"        <p>{html.escape(w.blurb)}</p>\n"
+            f'<a class="ytcard" href="{w.url}">\n'
+            f'      <div class="thumb"{thumb_id}>{_thumb_inner(w)}</div>\n'
+            f'      <div class="meta"><span class="ava">{ava}</span>\n'
+            f'        <div class="info"><div class="title">{html.escape(w.name)}</div>'
+            f'<div class="sub">{html.escape(w.tag)}</div></div>\n'
             f"      </div>\n"
             f"    </a>"
         )
