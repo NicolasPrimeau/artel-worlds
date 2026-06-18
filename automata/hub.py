@@ -23,6 +23,7 @@ class WorldDef:
     resettable: bool = True
     local: bool = False
     reports_paused: bool = True
+    featured: bool = False
     shape: Callable[[dict, dict], dict] | None = None
 
     @property
@@ -227,6 +228,7 @@ WORLDS: list[WorldDef] = [
         thumb="/thumbs/verglas.webp?v=1",
         glyph="❄",
         glyph_bg="linear-gradient(160deg,#0e1f33,#16293f 60%,#243a52)",
+        featured=True,
         shape=_shape_verglas,
     ),
 ]
@@ -253,9 +255,12 @@ def _thumb_inner(w: WorldDef) -> str:
 
 
 def render_cards() -> str:
-    # YouTube-style cards: a 16:9 thumbnail with a LIVE badge, then an avatar + title + tag row.
+    # the thumbnail grid: a 16:9 thumbnail with a LIVE badge, then an avatar + title + tag row.
+    # Featured worlds are shown in the hero above, so they're left out of the grid.
     cards = []
     for w in WORLDS:
+        if w.featured:
+            continue
         thumb_id = ' id="wt-thumb"' if w.live_chart else ""
         ava = html.escape(w.glyph or w.name[:1])
         cards.append(
@@ -268,3 +273,30 @@ def render_cards() -> str:
             f"    </a>"
         )
     return "\n\n    ".join(cards)
+
+
+def render_featured() -> str:
+    # the showcase hero: a big thumbnail beside a title/blurb/CTA panel, for the featured world(s).
+    out = []
+    for w in WORLDS:
+        if not w.featured:
+            continue
+        badge = f'<span class="st live" id="st-{w.key}">LIVE</span>'
+        alt = html.escape(f"{w.name} — {w.tag}")
+        media = (
+            f'<img src="{w.thumb}" alt="{alt}">'
+            if w.thumb
+            else f'<div class="gl" style="background:{w.glyph_bg}">{w.glyph}</div>'
+        )
+        out.append(
+            f'<a class="hero" href="{w.url}">\n'
+            f'      <div class="hero-thumb">{media}{badge}</div>\n'
+            f'      <div class="hero-info">\n'
+            f'        <div class="hero-eyebrow">Featured world · {html.escape(w.tag)}</div>\n'
+            f'        <div class="hero-title">{html.escape(w.name)}</div>\n'
+            f'        <p class="hero-blurb">{html.escape(w.blurb)}</p>\n'
+            f'        <span class="hero-cta">Enter {html.escape(w.name)} →</span>\n'
+            f"      </div>\n"
+            f"    </a>"
+        )
+    return "\n\n    ".join(out)

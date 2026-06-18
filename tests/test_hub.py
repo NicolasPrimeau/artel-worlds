@@ -1,22 +1,30 @@
 from fastapi.testclient import TestClient
 
 import automata.server as srv
-from automata.hub import WORLDS, render_cards, world_by_key
+from automata.hub import WORLDS, render_cards, render_featured, world_by_key
 
 
 async def _unreachable(client, url):
     return None
 
 
-def test_render_cards_covers_every_world():
-    cards = render_cards()
-    assert "<!--WORLDS-->" not in cards
+def test_every_world_renders_in_hero_or_grid():
+    grid, hero = render_cards(), render_featured()
+    page = grid + hero
     for w in WORLDS:
-        assert f'id="st-{w.key}"' in cards
-        assert w.url in cards
-    assert "wt-thumb" in cards and "wt-live" in cards  # watchtower live-chart overlay
-    for w in WORLDS:  # each card shows either its thumbnail image or its glyph fallback
-        assert (w.thumb and w.thumb in cards) or (w.glyph and w.glyph in cards), w.key
+        assert f'id="st-{w.key}"' in page  # status badge present (hero or grid)
+        assert w.url in page
+        # featured worlds live in the hero, the rest in the grid — never both
+        assert (f'id="st-{w.key}"' in hero) == bool(w.featured), w.key
+    assert "wt-thumb" in grid and "wt-live" in grid  # watchtower live-chart overlay
+    assert render_featured(), "expected at least one featured world"
+
+
+def test_grid_excludes_featured_worlds():
+    grid = render_cards()
+    for w in WORLDS:
+        if w.featured:
+            assert f'id="st-{w.key}"' not in grid, w.key
 
 
 def test_hub_status_keys_match_registry(monkeypatch):

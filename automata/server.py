@@ -25,7 +25,7 @@ from pydantic import BaseModel
 
 from .agent import HeuristicAgent
 from .config import DEFAULT
-from .hub import WORLDS, remote_worlds, render_cards, world_by_key
+from .hub import WORLDS, remote_worlds, render_cards, render_featured, world_by_key
 from .genome import TARGETS, VARIABLES, VERBS, random_genome, to_dict
 from .llm import CACHE as LLM_CACHE
 from .llm import PERSONAS, AnthropicClient, ClaudeSDKClient, author_genome
@@ -767,7 +767,11 @@ def _hub_response():
     if not hub.exists():
         return JSONResponse({"worlds": [w.key for w in WORLDS]})
     if _HUB_HTML is None:
-        _HUB_HTML = hub.read_text(encoding="utf-8").replace("<!--WORLDS-->", render_cards())
+        _HUB_HTML = (
+            hub.read_text(encoding="utf-8")
+            .replace("<!--FEATURED-->", render_featured())
+            .replace("<!--WORLDS-->", render_cards())
+        )
     return HTMLResponse(_HUB_HTML)
 
 
