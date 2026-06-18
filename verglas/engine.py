@@ -142,6 +142,32 @@ def _generate_station(rng: random.Random):
     for a, b in nonadj[: rng.randint(2, 3)]:
         vents.setdefault(a, []).append(b)
         vents.setdefault(b, []).append(a)
+
+    # guarantee a doorway per room. The MST connects room ADJACENCY, but the geometric corridor can fail
+    # to leave a walkable tile against a small room's wall — sealing it (no door, no route in; the path
+    # router then can't reach it and an agent appears to clip through the wall). For any sealed room, carve
+    # a short stub from its centre toward the nearest corridor tile: tiles inside rooms are skipped, so it
+    # breaks the wall exactly once = one doorway that also joins the corridor network.
+    def _touches_corr(rect):
+        x, y, w, h = rect
+        for tx in range(x, x + w):
+            for ty in range(y, y + h):
+                if any((tx + dx, ty + dy) in corr for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))):
+                    return True
+        return False
+
+    for n in names:
+        if not corr or _touches_corr(rects[n]):
+            continue
+        rcx, rcy = int(cen[n][0]), int(cen[n][1])
+        tgx, tgy = min(corr, key=lambda c: abs(c[0] - rcx) + abs(c[1] - rcy))
+        leg1 = [(t, rcy) for t in range(min(rcx, tgx), max(rcx, tgx) + 1)]
+        leg2 = [(tgx, t) for t in range(min(rcy, tgy), max(rcy, tgy) + 1)]
+        for x, y in leg1 + leg2:
+            for dx in (0, 1):
+                if 0 <= x + dx < GW and 0 <= y < GH and (x + dx, y) not in roomtiles:
+                    corr.add((x + dx, y))
+
     centers = {n: (round(cen[n][0], 2), round(cen[n][1], 2)) for n in names}
     return names, {k: sorted(v) for k, v in adj.items()}, vents, rects, doors, centers, sorted(corr)
 
