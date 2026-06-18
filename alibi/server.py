@@ -302,7 +302,7 @@ async def _run_meeting(mt) -> None:
             await asyncio.sleep(VOTE_DELAY)
 
     if llm.enabled():
-        votes = await run_llm_meeting(G.g, mt, on_item)
+        votes = await run_llm_meeting(G.g, mt, on_item, watched=lambda: bool(G.viewers))
     else:  # no key configured → canned statements + deterministic decider so the scene still plays
         from .brain import make_decider
 
@@ -312,11 +312,12 @@ async def _run_meeting(mt) -> None:
     G.phase = "ejection"
     G.revealed = False
     await _broadcast()
-    if mt.ejected is not None:
+    if mt.ejected is not None and G.viewers:  # skip the suspense beats if nobody's watching
         await asyncio.sleep(EJECT_WALK)
     G.revealed = True  # the airlock reveal
     await _broadcast()
-    await asyncio.sleep(EJECT_REVEAL)
+    if G.viewers:
+        await asyncio.sleep(EJECT_REVEAL)
     if G.g.winner is None:  # meeting's over and the game goes on → back to the station
         G.phase = "task"
         await _broadcast()
@@ -422,6 +423,10 @@ async def _autonomous_tick():
     ]
     G.interrupted.clear()
     G.deciding = len(deciders)
+    if (
+        deciders and not G.viewers
+    ):  # audience left since the loop's gate check → don't spend this tick
+        return None
     if deciders:
         reqs = [autonomy.build_request(g, a, G.inbox.get(a.id)) for a in deciders]
         for a in deciders:
