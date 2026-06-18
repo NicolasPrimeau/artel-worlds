@@ -34,6 +34,7 @@ TASK_TICK = float(os.environ.get("ALIBI_TICK_INTERVAL", "3.0"))  # min seconds p
 STMT_DELAY = float(os.environ.get("ALIBI_STMT_DELAY", "3.4"))  # seconds each spoken line holds
 PRE_VOTE = float(os.environ.get("ALIBI_PRE_VOTE", "3.5"))  # the table settles before the vote opens
 VOTE_DELAY = float(os.environ.get("ALIBI_VOTE_DELAY", "1.9"))  # seconds between revealed votes
+WHISPER_DELAY = 1.6  # how long a private-whisper indicator flashes before play moves on
 EJECT_WALK = (
     4.0  # the ejected researcher is walked into the airlock — BEFORE we reveal what they were
 )
@@ -73,6 +74,7 @@ class Alibi:
         self.paused = False
         self.phase = "task"  # task | meeting | vote | ejection | gameover
         self.revealed = False  # during ejection: has the human/Thing reveal happened yet?
+        self.whisper = None  # [from, to] while a private DM indicator is flashing
         self.meeting = None
         self.task_q: asyncio.Queue = asyncio.Queue()  # engine task events → mirrored onto Artel
         self.task_pool: dict = {}  # room -> [open Artel task ids waiting to be claimed]
@@ -192,6 +194,7 @@ class Alibi:
                 "votes": {},
                 "ejected": None,
                 "ejected_was_thing": None,
+                "whisper": self.whisper,  # [from, to] while a private DM is passing
             }
             if self.phase in (
                 "vote",
@@ -263,18 +266,30 @@ async def _run_meeting(mt) -> None:
     G.g.reconvene()  # everyone — task-workers included — downs tools and gathers at the Mess Hall table
     G.phase = "meeting"
     G.revealed = False
+    G.whisper = None
     G.meeting = mt
     await _broadcast()
 
     async def on_item(kind: str, agent_id: int, payload) -> None:
-        # paces the meeting: deliberation lines hold on screen, the table SETTLES before the vote opens,
-        # then votes land one at a time. Each line/vote is mirrored onto the Artel bus.
-        if kind == "settle":  # deliberation over → a beat before the vote
+        # paces the meeting: spoken lines hold on screen, private whispers flash a discreet indicator,
+        # the table SETTLES before the vote, then votes land one at a time. Public lines + votes go on
+        # the Artel bus; whispers are real private Artel DMs.
+        if kind == "settle":  # discussion over → a beat before the vote
             G.phase = "vote"
             await _broadcast()
             await asyncio.sleep(PRE_VOTE)
             return
         name = G.g.by_id(agent_id).name
+        if (
+            kind == "whisper"
+        ):  # a private DM — viewer only sees that a whisper passed between two seats
+            G.phase = "meeting"
+            await artel.dm(agent_id, payload["to"], payload["text"])
+            G.whisper = [name, G.g.by_id(payload["to"]).name]
+            await _broadcast()
+            await asyncio.sleep(WHISPER_DELAY)
+            G.whisper = None
+            return
         if kind == "statement":
             G.phase = "meeting"
             await artel.say(agent_id, name, payload)

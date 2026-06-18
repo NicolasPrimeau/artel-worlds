@@ -75,6 +75,23 @@ async def say(index: int, name: str, text: str, subject: str = "alibi") -> None:
         log.warning("artel say failed for %s: %s", agent["id"], e)
 
 
+async def dm(from_index: int, to_index: int, text: str, subject: str = "alibi-whisper") -> None:
+    # a PRIVATE agent-to-agent message on Artel (coalitions, "vote with me", "let's buddy up") — only
+    # the two agents see it; the public viewer just knows a whisper happened.
+    if not enabled() or not text:
+        return
+    sender, recipient = _seat(from_index), _seat(to_index)
+    await _ensure_joined(sender)
+    try:
+        await _client().post(
+            f"{ARTEL_URL}/messages",
+            headers=_headers(sender),
+            json={"to": recipient["id"], "subject": subject, "body": text[:280]},
+        )
+    except Exception as e:
+        log.warning("artel dm failed for %s: %s", sender["id"], e)
+
+
 async def clear_project() -> None:
     # wipe the project's tasks + messages so each game starts on a clean Artel board (owner-only — the
     # first seat created the project on join, so it owns it).

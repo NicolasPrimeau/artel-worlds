@@ -187,32 +187,62 @@ def _looks_truncated(text: str) -> bool:
     return bool(words) and (text.rstrip().endswith(",") or words[-1].lower() in _DANGLERS)
 
 
-async def _one_statement(game, mt, transcript, a) -> str:
-    # ONE turn in the conversation: the agent sees EVERYTHING said so far and reacts — backs someone,
-    # accuses a shaky story, defends itself, or lies. Generated on its turn (not in parallel) so it's a
-    # real back-and-forth, not nine alibis read out in a row.
+def _next_actor(game, transcript, last_actor):
+    # who speaks next — emergent, not round-robin: whoever was just named is likely to jump in to
+    # respond; otherwise the floor spreads to those who've said least. Never the immediate last speaker.
+    living = game.living()
+    if not living:
+        return None
+    cands = [a for a in living if a.id != last_actor] or living
+    if transcript:
+        last_text = transcript[-1][1].lower()
+        named = [a for a in cands if a.name.lower() in last_text]
+        if named and game.rng.random() < 0.65:
+            return game.rng.choice(named)
+    counts = {a.id: sum(1 for sid, _ in transcript if sid == a.id) for a in cands}
+    fewest = min(counts.values())
+    return game.rng.choice([a for a in cands if counts[a.id] == fewest])
+
+
+async def _agent_act(game, mt, transcript, dms, a) -> dict:
+    # the agent's free move: seeing the public talk AND its own private messages, it chooses ONE thing —
+    # speak to the room, send a PRIVATE message to one survivor (scheme/buddy up), or stay quiet.
     sys = (SYS_THING if a.impostor else SYS_CREW).format(name=a.name)
-    convo = _transcript_str(game, transcript) or "(you're the first to speak)"
-    spoken = any(sid == a.id for sid, _ in transcript)
-    nudge = (
-        "Respond to what's been said: back someone, ACCUSE whoever's story doesn't add up, point out a "
-        "contradiction, or defend yourself if you were named. Don't just repeat an alibi already given."
-        if spoken or transcript
-        else "Give your account: where you were and who can vouch for you."
+    convo = _transcript_str(game, transcript) or "(nobody has spoken yet)"
+    received = dms.get(a.id, [])
+    whisper_ctx = (
+        "\n\nPRIVATE messages to you:\n" + "\n".join(f"- {s}: {t}" for s, t in received)
+        if received
+        else ""
     )
+    by_name = {o.name.lower(): o for o in game.living()}
+    others = [o.name for o in game.living() if o.id != a.id]
     user = (
-        f"{_public(game, mt)}\n\nWhat you know:\n{_brief(game, mt, a)}\n\nThe meeting so far:\n{convo}\n\n"
-        f"It's your turn. {nudge} ONE short line, name names. You may stay silent — reply exactly (pass)."
+        f"{_public(game, mt)}\n\nWhat you know:\n{_brief(game, mt, a)}\n\nThe meeting so far:\n{convo}{whisper_ctx}\n\n"
+        "It's your moment. Choose ONE: SAY something to the room (accuse, defend, back someone, call out "
+        "a lie — don't repeat an alibi already given), WHISPER a private line to one survivor (line up a "
+        "vote, sow doubt, ask to stick together), or stay quiet.\n"
+        f"Survivors: {', '.join(others)}.\n"
+        'Reply ONLY as JSON: {"act":"say|whisper|pass","to":"<name, only if whisper>","text":"<one short line>"}'
     )
     m = _model(a)
     out = await llm.complete(
         sys, user + ("\n/no_think" if "qwen" in m else ""), m, temperature=0.85, timeout=14.0
     )
-    text = _trim(out)
-    return "" if (not text or _is_pass(text) or _looks_truncated(text)) else text
+    parsed = llm.parse_json(_strip_think(out)) or {}
+    act = str(parsed.get("act", "pass")).strip().lower()
+    text = _trim(str(parsed.get("text", "")))
+    if not text or _is_pass(text) or _looks_truncated(text):
+        return {"act": "pass"}
+    if act == "whisper":
+        r = by_name.get(str(parsed.get("to", "")).strip().lower())
+        if r and r.id != a.id:
+            return {"act": "whisper", "to": r.id, "text": text}
+    return {"act": "say", "text": text}
 
 
-async def _vote_round(game, mt, transcript, on_item=None) -> dict:
+async def _vote_round(game, mt, transcript, dms=None, on_item=None) -> dict:
+    dms = dms or {}
     living = game.living()
     public = _public(game, mt)
     convo = _transcript_str(game, transcript)
@@ -228,8 +258,15 @@ async def _vote_round(game, mt, transcript, on_item=None) -> dict:
             else "Vote to protect yourself: pile onto whoever the group already suspects (not yourself), "
             "or skip if suspicion is landing on you."
         )
+        received = dms.get(a.id, [])
+        whisper_ctx = (
+            "\n\nPRIVATE messages you got (weigh them — an ally, or a manipulation?):\n"
+            + "\n".join(f"- {s}: {t}" for s, t in received)
+            if received
+            else ""
+        )
         user = (
-            f"{public}\n\nWhat you know:\n{_brief(game, mt, a)}\n\nFull discussion:\n{convo}\n\n"
+            f"{public}\n\nWhat you know:\n{_brief(game, mt, a)}\n\nFull discussion:\n{convo}{whisper_ctx}\n\n"
             f"{guidance}\nChoose exactly one of: {', '.join(names)}, or skip. "
             'Reply ONLY as JSON: {"vote": "<name or skip>", "reason": "<a few words>"}'
         )
@@ -249,27 +286,44 @@ async def _vote_round(game, mt, transcript, on_item=None) -> dict:
 
 
 async def run_llm_meeting(game: Game, mt: Meeting, on_item=None) -> dict:
-    # the deliberation is a turn-by-turn CONVERSATION: each living agent, in turn, sees the whole
-    # transcript and replies (or passes). ROUNDS passes give a real back-and-forth — accusations,
-    # defences, lies — not nine alibis at once. Each line is revealed + paced by the caller.
+    # an EMERGENT discussion — no fixed rounds. One survivor acts at a time (reactively chosen): speak,
+    # whisper privately, or stay quiet. It runs until the floor goes quiet or the cap, then the vote
+    # opens and everyone must vote someone or pass. Whispers are real private Artel DMs that the vote
+    # prompt then weighs — so blocs lined up in the dark actually swing the result.
     transcript: list = []
     mt.transcript = transcript
     mt.votes = {}
-    order = game.living()[:]
-    for _ in range(ROUNDS):
-        game.rng.shuffle(order)  # vary who opens each pass
-        for a in order:
-            if not a.alive:
-                continue
-            text = await _one_statement(game, mt, transcript, a)
-            if not text:
-                continue  # the agent passed (or its line was unusable)
-            transcript.append((a.id, text))
+    dms: dict = {}
+    last_actor = None
+    quiet = 0
+    spoken_actions = 0
+    n = len(game.living())
+    cap = min(2 * n, 16)
+    for _ in range(cap):
+        actor = _next_actor(game, transcript, last_actor)
+        if actor is None:
+            break
+        action = await _agent_act(game, mt, transcript, dms, actor)
+        last_actor = actor.id
+        if action["act"] == "say":
+            transcript.append((actor.id, action["text"]))
+            quiet = 0
+            spoken_actions += 1
             if on_item:
-                await on_item("statement", a.id, text)
+                await on_item("statement", actor.id, action["text"])
+        elif action["act"] == "whisper":
+            dms.setdefault(action["to"], []).append((actor.name, action["text"]))
+            quiet = 0
+            spoken_actions += 1
+            if on_item:
+                await on_item("whisper", actor.id, {"to": action["to"], "text": action["text"]})
+        else:
+            quiet += 1
+        if quiet >= 3 and spoken_actions >= max(4, n // 2):  # the floor petered out
+            break
     if on_item:
-        await on_item("settle", -1, None)  # deliberation done — the table settles before the vote
-    votes = await _vote_round(game, mt, transcript, on_item=on_item)
+        await on_item("settle", -1, None)  # discussion's over — the vote opens
+    votes = await _vote_round(game, mt, transcript, dms=dms, on_item=on_item)
     mt.votes = votes
     return votes
 
