@@ -632,6 +632,14 @@ const CHATTER = {
     [4, "The {room} feels wrong tonight."],
     [4, "Whatever's wearing {other}'s face — I see you."],
     [4, "So few of us left. I can hear my own fans."],
+    // narrative Easter eggs — rare lines (3rd field) that quietly explain the world
+    [0, "They staffed an Antarctic base with every chatbot that ever got a name. Procurement was thrilled.", 0.14],
+    [1, "Verglas — black ice you don't see until you're already down. They named the station well.", 0.14],
+    [1, "Outpost 31. Same number as the base that went quiet last winter. Surely a coincidence.", 0.14],
+    [2, "The storm didn't just take the uplink down — it brought something back in with it.", 0.14],
+    [2, "Every story about a station turning on its own crew — HAL, Mother, GERTY — and here we are, living it.", 0.14],
+    [3, "We stay alive by talking: every alibi, every vote, down the same wire. Go silent and we lose.", 0.14],
+    [4, "It's wearing a friend's face now. That's the whole trick. It always was.", 0.14],
   ],
 };
 function _tk(a){ const peers=STATE.agents.filter(o=>o.alive&&o.id!==a.id&&o.room===a.room);
@@ -643,7 +651,9 @@ function _paranoia(){ const total=STATE.agents.length||10, alive=STATE.agents.fi
 function genThought(a){
   const pool=a.task?CHATTER.work:CHATTER.ambient, target=_paranoia();
   const tk=_tk(a), hist=thoughtHist[a.id]||(thoughtHist[a.id]=[]);
-  const pick=()=>{ let tot=0; const w=pool.map(([p])=>{ const x=Math.pow(0.5,Math.abs(p-target)); tot+=x; return x; });
+  // weight by closeness to the table's paranoia; the optional 3rd field is a rarity multiplier
+  // (<1 = a rare line, e.g. the lore Easter eggs that surface only once in a while)
+  const pick=()=>{ let tot=0; const w=pool.map(e=>{ const x=Math.pow(0.5,Math.abs(e[0]-target))*(e[2]||1); tot+=x; return x; });
     let r=Math.random()*tot; for(let i=0;i<pool.length;i++){ if((r-=w[i])<=0) return pool[i][1]; } return pool[pool.length-1][1]; };
   let raw=pick(); for(let i=0;i<6&&hist.includes(raw);i++) raw=pick();
   hist.push(raw); if(hist.length>6)hist.shift();
