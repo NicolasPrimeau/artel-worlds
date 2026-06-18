@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+from collections import deque
 from dataclasses import dataclass, field
 
 # Verglas — a faithful Among Us shape. N agents walk a ship of rooms. Crew work a shared task board; the
@@ -143,30 +144,58 @@ def _generate_station(rng: random.Random):
         vents.setdefault(a, []).append(b)
         vents.setdefault(b, []).append(a)
 
-    # guarantee a doorway per room. The MST connects room ADJACENCY, but the geometric corridor can fail
-    # to leave a walkable tile against a small room's wall — sealing it (no door, no route in; the path
-    # router then can't reach it and an agent appears to clip through the wall). For any sealed room, carve
-    # a short stub from its centre toward the nearest corridor tile: tiles inside rooms are skipped, so it
-    # breaks the wall exactly once = one doorway that also joins the corridor network.
-    def _touches_corr(rect):
-        x, y, w, h = rect
-        for tx in range(x, x + w):
-            for ty in range(y, y + h):
-                if any((tx + dx, ty + dy) in corr for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))):
-                    return True
-        return False
+    # GUARANTEE one connected walkable network. The MST connects room ADJACENCY, but the geometric
+    # corridor can leave the floorplan split into clusters with no walkable link — the renderer's path
+    # router then can't route between them and an agent straight-lines through a wall. Repeatedly find a
+    # disconnected component and carve an open-space path from it to the rest (BFS through empty tiles
+    # only, never tunnelling through another room), until every room+corridor tile is one component.
+    roomtile_set = set(roomtiles)
 
-    for n in names:
-        if not corr or _touches_corr(rects[n]):
-            continue
-        rcx, rcy = int(cen[n][0]), int(cen[n][1])
-        tgx, tgy = min(corr, key=lambda c: abs(c[0] - rcx) + abs(c[1] - rcy))
-        leg1 = [(t, rcy) for t in range(min(rcx, tgx), max(rcx, tgx) + 1)]
-        leg2 = [(tgx, t) for t in range(min(rcy, tgy), max(rcy, tgy) + 1)]
-        for x, y in leg1 + leg2:
-            for dx in (0, 1):
-                if 0 <= x + dx < GW and 0 <= y < GH and (x + dx, y) not in roomtiles:
-                    corr.add((x + dx, y))
+    def _components():
+        walk = corr | roomtile_set
+        comp, cid = {}, 0
+        for t in walk:
+            if t in comp:
+                continue
+            comp[t] = cid
+            stack = [t]
+            while stack:
+                x, y = stack.pop()
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    nb = (x + dx, y + dy)
+                    if nb in walk and nb not in comp:
+                        comp[nb] = cid
+                        stack.append(nb)
+            cid += 1
+        return comp, cid
+
+    for _ in range(24):
+        comp, ncomp = _components()
+        if ncomp <= 1:
+            break
+        walk = corr | roomtile_set
+        prev = {t: None for t in walk if comp[t] == 0}  # BFS frontier = all of component 0
+        dq = deque(prev)
+        target = None
+        while dq:
+            x, y = dq.popleft()
+            if (x, y) in walk and comp.get((x, y), 0) != 0:
+                target = (x, y)
+                break
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nb = (x + dx, y + dy)
+                if not (0 <= nb[0] < GW and 0 <= nb[1] < GH) or nb in prev:
+                    continue
+                if nb in walk or nb not in roomtile_set:  # walkable, or empty space we may carve
+                    prev[nb] = (x, y)
+                    dq.append(nb)
+        if target is None:
+            break
+        node = target
+        while node is not None:
+            if node not in roomtile_set:  # carve only the open-space tiles into corridor
+                corr.add(node)
+            node = prev[node]
 
     centers = {n: (round(cen[n][0], 2), round(cen[n][1], 2)) for n in names}
     return names, {k: sorted(v) for k, v in adj.items()}, vents, rects, doors, centers, sorted(corr)

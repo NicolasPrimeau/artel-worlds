@@ -39,9 +39,12 @@ def _reachable_rooms(rects, corr):
 
 
 def test_every_room_is_reachable_in_every_generated_station():
-    # no sealed rooms: every room must connect to the corridor network through a doorway, or the path
-    # router can't route into it and agents clip through the wall. Checked across many seeds.
-    for seed in range(300):
+    # one connected walkable network: every room must be reachable over the walkable-tile set, or the
+    # path router can't route into it and agents clip through the wall. The live server seeds randomly
+    # across [1, 2**31), so sample THAT range (sequential seeds never exposed the cluster-split bug).
+    pick = random.Random(1234)
+    for _ in range(800):
+        seed = pick.randint(1, 2**31 - 1)
         names, adj, vents, rects, doors, centers, corr = _generate_station(random.Random(seed))
         hit = _reachable_rooms(rects, corr)
         assert hit == set(names), (seed, set(names) - hit)
