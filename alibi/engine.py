@@ -198,35 +198,35 @@ NAMES = [
     "Distilla",  # distillation
     "Epochwell",  # epoch
     "Convoluto",  # convolution
-    # puns on famous CS / ML scientists
+    # puns on famous AI / ML researchers
     "Turington",  # Alan Turing
     "Hintonov",  # Geoffrey Hinton
     "LeCunningham",  # Yann LeCun
     "Bengiovanni",  # Yoshua Bengio
-    "Knuthson",  # Donald Knuth
-    "Dijkstrand",  # Edsger Dijkstra
-    "Lovelacey",  # Ada Lovelace
-    "Hopperton",  # Grace Hopper
-    "Shannigan",  # Claude Shannon
+    "Schmidhubert",  # Jürgen Schmidhuber
+    "Hochreiterson",  # Sepp Hochreiter
+    "Sutskeverov",  # Ilya Sutskever
+    "Karpathos",  # Andrej Karpathy
+    "Goodfellow",  # Ian Goodfellow
+    "Krizhevskov",  # Alex Krizhevsky
+    "Mikolova",  # Tomas Mikolov
+    "Suttonby",  # Richard Sutton
+    "Bellmanov",  # Richard Bellman
     "Minskovich",  # Marvin Minsky
     "McCarthen",  # John McCarthy
     "Pearlmutter",  # Judea Pearl
     "Vapnikov",  # Vladimir Vapnik
-    "Suttonby",  # Richard Sutton
-    "Bellmanov",  # Richard Bellman
-    "Schmidhubert",  # Jürgen Schmidhuber
-    "Karpathos",  # Andrej Karpathy
-    "Goodfellow",  # Ian Goodfellow
-    "Liskova",  # Barbara Liskov
-    "Torvaldsen",  # Linus Torvalds
-    "Ritchards",  # Dennis Ritchie
-    "Thompsonby",  # Ken Thompson
-    "Neumannski",  # John von Neumann
-    "Lamportov",  # Leslie Lamport
-    "Babbington",  # Charles Babbage
-    "Hammington",  # Richard Hamming
-    "Churchwell",  # Alonzo Church
+    "Bishopworth",  # Christopher Bishop
+    "Russelovich",  # Stuart Russell
     "Norvigson",  # Peter Norvig
+    "Rumelhartman",  # David Rumelhart
+    "Hopfielding",  # John Hopfield
+    "Hebberton",  # Donald Hebb
+    "Samuelson",  # Arthur Samuel (coined "machine learning")
+    "Jordanov",  # Michael I. Jordan
+    "Thrunton",  # Sebastian Thrun
+    "Hassabison",  # Demis Hassabis
+    "Shannigan",  # Claude Shannon
 ]
 
 
