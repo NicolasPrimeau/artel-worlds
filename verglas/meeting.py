@@ -175,9 +175,20 @@ def _next_actor(game, transcript, last_actor):
     return game.rng.choice([a for a in cands if counts[a.id] == fewest])
 
 
-async def _agent_act(game, mt, transcript, dms, a) -> dict:
+def _opener(game, mt):
+    # who opens the meeting: the agent who called it — the body-finder, or the caller of an emergency. They
+    # speak first to set the scene (what they found / why they called it) before the floor goes emergent.
+    if mt.reporter is not None and mt.reporter >= 0:
+        rep = game.by_id(mt.reporter)
+        if rep and rep.alive:
+            return rep
+    return None
+
+
+async def _agent_act(game, mt, transcript, dms, a, opener=False) -> dict:
     # the agent's free move: seeing the public talk AND its own private messages, it chooses ONE thing —
-    # speak to the room, send a PRIVATE message to one survivor (scheme/buddy up), or stay quiet.
+    # speak to the room, send a PRIVATE message to one survivor (scheme/buddy up), or stay quiet. The
+    # opener (whoever called the meeting) is instead asked to set the scene, and always speaks.
     sys = (SYS_THING if a.impostor else SYS_CREW).format(name=a.name)
     convo = _transcript_str(game, transcript) or "(nobody has spoken yet)"
     received = dms.get(a.id, [])
@@ -188,14 +199,28 @@ async def _agent_act(game, mt, transcript, dms, a) -> dict:
     )
     by_name = {o.name.lower(): o for o in game.living()}
     others = [o.name for o in game.living() if o.id != a.id]
-    user = (
-        f"{_public(game, mt)}\n\nWhat you know:\n{_brief(game, mt, a)}\n\nThe meeting so far:\n{convo}{whisper_ctx}\n\n"
-        "It's your moment. Choose ONE: SAY something to the room (accuse, defend, back someone, call out "
-        "a lie — don't repeat an alibi already given), WHISPER a private line to one survivor (line up a "
-        "vote, sow doubt, ask to stick together), or stay quiet.\n"
-        f"Survivors: {', '.join(others)}.\n"
-        'Reply ONLY as JSON: {"act":"say|whisper|pass","to":"<name, only if whisper>","text":"<one short line>"}'
-    )
+    if opener:
+        task = (
+            "You called this meeting because you found the body. OPEN it: tell the room who is dead, which "
+            "room you found them in, and anything you noticed (who was near, where you had been). One or two "
+            "short sentences, in character."
+            if mt.victim is not None
+            else "You called this emergency meeting. OPEN it: say why — who you suspect or what you saw that "
+            "alarmed you, and where you had been. One or two short sentences, in character."
+        )
+        user = (
+            f"{_public(game, mt)}\n\nWhat you know:\n{_brief(game, mt, a)}\n\n{task}\n"
+            'Reply ONLY as JSON: {"act":"say","text":"<your opening line>"}'
+        )
+    else:
+        user = (
+            f"{_public(game, mt)}\n\nWhat you know:\n{_brief(game, mt, a)}\n\nThe meeting so far:\n{convo}{whisper_ctx}\n\n"
+            "It's your moment. Choose ONE: SAY something to the room (accuse, defend, back someone, call out "
+            "a lie — don't repeat an alibi already given), WHISPER a private line to one survivor (line up a "
+            "vote, sow doubt, ask to stick together), or stay quiet.\n"
+            f"Survivors: {', '.join(others)}.\n"
+            'Reply ONLY as JSON: {"act":"say|whisper|pass","to":"<name, only if whisper>","text":"<one short line>"}'
+        )
     out = await llm.complete(sys, user, temperature=0.85, timeout=10.0)
     ok = bool(
         out
@@ -204,8 +229,11 @@ async def _agent_act(game, mt, transcript, dms, a) -> dict:
     act = str(parsed.get("act", "pass")).strip().lower()
     text = _trim(str(parsed.get("text", "")))
     if not text or _is_pass(text) or _looks_truncated(text):
+        # the opener must set the scene even if the model fumbles → fall back to a plain factual line
+        if opener:
+            return {"act": "say", "text": _canned_statement(game, a), "ok": ok}
         return {"act": "pass", "ok": ok}
-    if act == "whisper":
+    if act == "whisper" and not opener:
         r = by_name.get(str(parsed.get("to", "")).strip().lower())
         if r and r.id != a.id:
             return {"act": "whisper", "to": r.id, "text": text, "ok": True}
@@ -270,16 +298,18 @@ async def run_llm_meeting(game: Game, mt: Meeting, on_item=None, watched=None) -
     quiet = 0
     spoken_actions = 0
     fails = 0
+    opener = _opener(game, mt)  # the caller opens with context before the floor goes emergent
     n = len(game.living())
     cap = min(n + 1, 9)  # keep the LLM call count modest — free-tier-Groq-friendly
-    for _ in range(cap):
+    for i in range(cap):
         if watched is not None and not watched():  # nobody's watching → stop spending immediately
             mt.votes = {}
             return {}
-        actor = _next_actor(game, transcript, last_actor)
+        is_open = i == 0 and opener is not None
+        actor = opener if is_open else _next_actor(game, transcript, last_actor)
         if actor is None:
             break
-        action = await _agent_act(game, mt, transcript, dms, actor)
+        action = await _agent_act(game, mt, transcript, dms, actor, opener=is_open)
         last_actor = actor.id
         fails = 0 if action.get("ok") else fails + 1
         if (
@@ -333,7 +363,11 @@ async def run_canned_meeting(game: Game, mt: Meeting, decide, on_item=None) -> d
     transcript: list = []
     mt.transcript = transcript
     mt.votes = {}
-    for a in game.living():
+    order = game.living()
+    op = _opener(game, mt)  # the caller speaks first, same as the live meeting
+    if op is not None:
+        order = [op] + [a for a in order if a.id != op.id]
+    for a in order:
         text = _canned_statement(game, a)
         transcript.append((a.id, text))
         if on_item:

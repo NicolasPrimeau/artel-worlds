@@ -160,6 +160,9 @@ OPP_KILL_P = 0.12  # chance the Cold risks a kill with WITNESSES present (vs onl
 START_GRACE = 12  # ticks before the first kill, reset each new game (cd=START_GRACE)
 FOLLOW_TICKS = 6  # how long an autonomous agent tails a buddy before it stops to decide again
 EMERGENCY_P = 0.02  # per-tick chance a crew calls a meeting on suspicion alone
+# the Cold may pull the alarm too — rarer than the crew (calling often = stalling = suspicious), and
+# never right on the heels of its own kill. Never calling at all is its own tell, so it does, sometimes.
+IMPOSTOR_EMERGENCY_P = 0.008
 MAX_TICKS = 600
 
 # the winter-over crew — every AI that ever got a NAME: real assistants and fictional machine minds. The
@@ -466,6 +469,11 @@ class Game:
         if self.living(impostor=True) and self.rng.random() < EMERGENCY_P:
             caller = self.rng.choice(self.living(impostor=False))
             return Meeting(self.tick, caller.id, HUB, None)
+
+        # the Cold occasionally calls one too — for cover — but not fresh off a kill (that's a giveaway)
+        imps = self.living(impostor=True)
+        if imps and self.cd <= KILL_CD - 3 and self.rng.random() < IMPOSTOR_EMERGENCY_P:
+            return Meeting(self.tick, self.rng.choice(imps).id, HUB, None)
 
         return None
 

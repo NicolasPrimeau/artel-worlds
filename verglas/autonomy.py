@@ -21,7 +21,11 @@ SYS_THING = (
     "act like a worried human. "
     "Hunt patiently: FOLLOW a crewmate who is drifting off alone, and the moment you are alone with just "
     "one of them and able, eliminate them and slip away. If others are watching, do NOT kill — just act "
-    "normal. Never look suspicious. Pick exactly ONE action by calling a tool."
+    "normal. Never look suspicious. "
+    "Calling a meeting yourself is good cover IN MODERATION: a crewmate who NEVER raises the alarm stands "
+    "out, but one who calls meetings constantly looks like they are stalling. Call one only now and then — "
+    "to feign concern or steer suspicion onto someone else — and NEVER right after you kill. "
+    "Pick exactly ONE action by calling a tool."
 )
 
 
