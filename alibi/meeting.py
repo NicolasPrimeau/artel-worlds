@@ -227,18 +227,21 @@ async def _agent_act(game, mt, transcript, dms, a) -> dict:
     )
     m = _model(a)
     out = await llm.complete(
-        sys, user + ("\n/no_think" if "qwen" in m else ""), m, temperature=0.85, timeout=14.0
+        sys, user + ("\n/no_think" if "qwen" in m else ""), m, temperature=0.85, timeout=10.0
     )
+    ok = bool(
+        out
+    )  # False = the call failed/timed out (rate limited) — the meeting bails on a run of these
     parsed = llm.parse_json(_strip_think(out)) or {}
     act = str(parsed.get("act", "pass")).strip().lower()
     text = _trim(str(parsed.get("text", "")))
     if not text or _is_pass(text) or _looks_truncated(text):
-        return {"act": "pass"}
+        return {"act": "pass", "ok": ok}
     if act == "whisper":
         r = by_name.get(str(parsed.get("to", "")).strip().lower())
         if r and r.id != a.id:
-            return {"act": "whisper", "to": r.id, "text": text}
-    return {"act": "say", "text": text}
+            return {"act": "whisper", "to": r.id, "text": text, "ok": True}
+    return {"act": "say", "text": text, "ok": True}
 
 
 async def _vote_round(game, mt, transcript, dms=None, on_item=None) -> dict:
@@ -297,6 +300,7 @@ async def run_llm_meeting(game: Game, mt: Meeting, on_item=None) -> dict:
     last_actor = None
     quiet = 0
     spoken_actions = 0
+    fails = 0
     n = len(game.living())
     cap = min(n + 1, 9)  # keep the LLM call count modest — free-tier-Groq-friendly
     for _ in range(cap):
@@ -305,6 +309,11 @@ async def run_llm_meeting(game: Game, mt: Meeting, on_item=None) -> dict:
             break
         action = await _agent_act(game, mt, transcript, dms, actor)
         last_actor = actor.id
+        fails = 0 if action.get("ok") else fails + 1
+        if (
+            fails >= 3
+        ):  # the LLM is unavailable (rate limited) — stop hammering, go straight to the vote
+            break
         if action["act"] == "say":
             transcript.append((actor.id, action["text"]))
             quiet = 0

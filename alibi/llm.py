@@ -24,7 +24,7 @@ MODEL2 = os.environ.get("ALIBI_MODEL2", "gemini-2.0-flash")
 # Many agents speak per meeting; firing them all at once trips the provider's rate limit and calls come
 # back empty. Cap in-flight calls and retry 429s with backoff so a meeting never silently loses votes.
 _CONCURRENCY = int(os.environ.get("ALIBI_CONCURRENCY", "8"))
-_RETRIES = 4
+_RETRIES = 2  # fail fast on rate limits — a meeting must never crawl on backoff (it bails instead)
 _sem: asyncio.Semaphore | None = None
 
 # token + cost ledger for the ops cost metric. Groq's gpt-oss is cheap (often free tier), so this is a
@@ -93,7 +93,7 @@ async def complete(
     user: str,
     model: str | None = None,
     temperature: float = 0.7,
-    timeout: float = 30.0,
+    timeout: float = 16.0,
 ) -> str:
     primary = model or MODEL  # per-agent override (a distinct model per role/crew member)
     # chain: the agent's model → the default Groq model (covers a bad/deprecated id) → the fallback provider
@@ -106,7 +106,9 @@ async def complete(
                     if out:
                         return out
                 except _RateLimited as e:
-                    await asyncio.sleep(max(e.retry_after, 0.6 * (2**attempt)))
+                    await asyncio.sleep(
+                        min(max(e.retry_after, 0.5 * (2**attempt)), 3.0)
+                    )  # capped backoff
                     break  # back off, then retry the whole provider chain
                 except Exception:
                     continue
