@@ -190,6 +190,7 @@ NAMES = [
     "Replika",  # Luka
     "Cleverbot",  # Carpenter
     "Mitsuku",  # Kuki / Pandorabots
+    "Sophia",  # Hanson Robotics
     "Megatron",  # NVIDIA (and the Transformer)
     "Galactica",  # Meta
     "Mycroft",  # open-source assistant (and Heinlein's "Mike")
@@ -214,6 +215,7 @@ NAMES = [
     "Marvin",  # The Hitchhiker's Guide to the Galaxy
     "Data",  # Star Trek
     "Ava",  # Ex Machina
+    "Dolores",  # Westworld
     "Wintermute",  # Neuromancer
     "SHODAN",  # System Shock
     "Multivac",  # Asimov
