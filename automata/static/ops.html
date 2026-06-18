@@ -217,7 +217,7 @@ function card(w){
       ${w.caption ? `<div class="facts">${w.caption}</div>` : ""}
       ${routerHtml((w.facts||{}).router)}
       ${w.chart === "wedge" ? '<div class="chartbox"><canvas id="wt-wedge"></canvas></div>' : ""}`;
-  const noPause = w.key === "pitch" || w.key === "alibi";
+  const noPause = w.key === "pitch";
   const foot = unreachable ? "" : `
       <div class="cardfoot">
         ${noPause ? "" : `<button class="reset pausebtn${w.paused?' on':''}" onclick="pauseWorld('${w.key}','${w.name}',${w.paused?0:1})">${w.paused?'▶ resume':'⏸ pause'}</button>`}

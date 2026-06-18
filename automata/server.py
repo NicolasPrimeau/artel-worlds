@@ -1190,7 +1190,11 @@ async def ui_pause(request: Request, world: str = "", paused: int = 1):
     if world == "automata":
         G.set_paused(want)
         return {"ok": True, "world": "automata", "paused": want}
-    target = {"phalanx": PHALANX_DEBUG, "watchtower": WATCHTOWER_DEBUG}.get(world)
+    target = {
+        "phalanx": PHALANX_DEBUG,
+        "watchtower": WATCHTOWER_DEBUG,
+        "alibi": ALIBI_DEBUG,
+    }.get(world)
     if not target:
         raise HTTPException(status_code=400, detail="unknown world")
     async with httpx.AsyncClient() as client:
