@@ -508,7 +508,7 @@ function figure(sx,sy,s,col,alive,working,t,lk){
 }
 function drawAgents(t){
   const list=STATE.agents.filter(a=>a.wx!=null && !(ejecting&&a.name===ejecting.name));
-  for(const a of [...list].sort((x,y)=>x.wy-y.wy)){ const [sx,sy]=toScreen(a.wx,a.wy), s=22*cam.z, col=COLORS[a.c%COLORS.length];
+  for(const a of [...list].sort((x,y)=>x.wy-y.wy)){ const [sx,sy]=toScreen(a.wx,a.wy), s=11*cam.z, col=COLORS[a.c%COLORS.length];
     const working=a.task&&a.alive&&!a.moving;
     if(a.id===HILITE){ const pr=s*1.0+Math.sin(t*0.006)*2.2*cam.z;   // pulsing ring on the rostered pick
       ctx.strokeStyle="rgba(120,200,255,.32)"; ctx.lineWidth=7*cam.z; ctx.beginPath(); ctx.arc(sx,sy,pr,0,TAU); ctx.stroke();
@@ -519,7 +519,7 @@ function drawAgents(t){
       ctx.fillStyle=a.alive?"rgba(231,238,252,.95)":"rgba(170,130,130,.8)"; ctx.fillText(a.name,sx,sy+s*1.3); } }
   // ejection walk-off into the snow
   if(ejecting){ const k=Math.min(1,(performance.now()-ejecting.t0)/4500); const a=STATE.agents.find(x=>x.name===ejecting.name);
-    if(a&&a.wx!=null){ const [bx,by]=toScreen(a.wx,a.wy); const sx=bx, sy=by+ k*cv.height*0.7; const s=22*cam.z;
+    if(a&&a.wx!=null){ const [bx,by]=toScreen(a.wx,a.wy); const sx=bx, sy=by+ k*cv.height*0.7; const s=11*cam.z;
       ctx.save(); ctx.globalAlpha=1-k; figure(sx,sy,s,COLORS[a.c%COLORS.length],true,false,t,look(a.name));
       ctx.globalAlpha=(1-k)*0.9; ctx.textAlign="center"; ctx.font=`700 ${9.5*cam.z}px Inter`; ctx.fillStyle="#cfe3ff";
       ctx.fillText(a.name+" → ejected",sx,sy-s*1.2); ctx.restore(); } }
@@ -611,21 +611,34 @@ function bubble(x,y,text,kind){ const f=12*DPR; ctx.font=`600 ${f}px Inter`;
   ctx.restore(); }
 function drawMeeting(t){
   const W=cv.width, H=cv.height, narrow=W/DPR<=820, fade=Math.min(1,(performance.now()-meet.t0)/450);
-  ctx.fillStyle=`rgba(4,9,18,${0.62*fade})`; ctx.fillRect(0,0,W,H);  // dim the world to a dark room
   // fit the table into the space the chat log doesn't use: a right rail on desktop, a bottom sheet on
   // phones. Reserve the header/roster up top too, so seats + bubbles never collide with the chrome.
   const rightRes=narrow?0:412*DPR, botRes=narrow?Math.round(H*0.46):0, topRes=(narrow?84:46)*DPR;
   const aw=W-rightRes, ah=H-topRes-botRes, cx=aw/2, cy=topRes+ah/2;
   const Rx=Math.min(aw*(narrow?0.25:0.32),ah*(narrow?0.30:0.40)), Ry=Rx*0.58; meet.top=topRes;
   const s=(narrow?11:23)*DPR;
+  // dim the world to a dark room, with a vignette so the eye falls on the lit table at the centre
+  const vg=ctx.createRadialGradient(cx,cy,Ry,cx,cy,Math.max(W,H)*0.72);
+  vg.addColorStop(0,`rgba(8,14,26,${0.48*fade})`); vg.addColorStop(1,`rgba(2,5,12,${0.82*fade})`);
+  ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
   ctx.save(); ctx.globalAlpha=fade;
-  // the table — brighter so it reads clearly on a phone screen
-  const gl=ctx.createRadialGradient(cx,cy,Ry*0.4,cx,cy,Rx*1.5); gl.addColorStop(0,"rgba(80,130,190,.18)"); gl.addColorStop(1,"rgba(80,130,190,0)");
-  ctx.fillStyle=gl; ctx.beginPath(); ctx.ellipse(cx,cy,Rx*1.5,Ry*1.5,0,0,TAU); ctx.fill();
-  const tg=ctx.createRadialGradient(cx,cy-Ry*0.3,4,cx,cy,Rx*1.1); tg.addColorStop(0,"#52688a"); tg.addColorStop(1,"#202c3d");
+  // a warm-cool overhead lamp pooling light down onto the table
+  const lamp=ctx.createRadialGradient(cx,cy-Ry*1.3,4,cx,cy,Rx*1.7);
+  lamp.addColorStop(0,"rgba(132,176,235,.22)"); lamp.addColorStop(.5,"rgba(96,138,198,.09)"); lamp.addColorStop(1,"rgba(96,138,198,0)");
+  ctx.fillStyle=lamp; ctx.beginPath(); ctx.ellipse(cx,cy,Rx*1.7,Ry*1.9,0,0,TAU); ctx.fill();
+  // a floor contact-shadow grounding the table
+  ctx.fillStyle="rgba(0,0,0,.4)"; ctx.beginPath(); ctx.ellipse(cx,cy+Ry*0.28,Rx*1.05,Ry*1.02,0,0,TAU); ctx.fill();
+  // the table — brushed-metal top lit from above-left, a beveled rim, a recessed centre
+  const tg=ctx.createRadialGradient(cx-Rx*0.22,cy-Ry*0.55,4,cx,cy+Ry*0.2,Rx*1.15);
+  tg.addColorStop(0,"#6f86aa"); tg.addColorStop(.55,"#3c4d68"); tg.addColorStop(1,"#1b2433");
   ctx.fillStyle=tg; ctx.beginPath(); ctx.ellipse(cx,cy,Rx,Ry,0,0,TAU); ctx.fill();
-  ctx.lineWidth=3*DPR; ctx.strokeStyle="rgba(170,205,255,.5)"; ctx.beginPath(); ctx.ellipse(cx,cy,Rx,Ry,0,0,TAU); ctx.stroke();
-  ctx.lineWidth=1.4*DPR; ctx.strokeStyle="rgba(140,180,235,.22)"; ctx.beginPath(); ctx.ellipse(cx,cy,Rx*0.72,Ry*0.72,0,0,TAU); ctx.stroke();
+  // beveled edge: bright highlight on the top rim, dark on the lower rim
+  ctx.lineWidth=3.2*DPR; ctx.strokeStyle="rgba(196,222,255,.6)"; ctx.beginPath(); ctx.ellipse(cx,cy,Rx,Ry,0,Math.PI,TAU); ctx.stroke();
+  ctx.strokeStyle="rgba(8,13,24,.6)"; ctx.beginPath(); ctx.ellipse(cx,cy,Rx,Ry,0,0,Math.PI); ctx.stroke();
+  // recessed inner ring + a faint glowing hub at the centre
+  ctx.lineWidth=1.4*DPR; ctx.strokeStyle="rgba(150,188,240,.26)"; ctx.beginPath(); ctx.ellipse(cx,cy,Rx*0.7,Ry*0.7,0,0,TAU); ctx.stroke();
+  const hub=ctx.createRadialGradient(cx,cy,2,cx,cy,Rx*0.34); hub.addColorStop(0,"rgba(150,195,255,.16)"); hub.addColorStop(1,"rgba(150,195,255,0)");
+  ctx.fillStyle=hub; ctx.beginPath(); ctx.ellipse(cx,cy,Rx*0.34,Ry*0.34,0,0,TAU); ctx.fill();
   // header
   ctx.textAlign="center"; ctx.fillStyle="rgba(191,224,255,.92)"; ctx.font=`800 ${13*DPR}px Inter`;
   ctx.fillText("EMERGENCY MEETING", cx, topRes+15*DPR);  // pinned under the chrome, clear of bubbles
@@ -699,7 +712,7 @@ function syncHud(){ $('hud-round').textContent=STATE.round; $('hud-tasks').style
   $('hud-alive').textContent=STATE.agents.filter(a=>a.alive).length; $('hud-total').textContent=STATE.agents.length;
   const sc=STATE.scores||{}; $('w-crew').textContent=sc.crew||0; $('w-thing').textContent=sc.thing||0;
   const ros=$('roster'); ros.innerHTML=''; for(const a of STATE.agents){ const d=document.createElement('div'); d.className='who'+(a.alive?'':' dead')+(a.id===HILITE?' sel':'');
-    d.innerHTML=`<span class="dot" style="color:${COLORS[a.c%COLORS.length]};background:${COLORS[a.c%COLORS.length]}"></span><span><div class="nm">${a.name}</div><div class="md">${a.model}</div></span>`;
+    d.innerHTML=`<span class="dot" style="color:${COLORS[a.c%COLORS.length]};background:${COLORS[a.c%COLORS.length]}"></span><span><div class="nm">${a.name}</div></span>`;
     d.onclick=()=>{ HILITE=(HILITE===a.id?null:a.id); syncHud(); }; ros.appendChild(d); } }
 
 // ---- live data ----
@@ -710,7 +723,7 @@ function applyAgents(arr){ const byId={}; for(const a of STATE.agents)byId[a.id]
 function renderChat(s){ const chat=$('chat'), inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
   if(inMeet){ chat.classList.add('show'); const m=s.meeting; $('chat-title').textContent='EMERGENCY MEETING';
     $('chat-lede').textContent=m.victim?`${m.reporter} found ${m.victim} dead in ${m.room}`:`${m.reporter} sounded the alarm`;
-    $('clog').innerHTML=(m.transcript||[]).map(l=>`<li><span class="who" style="color:${nameColor(l.name)}">${l.name}</span><span class="md">${(l.model||'').split('/').pop()}</span><span class="tx">${esc(l.text)}</span></li>`).join('');
+    $('clog').innerHTML=(m.transcript||[]).map(l=>`<li><span class="who" style="color:${nameColor(l.name)}">${l.name}</span><span class="tx">${esc(l.text)}</span></li>`).join('');
     const log=$('clog'); log.scrollTop=log.scrollHeight; const v=$('chat-verdict');
     if(s.phase==='ejection'){ const tally=Object.entries(m.votes||{}).map(([a,b])=>`${a}→${b}`).join(' · ');
       v.style.display='';
