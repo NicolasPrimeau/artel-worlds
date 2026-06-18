@@ -16,8 +16,8 @@
   canvas:active{cursor:grabbing}
   .hud{position:fixed;top:0;left:0;right:0;height:52px;display:flex;align-items:center;gap:12px;
     padding:0 14px;background:linear-gradient(#060a12ee,#060a1200);z-index:10;pointer-events:none}
-  .brand{font-weight:800;letter-spacing:.16em;font-size:14px}
-  .brand small{color:var(--dim);font-weight:600;letter-spacing:.2em;opacity:.85}
+  .brand{font-weight:800;letter-spacing:.16em;font-size:14px;white-space:nowrap;flex:0 0 auto}
+  .brand small{color:var(--dim);font-weight:600;letter-spacing:.16em;opacity:.8;white-space:nowrap;margin-left:2px}
   .pill{display:flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--line);
     border-radius:999px;padding:5px 10px;backdrop-filter:blur(8px);font-size:12px}
   .pill b{font-variant-numeric:tabular-nums}
@@ -142,6 +142,8 @@
   /* phones: compact the HUD so nothing clips off the right edge */
   @media (max-width:540px){ .hud{gap:6px;padding:0 8px;height:48px} .pill{padding:4px 7px;font-size:11px}
     .taskbar{width:52px} .plabel{display:none} #conn{font-size:0} #conn::before{width:9px;height:9px} }
+  /* narrow phones: drop the outpost tag + tighten the wordmark so Tasks/Alive/LIVE never clip */
+  @media (max-width:480px){ .brand small{display:none} .brand{letter-spacing:.08em;font-size:13px} }
   @media (max-width:540px){ #inspect{width:198px;top:52px;right:8px;max-height:52vh} }
   /* phone portrait: chat is a bottom sheet, roster a slim scrollable strip up top-left */
   @media (orientation:portrait) and (max-width:760px){
