@@ -138,3 +138,19 @@ def test_crew_still_win_by_ejecting_the_cold():
             a.alive = False
     g._check_win()
     assert g.winner == "crew" and g.win_by == "ejection"
+
+
+def test_fame_leaderboard_tally_and_endpoint():
+    from starlette.testclient import TestClient
+
+    import verglas.server as S
+
+    S.G.fame = {}
+    S.G.g.winner = "impostor"  # the Cold won this game
+    S.G.record_result()
+    imp = next(a for a in S.G.g.agents if a.impostor)
+    crew = next(a for a in S.G.g.agents if not a.impostor)
+    assert S.G.fame[imp.name]["cold"] == 1 and S.G.fame[imp.name]["coldWins"] == 1
+    assert S.G.fame[crew.name]["crewWins"] == 0  # crew lost
+    r = TestClient(S.app).get("/fame.json")
+    assert r.status_code == 200 and "rows" in r.json()

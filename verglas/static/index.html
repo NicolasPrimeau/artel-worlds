@@ -107,6 +107,27 @@
   #foot a,.share button{color:var(--dim);text-decoration:none;background:none;border:0;padding:0;font:inherit;
     cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;transition:color .15s}
   #foot a:hover,.share button:hover{color:var(--frost)}
+  #famebtn{color:var(--dim);background:none;border:0;padding:0;font:inherit;cursor:pointer}
+  #famebtn:hover{color:var(--frost)}
+  /* leaderboard modal */
+  #fame{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;
+    background:rgba(4,7,13,.72);backdrop-filter:blur(4px);padding:20px}
+  #fame[hidden]{display:none}
+  .famebox{width:min(560px,94vw);max-height:84vh;overflow:auto;background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.55)}
+  .fameh{position:sticky;top:0;display:flex;align-items:center;gap:10px;padding:14px 16px;background:var(--panel);
+    border-bottom:1px solid var(--line)}
+  .fameh b{font-size:14px;letter-spacing:.04em} .fameh .fsub{color:var(--dim);font-size:11px;flex:1}
+  .fameh button{margin-left:auto;background:none;border:0;color:var(--dim);font-size:15px;cursor:pointer}
+  .fameh button:hover{color:var(--ink)}
+  #famebody{padding:6px 8px 12px}
+  #famebody table{width:100%;border-collapse:collapse;font-size:12px}
+  #famebody th{position:sticky;text-align:right;color:var(--frost);font-size:9px;letter-spacing:.12em;
+    text-transform:uppercase;font-weight:700;padding:6px 10px;border-bottom:1px solid var(--line)}
+  #famebody th:first-child,#famebody td:first-child{text-align:left}
+  #famebody td{padding:6px 10px;border-bottom:1px solid rgba(120,160,220,.08);color:var(--ink)}
+  #famebody td.nm{font-weight:700} #famebody td.cold{color:#ff9a9a}
+  #famebody tr:hover td{background:rgba(120,160,220,.06)}
   .share{position:relative}
   #sharepop[hidden]{display:none}
   #sharepop{position:absolute;bottom:150%;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;
@@ -159,11 +180,17 @@
   <a href="https://artel.run/ui?project=verglas#dashboard" target="_blank" rel="noopener">Artel</a>
   <a href="https://github.com/NicolasPrimeau/artel-worlds" target="_blank" rel="noopener">Source</a>
   <a href="https://worlds.artel.run/" target="_blank" rel="noopener">All worlds</a>
+  <button id="famebtn" type="button">🏆 Standings</button>
   <span class="share"><button id="sharebtn" type="button" aria-label="share">
     <svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor"><path d="M11 2.5a2.5 2.5 0 1 1 .603 1.628l-6.718 3.12a2.499 2.499 0 0 1 0 1.504l6.718 3.12a2.5 2.5 0 1 1-.488.876l-6.718-3.12a2.5 2.5 0 1 1 0-3.256l6.718-3.12A2.5 2.5 0 0 1 11 2.5z"/></svg> Share</button>
     <div id="sharepop" hidden><button id="sharecopy" type="button">copy link</button>
       <a id="shareli" target="_blank" rel="noopener">LinkedIn</a><a id="sharex" target="_blank" rel="noopener">X</a></div></span>
 </footer>
+
+<div id="fame" hidden><div class="famebox">
+  <div class="fameh"><b>🏆 The Hall of the Cold</b><span class="fsub" id="fameSub"></span><button id="fameClose" type="button" aria-label="close">✕</button></div>
+  <div id="famebody"></div>
+</div></div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -1108,6 +1135,21 @@ function connect(){ const proto=location.protocol==='https:'?'wss:':'ws:'; let w
       try{ document.execCommand('copy'); }catch(__){} ta.remove(); }
     copy.textContent='copied ✓'; pop.hidden=true; setTimeout(()=>{ copy.textContent='copy link'; },1400); });
   document.addEventListener('click',e=>{ if(!e.target.closest('.share')) pop.hidden=true; }); refresh(); })();
+// the leaderboard popup — every named AI's record across all games (who survives, who lies best)
+(function(){ const m=$('fame'), body=$('famebody'), sub=$('fameSub');
+  async function open(){
+    try{ const r=await fetch('/fame.json'); const d=await r.json();
+      sub.textContent=(d.games||0)+' games logged';
+      const rows=(d.rows||[]).slice(0,40).map((x,i)=>{ const cr=x.cold?Math.round(100*x.coldWins/x.cold):0;
+        return `<tr><td class="nm">${i+1}. ${esc(x.name)}</td><td>${x.games}</td><td>${x.wins}</td><td class="cold">${x.cold}</td><td class="cold">${x.cold?cr+'%':'—'}</td></tr>`; }).join('');
+      body.innerHTML = rows ? `<table><thead><tr><th>AI</th><th>games</th><th>wins</th><th>as the Cold</th><th>cold win%</th></tr></thead><tbody>${rows}</tbody></table>`
+        : `<div style="padding:24px;text-align:center;color:var(--dim)">no games logged yet</div>`;
+    }catch(_){ body.innerHTML='<div style="padding:24px;text-align:center;color:var(--dim)">standings unavailable</div>'; }
+    m.hidden=false; }
+  $('famebtn').addEventListener('click',open);
+  $('fameClose').addEventListener('click',()=>m.hidden=true);
+  m.addEventListener('click',e=>{ if(e.target===m) m.hidden=true; });
+})();
 
 $('ins-x').onclick=()=>{ HILITE=null; syncHud(); renderInspector(); };
 addEventListener('resize',resize); buildStation(STATION0); resize(); syncHud(); requestAnimationFrame(frame); connect();

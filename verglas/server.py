@@ -69,6 +69,7 @@ class Verglas:
         self.lock = asyncio.Lock()
         self.viewers: set[WebSocket] = set()
         self.scores = {"crew": 0, "thing": 0}  # games won by each side
+        self.fame: dict = {}  # name -> {games, cold, coldWins, crewWins} across all games (the leaderboard)
         self.recent: list[dict] = []  # [{win: crew-won?}] for the ops dots
         self.completed = 0
         self.paused = False
@@ -130,6 +131,7 @@ class Verglas:
         except Exception:
             return
         self.scores = {k: int(raw.get("scores", {}).get(k, 0)) for k in ("crew", "thing")}
+        self.fame = dict(raw.get("fame") or {})
         self.recent = list(raw.get("recent") or [])[-12:]
         self.completed = int(raw.get("completed", 0))
         self.paused = bool(raw.get("paused", False))
@@ -145,6 +147,7 @@ class Verglas:
                 json.dumps(
                     {
                         "scores": self.scores,
+                        "fame": self.fame,
                         "recent": self.recent[-12:],
                         "completed": self.completed,
                         "paused": self.paused,
@@ -163,6 +166,15 @@ class Verglas:
         self.recent.append({"win": crew_won})
         del self.recent[:-12]
         self.completed += 1
+        for a in g.agents:  # tally each named AI's record for the leaderboard
+            f = self.fame.setdefault(a.name, {"games": 0, "cold": 0, "coldWins": 0, "crewWins": 0})
+            f["games"] += 1
+            if a.impostor:
+                f["cold"] += 1
+                if not crew_won:
+                    f["coldWins"] += 1
+            elif crew_won:
+                f["crewWins"] += 1
         self.persist_state()
 
     def caption(self) -> str:
@@ -564,6 +576,23 @@ async def debug():
 @app.get("/health")
 async def health():
     return {"status": "ok", "tick": G.g.tick, "phase": G.phase}
+
+
+@app.get("/fame.json", include_in_schema=False)
+async def fame():
+    # the leaderboard: every named AI's record across all games, for the standings popup
+    rows = [
+        {
+            "name": n,
+            "games": f.get("games", 0),
+            "wins": f.get("crewWins", 0) + f.get("coldWins", 0),
+            "cold": f.get("cold", 0),
+            "coldWins": f.get("coldWins", 0),
+        }
+        for n, f in G.fame.items()
+    ]
+    rows.sort(key=lambda r: (-r["wins"], -r["games"], r["name"]))
+    return JSONResponse({"rows": rows, "games": G.completed})
 
 
 @app.get("/state")
