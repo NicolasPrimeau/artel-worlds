@@ -177,7 +177,6 @@ NAMES = [
     "Claude",  # Anthropic
     "Watson",  # IBM
     "Copilot",  # GitHub
-    "Grok",  # xAI
     "Bard",  # Google
     "Gemini",  # Google
     "Ernie",  # Baidu

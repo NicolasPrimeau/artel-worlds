@@ -673,8 +673,8 @@ function drawMeeting(t){
     const vt=meet.votes&&meet.votes[a.name];
     if(vt!==undefined&&!out){ ctx.globalAlpha=fade; bubble(p.x,p.y-s*1.25,vt==='skip'?'skips':'→ '+vt,'vote'); ctx.globalAlpha=1; }
   }
-  // the speaker's live line
-  if(meet.bubble){ const sp=seats[meet.bubble.id]; if(sp){ ctx.globalAlpha=fade; bubble(sp.x,sp.y-s*1.5,meet.bubble.text,'say'); ctx.globalAlpha=1; } }
+  // the speaker's live line — only during discussion; the instant voting starts, every speech bubble clears
+  if(meet.bubble && STATE.phase==='meeting'){ const sp=seats[meet.bubble.id]; if(sp){ ctx.globalAlpha=fade; bubble(sp.x,sp.y-s*1.5,meet.bubble.text,'say'); ctx.globalAlpha=1; } }
   // a private whisper between two survivors — a dashed line + tag; the content lives on Artel, not here
   const wsp=STATE.meeting&&STATE.meeting.whisper;
   if(wsp){ const fa=STATE.agents.find(a=>a.name===wsp[0]), ta=STATE.agents.find(a=>a.name===wsp[1]);
@@ -772,7 +772,11 @@ function applyAgents(arr){ const byId={}; for(const a of STATE.agents)byId[a.id]
 function renderChat(s){ const chat=$('chat'), inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
   if(inMeet){ chat.classList.add('show'); const m=s.meeting; $('chat-title').textContent='EMERGENCY MEETING';
     $('chat-lede').textContent=m.victim?`${m.reporter} found ${m.victim} dead in ${m.room}`:`${m.reporter} sounded the alarm`;
-    $('clog').innerHTML=(m.transcript||[]).map(l=>`<li><span class="who" style="color:${nameColor(l.name)}">${l.name}</span><span class="tx">${esc(l.text)}</span></li>`).join('');
+    const tl=(m.transcript||[]).map(l=>`<li><span class="who" style="color:${nameColor(l.name)}">${l.name}</span><span class="tx">${esc(l.text)}</span></li>`);
+    // votes land in the chat as deterministic "X voted for Y" lines (server reveals them one by one), so a
+    // missed bubble never loses you a vote — the log holds every ballot.
+    const vl=Object.entries(m.votes||{}).map(([a,b])=>`<li><span class="who" style="color:${nameColor(a)}">${a}</span><span class="tx" style="color:#f1a9a9">${b==='skip'?'abstains':'voted for '+esc(b)}</span></li>`);
+    $('clog').innerHTML=[...tl,...vl].join('');
     const log=$('clog'); log.scrollTop=log.scrollHeight; const v=$('chat-verdict');
     if(s.phase==='ejection'){ const tally=Object.entries(m.votes||{}).map(([a,b])=>`${a}→${b}`).join(' · ');
       v.style.display='';
