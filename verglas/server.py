@@ -40,7 +40,9 @@ EJECT_WALK = (
 )
 EJECT_REVEAL = 4.0  # then hold on the human/Cold reveal
 GAMEOVER_LINGER = 14.0  # hold on the result screen before the next game (esp. a sudden task win)
-INTRO_LINGER = 8.0  # the opening card — three lines fade in slowly in turn, so it holds long enough to read them
+INTRO_LINGER = (
+    12.0  # the opening card — three lines fade in at reading pace, then a brief hold before play
+)
 _ADMIN_TOKEN = os.environ.get("WORLDS_ADMIN_TOKEN", "")
 N_AGENTS = int(env("AGENTS", "10"))
 N_IMPOSTORS = int(env("IMPOSTORS", "2"))

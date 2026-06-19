@@ -285,7 +285,7 @@ let curPhase='', phaseT0=0;  // phaseT0 stamps phase changes so intro/end can fa
 let thoughtOf={}, thoughtHist={}, lastThought={}, downC=null, tapC=null;  // ambient thoughts + click-to-inspect
 const EJECT_MS=3600;  // how long the ejected researcher takes to trudge off into the storm
 const DISCO_MAX=12000;  // the "body found" beat ends once the crew have all gathered + 5s — this is the safety cap
-const INTRO_MS=8000;    // opening card duration — matches the server's INTRO_LINGER so the fade-out lands on the cut
+const INTRO_MS=12000;   // opening card duration — matches the server's INTRO_LINGER so the fade-out lands on the cut
 (function seed(){ const names=["Softmaxwell","Overfitz","Hallucinov","Frostbyte","ReLuther","Quantz","Attenborough","Embeddington","Adamson","Tokarev"];
   const rk=Object.keys(STATION0.rects);
   STATE.agents=names.map((n,i)=>({id:i,name:n,model:"gpt-oss-120b",room:rk[i%rk.length],alive:i!==5,task:i%3===0,body:i===5,c:i})); })();
@@ -1277,14 +1277,14 @@ function drawIntro(t){
   ctx.fillText("ANTARCTIC RESEARCH STATION", cx, cy-big*0.75*DPR);
   ctx.fillStyle="rgba(208,230,255,.98)"; ctx.font=`900 ${big*DPR}px Inter`; ctx.fillText("VERGLAS", cx, cy);
   ctx.fillStyle="rgba(150,178,218,.8)"; ctx.font=`700 ${13*DPR}px Inter`; ctx.fillText(`OUTPOST ${OUTPOST}`, cx, cy+big*0.55*DPR);
-  // three lines, each fading in slowly in turn so there's time to read every one
+  // three lines, each fading in slowly IN TURN at reading pace — the next appears as you finish the last
   const lines=[
-    [1300, "228,236,250", "The winter crew is alone on the ice."],
-    [3100, "255,120,120", "Something came in from the cold."],
-    [4900, "186,212,248", "Bring the outpost back to full power before it picks you off."],
+    [1000, "228,236,250", "The winter crew is alone on the ice."],
+    [4400, "255,120,120", "Something came in from the cold."],
+    [7800, "186,212,248", "Stay in the light. It hunts in the dark."],
   ];
   ctx.font=`600 ${fs}px Inter`; ctx.globalAlpha=1;
-  lines.forEach((ln,i)=>{ const a=fin(ln[0],1500)*(1-out);
+  lines.forEach((ln,i)=>{ const a=fin(ln[0],1800)*(1-out);   // ~1.8s gentle fade-in per line
     ctx.fillStyle=`rgba(${ln[1]},${a.toFixed(3)})`; ctx.fillText(ln[2], cx, cy+big*1.05*DPR+i*26*DPR); });
   ctx.restore();
 }
