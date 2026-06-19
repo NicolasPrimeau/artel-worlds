@@ -316,8 +316,21 @@ async def _wait_watched() -> None:
         await asyncio.sleep(0.4)
 
 
+async def _release_tasks(aids) -> None:
+    # release the Artel claims held by these seats back onto the open board — called when a seat is killed
+    # mid-task and at every meeting (reconvene drops everyone's task), so the live board never carries a
+    # claim the engine has already abandoned.
+    for aid in aids:
+        tid = G.task_working.pop(aid, None)
+        if tid:
+            await artel.unclaim_task(aid, tid)
+
+
 async def _run_meeting(mt) -> None:
     G.g.reconvene()  # everyone — task-workers included — downs tools and gathers at the Mess Hall table
+    await _release_tasks(
+        list(G.task_working)
+    )  # …so their Artel claims go back to the open board too
     G.phase = "meeting"
     G.revealed = False
     G.whisper = None
@@ -521,6 +534,9 @@ async def _autonomous_tick():
                 G.push_feed("task", action="completed", who=done.name, room=done.room)
         except Exception as e:
             log.warning("task mirror failed: %s", e)
+    await _release_tasks(
+        [i for i in list(G.task_working) if not G.g.by_id(i).alive]
+    )  # release Artel claims held by anyone killed this tick
     return mt
 
 
@@ -528,49 +544,61 @@ async def _game_loop():
     loop = asyncio.get_running_loop()
     while True:
         start = loop.time()
-        if not G.paused and G.viewers:
-            if (
-                G.phase == "intro"
-            ):  # play the opening card, then begin (no ticks, no LLM during intro)
-                await _broadcast()
-                await asyncio.sleep(INTRO_LINGER)
-                G.phase = "task"
-                await _broadcast()
-                continue
-            async with G.lock:
-                if G.game_secs >= STORM_SECONDS and G.g.winner is None:
-                    G.g.winner, G.g.win_by = "crew", "storm"  # dawn — the crew outlasted the storm
-                if G.g.winner is None:
-                    if llm.enabled():
-                        mt = (
-                            await _autonomous_tick()
-                        )  # full-autonomous: agents drive the task phase
-                    else:
-                        mt = G.g.step()  # offline / unprovisioned: the deterministic engine drives
-                        G.enqueue_task_events()
-                    if mt is not None and G.g.winner is None:
-                        await _run_meeting(mt)
-                if G.g.winner is not None:
-                    G.phase = "gameover"
-                    G.record_result()
+        try:
+            if not G.paused and G.viewers:
+                if (
+                    G.phase == "intro"
+                ):  # play the opening card, then begin (no ticks, no LLM during intro)
                     await _broadcast()
-            G.game_secs += (
-                loop.time() - start
-            )  # the night advances by this iteration's real time (meetings too)
-            if G.phase == "gameover":
-                await asyncio.sleep(GAMEOVER_LINGER)
+                    await asyncio.sleep(INTRO_LINGER)
+                    G.phase = "task"
+                    await _broadcast()
+                    continue
                 async with G.lock:
-                    G._new_game()
-                    await G.reset_artel()  # restart the project on Artel for the next game
+                    if G.game_secs >= STORM_SECONDS and G.g.winner is None:
+                        G.g.winner, G.g.win_by = (
+                            "crew",
+                            "storm",
+                        )  # dawn — the crew outlasted the storm
+                    if G.g.winner is None:
+                        if llm.enabled():
+                            mt = (
+                                await _autonomous_tick()
+                            )  # full-autonomous: agents drive the task phase
+                        else:
+                            mt = (
+                                G.g.step()
+                            )  # offline / unprovisioned: the deterministic engine drives
+                            G.enqueue_task_events()
+                        if mt is not None and G.g.winner is None:
+                            await _run_meeting(mt)
+                    if G.g.winner is not None:
+                        G.phase = "gameover"
+                        G.record_result()
+                        await _broadcast()
+                G.game_secs += (
+                    loop.time() - start
+                )  # the night advances by this iteration's real time (meetings too)
+                if G.phase == "gameover":
+                    await asyncio.sleep(GAMEOVER_LINGER)
+                    async with G.lock:
+                        G._new_game()
+                        await G.reset_artel()  # restart the project on Artel for the next game
+                    await _broadcast()
+                    continue
+                if G.g.tick >= MAX_TICKS:  # safety: stalemate → Cold wins
+                    async with G.lock:
+                        G.g.winner, G.g.win_by = "impostor", "timeout"
+                    continue
                 await _broadcast()
-                continue
-            if G.g.tick >= MAX_TICKS:  # safety: stalemate → Cold wins
-                async with G.lock:
-                    G.g.winner, G.g.win_by = "impostor", "timeout"
-                continue
-            await _broadcast()
-        elif G.paused and G.viewers:
-            await _broadcast()
+            elif G.paused and G.viewers:
+                await _broadcast()
+        except asyncio.CancelledError:
+            raise  # shutdown — let the lifespan cancel us cleanly
+        except Exception as e:
+            # one bad tick (a flaky Artel call, a transient hiccup) must never kill the loop and freeze the
+            # world — log it and keep ticking. The lock is released by its context manager.
+            log.warning("game loop tick failed: %s", e)
         await asyncio.sleep(max(0.0, TASK_TICK - (loop.time() - start)))
 
 
@@ -641,8 +669,9 @@ async def fame():
 
 @app.get("/state")
 async def state():
-    async with G.lock:
-        return JSONResponse(G.snapshot())
+    # snapshot WITHOUT the lock — the game loop holds it across a multi-second meeting, and a poll for the
+    # current frame shouldn't hang behind that (same reasoning as the stream's initial send).
+    return JSONResponse(G.snapshot())
 
 
 @app.post("/admin/pause")

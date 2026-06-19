@@ -171,6 +171,7 @@
   <div class="pill" title="Survive the storm and the crew win — it passes by dawn. The Cold can only kill in a DARK room; the storm (and the Cold) keep snuffing the lights. Stay lit, relight dark rooms, don't get cornered in the dark."><span class="plabel">Storm</span> <div class="taskbar"><i id="hud-tasks" style="width:0%"></i></div> <b id="hud-tasksn">0%</b></div>
   <div class="pill"><span class="plabel">Alive</span> <b id="hud-alive">10</b>/<b id="hud-total">10</b></div>
   <div class="spacer"></div>
+  <div class="pill" id="sndpill" style="pointer-events:auto;cursor:pointer" title="ambient sound"><span id="snd">🔇</span></div>
   <div class="pill"><span id="conn" class="live">live</span></div>
 </div>
 <div class="roster" id="roster"></div>
@@ -294,8 +295,10 @@ const cv=$('map'), ctx=cv.getContext('2d');
 let cam={x:0,y:0,z:1}, DPR=Math.min(1.75,window.devicePixelRatio||1);
 function resize(){ cv.width=innerWidth*DPR; cv.height=innerHeight*DPR; if(!userMoved) fit(); }  // rotate → refit
 function bounds(){ return {x0:TB.x0-50,y0:TB.y0-50,x1:TB.x1+50,y1:TB.y1+60}; }
+let camBase=null;  // the fitted overview; the idle camera breathes gently around it
 function fit(){ if(!Object.keys(ROOMS).length)return; const b=bounds(),ww=b.x1-b.x0,wh=b.y1-b.y0;
-  cam.z=Math.min(cv.width/DPR/ww,cv.height/DPR/wh)*0.95; cam.x=(b.x0+b.x1)/2; cam.y=(b.y0+b.y1)/2; }
+  cam.z=Math.min(cv.width/DPR/ww,cv.height/DPR/wh)*0.95; cam.x=(b.x0+b.x1)/2; cam.y=(b.y0+b.y1)/2;
+  camBase={x:cam.x,y:cam.y,z:cam.z}; }
 function toScreen(wx,wy){ return [(wx-cam.x)*cam.z+cv.width/2,(wy-cam.y)*cam.z+cv.height/2]; }
 
 let drag=null;
@@ -459,6 +462,23 @@ function drawStation(t){
     // label plate
     ctx.fillStyle="rgba(185,210,245,.75)"; ctx.font=`800 ${8.5*cam.z}px Inter`; ctx.textAlign="center"; ctx.textBaseline="middle";
     ctx.fillText(n.toUpperCase(), sx, T+10*cam.z);
+    // LIGHTS OUT hint — a dark room reads as just dim otherwise, so flag it LOUDLY and at screen scale so it
+    // reads even at the overview zoom: a pulsing red emergency-light glow fills the room, a bold hazard frame
+    // rings it, and a ⚡ pip floats above. The Cold can only kill in the dark, so these must be unmissable.
+    if(STATE.dark && STATE.dark.includes(n)){
+      const fl=0.5+0.5*Math.sin(t*0.006);
+      ctx.save();
+      const eg=ctx.createRadialGradient(sx,sy,2,sx,sy,Math.max(w,h)*0.62);  // emergency lighting, not real light
+      eg.addColorStop(0,`rgba(255,108,44,${0.09+0.10*fl})`); eg.addColorStop(1,"rgba(255,108,44,0)");
+      ctx.fillStyle=eg; ctx.fillRect(L,T,w,h);
+      ctx.setLineDash([7*cam.z,5*cam.z]); ctx.lineWidth=Math.max(1.8,3*cam.z); ctx.strokeStyle=`rgba(255,168,60,${0.5+0.4*fl})`;
+      rr(L,T,w,h,6*cam.z); ctx.stroke(); ctx.setLineDash([]);
+      const py=T-10*DPR, ps=9*DPR;  // a floating hazard pip, sized in screen px so it's legible at any zoom
+      ctx.fillStyle=`rgba(255,170,60,${0.78+0.22*fl})`;
+      ctx.beginPath(); ctx.moveTo(sx,py-ps); ctx.lineTo(sx+ps*0.92,py+ps*0.7); ctx.lineTo(sx-ps*0.92,py+ps*0.7); ctx.closePath(); ctx.fill();
+      ctx.fillStyle="#2a1c06"; ctx.font=`900 ${10*DPR}px Inter`; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("⚡",sx,py+ps*0.05);
+      ctx.restore();
+    }
   }
   // 4) doorways — wherever a corridor tile abuts a room, carve a gap through that room's wall
   const thick=(WALLW+5)*cam.z;
@@ -499,8 +519,15 @@ function applyLighting(){ if(!lcv)lcv=document.createElement('canvas'); if(lcv.w
   const soft=(x,y,r,a)=>{ const g=lx.createRadialGradient(x,y,0,x,y,r); g.addColorStop(0,`rgba(255,255,255,${a})`); g.addColorStop(.65,`rgba(255,255,255,${a*0.55})`); g.addColorStop(1,"rgba(255,255,255,0)"); lx.fillStyle=g; lx.beginPath(); lx.arc(x,y,r,0,TAU); lx.fill(); };
   for(const [n,r] of Object.entries(ROOMS)){ if(r.cx==null||(STATE.dark&&STATE.dark.includes(n)))continue;  // DARK rooms get no room light — only the agents' own lamps
     const [sx,sy]=toScreen(r.cx,r.cy); soft(sx,sy,r.rad*1.7*cam.z,0.86); }
-  for(const a of STATE.agents){ if(a.wx==null)continue; const [sx,sy]=toScreen(a.wx,a.wy); soft(sx,sy,66*cam.z,a.alive?0.95:0.5);
-    if(a.alive){ const len=230*cam.z; const cg=lx.createRadialGradient(sx,sy,0,sx,sy,len); cg.addColorStop(0,"rgba(255,255,255,.95)"); cg.addColorStop(1,"rgba(255,255,255,0)");
+  // a lamp left alone gutters: when no living crewmate shares your room, your headlamp flickers and dims —
+  // the map quietly marks who is exposed (and a guttering lamp in a DARK room is the Cold's moment).
+  const aliveByRoom={}; for(const a of STATE.agents){ if(a.alive) aliveByRoom[a.room]=(aliveByRoom[a.room]||0)+1; }
+  for(const a of STATE.agents){ if(a.wx==null)continue; const [sx,sy]=toScreen(a.wx,a.wy);
+    let fl=1;
+    if(a.alive && aliveByRoom[a.room]===1 && STATE.phase==='task'){ const n=performance.now()*0.013+a.id*11;
+      fl=Math.max(0.5,Math.min(1,0.72+0.28*Math.sin(n)+0.12*Math.sin(n*2.7))); }
+    soft(sx,sy,66*cam.z*(0.86+0.14*fl),a.alive?0.95*fl:0.5);
+    if(a.alive){ const len=230*cam.z*(0.82+0.18*fl); const cg=lx.createRadialGradient(sx,sy,0,sx,sy,len); cg.addColorStop(0,`rgba(255,255,255,${0.95*fl})`); cg.addColorStop(1,"rgba(255,255,255,0)");
       lx.fillStyle=cg; lx.beginPath(); lx.moveTo(sx,sy); lx.arc(sx,sy,len,a.face-0.6,a.face+0.6); lx.closePath(); lx.fill(); } }
   lx.globalCompositeOperation="source-over"; ctx.drawImage(lcv,0,0);
 }
@@ -1015,6 +1042,9 @@ function drawAgents(t){
       const pr=s*1.2+Math.sin(t*0.02)*2*cam.z; ctx.setLineDash([4*cam.z,4*cam.z]); ctx.strokeStyle="rgba(190,225,255,.85)";
       ctx.lineWidth=2*cam.z; ctx.beginPath(); ctx.arc(sx,sy,pr,0,TAU); ctx.stroke(); ctx.setLineDash([]); }
     figure(sx,sy,s,col,a.alive,working,t,look(a.name));
+    if(a.alive){ const cyc=(performance.now()*0.00035+a.id*0.37)%1;  // a slow puff of breath-fog — the living give off heat
+      if(cyc<0.32){ const p=cyc/0.32; ctx.fillStyle=`rgba(225,238,250,${0.09*(1-p)})`;
+        ctx.beginPath(); ctx.ellipse(sx+s*0.2,sy-s*0.9-p*s*0.9,s*(0.18+0.3*p),s*(0.12+0.2*p),0,0,TAU); ctx.fill(); } }
     const near=Math.hypot(mouse.x-sx,mouse.y-sy)<40*cam.z;
     if(!a.alive){ ctx.textAlign="center"; ctx.font=`800 ${9.5*cam.z}px Inter`; ctx.fillStyle="rgba(255,120,120,.96)";
       ctx.fillText("✕ "+a.name,sx,sy+s*1.4); }   // always label the dead so you can find the body
@@ -1065,10 +1095,15 @@ function drawHunt(t){ const a=0.5+0.5*Math.sin(t*0.004);  // the final-hunt over
   ctx.fillText("THE MASK COMES OFF", cv.width/2, 86*DPR);
   ctx.fillStyle="rgba(231,238,252,.82)"; ctx.font=`600 ${12*DPR}px Inter`;
   ctx.fillText("one left — and nowhere to run", cv.width/2, 106*DPR); ctx.restore(); }
-function vignette(){ const g=ctx.createRadialGradient(cv.width/2,cv.height*0.46,cv.height*0.28,cv.width/2,cv.height*0.5,cv.height*0.9);
-  g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(.7,"rgba(4,10,22,.10)"); g.addColorStop(1,"rgba(2,6,16,.46)"); ctx.fillStyle=g; ctx.fillRect(0,0,cv.width,cv.height);
-  // cold blue cast over the whole frame
-  ctx.fillStyle="rgba(40,80,140,.05)"; ctx.fillRect(0,0,cv.width,cv.height); }
+function tension(){ return _paranoia()/4; }  // 0 at full crew → ~1 as the outpost empties (reuses the chatter math)
+function vignette(){ const ten=(STATE.phase==='task'||STATE.phase==='gameover')?tension():0;
+  // a slow wind-howl breathing on the dark edges during the task phase — barely perceptible, deeper as it thins
+  const howl=(STATE.phase==='task')?(0.5+0.5*Math.sin(performance.now()*0.00035))*(0.03+ten*0.055):0;
+  const g=ctx.createRadialGradient(cv.width/2,cv.height*0.46,cv.height*(0.28-ten*0.07),cv.width/2,cv.height*0.5,cv.height*0.9);
+  g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(.7,`rgba(4,10,22,${0.10+ten*0.07+howl*0.5})`); g.addColorStop(1,`rgba(2,6,16,${0.46+ten*0.26+howl})`); ctx.fillStyle=g; ctx.fillRect(0,0,cv.width,cv.height);
+  // grade drifts from a faint warmth at full crew to a colder blue cast as the outpost empties — the long night setting in
+  if(STATE.phase==='task'||STATE.phase==='gameover'){ ctx.fillStyle=`rgba(150,120,70,${(1-ten)*0.03})`; ctx.fillRect(0,0,cv.width,cv.height); }
+  ctx.fillStyle=`rgba(40,80,140,${0.05+ten*0.05})`; ctx.fillRect(0,0,cv.width,cv.height); }
 
 // real CC0 Antarctic-aurora wallpaper (NASA/CC0) as the backdrop, cover-fit, lightly dimmed
 // a generated bleak Antarctic landscape (the Cold): cold twilight sky, low sun haze, dark snow-capped
@@ -1146,9 +1181,10 @@ function drawMeeting(t){
   vg.addColorStop(0,`rgba(8,14,26,${0.48*fade})`); vg.addColorStop(1,`rgba(2,5,12,${0.82*fade})`);
   ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
   ctx.save(); ctx.globalAlpha=fade;
-  // a warm-cool overhead lamp pooling light down onto the table
+  // a warm-cool overhead lamp pooling light down onto the table — faintly unsteady, like failing power
+  const flick=0.88+0.1*Math.sin(performance.now()*0.009)+0.04*Math.sin(performance.now()*0.031);
   const lamp=ctx.createRadialGradient(cx,cy-Ry*1.3,4,cx,cy,Rx*1.7);
-  lamp.addColorStop(0,"rgba(132,176,235,.22)"); lamp.addColorStop(.5,"rgba(96,138,198,.09)"); lamp.addColorStop(1,"rgba(96,138,198,0)");
+  lamp.addColorStop(0,`rgba(132,176,235,${0.22*flick})`); lamp.addColorStop(.5,`rgba(96,138,198,${0.09*flick})`); lamp.addColorStop(1,"rgba(96,138,198,0)");
   ctx.fillStyle=lamp; ctx.beginPath(); ctx.ellipse(cx,cy,Rx*1.7,Ry*1.9,0,0,TAU); ctx.fill();
   // a floor contact-shadow grounding the table
   ctx.fillStyle="rgba(0,0,0,.4)"; ctx.beginPath(); ctx.ellipse(cx,cy+Ry*0.28,Rx*1.05,Ry*1.02,0,0,TAU); ctx.fill();
@@ -1189,6 +1225,9 @@ function drawMeeting(t){
     ctx.save(); ctx.globalAlpha=fade*al;
     if(id===HILITE){ ctx.strokeStyle="rgba(150,215,255,.9)"; ctx.lineWidth=2.4*DPR; ctx.beginPath(); ctx.arc(p.x,p.y,s*1.05,0,TAU); ctx.stroke(); }
     figure(p.x,p.y+dy,s,COLORS[a.c%COLORS.length],a.alive||out,false,t,look(a.name));
+    if(a.alive&&!out){ const cyc=(performance.now()*0.0003+a.id*0.4)%1;  // breath-fog at the cold table
+      if(cyc<0.3){ const pp=cyc/0.3; ctx.fillStyle=`rgba(225,238,250,${0.11*(1-pp)})`;
+        ctx.beginPath(); ctx.ellipse(p.x+s*0.2,p.y+dy-s*1.0-pp*s*0.7,s*(0.16+0.25*pp),s*(0.1+0.18*pp),0,0,TAU); ctx.fill(); } }
     ctx.fillStyle="rgba(231,238,252,.95)"; ctx.textAlign="center"; ctx.font=`700 ${9.5*DPR}px Inter`;
     ctx.fillText(a.name,p.x,p.y+dy+s*1.5); ctx.restore();
     const vt=meet.votes&&meet.votes[a.name];
@@ -1251,20 +1290,25 @@ function drawDiscovery(t){
   ctx.fillStyle="rgba(231,238,252,.92)"; ctx.font=`700 ${13*DPR}px Inter`;
   ctx.fillText(`${disco.reporter||'someone'} found ${disco.victim} in the ${disco.room}`, cv.width/2, cv.height*0.19+23*DPR);
 }
-function frame(t){
+function drawFrame(t){
   updateStorm();  // smooth real-time dawn clock, every frame regardless of phase
-  if(STATE.phase==='intro'){ drawSky(); drawAmbient(t); drawStation(t); applyLighting(); drawSnow(t); vignette(); drawIntro(t); requestAnimationFrame(frame); return; }
+  if(STATE.phase==='intro'){ drawSky(); drawAmbient(t); drawStation(t); applyLighting(); drawSnow(t); vignette(); drawIntro(t); return; }
   if(disco){ const ms=performance.now()-disco.t0;
     const moving=STATE.agents.some(a=>a.alive&&a.moving);
     if(ms>1500 && !moving && !disco.gatheredAt) disco.gatheredAt=performance.now();  // everyone's in the room
     const done=(disco.gatheredAt && performance.now()-disco.gatheredAt>=5000) || ms>=DISCO_MAX;  // +5s, or a hard cap
-    if(!done){ drawDiscovery(t); requestAnimationFrame(frame); return; }
+    if(!done){ drawDiscovery(t); return; }
     cam.x=disco.cam0.x; cam.y=disco.cam0.y; cam.z=disco.cam0.z; disco=null;  // restore the overview camera
     if(meet) $('chat').classList.add('show'); }  // only NOW does the meeting chat appear
-  if(meet){ drawSky(); drawMeeting(t); drawSnow(t); vignette(); requestAnimationFrame(frame); return; }
+  if(meet){ drawSky(); drawMeeting(t); drawSnow(t); vignette(); return; }
+  if(!userMoved && camBase){ const b=performance.now();  // a barely-there idle drift so the overview never sits dead-still
+    cam.z=camBase.z*(1+Math.sin(b*0.00038)*0.012); cam.x=camBase.x+Math.sin(b*0.00026)*7; cam.y=camBase.y+Math.cos(b*0.00021)*5; }
   drawSky(); drawAmbient(t); drawStation(t); layoutAgents(); moveAgents(); drawAgents(t); applyLighting(); drawFx(); drawSnow(t); vignette(); drawKillPulse(); if(STATE.hunting) drawHunt(t);
   if(STATE.phase==='gameover') drawEnd(t);
-  requestAnimationFrame(frame); }
+}
+// the render loop ALWAYS re-arms, even if a single frame throws (a half-applied snapshot, a missing room
+// mid-rebuild) — one bad frame must never freeze the page while the socket keeps streaming.
+function frame(t){ try{ drawFrame(t); }catch(_){ } requestAnimationFrame(frame); }
 // opening card — the frozen outpost, then the dread, fading in over the blowing snow
 function drawIntro(t){
   const e=performance.now()-phaseT0;                                   // ms since the card appeared
@@ -1296,6 +1340,11 @@ function drawEnd(t){
   const by={storm:"the crew outlasted the storm — dawn breaks over the outpost",ejection:"the Cold was cast into the storm",extinction:"the Cold took the last of the crew — Verglas is its own now"}[STATE.win_by]||'';
   ctx.save(); ctx.textAlign="center";
   ctx.fillStyle=`rgba(4,9,18,${0.66*k})`; ctx.fillRect(0,0,cv.width,cv.height);
+  // the world reacts: a warm thaw-light rises for the survivors, a final frost claims the outpost for the Cold
+  if(crew){ const wg=ctx.createRadialGradient(cv.width/2,cv.height*0.58,10,cv.width/2,cv.height*0.58,cv.height*0.82);
+    wg.addColorStop(0,`rgba(255,206,150,${0.11*k})`); wg.addColorStop(1,"rgba(255,206,150,0)"); ctx.fillStyle=wg; ctx.fillRect(0,0,cv.width,cv.height); }
+  else { const fg=ctx.createRadialGradient(cv.width/2,cv.height/2,cv.height*0.22,cv.width/2,cv.height/2,cv.height*0.9);
+    fg.addColorStop(0,"rgba(150,195,245,0)"); fg.addColorStop(1,`rgba(150,195,245,${0.18*k})`); ctx.fillStyle=fg; ctx.fillRect(0,0,cv.width,cv.height); }
   const cx=cv.width/2, cy=cv.height*0.40, big=Math.min(56,cv.width/10/DPR);
   ctx.globalAlpha=k; ctx.fillStyle="rgba(150,178,218,.7)"; ctx.font=`700 ${12*DPR}px Inter`; ctx.fillText("— OUTPOST LOG —", cx, cy-big*0.95*DPR);
   ctx.fillStyle=crew?"rgba(122,210,255,.98)":"rgba(255,86,86,.98)"; ctx.font=`900 ${big*DPR}px Inter`;
@@ -1368,7 +1417,7 @@ function renderChat(s){ const chat=$('chat'), inMeet=['meeting','vote','ejection
   } else { chat.classList.remove('show'); ejecting=null; } }   // gameover & intro draw full-screen on canvas
 let hadSnapshot=false;  // false until the first snapshot is processed — so a refresh into a meeting skips the discovery beat
 function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.station.openTasks||{}; }
-  if(s.phase!==curPhase){ curPhase=s.phase; phaseT0=performance.now(); }  // fresh fade for intro/gameover
+  if(s.phase!==curPhase){ if(s.phase==='meeting'&&curPhase!=='meeting') Sound.slam(); curPhase=s.phase; phaseT0=performance.now(); }  // fresh fade for intro/gameover
   STATE.round=s.round; STATE.dark=s.dark||[]; STATE.paused=!!s.paused;
   STATE.stormElapsed=s.stormElapsed||0; STATE.stormTotal=s.stormTotal||300; STATE.stormAt=performance.now(); STATE.phase=s.phase;
   STATE.hunting=s.hunting; STATE.winner=s.winner; STATE.win_by=s.win_by; STATE.scores=s.scores; STATE.meeting=s.meeting; applyAgents(s.agents||[]);
@@ -1379,7 +1428,7 @@ function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.statio
   if(meetWasActive && !meetingNow) for(const a of STATE.agents) if(!a.alive) removedBodies.add(a.id);
   meetWasActive=meetingNow;
   if(s.lastKill && s.lastKill.tick!==lastKillTick){ lastKillTick=s.lastKill.tick;
-    pushKill(s.lastKill.room, STATE.agents.find(a=>a.name===s.lastKill.victim)); killPulse=performance.now(); }
+    pushKill(s.lastKill.room, STATE.agents.find(a=>a.name===s.lastKill.victim)); killPulse=performance.now(); Sound.kill(); }
   updateMeet(s);
   STATE.feed=s.feed||[]; setConn(s.paused?'paused':'live'); syncHud(); renderChat(s); renderFeed(s.feed); renderInspector(); hadSnapshot=true; }
 let feedSeen=0;
@@ -1391,6 +1440,7 @@ function feedRow(e){
 }
 function renderFeed(feed){
   if(!feed||!feed.length) return;
+  if(feed[feed.length-1].seq < feedSeen){ feedSeen=0; $('flog').innerHTML=''; }  // server restarted → seq reset; replay from 0
   const log=$('flog'); let added=false;
   for(const e of feed){ if(e.seq<=feedSeen) continue; feedSeen=e.seq; added=true;
     const li=document.createElement('li'); li.innerHTML=feedRow(e); log.appendChild(li); }
@@ -1464,6 +1514,38 @@ addEventListener('online',()=>{ _retry=0; connect(); });
 })();
 
 $('ins-x').onclick=()=>{ HILITE=null; syncHud(); renderInspector(); };
+// ---- ambient sound (opt-in, off by default) — a low wind drone, a heartbeat that quickens as the crew
+// thin out, a cold thud on a kill, a low boom into a meeting. Browsers block autoplay until a gesture, so
+// it stays silent behind the HUD toggle; volumes are deliberately low — atmosphere, not a soundtrack.
+const Sound=(()=>{
+  let ac=null,on=false,master=null,windGain=null,hb=null;
+  function build(){ if(ac)return; const AC=window.AudioContext||window.webkitAudioContext; if(!AC)return;
+    ac=new AC(); master=ac.createGain(); master.gain.value=0.0001; master.connect(ac.destination);
+    const buf=ac.createBuffer(1,ac.sampleRate*2,ac.sampleRate),d=buf.getChannelData(0); let v=0;
+    for(let i=0;i<d.length;i++){ const w=Math.random()*2-1; v=(v+0.02*w)/1.02; d[i]=v*3.2; }  // brown-ish noise = wind
+    const wind=ac.createBufferSource(); wind.buffer=buf; wind.loop=true;
+    const lp=ac.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=460;
+    windGain=ac.createGain(); windGain.gain.value=0.3; wind.connect(lp); lp.connect(windGain); windGain.connect(master); wind.start();
+    beat(); }
+  function tone(f1,f2,dur,g,type){ if(!ac||!on)return; const o=ac.createOscillator(),ga=ac.createGain(),now=ac.currentTime;
+    o.type=type||'sine'; o.frequency.setValueAtTime(f1,now); if(f2)o.frequency.exponentialRampToValueAtTime(Math.max(1,f2),now+dur);
+    ga.gain.setValueAtTime(0.0001,now); ga.gain.exponentialRampToValueAtTime(g,now+0.012); ga.gain.exponentialRampToValueAtTime(0.0001,now+dur);
+    o.connect(ga); ga.connect(master); o.start(); o.stop(now+dur+0.03); }
+  function thud(dur,g,cut){ if(!ac||!on)return; const n=Math.floor(ac.sampleRate*dur),b=ac.createBuffer(1,n,ac.sampleRate),d=b.getChannelData(0);
+    for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n); const s=ac.createBufferSource(); s.buffer=b;
+    const lp=ac.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=cut||900; const ga=ac.createGain(); ga.gain.value=g;
+    s.connect(lp); lp.connect(ga); ga.connect(master); s.start(); }
+  function beat(){ clearTimeout(hb); const ten=(STATE.phase==='task')?tension():0;
+    if(on&&ten>0.22){ tone(58,42,0.16,0.04+0.05*ten); setTimeout(()=>tone(46,34,0.14,0.03+0.04*ten),155); }
+    hb=setTimeout(beat, Math.max(640, 1950-1150*ten)); }  // quickens as the outpost empties
+  setInterval(()=>{ if(ac&&on&&windGain){ const ten=(STATE.phase==='task')?tension():0.12; windGain.gain.value=0.26+ten*0.5; } },1500);
+  return { kill(){ tone(92,36,0.5,0.1); thud(0.25,0.05,700); },
+    slam(){ tone(70,38,0.6,0.11); thud(0.3,0.07,950); },
+    toggle(){ on=!on; build(); if(ac){ ac.resume&&ac.resume(); master.gain.linearRampToValueAtTime(on?0.7:0.0001, ac.currentTime+0.4); }
+      $('snd').textContent=on?'🔊':'🔇'; return on; } };
+})();
+$('sndpill').addEventListener('click',()=>Sound.toggle());
+
 addEventListener('resize',resize); buildStation(STATION0); resize(); syncHud(); requestAnimationFrame(frame); connect();
 </script>
 </body>

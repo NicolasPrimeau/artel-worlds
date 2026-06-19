@@ -176,6 +176,20 @@ async def complete_task(index: int, task_id: str) -> None:
         log.warning("artel complete failed for %s: %s", agent["id"], e)
 
 
+async def unclaim_task(index: int, task_id: str) -> None:
+    # release a claim back onto the open board (assignee-only on Artel) — used when the seat holding it is
+    # killed or pulled into a meeting mid-task, so the live board doesn't carry a zombie claim all game.
+    if not enabled() or not task_id:
+        return
+    agent = _seat(index)
+    try:
+        await _client().post(
+            f"{ARTEL_URL}/tasks/{task_id}/unclaim", headers=_headers(agent), json={}
+        )
+    except Exception as e:
+        log.warning("artel unclaim failed for %s: %s", agent["id"], e)
+
+
 async def aclose() -> None:
     global _http
     if _http is not None:
