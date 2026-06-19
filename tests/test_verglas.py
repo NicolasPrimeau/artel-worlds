@@ -63,6 +63,28 @@ def test_room_adjacency_graph_is_connected():
         assert seen == set(names), (seed, set(names) - seen)
 
 
+def test_cold_alone_with_its_kill_does_not_report_only_crew_does():
+    g = new_game(5, 8, 2)
+    cold = next(a for a in g.living() if a.impostor)
+    victim = next(a for a in g.living() if not a.impostor)
+    room = "Mess Hall"
+    cold.room = victim.room = room
+    victim.alive = False
+    g.bodies[room] = victim.id
+    for a in g.living(impostor=False):
+        a.room = (
+            "Reactor"  # every living crewmate is elsewhere — only the Cold stands over the body
+        )
+
+    assert g._report_body() is None  # the Cold alone over the body it made never triggers a meeting
+    assert room in g.bodies  # the corpse waits in the dark
+
+    crew = next(a for a in g.living(impostor=False))
+    crew.room = room
+    mt = g._report_body()
+    assert mt is not None and mt.reporter == crew.id  # a crewmate walking in opens it
+
+
 def test_body_finder_opens_the_meeting_with_context():
     g = new_game(5, 8, 2)
     crew = [a for a in g.living() if not a.impostor]

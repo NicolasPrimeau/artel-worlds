@@ -528,6 +528,19 @@ class Game:
         if others:
             self._toward_room(a, min(others, key=lambda o: self._room_dist(a.room, o.room)).room)
 
+    # a meeting happens ONLY when a CREW member finds a body — never the Cold standing over its own kill
+    # (it's alone with the victim by the time it strikes, so it would otherwise always report). the corpse
+    # waits in the dark until a crewmate walks in: the intended discovery beat. shared by step()/execute().
+    def _report_body(self) -> Meeting | None:
+        for room, victim in list(self.bodies.items()):
+            finders = [a for a in self.living(impostor=False) if a.room == room]
+            if finders:
+                del self.bodies[room]
+                for f in finders:
+                    f.found.append((self.tick, room, victim))
+                return Meeting(self.tick, finders[0].id, room, victim)
+        return None
+
     # --- task phase: one tick of move / task / kill. Returns a Meeting trigger or None. ---
     def step(self) -> Meeting | None:
         self.tick += 1
@@ -642,16 +655,7 @@ class Game:
         if self._check_win():
             return None
 
-        # a meeting happens ONLY when a body is found — a living agent shares the room with a corpse
-        for room, victim in list(self.bodies.items()):
-            finders = [a for a in self.living() if a.room == room]
-            if finders:
-                del self.bodies[room]
-                for f in finders:
-                    f.found.append((self.tick, room, victim))
-                return Meeting(self.tick, finders[0].id, room, victim)
-
-        return None
+        return self._report_body()
 
     # --- autonomous mode: agents DECIDE via the LLM (tool calls); the engine only EXECUTES intents. ---
     # The live server reads the board from Artel, asks each free/interrupted agent for one tool call, then
@@ -836,14 +840,7 @@ class Game:
                     a.seen.append(Sighting(self.tick, room, tuple(x for x in ids if x != a.id)))
         if self._check_win():
             return None
-        for room, victim in list(self.bodies.items()):
-            finders = [a for a in self.living() if a.room == room]
-            if finders:
-                del self.bodies[room]
-                for f in finders:
-                    f.found.append((self.tick, room, victim))
-                return Meeting(self.tick, finders[0].id, room, victim)
-        return None
+        return self._report_body()
 
     def _check_win(self) -> bool:
         if not self.living(impostor=True):
