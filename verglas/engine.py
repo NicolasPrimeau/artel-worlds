@@ -648,8 +648,7 @@ class Game:
                     self.bodies[m.room] = victim.id
                     self.last_kill = {"tick": self.tick, "victim": victim.id, "room": m.room}
                     self.cd = KILL_CD
-                    if m.room in self.vents and self.rng.random() < 0.6:
-                        m.room = self.rng.choice(self.vents[m.room])  # vent off the body
+                    self._flee_body(m)
                     break
 
         if self._check_win():
@@ -685,6 +684,14 @@ class Game:
             return False
         return any(not c.impostor for c in self._occ(a.room) if c.id != a.id)
 
+    def _flee_body(self, m) -> None:
+        # the Cold never lingers over a kill: it vents out if the room has one (instant, unseen), else
+        # slips into a neighbouring room on foot — gone before a crewmate can walk in on the scene.
+        if m.room in self.vents:
+            m.room = self.rng.choice(self.vents[m.room])
+        elif self.adj.get(m.room):
+            m.room = self.rng.choice(sorted(self.adj[m.room]))
+
     def do_kill(self, m, victim_id: int, force: bool = False) -> bool:
         occ = self._occ(m.room)
         victim = next((c for c in occ if c.id == victim_id and not c.impostor), None)
@@ -707,8 +714,7 @@ class Game:
         self.bodies[m.room] = victim.id
         self.last_kill = {"tick": self.tick, "victim": victim.id, "room": m.room}
         self.cd = KILL_CD
-        if m.room in self.vents and self.rng.random() < 0.6:
-            m.room = self.rng.choice(self.vents[m.room])  # vent off the body
+        self._flee_body(m)
         return True
 
     def _final_hunt(self) -> None:
