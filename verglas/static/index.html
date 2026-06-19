@@ -168,7 +168,7 @@
 <div id="stage"><canvas id="map"></canvas></div>
 <div class="hud">
   <div class="brand">VERGLAS <small>· OUTPOST <b id="hud-outpost">31</b></small></div>
-  <div class="pill" title="Tasks restore the outpost — power, heat, comms. Finish them all and Verglas is lit, warm and sealed: conditions the Cold can't survive. It has to thin the crew before they get there."><span class="plabel">Tasks</span> <div class="taskbar"><i id="hud-tasks" style="width:0%"></i></div> <b id="hud-tasksn">0%</b></div>
+  <div class="pill" title="Survive the storm and the crew win — it passes by dawn. The Cold can only kill in a DARK room; the storm (and the Cold) keep snuffing the lights. Stay lit, relight dark rooms, don't get cornered in the dark."><span class="plabel">Storm</span> <div class="taskbar"><i id="hud-tasks" style="width:0%"></i></div> <b id="hud-tasksn">0%</b></div>
   <div class="pill"><span class="plabel">Alive</span> <b id="hud-alive">10</b>/<b id="hud-total">10</b></div>
   <div class="spacer"></div>
   <div class="pill"><span id="conn" class="live">live</span></div>
@@ -279,7 +279,7 @@ const STATION0=(()=>{
   return {outpost:31, rects, corridor:tiles, centers, doors, vents:[["Freezer","Bunks"]]};
 })();
 
-let STATE={ round:1, tasksDone:7, tasksTotal:40, phase:"task", scores:{crew:0,cold:0}, agents:[] };
+let STATE={ round:1, dark:[], stormLeft:70, stormTotal:70, phase:"task", scores:{crew:0,cold:0}, agents:[] };
 let lastKillTick=-1, fx=[], ejecting=null, mouse={x:-1,y:-1}, userMoved=false, HILITE=null, meet=null, disco=null, killPulse=0, meetWasActive=false;
 let curPhase='', phaseT0=0;  // phaseT0 stamps phase changes so intro/end can fade in
 let thoughtOf={}, thoughtHist={}, lastThought={}, downC=null, tapC=null;  // ambient thoughts + click-to-inspect
@@ -497,7 +497,8 @@ function applyLighting(){ if(!lcv)lcv=document.createElement('canvas'); if(lcv.w
   dk.addColorStop(0,"rgba(4,8,16,0.10)"); dk.addColorStop(.5,"rgba(4,8,16,0.18)"); dk.addColorStop(.72,"rgba(4,8,16,0.42)"); dk.addColorStop(1,"rgba(4,8,16,0.42)");
   lx.fillStyle=dk; lx.fillRect(0,0,lcv.width,lcv.height); lx.globalCompositeOperation="destination-out";
   const soft=(x,y,r,a)=>{ const g=lx.createRadialGradient(x,y,0,x,y,r); g.addColorStop(0,`rgba(255,255,255,${a})`); g.addColorStop(.65,`rgba(255,255,255,${a*0.55})`); g.addColorStop(1,"rgba(255,255,255,0)"); lx.fillStyle=g; lx.beginPath(); lx.arc(x,y,r,0,TAU); lx.fill(); };
-  for(const r of Object.values(ROOMS)){ if(r.cx==null)continue; const [sx,sy]=toScreen(r.cx,r.cy); soft(sx,sy,r.rad*1.7*cam.z,0.86); }
+  for(const [n,r] of Object.entries(ROOMS)){ if(r.cx==null||(STATE.dark&&STATE.dark.includes(n)))continue;  // DARK rooms get no room light — only the agents' own lamps
+    const [sx,sy]=toScreen(r.cx,r.cy); soft(sx,sy,r.rad*1.7*cam.z,0.86); }
   for(const a of STATE.agents){ if(a.wx==null)continue; const [sx,sy]=toScreen(a.wx,a.wy); soft(sx,sy,66*cam.z,a.alive?0.95:0.5);
     if(a.alive){ const len=230*cam.z; const cg=lx.createRadialGradient(sx,sy,0,sx,sy,len); cg.addColorStop(0,"rgba(255,255,255,.95)"); cg.addColorStop(1,"rgba(255,255,255,0)");
       lx.fillStyle=cg; lx.beginPath(); lx.moveTo(sx,sy); lx.arc(sx,sy,len,a.face-0.6,a.face+0.6); lx.closePath(); lx.fill(); } }
@@ -1291,7 +1292,7 @@ function drawIntro(t){
 function drawEnd(t){
   const k=Math.min(1,(performance.now()-phaseT0)/600), crew=STATE.winner==='crew';
   const cold=(STATE.agents||[]).filter(a=>a.cold).map(a=>a.name).join(' & ');
-  const by={tasks:"the outpost is restored to full power — light and heat the Cold can't survive",ejection:"the Cold was cast into the storm",extinction:"the Cold took the last of the crew — Verglas is its own now",parity:"the Cold took the last of the crew — Verglas is its own now",timeout:"the long night swallowed the outpost"}[STATE.win_by]||'';
+  const by={storm:"the crew outlasted the storm — dawn breaks over the outpost",ejection:"the Cold was cast into the storm",extinction:"the Cold took the last of the crew — Verglas is its own now"}[STATE.win_by]||'';
   ctx.save(); ctx.textAlign="center";
   ctx.fillStyle=`rgba(4,9,18,${0.66*k})`; ctx.fillRect(0,0,cv.width,cv.height);
   const cx=cv.width/2, cy=cv.height*0.40, big=Math.min(56,cv.width/10/DPR);
@@ -1307,8 +1308,9 @@ function recapText(){ const crew=STATE.winner==='crew', cold=(STATE.agents||[]).
   const head=crew?"the crew survived Verglas":`the Cold (${cold||'?'}) took Verglas`;
   return `${head} — outpost ${OUTPOST}, a frozen station of named AIs where one is secretly the Cold. watch live:`; }
 
-function syncHud(){ $('hud-tasks').style.width=(100*STATE.tasksDone/Math.max(1,STATE.tasksTotal))+'%';
-  $('hud-tasksn').textContent=Math.round(100*(STATE.tasksDone||0)/Math.max(1,STATE.tasksTotal||1))+'%';
+function syncHud(){ const prog=STATE.stormTotal?Math.max(0,Math.min(1,(STATE.stormTotal-STATE.stormLeft)/STATE.stormTotal)):0;  // night elapsed → dawn
+  $('hud-tasks').style.width=(100*prog)+'%';
+  $('hud-tasksn').textContent=Math.round(prog*100)+'%';
   $('hud-alive').textContent=STATE.agents.filter(a=>a.alive).length; $('hud-total').textContent=STATE.agents.length;
   const ros=$('roster'); ros.innerHTML=''; for(const a of STATE.agents){ const d=document.createElement('div'); d.className='who'+(a.alive?'':' dead')+(a.id===HILITE?' sel':'');
     d.innerHTML=`<span class="dot" style="color:${COLORS[a.c%COLORS.length]};background:${COLORS[a.c%COLORS.length]}"></span><span><div class="nm">${a.name}</div></span>`;
@@ -1355,7 +1357,7 @@ function renderChat(s){ const chat=$('chat'), inMeet=['meeting','vote','ejection
 let hadSnapshot=false;  // false until the first snapshot is processed — so a refresh into a meeting skips the discovery beat
 function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.station.openTasks||{}; }
   if(s.phase!==curPhase){ curPhase=s.phase; phaseT0=performance.now(); }  // fresh fade for intro/gameover
-  STATE.round=s.round; STATE.tasksDone=s.tasksDone; STATE.tasksTotal=s.tasksTotal; STATE.phase=s.phase;
+  STATE.round=s.round; STATE.dark=s.dark||[]; STATE.stormLeft=s.stormLeft; STATE.stormTotal=s.stormTotal; STATE.phase=s.phase;
   STATE.hunting=s.hunting; STATE.winner=s.winner; STATE.win_by=s.win_by; STATE.scores=s.scores; STATE.meeting=s.meeting; applyAgents(s.agents||[]);
   if(s.phase==='intro'){ removedBodies.clear(); }  // new game → bodies can appear again
   // recover bodies only when the meeting is OVER (not while it runs — the body must stay visible for the

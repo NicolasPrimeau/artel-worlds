@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse, JSONResponse
 
 from . import artel, autonomy, env, llm
-from .engine import MAX_TICKS, new_game
+from .engine import MAX_TICKS, STORM_TICKS, new_game
 from .meeting import (
     run_canned_meeting,
     run_llm_meeting,
@@ -247,8 +247,11 @@ class Verglas:
             "hunting": g.hunting,
             "round": len(g.meetings) + 1,
             "tick": g.tick,
-            "tasksDone": g.tasks_done,
-            "tasksTotal": g.tasks_goal,
+            "dark": sorted(
+                g.dark
+            ),  # rooms currently unlit — the client dims them and flags relight jobs
+            "stormLeft": max(0, STORM_TICKS - g.tick),
+            "stormTotal": STORM_TICKS,
             "alive": len(g.living()),
             "total": len(g.agents),
             "agents": agents,
@@ -384,9 +387,9 @@ async def _mirror_event(ev) -> None:
     # turn one engine task event into a real Artel task action (create on spawn, claim by the agent,
     # complete when done). Runs in a single serial worker, so task_pool/task_working never race.
     kind = ev[0]
-    if kind == "spawn":
+    if kind == "dark":  # a room went dark → a relight job on the Artel board
         room = ev[1]
-        tid = await artel.create_task(f"{_TASK_VERBS[hash(room) % len(_TASK_VERBS)]} the {room}")
+        tid = await artel.create_task(f"Relight the {room}")
         if tid:
             G.task_pool.setdefault(room, []).append(tid)
     elif kind == "claim":
@@ -452,6 +455,10 @@ async def _apply_action(g, a, action) -> str | None:
             G.interrupted.add(to)
             G.whisper = [a.name, g.by_id(to).name]
             G.push_feed("msg", frm=a.name, to=g.by_id(to).name, text=text[:120])
+    elif name == "darken":
+        room = args.get("room")
+        if room:
+            g.sabotage(a, room)  # snuff the lights — anonymous; makes a kill spot + a relight job
     elif name == "eliminate":
         vid = _target_id(g, args.get("who"))
         if vid is not None and g.do_kill(a, vid):
@@ -485,13 +492,13 @@ async def _autonomous_tick():
             act = action if action is not None else g.default_action(a)
             await _apply_action(g, a, act)
     mt = g.execute()  # a meeting opens here ONLY when a body is found (no emergency button)
-    for (
-        ev
-    ) in g.events:  # spawns → create Artel tasks, completes → complete them (claims done inline)
+    for ev in (
+        g.events
+    ):  # darkened rooms → create relight tasks, relights → complete them (claims done inline)
         try:
-            if ev[0] == "spawn":
+            if ev[0] == "dark":
                 room = ev[1]
-                tid = await artel.create_task(_task_title(room))
+                tid = await artel.create_task(f"Relight the {room}")
                 if tid:
                     G.task_pool.setdefault(room, []).append(tid)
                     G.task_room[tid] = room

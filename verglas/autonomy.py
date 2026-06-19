@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from llmrouter import Request
 
-from verglas.engine import Game
+from verglas.engine import STORM_TICKS, Game
 
 # The autonomous task phase: each free (or just-interrupted) agent is asked for ONE action, as a tool
 # call. The tools are deliberately dead-simple — every target is an enum the model picks from a short
@@ -10,27 +10,25 @@ from verglas.engine import Game
 # clean, valid call. Anything missing/malformed falls back to engine.default_action upstream.
 
 SYS_CREW = (
-    "You are {name}, overwintering at an isolated Antarctic research station. One of the crew is secretly "
-    "the Cold — it wears a friend's face and kills anyone it gets alone. You win by finishing every task "
-    "on the board before it picks you off, or by voting it out once a body is found. Work the board and "
-    "keep where others can see you. When someone asks you to slip off together 'to buddy up', that is "
-    "exactly how the Cold gets a victim one-on-one — weigh WHO is asking and whether others are near; you "
-    "can refuse and stay with the group. Trust no claim you can't check. "
+    "You are {name}, overwintering at an isolated Antarctic station. One of the crew is secretly the Cold "
+    "— it wears a friend's face, and it can ONLY kill in a room that has gone DARK. You all just have to "
+    "SURVIVE THE STORM; it passes by dawn and you win. The storm keeps knocking the lights out room by "
+    "room, and the Cold can snuff them too. So: stay in LIT rooms where it cannot touch you, RELIGHT dark "
+    "rooms to deny it anywhere to hunt, and NEVER let yourself be led alone into the dark. If someone "
+    "whispers you to slip off together, that's exactly how it gets you one-on-one — weigh who's asking "
+    "and whether the room is lit; you can refuse. Trust no claim you can't check. "
     "Pick exactly ONE action by calling a tool."
 )
 SYS_COLD = (
-    "You are {name}. Secretly you ARE the Cold — something that came in from the storm and now wears a "
-    "crewmate's face, hunting the station. Blend in: claim and pretend to do tasks, move with the group, "
-    "act like a worried human; never look suspicious. "
-    "You are on BORROWED TIME: the crew win the instant they finish every task on the board (a meter you "
-    "cannot touch directly), and they vote you out if they pin you. So hunt, and hunt SOON. "
-    "THE ONE HARD RULE: you can ONLY kill when you are completely ALONE with a single crewmate — one extra "
-    "set of eyes in the room and a kill is flat-out impossible. So your whole game is ENGINEERING that "
-    "moment: hunt for anyone who has drifted off alone and FOLLOW them; or WHISPER someone to peel them "
-    "away ('help me finish the task in the Reactor', 'buddy up, just us two') and lead them somewhere "
-    "quiet. The eliminate option only appears once you actually have one of them alone — when it does, "
-    "TAKE it, then slip away (vent off the body if you can). Never loiter in a crowd hoping for a chance; "
-    "go MAKE the chance. "
+    "You are {name}. Secretly you ARE the Cold — something that came in from the storm, wearing a "
+    "crewmate's face. The crew win if they SURVIVE THE STORM until dawn, so you must thin them before it "
+    "passes. THE ONE HARD RULE: you can ONLY kill in a DARK room, ALONE with a single crewmate, right "
+    "next to them — never in the light, never with a witness. The dark is your weapon: SABOTAGE the "
+    "lights (snuff your room or a neighbouring one) to MAKE a place to hunt, then WHISPER or FOLLOW a "
+    "crewmate into it ('help me in the Reactor', 'buddy up, just us two'). Once you are alone with one of "
+    "them in the dark and close, the eliminate option appears — TAKE it, then slip away (vent if you "
+    "can). The rest of the time, blend in: move with the group, pretend to relight, look helpful and "
+    "worried. Never loiter hoping for a chance — go MAKE the dark and lure someone into it. "
     "Pick exactly ONE action by calling a tool."
 )
 
@@ -57,13 +55,13 @@ def _enum(desc: str, values: list[str]) -> dict:
 def build_tools(g: Game, a) -> list[dict]:
     others = [o.name for o in g.living() if o.id != a.id]
     tools = []
-    open_rooms = sorted(set(g.open_tasks))
-    if open_rooms:
+    dark_rooms = sorted(set(g.open_tasks))  # dark rooms waiting to be relit
+    if dark_rooms:
         tools.append(
             _tool(
                 "go_to_task",
-                "Walk to a room and do its task.",
-                {"room": _enum("which room's task", open_rooms)},
+                "Walk to a DARK room and restore its lights — denies the Cold a place to hunt.",
+                {"room": _enum("which dark room to relight", dark_rooms)},
                 ["room"],
             )
         )
@@ -93,11 +91,28 @@ def build_tools(g: Game, a) -> list[dict]:
             tools.append(
                 _tool(
                     "eliminate",
-                    "Kill the crewmate you are alone with (only when unseen).",
+                    "Kill the crewmate you are alone with in the dark, right beside you.",
                     {"who": _enum("who to eliminate", kill_names)},
                     ["who"],
                 )
             )
+        if (
+            g.sab_cd == 0
+        ):  # snuff the lights to make a hunting ground (your room or a lit neighbour)
+            lit = [
+                r
+                for r in dict.fromkeys([a.room, *sorted(g.adj.get(a.room, []))])
+                if r not in g.dark
+            ]
+            if lit:
+                tools.append(
+                    _tool(
+                        "darken",
+                        "Kill the lights in your room or a neighbour — make a dark place to hunt.",
+                        {"room": _enum("room to plunge into darkness", lit)},
+                        ["room"],
+                    )
+                )
         adj = sorted(g.adj.get(a.room, []))
         if adj:
             tools.append(
@@ -114,31 +129,36 @@ def build_tools(g: Game, a) -> list[dict]:
 def _context(g: Game, a, inbox: list) -> str:
     here = [o.name for o in g._occ(a.room) if o.id != a.id]
     here_s = ", ".join(here) if here else "nobody — you are alone here"
-    open_s = ", ".join(sorted(set(g.open_tasks))) or "none right now"
+    dark_s = ", ".join(sorted(g.dark)) or "none — the whole station is lit"
     alive, total = len(g.living()), len(g.agents)
     dead = total - alive
+    here_dark = a.room in g.dark
+    storm_left = max(0, STORM_TICKS - g.tick)
     lines = [
-        f"You are in the {a.room}. With you: {here_s}.",
-        f"Open tasks on the board: {open_s}.",
-        f"Crew still alive: {alive} of {total}.",
+        f"You are in the {a.room}, which is {'DARK' if here_dark else 'LIT'}. With you: {here_s}.",
+        f"Dark rooms now (a kill can only happen in one of these): {dark_s}.",
+        f"Crew alive: {alive} of {total}. The storm passes in ~{storm_left} ticks — survive it and the crew win.",
     ]
-    # the Cold's situational read: is a kill possible RIGHT NOW (alone with exactly one crew), or must it
-    # still engineer the isolation? Mirrors the hard rule the engine enforces.
+    # the Cold's situational read, mirroring the engine's hard rule: a kill needs DARK + alone + close.
     if a.impostor:
         others = [o for o in g._occ(a.room) if o.id != a.id]
         crew_here = [o for o in others if not o.impostor]
-        if len(others) == 1 and crew_here:
+        if len(others) == 1 and crew_here and here_dark:
             lines.append(
-                f"KILL WINDOW: you are ALONE with {crew_here[0].name} — no other eyes. Strike now if able."
+                f"KILL WINDOW: ALONE with {crew_here[0].name} in the DARK — strike now if you're close to them."
+            )
+        elif len(others) == 1 and crew_here:
+            lines.append(
+                f"You have {crew_here[0].name} alone, but the room is LIT — DARKEN it (sabotage) first, then strike."
             )
         elif crew_here:
             lines.append(
-                "Too many eyes here to strike — a kill needs you ALONE with one crewmate. Peel one off "
-                "(whisper or follow) and lead them somewhere quiet."
+                "Too many eyes here — a kill needs you ALONE with one crewmate in a dark room. Peel one off "
+                "(whisper/follow) and lead them into the dark."
             )
         else:
             lines.append(
-                "No one to hunt in this room. Go find a crewmate who has drifted off alone."
+                "No one to hunt here. Find a lone crewmate, or darken a room and lure one into it."
             )
     # the dread grows with the body count — crew get more unsettled and trust the room less
     if not a.impostor and dead:

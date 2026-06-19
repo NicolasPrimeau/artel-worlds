@@ -218,6 +218,16 @@ WORK_TICKS = 3  # a task occupies its crew for several ticks — they linger at 
 TASK_SLACK = 4  # keep this many fewer tasks-in-play than living players, so a couple are always free to buddy
 KILL_CD = 3  # ~15s between kills (each task tick runs ~5s, so 3 ticks ≈ 15s)
 KILL_REACH = 3.0  # the Cold must be within this many cells of the victim — no killing across a room
+# --- the storm & the dark ---------------------------------------------------------------------------
+# Light is safety: the Cold can ONLY kill in a DARK room. The storm is the clock — survive it and the
+# crew win. It darkens rooms over time (more, faster, late); crew relight them (the task board); the Cold
+# can darken rooms itself (sabotage) to manufacture a kill spot. These are all tunable.
+STORM_TICKS = 70  # game length (~5 min at ~4.2s/tick) — survive to here and the crew win
+STORM_EVERY = (
+    5  # the storm darkens a lit room about this often (ticks); it speeds up late (see _storm)
+)
+SABOTAGE_CD = 5  # ticks between the Cold's light-sabotages (~20s)
+START_DARK = 3  # rooms already dark when the game opens, so there's danger from the first minute
 GX_STEP = (
     1.6  # cells/tick an agent drifts toward its in-room spot (the Cold stalks into range gradually)
 )
@@ -374,8 +384,12 @@ class Game:
     bodies: dict = field(default_factory=dict)  # room -> victim id, undiscovered
     tick: int = 0
     cd: int = 0  # shared impostor kill cooldown
+    sab_cd: int = 0  # the Cold's light-sabotage cooldown
+    dark: set = field(
+        default_factory=set
+    )  # rooms currently unlit — the only places a kill can happen
     winner: str | None = None  # "crew" | "impostor"
-    win_by: str | None = None  # "tasks" | "ejection" | "extinction" | "timeout"
+    win_by: str | None = None  # "storm" | "ejection" | "extinction"
     hunting: bool = False  # the final hunt is on: one crew left, the Cold has dropped the mask
     hunt_ticks: int = 0  # how long the final hunt has run (the flee can't last forever)
     meetings: list = field(default_factory=list)
@@ -450,31 +464,49 @@ class Game:
         # bigger rooms hold more consoles, but never more than 2 active in any one room at a time
         return min(2, max(1, round(self._area(room) / 70)))
 
-    def _spawn_task(self):
-        # light up one more console, in a room that has spare capacity, weighted toward bigger rooms
-        cands = [r for r in self.rooms if self.open_tasks.count(r) < self._task_cap(r)]
-        if cands:
-            room = self.rng.choices(cands, weights=[self._area(r) for r in cands])[0]
-            self.open_tasks.append(room)
-            self.events.append(("spawn", room))  # → create an Artel task for this console
+    def _darken(self, room) -> None:
+        # snuff a room's lights → it becomes a kill spot AND a relight job on the board (source anonymous)
+        if room not in self.dark:
+            self.dark.add(room)
+            if room not in self.open_tasks:
+                self.open_tasks.append(room)
+            self.events.append(("dark", room))
+
+    def _storm(self) -> None:
+        # the storm snuffs a random lit room; capped so it never blacks the whole station out at once
+        if len(self.dark) >= 6:
+            return
+        lit = [r for r in self.rooms if r not in self.dark]
+        if lit:
+            self._darken(self.rng.choice(lit))
+
+    def _storm_due(self) -> bool:
+        # the storm bites more often as the long night wears on (every ~5 ticks → every ~2 near the end)
+        every = max(2, STORM_EVERY - self.tick // 24)
+        return self.tick % every == 0
+
+    def sabotage(self, a, room) -> bool:
+        # the Cold kills the lights in its own room or a neighbouring one (to make a kill spot). Anonymous.
+        if not (a.impostor and self.sab_cd == 0):
+            return False
+        if (room != a.room and room not in self.adj.get(a.room, ())) or room in self.dark:
+            return False
+        self._darken(room)
+        self.sab_cd = SABOTAGE_CD
+        return True
 
     def _claim_task(self, a):
-        # take the nearest open task off the board and head for it
+        # take the nearest DARK room off the board and head over to relight it
         room = min(self.open_tasks, key=lambda r: self._room_dist(a.room, r))
         self.open_tasks.remove(room)
         a.dest = room
-        self.events.append(("claim", a.id, room))  # → claim the Artel task as this agent
+        self.events.append(("claim", a.id, room))
 
     def _approach_buddy(self, a):
         # nothing to do → close on the nearest other survivor (safety in numbers); stay if already together
         others = [o for o in self.living() if o.id != a.id]
         if others:
             self._toward_room(a, min(others, key=lambda o: self._room_dist(a.room, o.room)).room)
-
-    def _active_tasks(self):
-        return len(self.open_tasks) + sum(
-            1 for a in self.living(impostor=False) if a.dest is not None or a.work > 0
-        )
 
     # --- task phase: one tick of move / task / kill. Returns a Meeting trigger or None. ---
     def step(self) -> Meeting | None:
@@ -487,15 +519,11 @@ class Game:
             self._check_win()
             return None
 
-        # keep tasks-in-play topped up to a few short of the living headcount, so most crew always have
-        # something to do but a couple are free to buddy — and as the crew thins out the board tightens
-        # into a finish-or-survive scramble.
-        cap = max(2, len(self.living()) - TASK_SLACK)
-        while self._active_tasks() < cap:
-            before = len(self.open_tasks)
-            self._spawn_task()
-            if len(self.open_tasks) == before:  # every room already at its per-size cap
-                break
+        # the storm snuffs lit rooms over the night (faster late); the Cold's sabotage cooldown ticks
+        if self.sab_cd > 0:
+            self.sab_cd -= 1
+        if self._storm_due():
+            self._storm()
 
         for a in self.living():
             a.tasking = False
@@ -509,6 +537,7 @@ class Game:
                 a.tasking = True
                 if a.work == 0:
                     self.tasks_done += 1  # COMPLETE — one off the board
+                    self.dark.discard(a.room)  # relit — the room is safe again
                     a.dest = None
                     self.events.append(("complete", a.id))
             elif a.dest is not None:  # walking to a claimed task
@@ -517,6 +546,7 @@ class Game:
                     a.tasking = True
                     if a.work == 0:
                         self.tasks_done += 1
+                        self.dark.discard(a.room)  # relit — the room is safe again
                         a.dest = None
                         self.events.append(("complete", a.id))
                 else:
@@ -528,6 +558,7 @@ class Game:
                     a.tasking = True
                     if a.work == 0:
                         self.tasks_done += 1
+                        self.dark.discard(a.room)  # relit — the room is safe again
                         a.dest = None
                         self.events.append(("complete", a.id))
                 else:
@@ -555,7 +586,7 @@ class Game:
                 if not crew_here:
                     continue
                 isolated = len(self._occ(m.room)) == 2  # just the impostor + one victim
-                if isolated:  # only an unwitnessed kill — never in line of sight of anyone else
+                if isolated and m.room in self.dark:  # unwitnessed AND in the dark — the only kill
                     victim = self.rng.choice(crew_here)
                     m.gx, m.gy = (
                         victim.gx,
@@ -599,7 +630,7 @@ class Game:
         # crew the Cold can take THIS tick: off cooldown, past grace, ALONE with exactly one crew (no
         # witness), AND within reach — right next to them, not across the room. If it's alone but still
         # too far, the eliminate option is withheld and it must close the gap first (follow/stalk).
-        if self.cd > 0 or self.tick < START_GRACE:
+        if self.cd > 0 or self.tick < START_GRACE or m.room not in self.dark:
             return []
         occ = self._occ(m.room)
         crew = [c for c in occ if not c.impostor]
@@ -623,7 +654,10 @@ class Game:
         if (
             victim is None
             or (self.cd > 0 and not force)
-            or (not force and (len(occ) != 2 or not self._near(m, victim)))
+            or (
+                not force
+                and (m.room not in self.dark or len(occ) != 2 or not self._near(m, victim))
+            )
         ):
             return False
         victim.alive = False
@@ -718,12 +752,10 @@ class Game:
             self._place()
             self._check_win()
             return None
-        cap = max(2, len(self.living()) - TASK_SLACK)
-        while self._active_tasks() < cap:
-            before = len(self.open_tasks)
-            self._spawn_task()
-            if len(self.open_tasks) == before:
-                break
+        if self.sab_cd > 0:
+            self.sab_cd -= 1
+        if self._storm_due():
+            self._storm()
         for a in self.living():
             a.tasking = False
             if a.work > 0:
@@ -731,6 +763,7 @@ class Game:
                 a.tasking = True
                 if a.work == 0:
                     self.tasks_done += 1
+                    self.dark.discard(a.room)  # relit — the room is safe again
                     a.dest = None
                     self.events.append(("complete", a.id))
             elif a.dest is not None:
@@ -739,6 +772,7 @@ class Game:
                     a.tasking = True
                     if a.work == 0:
                         self.tasks_done += 1
+                        self.dark.discard(a.room)  # relit — the room is safe again
                         a.dest = None
                         self.events.append(("complete", a.id))
                 else:
@@ -782,8 +816,10 @@ class Game:
         if not self.living(impostor=False):  # the Cold has taken the last of the crew
             self.winner, self.win_by = "impostor", "extinction"
             return True
-        if self.tasks_left() == 0:
-            self.winner, self.win_by = "crew", "tasks"
+        if (
+            self.tick >= STORM_TICKS
+        ):  # the crew outlasted the storm — dawn, and they're still standing
+            self.winner, self.win_by = "crew", "storm"
             return True
         return False
 
@@ -844,7 +880,6 @@ def new_game(seed: int, n=6, impostors=1) -> Game:
     imp_ids = set(order[:impostors])
     names = rng.sample(NAMES, n)
     agents = [Agent(i, names[i], i in imp_ids, rng.choice(rooms)) for i in range(n)]
-    crew_n = n - impostors
     g = Game(
         rng=rng,
         agents=agents,
@@ -858,11 +893,10 @@ def new_game(seed: int, n=6, impostors=1) -> Game:
         corridor=corridor,
         outpost=rng.randint(1, 99),
     )
-    g.tasks_goal = max(
-        8, round(crew_n * 3.5)
-    )  # winnable under the ~15s kill clock and the 5-min ceiling
-    for _ in range(max(2, n - TASK_SLACK)):  # seed the board up to the in-play cap, size-weighted
-        g._spawn_task()
+    g.dark = set(
+        g.rng.sample(g.rooms, min(START_DARK, len(g.rooms)))
+    )  # a few rooms already unlit at dawn
+    g.open_tasks = list(g.dark)  # the relight board starts as those dark rooms
     g._place()  # seed each agent's cell so the first snapshot already has positions
     return g
 
