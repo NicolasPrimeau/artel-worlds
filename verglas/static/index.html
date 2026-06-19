@@ -291,6 +291,7 @@ let curPhase='', phaseT0=0;  // phaseT0 stamps phase changes so intro/end can fa
 let thoughtOf={}, thoughtHist={}, lastThought={}, downC=null, tapC=null;  // ambient thoughts + click-to-inspect
 const EJECT_MS=3600;  // how long the ejected researcher takes to trudge off into the storm
 const DISCO_MAX=12000;  // the "body found" beat ends once the crew have all gathered + 5s — this is the safety cap
+const INTRO_MS=8000;    // opening card duration — matches the server's INTRO_LINGER so the fade-out lands on the cut
 (function seed(){ const names=["Softmaxwell","Overfitz","Hallucinov","Frostbyte","ReLuther","Quantz","Attenborough","Embeddington","Adamson","Tokarev"];
   const rk=Object.keys(STATION0.rects);
   STATE.agents=names.map((n,i)=>({id:i,name:n,model:"gpt-oss-120b",room:rk[i%rk.length],alive:i!==5,task:i%3===0,body:i===5,c:i})); })();
@@ -1270,18 +1271,26 @@ function frame(t){
   requestAnimationFrame(frame); }
 // opening card — the frozen outpost, then the dread, fading in over the blowing snow
 function drawIntro(t){
-  const k=Math.min(1,(performance.now()-phaseT0)/700), k2=Math.min(1,Math.max(0,(performance.now()-phaseT0-650)/1000));
+  const e=performance.now()-phaseT0;                                   // ms since the card appeared
+  const fin=(start,dur)=>Math.min(1,Math.max(0,(e-start)/dur));        // a slow fade-in from `start`
+  const out=Math.min(1,Math.max(0,(e-(INTRO_MS-1100))/1100));         // and a slow fade-out at the very end
+  const kT=fin(0,900)*(1-out);
   ctx.save(); ctx.textAlign="center";
-  ctx.fillStyle=`rgba(4,9,18,${0.5*k})`; ctx.fillRect(0,0,cv.width,cv.height);
-  const cx=cv.width/2, cy=cv.height*0.42, big=Math.min(64,cv.width/8.5/DPR);
-  ctx.globalAlpha=k; ctx.fillStyle="rgba(150,178,218,.7)"; ctx.font=`700 ${12*DPR}px Inter`;
+  ctx.fillStyle=`rgba(4,9,18,${0.52*fin(0,900)*(1-out*0.5)})`; ctx.fillRect(0,0,cv.width,cv.height);
+  const cx=cv.width/2, cy=cv.height*0.38, big=Math.min(64,cv.width/8.5/DPR), fs=Math.min(16,cv.width/26/DPR)*DPR;
+  ctx.globalAlpha=kT; ctx.fillStyle="rgba(150,178,218,.7)"; ctx.font=`700 ${12*DPR}px Inter`;
   ctx.fillText("ANTARCTIC RESEARCH STATION", cx, cy-big*0.75*DPR);
   ctx.fillStyle="rgba(208,230,255,.98)"; ctx.font=`900 ${big*DPR}px Inter`; ctx.fillText("VERGLAS", cx, cy);
   ctx.fillStyle="rgba(150,178,218,.8)"; ctx.font=`700 ${13*DPR}px Inter`; ctx.fillText(`OUTPOST ${OUTPOST}`, cx, cy+big*0.55*DPR);
-  ctx.globalAlpha=k2; ctx.fillStyle="rgba(228,236,250,.9)"; ctx.font=`600 ${Math.min(16,cv.width/26/DPR)*DPR}px Inter`;
-  ctx.fillText("The winter crew is alone on the ice.", cx, cy+big*1.05*DPR);
-  ctx.fillStyle="rgba(255,120,120,.92)"; ctx.font=`700 ${Math.min(16,cv.width/26/DPR)*DPR}px Inter`;
-  ctx.fillText("Something came in from the cold.", cx, cy+big*1.05*DPR+22*DPR);
+  // three lines, each fading in slowly in turn so there's time to read every one
+  const lines=[
+    [1300, "228,236,250", "The winter crew is alone on the ice."],
+    [3100, "255,120,120", "Something came in from the cold."],
+    [4900, "186,212,248", "Bring the outpost back to full power before it picks you off."],
+  ];
+  ctx.font=`600 ${fs}px Inter`; ctx.globalAlpha=1;
+  lines.forEach((ln,i)=>{ const a=fin(ln[0],1500)*(1-out);
+    ctx.fillStyle=`rgba(${ln[1]},${a.toFixed(3)})`; ctx.fillText(ln[2], cx, cy+big*1.05*DPR+i*26*DPR); });
   ctx.restore();
 }
 // end card — who won and how, over the revealed station; the loop holds it a few seconds then re-deals
