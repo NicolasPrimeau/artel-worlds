@@ -290,7 +290,7 @@ function callCold(id){ myGuess=(myGuess===id?null:id); syncHud(); renderInspecto
 let curPhase='', phaseT0=0;  // phaseT0 stamps phase changes so intro/end can fade in
 let thoughtOf={}, thoughtHist={}, lastThought={}, downC=null, tapC=null;  // ambient thoughts + click-to-inspect
 const EJECT_MS=3600;  // how long the ejected researcher takes to trudge off into the storm
-const DISCO_MS=5000;  // the "body found" beat — a fixed 5s; the server holds the discussion until it's done
+const DISCO_MAX=12000;  // the "body found" beat ends once the crew have all gathered + 5s — this is the safety cap
 (function seed(){ const names=["Softmaxwell","Overfitz","Hallucinov","Frostbyte","ReLuther","Quantz","Attenborough","Embeddington","Adamson","Tokarev"];
   const rk=Object.keys(STATION0.rects);
   STATE.agents=names.map((n,i)=>({id:i,name:n,model:"gpt-oss-120b",room:rk[i%rk.length],alive:i!==5,task:i%3===0,body:i===5,c:i})); })();
@@ -1229,9 +1229,13 @@ function drawDiscovery(t){
   const e=Math.min(1,ms/1500), ease=e*e*(3-2*e);  // smooth zoom-in over the first 1.5s
   if(r){ const fitZ=Math.max(c0.z*1.6, Math.min((cv.width/DPR)/(r.tw*SCALE),(cv.height/DPR)/(r.th*SCALE))*0.78);  // frame the room itself
     cam.z=c0.z+(fitZ-c0.z)*ease; cam.x=c0.x+(r.cx-c0.x)*ease; cam.y=c0.y+(r.cy-c0.y)*ease; }
-  // ZOOM ONLY — hold the station as it is and push the camera into the body's room; no herding the
-  // crew in. The viewer sees the scene where it happened: the corpse and whoever walked in on it.
-  layoutAgents(); moveAgents();
+  // GATHER: walk every living agent INTO the body's room (override the engine positions just for this
+  // beat) — they ring the scene before the meeting. The hold ends only once they've all arrived (+5s).
+  if(r){ const liv=STATE.agents.filter(a=>a.alive&&a.wx!=null), n=Math.max(1,liv.length);
+    liv.forEach((a,i)=>{ a.room=disco.room; a.task=false;
+      const ang=TAU*i/n, rad=Math.min(r.tw,r.th)*0.32;
+      a.tx=(r.tx+r.tw/2+Math.cos(ang)*rad)*SCALE; a.ty=(r.ty+r.th/2+Math.sin(ang)*rad)*SCALE; setPath(a,disco.room); });
+    for(let i=0;i<3;i++) moveAgents(); }   // 3x step — they hurry to the scene
   drawSky(); drawAmbient(t); drawStation(t); drawAgents(t); applyLighting(); drawFx();
   const vic=STATE.agents.find(a=>a.name===disco.victim);
   const [bx,by]= (vic&&vic.wx!=null)?toScreen(vic.wx,vic.wy):(r?toScreen(r.cx,r.cy):[cv.width/2,cv.height/2]);
@@ -1253,8 +1257,13 @@ function drawDiscovery(t){
 }
 function frame(t){
   if(STATE.phase==='intro'){ drawSky(); drawAmbient(t); drawStation(t); applyLighting(); drawSnow(t); vignette(); drawIntro(t); requestAnimationFrame(frame); return; }
-  if(disco){ if(performance.now()-disco.t0<DISCO_MS){ drawDiscovery(t); requestAnimationFrame(frame); return; }
-    cam.x=disco.cam0.x; cam.y=disco.cam0.y; cam.z=disco.cam0.z; disco=null; }  // restore the overview camera
+  if(disco){ const ms=performance.now()-disco.t0;
+    const moving=STATE.agents.some(a=>a.alive&&a.moving);
+    if(ms>1500 && !moving && !disco.gatheredAt) disco.gatheredAt=performance.now();  // everyone's in the room
+    const done=(disco.gatheredAt && performance.now()-disco.gatheredAt>=5000) || ms>=DISCO_MAX;  // +5s, or a hard cap
+    if(!done){ drawDiscovery(t); requestAnimationFrame(frame); return; }
+    cam.x=disco.cam0.x; cam.y=disco.cam0.y; cam.z=disco.cam0.z; disco=null;  // restore the overview camera
+    if(meet) $('chat').classList.add('show'); }  // only NOW does the meeting chat appear
   if(meet){ drawSky(); drawMeeting(t); drawSnow(t); vignette(); requestAnimationFrame(frame); return; }
   drawSky(); drawAmbient(t); drawStation(t); layoutAgents(); moveAgents(); drawAgents(t); applyLighting(); drawFx(); drawSnow(t); vignette(); drawKillPulse(); if(STATE.hunting) drawHunt(t);
   if(STATE.phase==='gameover') drawEnd(t);
@@ -1330,7 +1339,7 @@ function nameColor(n){ const a=STATE.agents.find(x=>x.name===n); return a?COLORS
 function applyAgents(arr){ const byId={}; for(const a of STATE.agents)byId[a.id]=a;
   STATE.agents=arr.map(s=>{ const a=byId[s.id]||{id:s.id}; a.name=s.name; a.model=s.model; a.room=s.room; a.alive=s.alive; a.task=s.tasking; a.body=s.body; a.c=s.color; a.cold=s.cold; a.gx=s.gx; a.gy=s.gy; return a; }); }
 function renderChat(s){ const chat=$('chat'), inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
-  if(inMeet){ chat.classList.add('show'); const m=s.meeting; $('chat-title').textContent='EMERGENCY MEETING';
+  if(inMeet){ chat.classList.toggle('show', !disco); const m=s.meeting; $('chat-title').textContent='EMERGENCY MEETING';
     $('chat-lede').textContent=m.victim?`${m.reporter} found ${m.victim} dead in ${m.room}`:`${m.reporter} sounded the alarm`;
     const tl=(m.transcript||[]).map(l=>`<li><span class="who" style="color:${nameColor(l.name)}">${l.name}</span><span class="tx">${esc(l.text)}</span></li>`);
     // votes land in the chat as deterministic "X voted for Y" lines (server reveals them one by one), so a

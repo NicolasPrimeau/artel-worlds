@@ -31,8 +31,8 @@ TASK_TICK = float(env("TICK_INTERVAL", "4.2"))  # min seconds per task-phase tic
 STMT_DELAY = float(env("STMT_DELAY", "4.6"))  # seconds each spoken line holds
 PRE_VOTE = float(env("PRE_VOTE", "3.5"))  # the table settles before the vote opens
 DISCO_HOLD = float(
-    env("DISCO_HOLD", "5.2")
-)  # hold for the client's "body found" beat before the talk starts
+    env("DISCO_HOLD", "8.0")
+)  # hold for the client's gather-then-5s "body found" beat before the talk starts
 VOTE_DELAY = float(env("VOTE_DELAY", "1.9"))  # seconds between revealed votes
 WHISPER_DELAY = 1.6  # how long a private-whisper indicator flashes before play moves on
 EJECT_WALK = (
