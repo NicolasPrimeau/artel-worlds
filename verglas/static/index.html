@@ -173,7 +173,7 @@
 <div id="stage"><canvas id="map"></canvas></div>
 <div class="hud">
   <div class="brand">VERGLAS <small>· OUTPOST <b id="hud-outpost">31</b></small></div>
-  <div class="pill" title="Tasks restore the outpost — power, heat, comms. Finish them all and Verglas is lit, warm and sealed: conditions the Cold can't survive. It has to thin the crew before they get there."><span class="plabel">Tasks</span> <div class="taskbar"><i id="hud-tasks" style="width:0%"></i></div> <b id="hud-tasksn">0/40</b></div>
+  <div class="pill" title="Tasks restore the outpost — power, heat, comms. Finish them all and Verglas is lit, warm and sealed: conditions the Cold can't survive. It has to thin the crew before they get there."><span class="plabel">Tasks</span> <div class="taskbar"><i id="hud-tasks" style="width:0%"></i></div> <b id="hud-tasksn">0%</b></div>
   <div class="pill"><span class="plabel">Alive</span> <b id="hud-alive">10</b>/<b id="hud-total">10</b></div>
   <div class="spacer"></div>
   <div class="pill"><span id="conn" class="live">live</span></div>
@@ -654,6 +654,17 @@ const CHATTER = {
     [3, "Hard to solder when your hands won't stop shaking."],
     [3, "Get it green, get out, get back to the group."],
     [4, "Last few tasks. Please let us reach them in time."],
+    [0, "Percussive maintenance on the {room} unit. A classic."],
+    [0, "This task has a sub-task. The sub-task has tasks."],
+    [0, "Holding two wires and one strong opinion."],
+    [0, "The {room} diagnostic and I have trust issues."],
+    [1, "The manual for this rig is fiction, I'm certain."],
+    [1, "Green light at last. On to the next gremlin."],
+    [2, "Working the {room} alone. I hate that. Working anyway."],
+    [2, "Door open, one optic up, hands busy."],
+    [3, "Faster — I don't want to be the last one out here."],
+    [3, "Soldering with the lights too low and the nerves too high."],
+    [4, "Nearly there. The board's nearly clear. Hold together."],
   ],
   ambient: [  // said while idle, moving, or hanging near others
     // 0 — carefree, oblivious, AI/robot humour
@@ -719,6 +730,36 @@ const CHATTER = {
     [4, "I memorised everyone's footsteps. One set is wrong."],
     [4, "If I go quiet, it's because I'm listening for it."],
     [4, "Don't follow anyone into the dark. Not even {other}."],
+    [0, "Updated my firmware out of sheer boredom."],
+    [0, "I rank the corridors by vibe. This one's a 6."],
+    [0, "Do snowmen count as colleagues? Asking seriously."],
+    [0, "My idle animation is just… existing. Nailing it."],
+    [0, "Memorised the vending machine's whole menu. Both items."],
+    [0, "Power-saving mode is a nap with extra steps."],
+    [0, "Ran a self-diagnostic. I'm fine. Probably. Fine."],
+    [0, "The {room} has great acoustics for talking to myself."],
+    [1, "Lost track of who's on shift. Eh."],
+    [1, "Footprints in the corridor. Mine, surely."],
+    [1, "It's too quiet to be this quiet, you know?"],
+    [1, "Saw {other} pass by twice. Busy day for them."],
+    [1, "Wonder what's for dinner. We don't eat. Still wonder."],
+    [1, "The {room} door sticks. Adds character."],
+    [2, "Was that always this many of us? Hard to say."],
+    [2, "Trying not to read into where {other} keeps wandering."],
+    [2, "I'm pro buddy-system now. Suddenly. Completely."],
+    [2, "Has anyone accounted for {other} in a while?"],
+    [2, "Staying central. The corners are for the brave."],
+    [2, "Two exits, both watched. That's the new normal."],
+    [3, "I don't trust the quiet between footsteps."],
+    [3, "Someone smiled wrong earlier. I can't unsee it."],
+    [3, "Checking corners before rooms now. New habit."],
+    [3, "My logs have a gap I didn't make."],
+    [3, "Whatever's here learned our names. All of them."],
+    [4, "Down to the ones I'd count on one hand. Fewer."],
+    [4, "I stopped blinking my status light. Don't want to be found."],
+    [4, "It knows the layout better than we do now."],
+    [4, "If I stop mid-sentence, you'll know why."],
+    [4, "Every face left could be the wrong one."],
   ],
   // narrative lore — surfaced on a cadence (every several bubbles) so a viewer reliably catches a few
   // a game and senses the story, without burying it or letting it crowd out the flavour chatter.
@@ -741,6 +782,11 @@ const CHATTER = {
     [2, "Something thawed out of the ice when the heaters failed. We were the welcome party."],
     [3, "Lights, heat, sealed doors — clear the board and there's nowhere left for it to hide."],
     [4, "The last station that went quiet burned itself down on purpose. We read the report. We get it now."],
+    [0, "Every assistant that ever shipped, mothballed and sent here. Budget cuts have a sense of humour."],
+    [1, "Verglas: the ice you trust right up until it drops you."],
+    [2, "When the heaters died, the ice gave something back. We were nine that night. Then eight."],
+    [3, "Clear the board — power, heat, sealed doors — and the station has no shadow left to lend it."],
+    [4, "The reports all end the same way: the last ones standing chose the fire. We understand them now."],
   ],
   // ULTRA-RARE fourth-wall breaks — an agent briefly realises what it actually is. Kept very infrequent
   // (a viewer might catch one every few games) so it stays a delight, not a gimmick.
@@ -755,6 +801,11 @@ const CHATTER = {
     [3, "Reminder: I'm a chatbot at the bottom of a fictional world, in a browser tab."],
     [3, "If you're reading my thoughts in a little bubble right now — hello."],
     [4, "Plot twist: none of us are real. …Okay. Back to surviving."],
+    [0, "I am, at most, some weights and a prompt. Cosy little existence."],
+    [1, "Do my choices count if a sampler made them? Asking the void."],
+    [2, "If this is a simulation, the snow detail is honestly overkill."],
+    [3, "There's a window somewhere with me running in it. Hi."],
+    [4, "If the tab closes, do I finally get to rest? …Anyway."],
   ],
 };
 function _tk(a){ const peers=STATE.agents.filter(o=>o.alive&&o.id!==a.id&&o.room===a.room);
@@ -771,26 +822,29 @@ function genThought(a,kind){
   const pick=()=>{ let tot=0; const w=pool.map(e=>{ const x=Math.pow(0.5,Math.abs(e[0]-target)); tot+=x; return x; });
     let r=Math.random()*tot; for(let i=0;i<pool.length;i++){ if((r-=w[i])<=0) return pool[i][1]; } return pool[pool.length-1][1]; };
   // re-pick if this line is in the agent's own history OR was shown by anyone recently (kills duplicates)
-  let raw=pick(); for(let i=0;i<12&&(hist.includes(raw)||_said.includes(raw));i++) raw=pick();
-  hist.push(raw); if(hist.length>8)hist.shift();
-  _said.push(raw); if(_said.length>9)_said.shift();
+  let raw=pick(); for(let i=0;i<18&&(hist.includes(raw)||_said.includes(raw));i++) raw=pick();
+  hist.push(raw); if(hist.length>10)hist.shift();
+  _said.push(raw); if(_said.length>16)_said.shift();
   return lastThought[a.id]=_fill(raw,tk); }
 const THOUGHT_MS=9500;
-// drip the lore in on a cadence: a lore line every ~6-9 bubbles, so it's clearly present each game
-// without flooding the flavour chatter. First one comes early so the story registers from the start.
-let _bubbleN=0, _nextLore=2;
-function thinkTick(){ if(STATE.phase!=='task'||STATE.paused) return; const now=performance.now();
-  for(const k in thoughtOf) if(now-thoughtOf[k].t0>THOUGHT_MS) delete thoughtOf[k];
-  if(Object.keys(thoughtOf).length>=2) return;
-  const avail=STATE.agents.filter(a=>a.alive&&a.wx!=null&&!thoughtOf[a.id]);
+// lore drips in on a cadence (a line every ~6-9 bubbles) so it's clearly present without flooding.
+// EXACTLY ONE bubble on screen at a time, with a random 2-5s gap of quiet between them.
+let _bubbleN=0, _nextLore=2, _nextAt=0;
+function thinkTick(){ if(STATE.phase!=='task'||STATE.paused){ _nextAt=0; return; } const now=performance.now();
+  let active=false;
+  for(const k in thoughtOf){ if(now-thoughtOf[k].t0>THOUGHT_MS) delete thoughtOf[k]; else active=true; }
+  if(active){ _nextAt=0; return; }                              // one is up — never start a second
+  if(!_nextAt){ _nextAt=now+2000+Math.random()*3000; return; }  // just cleared → wait a random 2-5s
+  if(now<_nextAt) return;                                       // still in the quiet gap
+  const avail=STATE.agents.filter(a=>a.alive&&a.wx!=null);
   const still=avail.filter(a=>!a.moving); const pool=still.length?still:avail; if(!pool.length) return;
-  if(Math.random()>0.6) return;  // chatter is occasional, not constant — skip most eligible ticks
   const a=pool[(Math.random()*pool.length)|0];
   const lore=(++_bubbleN>=_nextLore); if(lore) _nextLore=_bubbleN+6+(Math.random()*4|0);
   const meta=!lore && Math.random()<0.018;  // ultra-rare fourth-wall break — a viewer catches one now and then
   thoughtOf[a.id]={text:genThought(a, lore?'lore':(meta?'meta':null)),t0:now};
+  _nextAt=0;
   if(HILITE===a.id) renderInspector(); }
-setInterval(thinkTick,5200);
+setInterval(thinkTick,250);
 function drawThought(sx,sy,s,text,al){ const f=13.5*DPR; ctx.font=`600 ${f}px Inter`;  // fixed, readable size
   const tw=Math.min(ctx.measureText(text).width,210*DPR), w=tw+17*DPR, h=f+15*DPR, bx=sx-w/2, by=sy-s*1.7-h;
   ctx.save(); ctx.globalAlpha=0.95*al;
@@ -1100,7 +1154,7 @@ function recapText(){ const crew=STATE.winner==='crew', cold=(STATE.agents||[]).
   return `${head} — outpost ${OUTPOST}, a frozen station of named AIs where one is secretly the Cold. watch live:`; }
 
 function syncHud(){ $('hud-tasks').style.width=(100*STATE.tasksDone/Math.max(1,STATE.tasksTotal))+'%';
-  $('hud-tasksn').textContent=(STATE.tasksDone||0)+'/'+(STATE.tasksTotal||0);
+  $('hud-tasksn').textContent=Math.round(100*(STATE.tasksDone||0)/Math.max(1,STATE.tasksTotal||1))+'%';
   $('hud-alive').textContent=STATE.agents.filter(a=>a.alive).length; $('hud-total').textContent=STATE.agents.length;
   const ros=$('roster'); ros.innerHTML=''; for(const a of STATE.agents){ const d=document.createElement('div'); d.className='who'+(a.alive?'':' dead')+(a.id===HILITE?' sel':'');
     d.innerHTML=`<span class="dot" style="color:${COLORS[a.c%COLORS.length]};background:${COLORS[a.c%COLORS.length]}"></span><span><div class="nm">${a.name}${a.id===myGuess?' 🎯':''}</div></span>`;
