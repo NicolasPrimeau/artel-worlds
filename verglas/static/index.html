@@ -284,7 +284,7 @@ let lastKillTick=-1, fx=[], ejecting=null, mouse={x:-1,y:-1}, userMoved=false, H
 let curPhase='', phaseT0=0;  // phaseT0 stamps phase changes so intro/end can fade in
 let thoughtOf={}, thoughtHist={}, lastThought={}, downC=null, tapC=null;  // ambient thoughts + click-to-inspect
 const EJECT_MS=3600;  // how long the ejected researcher takes to trudge off into the storm
-const DISCO_MAX=12000;  // the "body found" beat ends once the crew have all gathered + 5s — this is the safety cap
+const DISCO_MAX=15000;  // the "body found" beat ends once the crew have all gathered + 5s — this is the safety cap
 const INTRO_MS=12000;   // opening card duration — matches the server's INTRO_LINGER so the fade-out lands on the cut
 (function seed(){ const names=["Softmaxwell","Overfitz","Hallucinov","Frostbyte","ReLuther","Quantz","Attenborough","Embeddington","Adamson","Tokarev"];
   const rk=Object.keys(STATION0.rects);
@@ -1231,7 +1231,7 @@ function drawDiscovery(t){
     liv.forEach((a,i)=>{ a.room=disco.room; a.task=false;
       const ang=TAU*i/n, rad=Math.min(r.tw,r.th)*0.32;
       a.tx=(r.tx+r.tw/2+Math.cos(ang)*rad)*SCALE; a.ty=(r.ty+r.th/2+Math.sin(ang)*rad)*SCALE; setPath(a,disco.room); });
-    for(let i=0;i<3;i++) moveAgents(); }   // 3x step — they hurry to the scene
+    for(let i=0;i<8;i++) moveAgents(); }   // hurry to the scene fast enough that even far rooms arrive before the cut
   drawSky(); drawAmbient(t); drawStation(t); drawAgents(t); applyLighting(); drawFx();
   const vic=STATE.agents.find(a=>a.name===disco.victim);
   const [bx,by]= (vic&&vic.wx!=null)?toScreen(vic.wx,vic.wy):(r?toScreen(r.cx,r.cy):[cv.width/2,cv.height/2]);
