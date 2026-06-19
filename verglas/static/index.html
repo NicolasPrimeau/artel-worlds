@@ -566,23 +566,34 @@ function setPath(a,room){ if(a.prevRoom && a.prevRoom!==room && a.wx!=null){ a.p
 // and the kill-reach check live server-side, so the renderer just draws where the engine says. setPath
 // still routes the corridor walk when an agent changes rooms.
 function layoutAgents(){ const placed=[], byRoom={};
-  for(const a of STATE.agents){
+  for(const a of STATE.agents){ a._anchor=false;
     if(removedBodies.has(a.id)) continue; if(!a.alive&&!a.body) continue; if(a.gx==null||a.gx<0) continue;
     a.tx=(a.gx+0.5)*SCALE; a.ty=(a.gy+0.5)*SCALE; placed.push(a); (byRoom[a.room]=byRoom[a.room]||[]).push(a); }
+  // a crew member working a task sits ON a console (the glowing terminal), not adrift mid-room: snap each
+  // worker to its nearest free terminal. These become fixed anchors the separation pass parts others around.
+  if(STATE.phase==='task'){ for(const [room,list] of Object.entries(byRoom)){ const terms=TERMINALS[room]||[]; if(!terms.length) continue;
+    const used=new Set();
+    for(const a of list.filter(a=>a.task&&a.alive).sort((x,y)=>x.id-y.id)){
+      let bi=-1,bd=1e9; terms.forEach((tm,i)=>{ if(used.has(i)) return; const dd=Math.hypot(tm.x-a.tx,tm.y-a.ty); if(dd<bd){bd=dd;bi=i;} });
+      if(bi<0) break; used.add(bi); a.tx=terms[bi].x; a.ty=terms[bi].y; a._anchor=true; } } }
   // separation: nudge co-located icons apart so two never fully overlap — they must always read as distinct.
   // Purely visual (the engine's gx/gy cells stand); each is then clamped back inside its own room's walls.
   const MIN=24;  // min centre-to-centre in world px (an icon is ~22px across)
   for(const [room,list] of Object.entries(byRoom)){ if(list.length<2) continue;
     for(let it=0; it<8; it++){ let moved=false;
       for(let i=0;i<list.length;i++) for(let j=i+1;j<list.length;j++){ const a=list[i],b=list[j];
+        if(a._anchor&&b._anchor) continue;  // two workers on distinct consoles never collide — leave them put
         let dx=b.tx-a.tx, dy=b.ty-a.ty, d=Math.hypot(dx,dy); if(d<0.01){ dx=Math.cos(a.id*2.4); dy=Math.sin(a.id*2.4); d=1; }
-        if(d<MIN){ const push=(MIN-d)/2; dx/=d; dy/=d; a.tx-=dx*push; a.ty-=dy*push; b.tx+=dx*push; b.ty+=dy*push; moved=true; } }
+        if(d<MIN){ const push=(MIN-d)/2; dx/=d; dy/=d;
+          const wa=a._anchor?0:(b._anchor?2:1), wb=b._anchor?0:(a._anchor?2:1);  // an anchored worker holds; the other parts around it
+          a.tx-=dx*push*wa; a.ty-=dy*push*wa; b.tx+=dx*push*wb; b.ty+=dy*push*wb; moved=true; } }
       if(!moved) break; } }
   // clamp EVERY icon a full tile inside the room (matching the engine's own cell inset) so the figure —
   // head and name label included — never renders on/through a drawn wall. The engine treats the wall band
   // as "in room", but visually it isn't, so the renderer enforces the tighter, wall-clearing bound.
   const INSET=1.1;
-  for(const a of placed){ const r=ROOMS[a.room]; if(!r) continue;
+  for(const a of placed){ if(a._anchor) continue;  // a worker sits on a valid interior terminal cell (where the beacon draws); clamping would pull it off the console
+    const r=ROOMS[a.room]; if(!r) continue;
     a.tx=Math.min(Math.max(a.tx,(r.tx+INSET)*SCALE),(r.tx+r.tw-INSET)*SCALE);
     a.ty=Math.min(Math.max(a.ty,(r.ty+INSET)*SCALE),(r.ty+r.th-INSET)*SCALE); }
   for(const a of placed) setPath(a,a.room); }
