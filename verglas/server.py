@@ -291,6 +291,13 @@ async def _broadcast(snap: dict | None = None):
         G.viewers.discard(ws)
 
 
+async def _wait_watched() -> None:
+    # PAUSE (don't abandon) whatever's running while nobody is watching or the world is admin-paused —
+    # the meeting/ejection freezes in place and resumes the instant a viewer returns.
+    while not G.viewers or G.paused:
+        await asyncio.sleep(0.4)
+
+
 async def _run_meeting(mt) -> None:
     G.g.reconvene()  # everyone — task-workers included — downs tools and gathers at the Mess Hall table
     G.phase = "meeting"
@@ -298,9 +305,8 @@ async def _run_meeting(mt) -> None:
     G.whisper = None
     G.meeting = mt
     await _broadcast()
-    if (
-        mt.victim is not None and G.viewers
-    ):  # let the client's "body found" beat play before the talk
+    await _wait_watched()
+    if mt.victim is not None:  # let the client's "body found" beat play before the talk
         await asyncio.sleep(DISCO_HOLD)
 
     async def on_item(kind: str, agent_id: int, payload) -> None:
@@ -339,7 +345,7 @@ async def _run_meeting(mt) -> None:
             await asyncio.sleep(VOTE_DELAY)
 
     if llm.enabled():
-        votes = await run_llm_meeting(G.g, mt, on_item, watched=lambda: bool(G.viewers))
+        votes = await run_llm_meeting(G.g, mt, on_item, gate=_wait_watched)
     else:  # no key configured → canned statements + deterministic decider so the scene still plays
         from .brain import make_decider
 
@@ -349,12 +355,13 @@ async def _run_meeting(mt) -> None:
     G.phase = "ejection"
     G.revealed = False
     await _broadcast()
-    if mt.ejected is not None and G.viewers:  # skip the suspense beats if nobody's watching
+    await _wait_watched()  # hold the walk-out + reveal until someone's watching (pause, don't skip)
+    if mt.ejected is not None:
         await asyncio.sleep(EJECT_WALK)
     G.revealed = True  # the storm-door reveal
     await _broadcast()
-    if G.viewers:
-        await asyncio.sleep(EJECT_REVEAL)
+    await _wait_watched()
+    await asyncio.sleep(EJECT_REVEAL)
     if G.g.winner is None:  # meeting's over and the game goes on → back to the station
         G.phase = "task"
         await _broadcast()

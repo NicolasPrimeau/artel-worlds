@@ -341,13 +341,13 @@ async def _vote_round(game, mt, transcript, dms=None, on_item=None) -> dict:
     return votes
 
 
-async def run_llm_meeting(game: Game, mt: Meeting, on_item=None, watched=None) -> dict:
+async def run_llm_meeting(game: Game, mt: Meeting, on_item=None, gate=None) -> dict:
     # an EMERGENT discussion — no fixed rounds. One survivor acts at a time (reactively chosen): speak,
     # whisper privately, or stay quiet. It runs until the floor goes quiet or the cap, then the vote
     # opens and everyone must vote someone or pass. Whispers are real private Artel DMs that the vote
     # prompt then weighs — so blocs lined up in the dark actually swing the result.
-    # `watched` is an optional predicate: if it ever returns False (no viewers), the meeting stops making
-    # LLM calls at once — we don't burn free-tier budget deliberating for an empty room.
+    # `gate` is an optional async barrier awaited before each turn: while nobody's watching it PAUSES the
+    # meeting (no LLM calls, state frozen) and resumes the instant a viewer returns — never abandons it.
     transcript: list = []
     mt.transcript = transcript
     mt.votes = {}
@@ -360,9 +360,8 @@ async def run_llm_meeting(game: Game, mt: Meeting, on_item=None, watched=None) -
     n = len(game.living())
     cap = min(n + 1, 9)  # keep the LLM call count modest — free-tier-Groq-friendly
     for i in range(cap):
-        if watched is not None and not watched():  # nobody's watching → stop spending immediately
-            mt.votes = {}
-            return {}
+        if gate is not None:
+            await gate()  # pause here while unwatched, resume when a viewer returns
         is_open = i == 0 and opener is not None
         actor = opener if is_open else _next_actor(game, transcript, last_actor)
         if actor is None:
@@ -390,9 +389,8 @@ async def run_llm_meeting(game: Game, mt: Meeting, on_item=None, watched=None) -
             quiet += 1
         if quiet >= 2 and spoken_actions >= 3:  # the floor petered out
             break
-    if watched is not None and not watched():  # the room emptied before the vote → don't run it
-        mt.votes = {}
-        return {}
+    if gate is not None:
+        await gate()  # hold the vote until someone's watching it land
     if on_item:
         await on_item("settle", -1, None)  # discussion's over — the vote opens
     votes = await _vote_round(game, mt, transcript, dms=dms, on_item=on_item)

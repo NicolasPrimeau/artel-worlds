@@ -584,21 +584,16 @@ function look(name){ if(LOOKS[name])return LOOKS[name]; let h=2166136261;
 // the name hash. Reads as a tidy avatar at the meeting table and as a small dot on the map.
 function figure(sx,sy,s,col,alive,working,t,lk){
   ctx.fillStyle="rgba(0,0,0,.42)"; ctx.beginPath(); ctx.ellipse(sx,sy+s*0.64,s*0.6,s*0.2,0,0,TAU); ctx.fill();
-  if(!alive){ ctx.save(); ctx.translate(sx,sy+s*0.28); ctx.rotate(0.42); ctx.globalAlpha=.96;
-    // the SAME crewmate, fallen: a long parka lying down (reads adult, not swaddled), boots at the far
-    // end, fur-hood head with a skin face and X-ed eyes — unmistakably a downed researcher from top-down.
-    const edge=shade(col,-58);
-    const bg=ctx.createLinearGradient(0,-s*0.36,0,s*0.36); bg.addColorStop(0,shade(col,-4)); bg.addColorStop(1,shade(col,-46));
-    ctx.fillStyle=bg; rr(-s*0.62,-s*0.34,s*1.55,s*0.68,s*0.32); ctx.fill();                    // parka, lying down
-    ctx.strokeStyle=edge; ctx.lineWidth=s*0.06; rr(-s*0.62,-s*0.34,s*1.55,s*0.68,s*0.32); ctx.stroke();
-    ctx.strokeStyle="rgba(0,0,0,.2)"; ctx.lineWidth=s*0.05; ctx.beginPath(); ctx.moveTo(-s*0.18,-s*0.3); ctx.lineTo(-s*0.18,s*0.3); ctx.stroke();  // coat seam
-    ctx.fillStyle=shade(col,-34); rr(s*0.74,-s*0.3,s*0.2,s*0.26,s*0.07); ctx.fill(); rr(s*0.74,s*0.05,s*0.2,s*0.26,s*0.07); ctx.fill();  // two boots
-    ctx.fillStyle=shade(col,-16); ctx.beginPath(); ctx.arc(-s*0.5,0,s*0.4,0,TAU); ctx.fill();   // fur hood
-    ctx.strokeStyle=edge; ctx.lineWidth=s*0.05; ctx.stroke();
-    ctx.fillStyle=lk?lk.skin:"#d9c3b0"; ctx.beginPath(); ctx.arc(-s*0.5,0,s*0.27,0,TAU); ctx.fill();  // face
-    ctx.strokeStyle="rgba(40,48,60,.95)"; ctx.lineWidth=s*0.07; ctx.lineCap="round";             // X-ed eyes
-    const cx=-s*0.5, d=s*0.075, g=s*0.13;
-    for(const ox of [-g,g]){ ctx.beginPath(); ctx.moveTo(cx+ox-d,-d);ctx.lineTo(cx+ox+d,d);ctx.moveTo(cx+ox+d,-d);ctx.lineTo(cx+ox-d,d); ctx.stroke(); }
+  if(!alive){ ctx.save(); ctx.translate(sx,sy); ctx.rotate(Math.PI/2); ctx.globalAlpha=.95;  // the same crewmate, tipped 90° onto its side
+    const hy=-s*0.3, bodyTop=-s*0.04;
+    const bg=ctx.createLinearGradient(-s*0.6,0,s*0.6,0); bg.addColorStop(0,shade(col,-2)); bg.addColorStop(1,shade(col,-40));
+    ctx.fillStyle=bg; rr(-s*0.6,bodyTop,s*1.2,s*0.8,s*0.36); ctx.fill();                          // parka body
+    ctx.strokeStyle=shade(col,-56); ctx.lineWidth=s*0.07; rr(-s*0.6,bodyTop,s*1.2,s*0.8,s*0.36); ctx.stroke();
+    ctx.strokeStyle="rgba(0,0,0,.22)"; ctx.lineWidth=s*0.05; ctx.beginPath(); ctx.moveTo(0,bodyTop+s*0.08); ctx.lineTo(0,s*0.52); ctx.stroke();  // coat seam
+    ctx.fillStyle=shade(col,-16); ctx.beginPath(); ctx.arc(0,hy,s*0.6,0,TAU); ctx.fill();         // fur hood ring
+    ctx.fillStyle=lk?lk.skin:"#d9c3b0"; ctx.beginPath(); ctx.arc(0,hy,s*0.43,0,TAU); ctx.fill();   // face
+    ctx.strokeStyle="rgba(28,36,48,.95)"; ctx.lineWidth=s*0.085; ctx.lineCap="round";              // X-ed eyes (was goggles)
+    for(const ox of [-s*0.18,s*0.18]){ const d=s*0.1; ctx.beginPath(); ctx.moveTo(ox-d,hy-d);ctx.lineTo(ox+d,hy+d);ctx.moveTo(ox+d,hy-d);ctx.lineTo(ox-d,hy+d);ctx.stroke(); }
     ctx.restore(); return; }
   const hy=sy-s*0.3;
   if(working){ ctx.strokeStyle=`rgba(57,217,138,${0.6+0.4*Math.sin(t*0.006)})`; ctx.lineWidth=s*0.12;

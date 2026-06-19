@@ -217,7 +217,6 @@ TASK_SPAWN_P = (
 WORK_TICKS = 3  # a task occupies its crew for several ticks — they linger at the console
 TASK_SLACK = 4  # keep this many fewer tasks-in-play than living players, so a couple are always free to buddy
 KILL_CD = 3  # ~15s between kills (each task tick runs ~5s, so 3 ticks ≈ 15s)
-OPP_KILL_P = 0.12  # chance the Cold risks a kill with WITNESSES present (vs only when truly alone)
 START_GRACE = KILL_CD  # the same ~15s gates the FIRST kill too — no long opening grace
 FOLLOW_TICKS = 6  # how long an autonomous agent tails a buddy before it stops to decide again
 # meetings happen ONLY on a body report — there is no emergency button (no calling a meeting with no body)
@@ -504,7 +503,7 @@ class Game:
                 if not crew_here:
                     continue
                 isolated = len(self._occ(m.room)) == 2  # just the impostor + one victim
-                if isolated or self.rng.random() < OPP_KILL_P:
+                if isolated:  # only an unwitnessed kill — never in line of sight of anyone else
                     victim = self.rng.choice(crew_here)
                     victim.alive = False
                     self.bodies[m.room] = victim.id
@@ -541,23 +540,28 @@ class Game:
         return a.alive and a.work == 0 and a.dest is None and a.goto is None and a.follow is None
 
     def legal_kills(self, m) -> list[int]:
-        # crew the Cold `m` could kill THIS tick: cooldown ready, past the grace period, co-located
+        # crew the Cold can take THIS tick: off cooldown, past grace, and ALONE with exactly one crew —
+        # no other agent in the room (no line of sight, no witness). A kill with anyone watching is out.
         if self.cd > 0 or self.tick < START_GRACE:
             return []
-        return [c.id for c in self._occ(m.room) if not c.impostor]
+        occ = self._occ(m.room)
+        crew = [c for c in occ if not c.impostor]
+        return [crew[0].id] if len(occ) == 2 and len(crew) == 1 else []
 
     def prime_kill(self, a) -> bool:
-        # the Cold's shot: off cooldown, past grace, alone-ish with one or two crew (not in a crowd). The
-        # server uses this to pull the Cold into a decision even mid-task, so it never sleeps through an
-        # opportunity — it still chooses, and the prompt tells it not to kill while others watch.
+        # the Cold's shot: off cooldown, past grace, and ALONE with exactly one crew (no third pair of
+        # eyes). The server uses this to pull the Cold into a decision the instant it gets someone alone.
         if not (a.impostor and self.cd == 0 and self.tick >= START_GRACE):
             return False
         occ = self._occ(a.room)
-        return len(occ) <= 3 and bool([c for c in occ if not c.impostor])
+        return len(occ) == 2 and any(not c.impostor for c in occ if c.id != a.id)
 
     def do_kill(self, m, victim_id: int, force: bool = False) -> bool:
-        victim = next((c for c in self._occ(m.room) if c.id == victim_id and not c.impostor), None)
-        if victim is None or (self.cd > 0 and not force):
+        occ = self._occ(m.room)
+        victim = next((c for c in occ if c.id == victim_id and not c.impostor), None)
+        # no kill in front of witnesses: the room must hold ONLY the killer and the victim (line of sight
+        # of any third agent forbids it). The final-hunt force-kill is exempt — one crewmate is all that's left.
+        if victim is None or (self.cd > 0 and not force) or (not force and len(occ) != 2):
             return False
         victim.alive = False
         self.bodies[m.room] = victim.id
