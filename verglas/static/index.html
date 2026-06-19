@@ -1101,8 +1101,10 @@ function drawKillPulse(){ if(!killPulse)return; const e=performance.now()-killPu
   const k=e/800; ctx.save(); ctx.globalAlpha=(1-k)*0.5;
   const g=ctx.createRadialGradient(cv.width/2,cv.height/2,cv.height*0.32,cv.width/2,cv.height/2,cv.height*0.78);
   g.addColorStop(0,"rgba(220,20,20,0)"); g.addColorStop(1,"rgba(210,18,18,.92)"); ctx.fillStyle=g; ctx.fillRect(0,0,cv.width,cv.height); ctx.restore(); }
-// heavy, wind-blown snow — two layers (far fine + near fat) sweeping across on a gust
-const snow=[...Array(260)].map((_,i)=>({x:Math.random(),y:Math.random(),s:Math.random()*2.2+0.5,d:Math.random()*0.7+0.3,near:i%3===0}));
+// heavy, wind-blown snow — two layers (far fine + near fat) sweeping across on a gust. count scales with
+// viewport width (~150 on desktop, ~70 on a phone) so the hottest per-frame loop stays cheap where it bites most
+const SNOW_N=Math.round(Math.min(150,Math.max(70,innerWidth/9)));
+const snow=[...Array(SNOW_N)].map((_,i)=>({x:Math.random(),y:Math.random(),s:Math.random()*2.2+0.5,d:Math.random()*0.7+0.3,near:i%3===0}));
 function drawSnow(t){ ctx.save(); ctx.fillStyle="#eaf3ff"; const gust=Math.sin(t*0.0003)*0.10+0.16;
   for(const f of snow){ const drift=(f.x + t*0.00007*f.d + Math.sin(t*0.0006+f.y*7)*0.02 + (f.y)*gust)%1;
     const x=drift*cv.width, y=((f.y+t*(f.near?0.00013:0.00007)*f.d)%1)*cv.height;
@@ -1328,8 +1330,11 @@ function drawFrame(t){
   if(STATE.phase==='gameover') drawEnd(t);
 }
 // the render loop ALWAYS re-arms, even if a single frame throws (a half-applied snapshot, a missing room
-// mid-rebuild) — one bad frame must never freeze the page while the socket keeps streaming.
-function frame(t){ try{ drawFrame(t); }catch(_){ } requestAnimationFrame(frame); }
+// mid-rebuild) — one bad frame must never freeze the page while the socket keeps streaming. it's also capped
+// to ~40fps: the gust/parallax motion reads identically to 60, at roughly a third less CPU/GPU. `t` is the
+// real-time rAF clock, so skipping a frame never changes animation speed — only how often we redraw.
+const FRAME_MS=1000/40; let _lastDraw=0;
+function frame(t){ if(t-_lastDraw>=FRAME_MS){ _lastDraw=t; try{ drawFrame(t); }catch(_){ } } requestAnimationFrame(frame); }
 // opening card — the frozen outpost, then the dread, fading in over the blowing snow
 function drawIntro(t){
   const e=performance.now()-phaseT0;                                   // ms since the card appeared
