@@ -216,9 +216,9 @@ TASK_SPAWN_P = (
 )
 WORK_TICKS = 3  # a task occupies its crew for several ticks — they linger at the console
 TASK_SLACK = 4  # keep this many fewer tasks-in-play than living players, so a couple are always free to buddy
-KILL_CD = 9  # ticks between kills — crew walk to tasks (spread out), so kills come easy; slow them
+KILL_CD = 3  # ~15s between kills (each task tick runs ~5s, so 3 ticks ≈ 15s)
 OPP_KILL_P = 0.12  # chance the Cold risks a kill with WITNESSES present (vs only when truly alone)
-START_GRACE = 12  # ticks before the first kill, reset each new game (cd=START_GRACE)
+START_GRACE = KILL_CD  # the same ~15s gates the FIRST kill too — no long opening grace
 FOLLOW_TICKS = 6  # how long an autonomous agent tails a buddy before it stops to decide again
 # meetings happen ONLY on a body report — there is no emergency button (no calling a meeting with no body)
 MAX_TICKS = 600
@@ -398,8 +398,8 @@ class Game:
         return w * h
 
     def _task_cap(self, room):
-        # bigger rooms hold more task consoles (the Mess Hall fits a few; a cold-locker just one)
-        return max(1, round(self._area(room) / 70))
+        # bigger rooms hold more consoles, but never more than 2 active in any one room at a time
+        return min(2, max(1, round(self._area(room) / 70)))
 
     def _spawn_task(self):
         # light up one more console, in a room that has spare capacity, weighted toward bigger rooms
@@ -789,7 +789,9 @@ def new_game(seed: int, n=6, impostors=1) -> Game:
         corridor=corridor,
         outpost=rng.randint(1, 99),
     )
-    g.tasks_goal = max(8, round(crew_n * 4.5))
+    g.tasks_goal = max(
+        8, round(crew_n * 3.5)
+    )  # winnable under the ~15s kill clock and the 5-min ceiling
     for _ in range(max(2, n - TASK_SLACK)):  # seed the board up to the in-play cap, size-weighted
         g._spawn_task()
     return g
