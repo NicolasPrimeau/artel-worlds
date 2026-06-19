@@ -1240,11 +1240,11 @@ function drawMeeting(t){
 function drawDiscovery(t){
   const ms=performance.now()-disco.t0, r=ROOMS[disco.room], c0=disco.cam0;
   const e=Math.min(1,ms/1500), ease=e*e*(3-2*e);  // smooth zoom-in over the first 1.5s
-  if(r){ cam.z=c0.z+(c0.z*2.2-c0.z)*ease; cam.x=c0.x+(r.cx-c0.x)*ease; cam.y=c0.y+(r.cy-c0.y)*ease; }
-  // GATHER: every living crewmate converges on the body's room (the renderer pins them there and walks
-  // them in fast, so the whole crew rings the scene before the meeting cuts in).
-  for(const a of STATE.agents) if(a.alive){ a.room=disco.room; a.task=false; }  // gather as a crowd, not at consoles
-  layoutAgents(); for(let i=0;i<3;i++) moveAgents();   // 3x step = they hurry to the scene
+  if(r){ const fitZ=Math.max(c0.z*1.6, Math.min((cv.width/DPR)/(r.tw*SCALE),(cv.height/DPR)/(r.th*SCALE))*0.78);  // frame the room itself
+    cam.z=c0.z+(fitZ-c0.z)*ease; cam.x=c0.x+(r.cx-c0.x)*ease; cam.y=c0.y+(r.cy-c0.y)*ease; }
+  // ZOOM ONLY — hold the station as it is and push the camera into the body's room; no herding the
+  // crew in. The viewer sees the scene where it happened: the corpse and whoever walked in on it.
+  layoutAgents(); moveAgents();
   drawSky(); drawAmbient(t); drawStation(t); drawAgents(t); applyLighting(); drawFx();
   const vic=STATE.agents.find(a=>a.name===disco.victim);
   const [bx,by]= (vic&&vic.wx!=null)?toScreen(vic.wx,vic.wy):(r?toScreen(r.cx,r.cy):[cv.width/2,cv.height/2]);
