@@ -536,25 +536,12 @@ function routePath(sx,sy,gx,gy){  // pixel start → pixel goal → walkable til
   return wp;
 }
 function setPath(a,room){ if(a.prevRoom && a.prevRoom!==room && a.wx!=null){ a.path=routePath(a.wx,a.wy,a.tx,a.ty); } a.prevRoom=room; }
-// every present agent gets its OWN tile — no two avatars share a cell. Workers take their task terminal
-// when it's free; everyone else fills the nearest free interior tile to the room centre.
-function layoutAgents(){ const byRoom={}; for(const a of STATE.agents){ if(removedBodies.has(a.id))continue; if(!a.alive&&!a.body)continue; (byRoom[a.room]=byRoom[a.room]||[]).push(a); }
-  for(const [room,list] of Object.entries(byRoom)){ const r=ROOMS[room]; if(!r)continue;
-    let cells=[]; for(let ty=r.ty+1; ty<r.ty+r.th-1; ty++) for(let tx=r.tx+1; tx<r.tx+r.tw-1; tx++) cells.push([tx,ty]);
-    if(cells.length<list.length){ cells=[]; for(let ty=r.ty; ty<r.ty+r.th; ty++) for(let tx=r.tx; tx<r.tx+r.tw; tx++) cells.push([tx,ty]); }
-    const mcx=r.tx+r.tw/2, mcy=r.ty+r.th/2;
-    cells.sort((a,b)=>(Math.abs(a[0]+0.5-mcx)+Math.abs(a[1]+0.5-mcy))-(Math.abs(b[0]+0.5-mcx)+Math.abs(b[1]+0.5-mcy)));
-    const used=new Set();
-    const place=(a,pref)=>{ let cell=null;
-      if(pref){ const k=pref[0]+'|'+pref[1]; if(!used.has(k)) cell=pref; }
-      if(!cell) for(const c of cells){ const k=c[0]+'|'+c[1]; if(!used.has(k)){ cell=c; break; } }
-      if(!cell) cell=[r.tx+1,r.ty+1];
-      used.add(cell[0]+'|'+cell[1]); a.tx=(cell[0]+0.5)*SCALE; a.ty=(cell[1]+0.5)*SCALE; setPath(a,room); };
-    const terms=TERMINALS[room]||[];
-    list.filter(a=>a.task).forEach((a,i)=>place(a, terms[i]?[terms[i].tx,terms[i].ty]:null));
-    list.filter(a=>!a.task).forEach(a=>place(a,null));
-  }
-}
+// positions are AUTHORITATIVE from the engine now (a.gx,a.gy = cell within the room): the Cold's stalk
+// and the kill-reach check live server-side, so the renderer just draws where the engine says. setPath
+// still routes the corridor walk when an agent changes rooms.
+function layoutAgents(){ for(const a of STATE.agents){
+    if(removedBodies.has(a.id)) continue; if(!a.alive&&!a.body) continue; if(a.gx==null||a.gx<0) continue;
+    a.tx=(a.gx+0.5)*SCALE; a.ty=(a.gy+0.5)*SCALE; setPath(a,a.room); } }
 // move STRAIGHT toward the next waypoint, clamped so a step can never overshoot it — so an agent
 // converges and stops instead of skidding past and snapping back (which read as spinning). The heading
 // is purely cosmetic (it aims the headlamp cone) and only eases toward the direction of actual motion.
@@ -1341,7 +1328,7 @@ function renderInspector(){ const el=$('inspect'); if(!el)return; const a=STATE.
 const esc=s=>(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function nameColor(n){ const a=STATE.agents.find(x=>x.name===n); return a?COLORS[a.c%COLORS.length]:'#cfe3ff'; }
 function applyAgents(arr){ const byId={}; for(const a of STATE.agents)byId[a.id]=a;
-  STATE.agents=arr.map(s=>{ const a=byId[s.id]||{id:s.id}; a.name=s.name; a.model=s.model; a.room=s.room; a.alive=s.alive; a.task=s.tasking; a.body=s.body; a.c=s.color; a.cold=s.cold; return a; }); }
+  STATE.agents=arr.map(s=>{ const a=byId[s.id]||{id:s.id}; a.name=s.name; a.model=s.model; a.room=s.room; a.alive=s.alive; a.task=s.tasking; a.body=s.body; a.c=s.color; a.cold=s.cold; a.gx=s.gx; a.gy=s.gy; return a; }); }
 function renderChat(s){ const chat=$('chat'), inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
   if(inMeet){ chat.classList.add('show'); const m=s.meeting; $('chat-title').textContent='EMERGENCY MEETING';
     $('chat-lede').textContent=m.victim?`${m.reporter} found ${m.victim} dead in ${m.room}`:`${m.reporter} sounded the alarm`;

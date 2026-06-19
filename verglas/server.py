@@ -210,6 +210,8 @@ class Verglas:
                 "tasking": a.tasking,
                 "body": not a.alive,
                 "color": a.id,
+                "gx": round(a.gx, 2),
+                "gy": round(a.gy, 2),
             }
             if reveal:
                 d["cold"] = a.impostor

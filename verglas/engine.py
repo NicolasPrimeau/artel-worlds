@@ -217,6 +217,23 @@ TASK_SPAWN_P = (
 WORK_TICKS = 3  # a task occupies its crew for several ticks — they linger at the console
 TASK_SLACK = 4  # keep this many fewer tasks-in-play than living players, so a couple are always free to buddy
 KILL_CD = 3  # ~15s between kills (each task tick runs ~5s, so 3 ticks ≈ 15s)
+KILL_REACH = 3.0  # the Cold must be within this many cells of the victim — no killing across a room
+GX_STEP = (
+    1.6  # cells/tick an agent drifts toward its in-room spot (the Cold stalks into range gradually)
+)
+# spread spots around a room centre (unit offsets) so co-located agents stand apart, not stacked at centre
+_SPREAD = [
+    (0, 0),
+    (-1, -1),
+    (1, -1),
+    (1, 1),
+    (-1, 1),
+    (0, -1.4),
+    (1.4, 0),
+    (0, 1.4),
+    (-1.4, 0),
+    (0.7, -0.7),
+]
 START_GRACE = KILL_CD  # the same ~15s gates the FIRST kill too — no long opening grace
 FOLLOW_TICKS = 6  # how long an autonomous agent tails a buddy before it stops to decide again
 # meetings happen ONLY on a body report — there is no emergency button (no calling a meeting with no body)
@@ -320,6 +337,10 @@ class Agent:
     goto: str | None = None  # a plain move-to-room intent (no task) — used by autonomous agents
     follow: int | None = None  # an agent id this one is tailing (buddy up) — autonomous intent
     follow_ticks: int = 0  # ticks left tailing before the agent re-decides (follow isn't forever)
+    gx: float = (
+        -1.0
+    )  # cell position WITHIN the room (engine-authoritative; the renderer draws from it)
+    gy: float = -1.0  # so a kill can require the Cold to actually be close, not across the room
     # what this agent privately observed — the raw material for its testimony in a meeting
     trail: list = field(default_factory=list)  # (tick, room) — its own movements this round
     seen: list = field(default_factory=list)  # list[Sighting]
@@ -378,6 +399,35 @@ class Game:
 
     def _occ(self, room):
         return [a for a in self.living() if a.room == room]
+
+    def _near(self, a, b) -> bool:
+        return abs(a.gx - b.gx) + abs(a.gy - b.gy) <= KILL_REACH
+
+    def _place(self) -> None:
+        # update each living agent's cell within its room: a follower closes on whoever it's tailing (the
+        # Cold stalks a victim this way), everyone else drifts to a spread spot around the room centre.
+        # Movement is gradual (GX_STEP/tick), so closing the gap takes ticks and reads on screen.
+        byroom: dict = {}
+        for a in self.living():
+            byroom.setdefault(a.room, []).append(a)
+        for room, occ in byroom.items():
+            x, y, w, h = self.rects[room]
+            cx, cy = x + (w - 1) / 2, y + (h - 1) / 2
+            rad = max(1.0, min(w, h) * 0.26)
+            occ.sort(key=lambda a: a.id)
+            for i, a in enumerate(occ):
+                if not (x < a.gx < x + w - 1 and y < a.gy < y + h - 1):  # just arrived / unplaced
+                    a.gx, a.gy = cx, cy
+                tgt = self.by_id(a.follow) if a.follow is not None else None
+                if tgt is not None and tgt.alive and tgt.room == room:
+                    gxg, gyg = tgt.gx, tgt.gy  # close on the one you're tailing
+                else:
+                    ox, oy = _SPREAD[i % len(_SPREAD)]
+                    gxg, gyg = cx + ox * rad, cy + oy * rad
+                a.gx += max(-GX_STEP, min(GX_STEP, gxg - a.gx))
+                a.gy += max(-GX_STEP, min(GX_STEP, gyg - a.gy))
+                a.gx = min(max(a.gx, x + 0.6), x + w - 1.6)
+                a.gy = min(max(a.gy, y + 0.6), y + h - 1.6)
 
     def tasks_left(self):
         return max(0, self.tasks_goal - self.tasks_done)
@@ -488,6 +538,8 @@ class Game:
         for a in self.living():
             a.trail.append((self.tick, a.room))  # each agent remembers where it has been
 
+        self._place()  # settle cells within rooms (offline baseline; the live path stalks via follow)
+
         # record sightings: everyone in a room sees everyone else in it
         for room in self.rooms:
             occ = self._occ(room)
@@ -505,6 +557,10 @@ class Game:
                 isolated = len(self._occ(m.room)) == 2  # just the impostor + one victim
                 if isolated:  # only an unwitnessed kill — never in line of sight of anyone else
                     victim = self.rng.choice(crew_here)
+                    m.gx, m.gy = (
+                        victim.gx,
+                        victim.gy,
+                    )  # the Cold closes in for the strike (stay adjacent)
                     victim.alive = False
                     self.bodies[m.room] = victim.id
                     self.last_kill = {"tick": self.tick, "victim": victim.id, "room": m.room}
@@ -540,13 +596,16 @@ class Game:
         return a.alive and a.work == 0 and a.dest is None and a.goto is None and a.follow is None
 
     def legal_kills(self, m) -> list[int]:
-        # crew the Cold can take THIS tick: off cooldown, past grace, and ALONE with exactly one crew —
-        # no other agent in the room (no line of sight, no witness). A kill with anyone watching is out.
+        # crew the Cold can take THIS tick: off cooldown, past grace, ALONE with exactly one crew (no
+        # witness), AND within reach — right next to them, not across the room. If it's alone but still
+        # too far, the eliminate option is withheld and it must close the gap first (follow/stalk).
         if self.cd > 0 or self.tick < START_GRACE:
             return []
         occ = self._occ(m.room)
         crew = [c for c in occ if not c.impostor]
-        return [crew[0].id] if len(occ) == 2 and len(crew) == 1 else []
+        if len(occ) == 2 and len(crew) == 1 and self._near(m, crew[0]):
+            return [crew[0].id]
+        return []
 
     def prime_kill(self, a) -> bool:
         # the Cold's shot: off cooldown, past grace, and ALONE with exactly one crew (no third pair of
@@ -559,9 +618,13 @@ class Game:
     def do_kill(self, m, victim_id: int, force: bool = False) -> bool:
         occ = self._occ(m.room)
         victim = next((c for c in occ if c.id == victim_id and not c.impostor), None)
-        # no kill in front of witnesses: the room must hold ONLY the killer and the victim (line of sight
-        # of any third agent forbids it). The final-hunt force-kill is exempt — one crewmate is all that's left.
-        if victim is None or (self.cd > 0 and not force) or (not force and len(occ) != 2):
+        # no kill unless ALONE with the victim (room holds only the two — no witness) AND right next to
+        # them (within reach, not across the room). The final-hunt force-kill is exempt.
+        if (
+            victim is None
+            or (self.cd > 0 and not force)
+            or (not force and (len(occ) != 2 or not self._near(m, victim)))
+        ):
             return False
         victim.alive = False
         self.bodies[m.room] = victim.id
@@ -652,6 +715,7 @@ class Game:
             self.cd -= 1
         if self.living(impostor=True) and len(self.living(impostor=False)) <= 1:
             self._final_hunt()
+            self._place()
             self._check_win()
             return None
         cap = max(2, len(self.living()) - TASK_SLACK)
@@ -691,6 +755,7 @@ class Game:
                     a.follow = None  # buddy gone, or time to stop and reassess
                 elif buddy.room != a.room:
                     self._toward_room(a, buddy.room)
+        self._place()  # settle each agent's cell within its (now final) room — the Cold creeps into reach
         for a in self.living():
             a.trail.append((self.tick, a.room))
         for room in self.rooms:
@@ -798,6 +863,7 @@ def new_game(seed: int, n=6, impostors=1) -> Game:
     )  # winnable under the ~15s kill clock and the 5-min ceiling
     for _ in range(max(2, n - TASK_SLACK)):  # seed the board up to the in-play cap, size-weighted
         g._spawn_task()
+    g._place()  # seed each agent's cell so the first snapshot already has positions
     return g
 
 
