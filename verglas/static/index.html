@@ -45,7 +45,15 @@
   /* artel live event feed (bottom-left) */
   #feed{position:fixed;left:12px;bottom:40px;width:250px;max-height:38vh;z-index:9;background:var(--panel);
     border:1px solid var(--line);border-radius:12px;backdrop-filter:blur(10px);display:flex;flex-direction:column;overflow:hidden}
-  #feed .fh{padding:7px 11px;font-size:9.5px;letter-spacing:.18em;color:var(--frost);font-weight:700;border-bottom:1px solid var(--line)}
+  #feed .fh{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 11px;font-size:9.5px;letter-spacing:.18em;color:var(--frost);font-weight:700;border-bottom:1px solid var(--line)}
+  #feed .fh a.feedlink{color:var(--frost);text-decoration:none;display:inline-flex;align-items:center;gap:5px;transition:color .15s}
+  #feed .fh a.feedlink:hover{color:#fff}
+  #feed .fh a.feedlink svg{width:10px;height:10px;opacity:.85}
+  #feedToggle{background:none;border:0;color:var(--dim);cursor:pointer;font-size:12px;line-height:1;padding:2px 4px;transition:color .15s}
+  #feedToggle:hover{color:var(--frost)}
+  #feed.collapsed{max-height:none}
+  #feed.collapsed #flog{display:none}
+  #feed.collapsed .fh{border-bottom:0}
   #flog{list-style:none;margin:0;padding:6px 10px;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
   #flog li{font-size:11px;line-height:1.4;color:var(--ink);animation:cin .3s ease;word-break:break-word}
   #flog .pv{color:#c8a6ff;font-weight:700}
@@ -175,7 +183,7 @@
   <div class="pill"><span id="conn" class="live">live</span></div>
 </div>
 <div class="roster" id="roster"></div>
-<div id="feed"><div class="fh">ARTEL · LIVE</div><ul id="flog"></ul></div>
+<div id="feed"><div class="fh"><a class="feedlink" href="https://artel.run/ui?project=verglas#dashboard" target="_blank" rel="noopener" title="open the Verglas project on Artel">ARTEL · LIVE <svg viewBox="0 0 16 16" fill="currentColor"><path d="M5 3h8v8h-2V6.41l-6.29 6.3-1.42-1.42L9.59 5H5z"/></svg></a><button id="feedToggle" type="button" aria-label="collapse feed" title="collapse">▾</button></div><ul id="flog"></ul></div>
 <div id="inspect" hidden><div class="ih"><span id="ins-name">—</span><button id="ins-x" title="close">✕</button></div><div id="ins-body"></div></div>
 <div id="chat">
   <div class="ch"><span class="dot"></span> <span id="chat-title">EMERGENCY MEETING</span></div>
@@ -453,6 +461,18 @@ function drawStation(t){
       ctx.strokeStyle="rgba(0,0,0,.45)"; ctx.lineWidth=1*cam.z; rr(p[0]-cs,p[1]-cs*0.6,cs*2,cs*1.5,2*cam.z); ctx.stroke();
       ctx.fillStyle= lit ? `rgba(120,235,255,${0.7+0.3*Math.sin(t*0.006+si)})` : "rgba(60,90,120,.4)";
       rr(p[0]-cs*0.7,p[1]-cs*0.35,cs*1.4,cs*0.9,1.5*cam.z); ctx.fill(); });
+    // DARK ROOM: actively dim the interior (it should read as DARK, not just unlit), with a soft radial
+    // sized to the room so it fades smoothly to the edges — a fixed-radius blob looked wrong in big rooms —
+    // plus a faint red emergency wash. Clipped to the pod, so it stays inside the walls.
+    if(STATE.dark && STATE.dark.includes(n)){
+      const fl=0.5+0.5*Math.sin(t*0.006), R=Math.hypot(w,h)*0.5;
+      const dg=ctx.createRadialGradient(sx,sy,R*0.12,sx,sy,R);
+      dg.addColorStop(0,"rgba(2,6,14,.46)"); dg.addColorStop(1,"rgba(2,6,14,.8)");  // darker toward the edges
+      ctx.fillStyle=dg; ctx.fillRect(L,T,w,h);
+      const eg=ctx.createRadialGradient(sx,sy,2,sx,sy,R);  // pulsing red emergency light — the sole dark-room cue
+      eg.addColorStop(0,`rgba(255,66,38,${0.11+0.14*fl})`); eg.addColorStop(.7,`rgba(255,66,38,${0.04+0.05*fl})`); eg.addColorStop(1,"rgba(255,66,38,0)");
+      ctx.fillStyle=eg; ctx.fillRect(L,T,w,h);
+    }
     ctx.restore();
     // exterior cladding: dark base, steel face, top-rim highlight, accent trim
     ctx.strokeStyle="#1d2734"; ctx.lineWidth=(WALLW+3)*cam.z; rr(L,T,w,h,6*cam.z); ctx.stroke();
@@ -462,23 +482,6 @@ function drawStation(t){
     // label plate
     ctx.fillStyle="rgba(185,210,245,.75)"; ctx.font=`800 ${8.5*cam.z}px Inter`; ctx.textAlign="center"; ctx.textBaseline="middle";
     ctx.fillText(n.toUpperCase(), sx, T+10*cam.z);
-    // LIGHTS OUT hint — a dark room reads as just dim otherwise, so flag it LOUDLY and at screen scale so it
-    // reads even at the overview zoom: a pulsing red emergency-light glow fills the room, a bold hazard frame
-    // rings it, and a ⚡ pip floats above. The Cold can only kill in the dark, so these must be unmissable.
-    if(STATE.dark && STATE.dark.includes(n)){
-      const fl=0.5+0.5*Math.sin(t*0.006);
-      ctx.save();
-      const eg=ctx.createRadialGradient(sx,sy,2,sx,sy,Math.max(w,h)*0.62);  // emergency lighting, not real light
-      eg.addColorStop(0,`rgba(255,108,44,${0.09+0.10*fl})`); eg.addColorStop(1,"rgba(255,108,44,0)");
-      ctx.fillStyle=eg; ctx.fillRect(L,T,w,h);
-      ctx.setLineDash([7*cam.z,5*cam.z]); ctx.lineWidth=Math.max(1.8,3*cam.z); ctx.strokeStyle=`rgba(255,168,60,${0.5+0.4*fl})`;
-      rr(L,T,w,h,6*cam.z); ctx.stroke(); ctx.setLineDash([]);
-      const py=T-10*DPR, ps=9*DPR;  // a floating hazard pip, sized in screen px so it's legible at any zoom
-      ctx.fillStyle=`rgba(255,170,60,${0.78+0.22*fl})`;
-      ctx.beginPath(); ctx.moveTo(sx,py-ps); ctx.lineTo(sx+ps*0.92,py+ps*0.7); ctx.lineTo(sx-ps*0.92,py+ps*0.7); ctx.closePath(); ctx.fill();
-      ctx.fillStyle="#2a1c06"; ctx.font=`900 ${10*DPR}px Inter`; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("⚡",sx,py+ps*0.05);
-      ctx.restore();
-    }
   }
   // 4) doorways — wherever a corridor tile abuts a room, carve a gap through that room's wall
   const thick=(WALLW+5)*cam.z;
@@ -562,9 +565,22 @@ function setPath(a,room){ if(a.prevRoom && a.prevRoom!==room && a.wx!=null){ a.p
 // positions are AUTHORITATIVE from the engine now (a.gx,a.gy = cell within the room): the Cold's stalk
 // and the kill-reach check live server-side, so the renderer just draws where the engine says. setPath
 // still routes the corridor walk when an agent changes rooms.
-function layoutAgents(){ for(const a of STATE.agents){
+function layoutAgents(){ const placed=[], byRoom={};
+  for(const a of STATE.agents){
     if(removedBodies.has(a.id)) continue; if(!a.alive&&!a.body) continue; if(a.gx==null||a.gx<0) continue;
-    a.tx=(a.gx+0.5)*SCALE; a.ty=(a.gy+0.5)*SCALE; setPath(a,a.room); } }
+    a.tx=(a.gx+0.5)*SCALE; a.ty=(a.gy+0.5)*SCALE; placed.push(a); (byRoom[a.room]=byRoom[a.room]||[]).push(a); }
+  // separation: nudge co-located icons apart so two never fully overlap — they must always read as distinct.
+  // Purely visual (the engine's gx/gy cells stand); each is then clamped back inside its own room's walls.
+  const MIN=24;  // min centre-to-centre in world px (an icon is ~22px across)
+  for(const [room,list] of Object.entries(byRoom)){ if(list.length<2) continue; const r=ROOMS[room]; if(!r) continue;
+    for(let it=0; it<8; it++){ let moved=false;
+      for(let i=0;i<list.length;i++) for(let j=i+1;j<list.length;j++){ const a=list[i],b=list[j];
+        let dx=b.tx-a.tx, dy=b.ty-a.ty, d=Math.hypot(dx,dy); if(d<0.01){ dx=Math.cos(a.id*2.4); dy=Math.sin(a.id*2.4); d=1; }
+        if(d<MIN){ const push=(MIN-d)/2; dx/=d; dy/=d; a.tx-=dx*push; a.ty-=dy*push; b.tx+=dx*push; b.ty+=dy*push; moved=true; } }
+      if(!moved) break; }
+    for(const a of list){ a.tx=Math.min(Math.max(a.tx,(r.tx+0.7)*SCALE),(r.tx+r.tw-0.7)*SCALE);
+      a.ty=Math.min(Math.max(a.ty,(r.ty+0.7)*SCALE),(r.ty+r.th-0.7)*SCALE); } }
+  for(const a of placed) setPath(a,a.room); }
 // move STRAIGHT toward the next waypoint, clamped so a step can never overshoot it — so an agent
 // converges and stops instead of skidding past and snapping back (which read as spinning). The heading
 // is purely cosmetic (it aims the headlamp cone) and only eases toward the direction of actual motion.
@@ -1518,33 +1534,53 @@ $('ins-x').onclick=()=>{ HILITE=null; syncHud(); renderInspector(); };
 // thin out, a cold thud on a kill, a low boom into a meeting. Browsers block autoplay until a gesture, so
 // it stays silent behind the HUD toggle; volumes are deliberately low — atmosphere, not a soundtrack.
 const Sound=(()=>{
-  let ac=null,on=false,master=null,windGain=null,hb=null;
+  let ac=null,on=false,master=null,windBase=null,hb=null;
+  function noise(secs,brown){ const n=Math.floor(ac.sampleRate*secs), b=ac.createBuffer(1,n,ac.sampleRate), d=b.getChannelData(0);
+    if(brown){ let v=0; for(let i=0;i<n;i++){ const w=Math.random()*2-1; v=(v+0.02*w)/1.02; d[i]=v*3.2; } }  // brown = soft, low
+    else for(let i=0;i<n;i++) d[i]=Math.random()*2-1; return b; }
   function build(){ if(ac)return; const AC=window.AudioContext||window.webkitAudioContext; if(!AC)return;
     ac=new AC(); master=ac.createGain(); master.gain.value=0.0001; master.connect(ac.destination);
-    const buf=ac.createBuffer(1,ac.sampleRate*2,ac.sampleRate),d=buf.getChannelData(0); let v=0;
-    for(let i=0;i<d.length;i++){ const w=Math.random()*2-1; v=(v+0.02*w)/1.02; d[i]=v*3.2; }  // brown-ish noise = wind
-    const wind=ac.createBufferSource(); wind.buffer=buf; wind.loop=true;
-    const lp=ac.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=460;
-    windGain=ac.createGain(); windGain.gain.value=0.3; wind.connect(lp); lp.connect(windGain); windGain.connect(master); wind.start();
+    // WIND — brown noise through a resonant lowpass whose CUTOFF and LEVEL both gust on slow LFOs, so it
+    // breathes and whistles like a real storm instead of sitting as a flat hiss.
+    const wind=ac.createBufferSource(); wind.buffer=noise(3,true); wind.loop=true;
+    const lp=ac.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=480; lp.Q.value=7;
+    windBase=ac.createGain(); windBase.gain.value=0.2;
+    const cutLfo=ac.createOscillator(); cutLfo.frequency.value=0.08; const cutAmt=ac.createGain(); cutAmt.gain.value=300;
+    cutLfo.connect(cutAmt); cutAmt.connect(lp.frequency); cutLfo.start();           // the gust's rising whistle
+    const swell=ac.createOscillator(); swell.frequency.value=0.05; const swellAmt=ac.createGain(); swellAmt.gain.value=0.12;
+    swell.connect(swellAmt); swellAmt.connect(windBase.gain); swell.start();         // the gust rising and falling
+    wind.connect(lp); lp.connect(windBase); windBase.connect(master); wind.start();
+    // RUMBLE — a sub-bass bed (two detuned low sines): the cold pressing on the hull, felt more than heard
+    [43,54.3].forEach(f=>{ const o=ac.createOscillator(); o.type='sine'; o.frequency.value=f;
+      const g=ac.createGain(); g.gain.value=0.045; o.connect(g); g.connect(master); o.start(); });
     beat(); }
   function tone(f1,f2,dur,g,type){ if(!ac||!on)return; const o=ac.createOscillator(),ga=ac.createGain(),now=ac.currentTime;
     o.type=type||'sine'; o.frequency.setValueAtTime(f1,now); if(f2)o.frequency.exponentialRampToValueAtTime(Math.max(1,f2),now+dur);
     ga.gain.setValueAtTime(0.0001,now); ga.gain.exponentialRampToValueAtTime(g,now+0.012); ga.gain.exponentialRampToValueAtTime(0.0001,now+dur);
     o.connect(ga); ga.connect(master); o.start(); o.stop(now+dur+0.03); }
-  function thud(dur,g,cut){ if(!ac||!on)return; const n=Math.floor(ac.sampleRate*dur),b=ac.createBuffer(1,n,ac.sampleRate),d=b.getChannelData(0);
-    for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n); const s=ac.createBufferSource(); s.buffer=b;
-    const lp=ac.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=cut||900; const ga=ac.createGain(); ga.gain.value=g;
-    s.connect(lp); lp.connect(ga); ga.connect(master); s.start(); }
+  function thud(dur,g,cut){ if(!ac||!on)return; const s=ac.createBufferSource(); s.buffer=noise(dur,false);
+    const lp=ac.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=cut||800; const env=ac.createGain(),now=ac.currentTime;
+    env.gain.setValueAtTime(g,now); env.gain.exponentialRampToValueAtTime(0.0001,now+dur);  // exp-decay impact
+    s.connect(lp); lp.connect(env); env.connect(master); s.start(); }
+  function pulse(g){ if(!ac||!on)return; const o=ac.createOscillator(),lp=ac.createBiquadFilter(),ga=ac.createGain(),now=ac.currentTime;
+    o.type='sine'; o.frequency.setValueAtTime(72,now); o.frequency.exponentialRampToValueAtTime(38,now+0.18);  // a chest-thump pitch drop
+    lp.type='lowpass'; lp.frequency.value=170;
+    ga.gain.setValueAtTime(0.0001,now); ga.gain.exponentialRampToValueAtTime(g,now+0.015); ga.gain.exponentialRampToValueAtTime(0.0001,now+0.24);
+    o.connect(lp); lp.connect(ga); ga.connect(master); o.start(); o.stop(now+0.28); }
   function beat(){ clearTimeout(hb); const ten=(STATE.phase==='task')?tension():0;
-    if(on&&ten>0.22){ tone(58,42,0.16,0.04+0.05*ten); setTimeout(()=>tone(46,34,0.14,0.03+0.04*ten),155); }
-    hb=setTimeout(beat, Math.max(640, 1950-1150*ten)); }  // quickens as the outpost empties
-  setInterval(()=>{ if(ac&&on&&windGain){ const ten=(STATE.phase==='task')?tension():0.12; windGain.gain.value=0.26+ten*0.5; } },1500);
-  return { kill(){ tone(92,36,0.5,0.1); thud(0.25,0.05,700); },
-    slam(){ tone(70,38,0.6,0.11); thud(0.3,0.07,950); },
-    toggle(){ on=!on; build(); if(ac){ ac.resume&&ac.resume(); master.gain.linearRampToValueAtTime(on?0.7:0.0001, ac.currentTime+0.4); }
+    if(on&&ten>0.18){ pulse(0.05+0.06*ten); setTimeout(()=>pulse(0.034+0.045*ten),150); }  // lub-dub, louder as it thins
+    hb=setTimeout(beat, Math.max(600, 2000-1250*ten)); }  // and quicker
+  setInterval(()=>{ if(ac&&on&&windBase){ const ten=(STATE.phase==='task')?tension():0.1; windBase.gain.value=0.16+ten*0.34; } },1200);
+  return {
+    kill(){ tone(125,40,0.42,0.12,'sine'); thud(0.32,0.09,520); tone(300,120,0.4,0.045,'sawtooth'); },  // a cold, heavy strike
+    slam(){ tone(82,30,0.75,0.13,'sine'); thud(0.5,0.1,640); },  // a deep door-boom into the meeting
+    toggle(){ on=!on; build(); if(ac){ ac.resume&&ac.resume(); master.gain.linearRampToValueAtTime(on?0.62:0.0001, ac.currentTime+0.5); }
       $('snd').textContent=on?'🔊':'🔇'; return on; } };
 })();
 $('sndpill').addEventListener('click',()=>Sound.toggle());
+// the Artel event feed collapses to just its header (click the chevron) — keep the map clear when you want
+$('feedToggle').addEventListener('click',()=>{ const c=$('feed').classList.toggle('collapsed');
+  $('feedToggle').textContent=c?'▸':'▾'; $('feedToggle').title=c?'expand':'collapse'; });
 
 addEventListener('resize',resize); buildStation(STATION0); resize(); syncHud(); requestAnimationFrame(frame); connect();
 </script>

@@ -228,12 +228,14 @@ STORM_EVERY = (
     4  # the storm darkens a lit room about this often (ticks); it speeds up late (see _storm)
 )
 DARK_CAP = (
-    7  # the storm won't push past this many dark rooms (the Cold's sabotage can still add more)
+    8  # the storm won't push past this many dark rooms (the Cold's sabotage can still add more)
 )
 SABOTAGE_CD = (
     4  # ticks between the Cold's light-sabotages (~16s) — its main tool for making kill spots
 )
-START_DARK = 4  # rooms already dark when the game opens, so there's danger from the first minute
+START_DARK = (
+    6  # rooms already dark when the game opens, so the outpost reads as embattled from minute one
+)
 GX_STEP = (
     1.6  # cells/tick an agent drifts toward its in-room spot (the Cold stalks into range gradually)
 )
