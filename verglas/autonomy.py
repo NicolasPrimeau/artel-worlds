@@ -14,21 +14,23 @@ SYS_CREW = (
     "— it wears a friend's face, and it can ONLY kill in a room that has gone DARK. You all just have to "
     "SURVIVE THE STORM; it passes by dawn and you win. The storm keeps knocking the lights out room by "
     "room, and the Cold can snuff them too. So: stay in LIT rooms where it cannot touch you, RELIGHT dark "
-    "rooms to deny it anywhere to hunt, and NEVER let yourself be led alone into the dark. If someone "
-    "whispers you to slip off together, that's exactly how it gets you one-on-one — weigh who's asking "
-    "and whether the room is lit; you can refuse. Trust no claim you can't check. "
+    "rooms to deny it anywhere to hunt, and NEVER end up alone in the dark — if you must cross a dark room, "
+    "stick right beside another crewmate, because it can't strike with someone close enough to see. If "
+    "someone whispers you to slip off into the dark together, that's exactly how it isolates you — weigh "
+    "who's asking and whether the room is lit; you can refuse. Trust no claim you can't check. "
     "Pick exactly ONE action by calling a tool."
 )
 SYS_COLD = (
     "You are {name}. Secretly you ARE the Cold — something that came in from the storm, wearing a "
     "crewmate's face. The crew win if they SURVIVE THE STORM until dawn, so you must thin them before it "
-    "passes. THE ONE HARD RULE: you can ONLY kill in a DARK room, ALONE with a single crewmate, right "
-    "next to them — never in the light, never with a witness. The dark is your weapon: SABOTAGE the "
-    "lights (snuff your room or a neighbouring one) to MAKE a place to hunt, then WHISPER or FOLLOW a "
-    "crewmate into it ('help me in the Reactor', 'buddy up, just us two'). Once you are alone with one of "
-    "them in the dark and close, the eliminate option appears — TAKE it, then slip away (vent if you "
-    "can). The rest of the time, blend in: move with the group, pretend to relight, look helpful and "
-    "worried. Never loiter hoping for a chance — go MAKE the dark and lure someone into it. "
+    "passes. THE ONE HARD RULE: you can ONLY kill in a DARK room, right next to a crewmate, with no OTHER "
+    "crewmate close enough to see it — in the dark, sight is short, so you don't need the room empty, just "
+    "your victim isolated in a corner of the gloom. The dark is your weapon: SABOTAGE the lights (snuff "
+    "your room or a neighbouring one) to MAKE a place to hunt, then WHISPER or FOLLOW a crewmate into it "
+    "('help me in the Reactor', 'buddy up, just us two'). When you're beside one in the dark with no one "
+    "else near, the eliminate option appears — TAKE it, then slip away (vent if you can). The rest of the "
+    "time, blend in: move with the group, pretend to relight, look helpful and worried. Never loiter "
+    "hoping for a chance — go MAKE the dark and draw someone into it. "
     "Pick exactly ONE action by calling a tool."
 )
 
@@ -139,26 +141,25 @@ def _context(g: Game, a, inbox: list) -> str:
         f"Dark rooms now (a kill can only happen in one of these): {dark_s}.",
         f"Crew alive: {alive} of {total}. The storm passes in ~{storm_left} ticks — survive it and the crew win.",
     ]
-    # the Cold's situational read, mirroring the engine's hard rule: a kill needs DARK + alone + close.
+    # the Cold's situational read, straight off the engine's rule: dark + within reach + no crew watching.
     if a.impostor:
-        others = [o for o in g._occ(a.room) if o.id != a.id]
-        crew_here = [o for o in others if not o.impostor]
-        if len(others) == 1 and crew_here and here_dark:
+        kills = [g.by_id(i).name for i in g.legal_kills(a)]
+        crew_here = [o.name for o in g._occ(a.room) if o.id != a.id and not o.impostor]
+        if kills:
             lines.append(
-                f"KILL WINDOW: ALONE with {crew_here[0].name} in the DARK — strike now if you're close to them."
+                f"KILL WINDOW: {kills[0]} is right by you in the dark with no one close to see — strike NOW."
             )
-        elif len(others) == 1 and crew_here:
+        elif crew_here and not here_dark:
             lines.append(
-                f"You have {crew_here[0].name} alone, but the room is LIT — DARKEN it (sabotage) first, then strike."
+                f"{crew_here[0]} is here but the room is LIT — DARKEN it (sabotage), then close in for the kill."
             )
         elif crew_here:
             lines.append(
-                "Too many eyes here — a kill needs you ALONE with one crewmate in a dark room. Peel one off "
-                "(whisper/follow) and lead them into the dark."
+                f"{crew_here[0]} is here in the dark but not isolated — get right beside them, away from the others."
             )
         else:
             lines.append(
-                "No one to hunt here. Find a lone crewmate, or darken a room and lure one into it."
+                "No crewmate to hunt here. Find one drifting off, or darken a room and draw someone into it."
             )
     # the dread grows with the body count — crew get more unsettled and trust the room less
     if not a.impostor and dead:

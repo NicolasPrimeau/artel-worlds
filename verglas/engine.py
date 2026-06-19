@@ -218,6 +218,7 @@ WORK_TICKS = 3  # a task occupies its crew for several ticks — they linger at 
 TASK_SLACK = 4  # keep this many fewer tasks-in-play than living players, so a couple are always free to buddy
 KILL_CD = 3  # ~15s between kills (each task tick runs ~5s, so 3 ticks ≈ 15s)
 KILL_REACH = 3.0  # the Cold must be within this many cells of the victim — no killing across a room
+WITNESS_RANGE = 5.0  # in the dark, a kill is only seen by crew within this many cells of the victim
 # --- the storm & the dark ---------------------------------------------------------------------------
 # Light is safety: the Cold can ONLY kill in a DARK room. The storm is the clock — survive it and the
 # crew win. It darkens rooms over time (more, faster, late); crew relight them (the task board); the Cold
@@ -422,6 +423,18 @@ class Game:
     def _near(self, a, b) -> bool:
         return abs(a.gx - b.gx) + abs(a.gy - b.gy) <= KILL_REACH
 
+    def _unwitnessed(self, m, victim) -> bool:
+        # in the dark, a kill is only seen by CREW within sight of the victim — others in the room can't
+        # see across it. (An impostor ally nearby doesn't blow it.) The room itself must be dark.
+        if victim.room not in self.dark:
+            return False
+        return not any(
+            c.id != victim.id
+            and not c.impostor
+            and abs(c.gx - victim.gx) + abs(c.gy - victim.gy) <= WITNESS_RANGE
+            for c in self._occ(victim.room)
+        )
+
     def _place(self) -> None:
         # update each living agent's cell within its room: a follower closes on whoever it's tailing (the
         # Cold stalks a victim this way), everyone else drifts to a spread spot around the room centre.
@@ -605,25 +618,20 @@ class Game:
                 for a in occ:
                     a.seen.append(Sighting(self.tick, room, tuple(x for x in ids if x != a.id)))
 
-        # the impostor kills: prefers isolation, but will risk it; witnesses see who did it
+        # the Cold kills: in a DARK room, take any crewmate no one else is close enough to see
         if self.cd == 0:
             for m in self.living(impostor=True):
-                crew_here = [c for c in self._occ(m.room) if not c.impostor]
-                if not crew_here:
+                if m.room not in self.dark:
                     continue
-                isolated = len(self._occ(m.room)) == 2  # just the impostor + one victim
-                if isolated and m.room in self.dark:  # unwitnessed AND in the dark — the only kill
-                    victim = self.rng.choice(crew_here)
-                    m.gx, m.gy = (
-                        victim.gx,
-                        victim.gy,
-                    )  # the Cold closes in for the strike (stay adjacent)
+                victims = [
+                    c for c in self._occ(m.room) if not c.impostor and self._unwitnessed(m, c)
+                ]
+                if victims:
+                    victim = self.rng.choice(victims)
+                    m.gx, m.gy = victim.gx, victim.gy  # close in for the strike
                     victim.alive = False
                     self.bodies[m.room] = victim.id
                     self.last_kill = {"tick": self.tick, "victim": victim.id, "room": m.room}
-                    for w in self._occ(m.room):
-                        if w.id != m.id:
-                            w.witnessed.add(m.id)  # any survivor in the room made the impostor
                     self.cd = KILL_CD
                     if m.room in self.vents and self.rng.random() < 0.6:
                         m.room = self.rng.choice(self.vents[m.room])  # vent off the body
@@ -653,45 +661,45 @@ class Game:
         return a.alive and a.work == 0 and a.dest is None and a.goto is None and a.follow is None
 
     def legal_kills(self, m) -> list[int]:
-        # crew the Cold can take THIS tick: off cooldown, past grace, ALONE with exactly one crew (no
-        # witness), AND within reach — right next to them, not across the room. If it's alone but still
-        # too far, the eliminate option is withheld and it must close the gap first (follow/stalk).
+        # crew the Cold can take THIS tick: off cooldown, past grace, in a DARK room, within reach, and
+        # with no OTHER crew close enough to see it (in the dark, only nearby crew witness). It doesn't
+        # need the room empty — just a victim it can isolate by position, in a corner of the dark.
         if self.cd > 0 or self.tick < START_GRACE or m.room not in self.dark:
             return []
-        occ = self._occ(m.room)
-        crew = [c for c in occ if not c.impostor]
-        if len(occ) == 2 and len(crew) == 1 and self._near(m, crew[0]):
-            return [crew[0].id]
-        return []
+        return [
+            c.id
+            for c in self._occ(m.room)
+            if not c.impostor and self._near(m, c) and self._unwitnessed(m, c)
+        ]
 
     def prime_kill(self, a) -> bool:
-        # the Cold's shot: off cooldown, past grace, and ALONE with exactly one crew (no third pair of
-        # eyes). The server uses this to pull the Cold into a decision the instant it gets someone alone.
+        # pull the Cold into a decision whenever it shares a room with a crewmate — it will sabotage a lit
+        # room, close on a victim, or strike if it already has an unwitnessed one in the dark.
         if not (a.impostor and self.cd == 0 and self.tick >= START_GRACE):
             return False
-        occ = self._occ(a.room)
-        return len(occ) == 2 and any(not c.impostor for c in occ if c.id != a.id)
+        return any(not c.impostor for c in self._occ(a.room) if c.id != a.id)
 
     def do_kill(self, m, victim_id: int, force: bool = False) -> bool:
         occ = self._occ(m.room)
         victim = next((c for c in occ if c.id == victim_id and not c.impostor), None)
-        # no kill unless ALONE with the victim (room holds only the two — no witness) AND right next to
-        # them (within reach, not across the room). The final-hunt force-kill is exempt.
+        # no kill unless it's a DARK room, the Cold is within reach of the victim, and no other crew is
+        # close enough to witness it in the dark. The final-hunt force-kill is exempt.
         if (
             victim is None
             or (self.cd > 0 and not force)
             or (
                 not force
-                and (m.room not in self.dark or len(occ) != 2 or not self._near(m, victim))
+                and (
+                    m.room not in self.dark
+                    or not self._near(m, victim)
+                    or not self._unwitnessed(m, victim)
+                )
             )
         ):
             return False
         victim.alive = False
         self.bodies[m.room] = victim.id
         self.last_kill = {"tick": self.tick, "victim": victim.id, "room": m.room}
-        for w in self._occ(m.room):
-            if w.id != m.id:
-                w.witnessed.add(m.id)  # any survivor present made the Cold
         self.cd = KILL_CD
         if m.room in self.vents and self.rng.random() < 0.6:
             m.room = self.rng.choice(self.vents[m.room])  # vent off the body
