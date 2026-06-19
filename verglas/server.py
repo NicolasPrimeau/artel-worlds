@@ -71,7 +71,7 @@ class Verglas:
     def __init__(self):
         self.lock = asyncio.Lock()
         self.viewers: set[WebSocket] = set()
-        self.scores = {"crew": 0, "thing": 0}  # games won by each side
+        self.scores = {"crew": 0, "cold": 0}  # games won by each side
         self.fame: dict = {}  # name -> {games, cold, coldWins, crewWins} across all games (the leaderboard)
         self.recent: list[dict] = []  # [{win: crew-won?}] for the ops dots
         self.completed = 0
@@ -133,7 +133,11 @@ class Verglas:
             raw = json.loads(_state_path().read_text())
         except Exception:
             return
-        self.scores = {k: int(raw.get("scores", {}).get(k, 0)) for k in ("crew", "thing")}
+        sc = raw.get("scores", {})
+        self.scores = {
+            "crew": int(sc.get("crew", 0)),
+            "cold": int(sc.get("cold", sc.get("thing", 0))),
+        }
         self.fame = dict(raw.get("fame") or {})
         self.recent = list(raw.get("recent") or [])[-12:]
         self.completed = int(raw.get("completed", 0))
@@ -165,7 +169,7 @@ class Verglas:
     def record_result(self) -> None:
         g = self.g
         crew_won = g.winner == "crew"
-        self.scores["crew" if crew_won else "thing"] += 1
+        self.scores["crew" if crew_won else "cold"] += 1
         self.recent.append({"win": crew_won})
         del self.recent[:-12]
         self.completed += 1
@@ -208,7 +212,7 @@ class Verglas:
                 "color": a.id,
             }
             if reveal:
-                d["thing"] = a.impostor
+                d["cold"] = a.impostor
             agents.append(d)
         meeting = None
         mt = self.meeting
@@ -220,7 +224,7 @@ class Verglas:
                 "transcript": [{"name": g.by_id(s).name, "text": t} for s, t in mt.transcript],
                 "votes": {},
                 "ejected": None,
-                "ejected_was_thing": None,
+                "ejected_was_cold": None,
                 "whisper": self.whisper,  # [from, to] while a private DM is passing
             }
             if self.phase in (
@@ -236,7 +240,7 @@ class Verglas:
                     mt.ejected
                 ).name  # who walks out (shown during the walk)
                 if self.revealed:  # ...but WHAT they were is withheld until the reveal beat
-                    meeting["ejected_was_thing"] = g.by_id(mt.ejected).impostor
+                    meeting["ejected_was_cold"] = g.by_id(mt.ejected).impostor
         return {
             "phase": self.phase,
             "revealed": self.revealed,
@@ -628,7 +632,7 @@ async def admin_pause(request: Request):
 @app.post("/reset")
 async def reset():
     async with G.lock:
-        G.scores = {"crew": 0, "thing": 0}
+        G.scores = {"crew": 0, "cold": 0}
         G.recent = []
         G.completed = 0
         G._new_game()

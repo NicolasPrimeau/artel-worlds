@@ -87,10 +87,10 @@
   #clog .tx{display:block;color:#dfe8fb;margin-top:1px}
   #chat .verdict{padding:12px 13px;border-top:1px solid var(--line);text-align:center}
   #chat .verdict .big{font-size:15px;font-weight:800}
-  #chat .verdict .big.thing{color:var(--warn)}#chat .verdict .big.clear{color:var(--good)}
+  #chat .verdict .big.cold{color:var(--warn)}#chat .verdict .big.clear{color:var(--good)}
   #chat .verdict .tally{color:var(--dim);font-size:10.5px;margin-top:5px;line-height:1.5}
 
-  /* HUD right side — connection status + the crew-vs-Thing record (the world's uniform "results") */
+  /* HUD right side — connection status + the crew-vs-Cold record (the world's uniform "results") */
   #conn{display:inline-flex;align-items:center;gap:6px;text-transform:uppercase;letter-spacing:.09em;
     font-size:11px;font-weight:700;color:var(--dim)}
   #conn::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--dim)}
@@ -284,7 +284,7 @@ const STATION0=(()=>{
   return {outpost:31, rects, corridor:tiles, centers, doors, vents:[["Freezer","Bunks"]]};
 })();
 
-let STATE={ round:1, tasksDone:7, tasksTotal:40, phase:"task", scores:{crew:0,thing:0}, agents:[] };
+let STATE={ round:1, tasksDone:7, tasksTotal:40, phase:"task", scores:{crew:0,cold:0}, agents:[] };
 let lastKillTick=-1, fx=[], ejecting=null, mouse={x:-1,y:-1}, userMoved=false, HILITE=null, meet=null, disco=null, killPulse=0, meetWasActive=false, myGuess=null;
 function callCold(id){ myGuess=(myGuess===id?null:id); syncHud(); renderInspector(); }
 let curPhase='', phaseT0=0;  // phaseT0 stamps phase changes so intro/end can fade in
@@ -1024,7 +1024,7 @@ function drawAgents(t){
       ctx.fillStyle="rgba(150,22,30,.34)"; ctx.beginPath(); ctx.ellipse(sx,sy+s*0.5,s*0.95,s*0.34,0,0,TAU); ctx.fill();
       const pr=s*1.25+Math.sin(t*0.004)*2.4*cam.z; ctx.strokeStyle=`rgba(255,74,74,${0.22+0.16*(0.5+0.5*Math.sin(t*0.004))})`;
       ctx.lineWidth=2*cam.z; ctx.beginPath(); ctx.arc(sx,sy,pr,0,TAU); ctx.stroke(); }
-    if(STATE.hunting && a.alive && a.thing){ // mask off: the Cold drops the disguise and burns red
+    if(STATE.hunting && a.alive && a.cold){ // mask off: the Cold drops the disguise and burns red
       const g=ctx.createRadialGradient(sx,sy,0,sx,sy,s*2.6); g.addColorStop(0,"rgba(255,42,42,.5)"); g.addColorStop(1,"rgba(255,42,42,0)");
       ctx.fillStyle=g; ctx.beginPath(); ctx.arc(sx,sy,s*2.6,0,TAU); ctx.fill();
       const pr=s*1.3+Math.sin(t*0.012)*3*cam.z; ctx.strokeStyle="rgba(255,70,70,.9)"; ctx.lineWidth=2.4*cam.z; ctx.beginPath(); ctx.arc(sx,sy,pr,0,TAU); ctx.stroke(); }
@@ -1227,7 +1227,7 @@ function drawMeeting(t){
       ctx.fillText("whisper", mx, my); ctx.restore(); } }
   // storm-door reveal — after the ejected is walked out, reveal what they were
   const mm=STATE.meeting;
-  if(mm && mm.ejected && mm.ejected_was_thing!=null){ const th=mm.ejected_was_thing, cyR=cy;
+  if(mm && mm.ejected && mm.ejected_was_cold!=null){ const th=mm.ejected_was_cold, cyR=cy;
     ctx.fillStyle="rgba(6,10,20,.66)"; ctx.fillRect(0,cyR-40*DPR,aw,80*DPR);
     ctx.textAlign="center";
     ctx.fillStyle=th?"rgba(255,86,86,.96)":"rgba(120,200,255,.96)"; ctx.font=`900 ${Math.min(30,aw/14/DPR)*DPR}px Inter`;
@@ -1291,7 +1291,7 @@ function drawIntro(t){
 // end card — who won and how, over the revealed station; the loop holds it a few seconds then re-deals
 function drawEnd(t){
   const k=Math.min(1,(performance.now()-phaseT0)/600), crew=STATE.winner==='crew';
-  const cold=(STATE.agents||[]).filter(a=>a.thing).map(a=>a.name).join(' & ');
+  const cold=(STATE.agents||[]).filter(a=>a.cold).map(a=>a.name).join(' & ');
   const by={tasks:"the outpost is restored to full power — light and heat the Cold can't survive",ejection:"the Cold was cast into the storm",extinction:"the Cold took the last of the crew — Verglas is its own now",parity:"the Cold took the last of the crew — Verglas is its own now",timeout:"the long night swallowed the outpost"}[STATE.win_by]||'';
   ctx.save(); ctx.textAlign="center";
   ctx.fillStyle=`rgba(4,9,18,${0.66*k})`; ctx.fillRect(0,0,cv.width,cv.height);
@@ -1302,13 +1302,13 @@ function drawEnd(t){
   ctx.fillStyle="rgba(231,238,252,.86)"; ctx.font=`600 ${Math.min(16,cv.width/26/DPR)*DPR}px Inter`; ctx.fillText(by, cx, cy+big*0.7*DPR);
   ctx.fillStyle="rgba(182,202,232,.82)"; ctx.font=`600 ${13*DPR}px Inter`; ctx.fillText(`the Cold was ${cold||'—'}`, cx, cy+big*1.15*DPR);
   // your "call the Cold" verdict, if you made one
-  if(myGuess!=null){ const g=STATE.agents.find(a=>a.id===myGuess), right=g&&g.thing;
+  if(myGuess!=null){ const g=STATE.agents.find(a=>a.id===myGuess), right=g&&g.cold;
     ctx.fillStyle=right?"rgba(122,210,255,.95)":"rgba(255,120,120,.9)"; ctx.font=`800 ${12*DPR}px Inter`;
     ctx.fillText(right?`you called it — ${g.name} was the Cold ✓`:`you called ${g?g.name:'—'} — wrong`, cx, cy+big*1.5*DPR); }
   ctx.fillStyle="rgba(150,170,200,.55)"; ctx.font=`600 ${11*DPR}px Inter`; ctx.fillText("a new crew rotates in…", cx, cy+big*1.95*DPR);
   ctx.restore();
 }
-function recapText(){ const crew=STATE.winner==='crew', cold=(STATE.agents||[]).filter(a=>a.thing).map(a=>a.name).join(' & ');
+function recapText(){ const crew=STATE.winner==='crew', cold=(STATE.agents||[]).filter(a=>a.cold).map(a=>a.name).join(' & ');
   const head=crew?"the crew survived Verglas":`the Cold (${cold||'?'}) took Verglas`;
   return `${head} — outpost ${OUTPOST}, a frozen station of named AIs where one is secretly the Cold. watch live:`; }
 
@@ -1341,7 +1341,7 @@ function renderInspector(){ const el=$('inspect'); if(!el)return; const a=STATE.
 const esc=s=>(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function nameColor(n){ const a=STATE.agents.find(x=>x.name===n); return a?COLORS[a.c%COLORS.length]:'#cfe3ff'; }
 function applyAgents(arr){ const byId={}; for(const a of STATE.agents)byId[a.id]=a;
-  STATE.agents=arr.map(s=>{ const a=byId[s.id]||{id:s.id}; a.name=s.name; a.model=s.model; a.room=s.room; a.alive=s.alive; a.task=s.tasking; a.body=s.body; a.c=s.color; a.thing=s.thing; return a; }); }
+  STATE.agents=arr.map(s=>{ const a=byId[s.id]||{id:s.id}; a.name=s.name; a.model=s.model; a.room=s.room; a.alive=s.alive; a.task=s.tasking; a.body=s.body; a.c=s.color; a.cold=s.cold; return a; }); }
 function renderChat(s){ const chat=$('chat'), inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
   if(inMeet){ chat.classList.add('show'); const m=s.meeting; $('chat-title').textContent='EMERGENCY MEETING';
     $('chat-lede').textContent=m.victim?`${m.reporter} found ${m.victim} dead in ${m.room}`:`${m.reporter} sounded the alarm`;
@@ -1354,8 +1354,8 @@ function renderChat(s){ const chat=$('chat'), inMeet=['meeting','vote','ejection
     if(s.phase==='ejection'){ const tally=Object.entries(m.votes||{}).map(([a,b])=>`${a}→${b}`).join(' · ');
       v.style.display='';
       if(m.ejected){
-        if(m.ejected_was_thing==null) v.innerHTML=`<div class="big">${m.ejected} is ejected…</div><div class="tally">the storm door swings open</div>`;
-        else { const th=m.ejected_was_thing; v.innerHTML=`<div class="big ${th?'thing':'clear'}">${m.ejected} ${th?'WAS the Cold':'was NOT the Cold'}</div><div class="tally">${tally}</div>`; }
+        if(m.ejected_was_cold==null) v.innerHTML=`<div class="big">${m.ejected} is ejected…</div><div class="tally">the storm door swings open</div>`;
+        else { const th=m.ejected_was_cold; v.innerHTML=`<div class="big ${th?'cold':'clear'}">${m.ejected} ${th?'WAS the Cold':'was NOT the Cold'}</div><div class="tally">${tally}</div>`; }
         if(!ejecting||ejecting.name!==m.ejected) ejecting={name:m.ejected,t0:performance.now()};
       } else v.innerHTML=`<div class="big">No one is ejected</div><div class="tally">${tally}</div>`;
     } else { v.style.display='none'; }

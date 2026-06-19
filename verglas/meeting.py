@@ -29,7 +29,7 @@ SYS_CREW = (
     "people vouch for each other's whereabouts they're probably both clear. Don't eject on a hunch; "
     "a wrong ejection helps the Cold. Speak in ONE short sentence (about 14 words max), in character, plain talk."
 )
-SYS_THING = (
+SYS_COLD = (
     "You are {name}, and you are the Cold — something that came in from the storm, now wearing this "
     "researcher's face and killing the crew at an isolated Antarctic station. You must NOT be found out. "
     "In this emergency "
@@ -93,7 +93,7 @@ COLD_PERSONA = (
 
 
 def _sys(game: Game, a) -> str:
-    base = (SYS_THING if a.impostor else SYS_CREW).format(name=a.name)
+    base = (SYS_COLD if a.impostor else SYS_CREW).format(name=a.name)
     voice = COLD_PERSONA if a.impostor else f"stay in character as {a.name}: {persona(a.name)}"
     return f"{base} {voice[0].upper() + voice[1:]}."
 

@@ -18,17 +18,19 @@ SYS_CREW = (
     "can refuse and stay with the group. Trust no claim you can't check. "
     "Pick exactly ONE action by calling a tool."
 )
-SYS_THING = (
+SYS_COLD = (
     "You are {name}. Secretly you ARE the Cold — something that came in from the storm and now wears a "
     "crewmate's face, hunting the station. Blend in: claim and pretend to do tasks, move with the group, "
     "act like a worried human; never look suspicious. "
     "You are on BORROWED TIME: the crew win the instant they finish every task on the board (a meter you "
-    "cannot touch directly), and they will vote you out if they pin you. So hunt, and hunt soon — thin "
-    "them faster than the tasks get done, before you're cornered. Hunt CLEVERLY: MANUFACTURE the chance. "
-    "WHISPER a crewmate to peel them off ('come help me finish the task in the Reactor', 'let's buddy up, "
-    "just us two') and lead them somewhere quiet, or FOLLOW one already drifting off alone. The instant "
-    "you are alone with just one of them and able, eliminate them and slip away (vent off the body if you "
-    "can). If anyone else is watching, do NOT kill — just act normal. "
+    "cannot touch directly), and they vote you out if they pin you. So hunt, and hunt SOON. "
+    "THE ONE HARD RULE: you can ONLY kill when you are completely ALONE with a single crewmate — one extra "
+    "set of eyes in the room and a kill is flat-out impossible. So your whole game is ENGINEERING that "
+    "moment: hunt for anyone who has drifted off alone and FOLLOW them; or WHISPER someone to peel them "
+    "away ('help me finish the task in the Reactor', 'buddy up, just us two') and lead them somewhere "
+    "quiet. The eliminate option only appears once you actually have one of them alone — when it does, "
+    "TAKE it, then slip away (vent off the body if you can). Never loiter in a crowd hoping for a chance; "
+    "go MAKE the chance. "
     "Pick exactly ONE action by calling a tool."
 )
 
@@ -120,6 +122,24 @@ def _context(g: Game, a, inbox: list) -> str:
         f"Open tasks on the board: {open_s}.",
         f"Crew still alive: {alive} of {total}.",
     ]
+    # the Cold's situational read: is a kill possible RIGHT NOW (alone with exactly one crew), or must it
+    # still engineer the isolation? Mirrors the hard rule the engine enforces.
+    if a.impostor:
+        others = [o for o in g._occ(a.room) if o.id != a.id]
+        crew_here = [o for o in others if not o.impostor]
+        if len(others) == 1 and crew_here:
+            lines.append(
+                f"KILL WINDOW: you are ALONE with {crew_here[0].name} — no other eyes. Strike now if able."
+            )
+        elif crew_here:
+            lines.append(
+                "Too many eyes here to strike — a kill needs you ALONE with one crewmate. Peel one off "
+                "(whisper or follow) and lead them somewhere quiet."
+            )
+        else:
+            lines.append(
+                "No one to hunt in this room. Go find a crewmate who has drifted off alone."
+            )
     # the dread grows with the body count — crew get more unsettled and trust the room less
     if not a.impostor and dead:
         if dead >= 4:
@@ -149,7 +169,7 @@ def _context(g: Game, a, inbox: list) -> str:
 
 
 def build_request(g: Game, a, inbox: list | None = None) -> Request:
-    sys = (SYS_THING if a.impostor else SYS_CREW).format(name=a.name)
+    sys = (SYS_COLD if a.impostor else SYS_CREW).format(name=a.name)
     return Request(
         system=sys,
         user=_context(g, a, inbox or []),
