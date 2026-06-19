@@ -279,7 +279,7 @@ const STATION0=(()=>{
   return {outpost:31, rects, corridor:tiles, centers, doors, vents:[["Freezer","Bunks"]]};
 })();
 
-let STATE={ round:1, dark:[], stormLeft:70, stormTotal:70, phase:"task", scores:{crew:0,cold:0}, agents:[] };
+let STATE={ round:1, dark:[], stormElapsed:0, stormTotal:300, stormAt:0, paused:false, phase:"task", scores:{crew:0,cold:0}, agents:[] };
 let lastKillTick=-1, fx=[], ejecting=null, mouse={x:-1,y:-1}, userMoved=false, HILITE=null, meet=null, disco=null, killPulse=0, meetWasActive=false;
 let curPhase='', phaseT0=0;  // phaseT0 stamps phase changes so intro/end can fade in
 let thoughtOf={}, thoughtHist={}, lastThought={}, downC=null, tapC=null;  // ambient thoughts + click-to-inspect
@@ -1252,6 +1252,7 @@ function drawDiscovery(t){
   ctx.fillText(`${disco.reporter||'someone'} found ${disco.victim} in the ${disco.room}`, cv.width/2, cv.height*0.19+23*DPR);
 }
 function frame(t){
+  updateStorm();  // smooth real-time dawn clock, every frame regardless of phase
   if(STATE.phase==='intro'){ drawSky(); drawAmbient(t); drawStation(t); applyLighting(); drawSnow(t); vignette(); drawIntro(t); requestAnimationFrame(frame); return; }
   if(disco){ const ms=performance.now()-disco.t0;
     const moving=STATE.agents.some(a=>a.alive&&a.moving);
@@ -1308,9 +1309,20 @@ function recapText(){ const crew=STATE.winner==='crew', cold=(STATE.agents||[]).
   const head=crew?"the crew survived Verglas":`the Cold (${cold||'?'}) took Verglas`;
   return `${head} — outpost ${OUTPOST}, a frozen station of named AIs where one is secretly the Cold. watch live:`; }
 
-function syncHud(){ const prog=STATE.stormTotal?Math.max(0,Math.min(1,(STATE.stormTotal-STATE.stormLeft)/STATE.stormTotal)):0;  // night elapsed → dawn
-  $('hud-tasks').style.width=(100*prog)+'%';
-  $('hud-tasksn').textContent=Math.round(prog*100)+'%';
+// the storm-to-dawn clock — a smooth, real-time bar (updated every frame, not per tick) that warms from
+// cold night-blue toward dawn amber as the night passes. Counts real play-seconds, meetings included.
+function updateStorm(){ if(STATE.stormTotal==null) return;
+  const playing=['task','meeting','vote','ejection'].includes(STATE.phase);
+  let el=STATE.stormElapsed||0;
+  if(playing && !STATE.paused) el += (performance.now()-(STATE.stormAt||performance.now()))/1000;  // creep in real time
+  el=Math.max(0,Math.min(el,STATE.stormTotal)); const prog=STATE.stormTotal?el/STATE.stormTotal:0;
+  const bar=$('hud-tasks'); if(bar){ bar.style.width=(100*prog)+'%';
+    const c0=[96,150,214], c1=[255,178,86], mix=i=>Math.round(c0[i]+(c1[i]-c0[i])*prog);  // night → dawn
+    bar.style.background=`rgb(${mix(0)},${mix(1)},${mix(2)})`; bar.style.boxShadow=prog>0.55?`0 0 ${6*prog}px rgba(255,180,90,${0.5*prog})`:'none'; }
+  const left=Math.max(0,STATE.stormTotal-el), n=$('hud-tasksn');
+  if(n) n.textContent=`${Math.floor(left/60)}:${String(Math.floor(left%60)).padStart(2,'0')}`;
+}
+function syncHud(){ updateStorm();
   $('hud-alive').textContent=STATE.agents.filter(a=>a.alive).length; $('hud-total').textContent=STATE.agents.length;
   const ros=$('roster'); ros.innerHTML=''; for(const a of STATE.agents){ const d=document.createElement('div'); d.className='who'+(a.alive?'':' dead')+(a.id===HILITE?' sel':'');
     d.innerHTML=`<span class="dot" style="color:${COLORS[a.c%COLORS.length]};background:${COLORS[a.c%COLORS.length]}"></span><span><div class="nm">${a.name}</div></span>`;
@@ -1357,7 +1369,8 @@ function renderChat(s){ const chat=$('chat'), inMeet=['meeting','vote','ejection
 let hadSnapshot=false;  // false until the first snapshot is processed — so a refresh into a meeting skips the discovery beat
 function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.station.openTasks||{}; }
   if(s.phase!==curPhase){ curPhase=s.phase; phaseT0=performance.now(); }  // fresh fade for intro/gameover
-  STATE.round=s.round; STATE.dark=s.dark||[]; STATE.stormLeft=s.stormLeft; STATE.stormTotal=s.stormTotal; STATE.phase=s.phase;
+  STATE.round=s.round; STATE.dark=s.dark||[]; STATE.paused=!!s.paused;
+  STATE.stormElapsed=s.stormElapsed||0; STATE.stormTotal=s.stormTotal||300; STATE.stormAt=performance.now(); STATE.phase=s.phase;
   STATE.hunting=s.hunting; STATE.winner=s.winner; STATE.win_by=s.win_by; STATE.scores=s.scores; STATE.meeting=s.meeting; applyAgents(s.agents||[]);
   if(s.phase==='intro'){ removedBodies.clear(); }  // new game → bodies can appear again
   // recover bodies only when the meeting is OVER (not while it runs — the body must stay visible for the

@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse, JSONResponse
 
 from . import artel, autonomy, env, llm
-from .engine import MAX_TICKS, STORM_TICKS, new_game
+from .engine import MAX_TICKS, new_game
 from .meeting import (
     run_canned_meeting,
     run_llm_meeting,
@@ -43,6 +43,9 @@ GAMEOVER_LINGER = 14.0  # hold on the result screen before the next game (esp. a
 INTRO_LINGER = (
     12.0  # the opening card — three lines fade in at reading pace, then a brief hold before play
 )
+STORM_SECONDS = float(
+    env("STORM_SECONDS", "300")
+)  # the storm passes after ~5 min of real play (meetings included) — survive to dawn and the crew win
 _ADMIN_TOKEN = os.environ.get("WORLDS_ADMIN_TOKEN", "")
 N_AGENTS = int(env("AGENTS", "10"))
 N_IMPOSTORS = int(env("IMPOSTORS", "2"))
@@ -76,6 +79,9 @@ class Verglas:
         self.recent: list[dict] = []  # [{win: crew-won?}] for the ops dots
         self.completed = 0
         self.paused = False
+        self.game_secs = (
+            0.0  # real seconds the current game has been playing — the storm clock to dawn
+        )
         self.phase = "task"  # task | meeting | vote | ejection | gameover
         self.revealed = False  # during ejection: has the human/Cold reveal happened yet?
         self.whisper = None  # [from, to] while a private DM indicator is flashing
@@ -125,6 +131,7 @@ class Verglas:
     def _new_game(self) -> None:
         self.g = new_game(_rng.randint(1, 2**31 - 1), n=N_AGENTS, impostors=N_IMPOSTORS)
         self.tasks_total = self.g.tasks_goal
+        self.game_secs = 0.0  # fresh storm clock for the new night
         self.phase = "intro"  # opening card first; the loop holds it, then play begins
         self.meeting = None
 
@@ -252,8 +259,10 @@ class Verglas:
             "dark": sorted(
                 g.dark
             ),  # rooms currently unlit — the client dims them and flags relight jobs
-            "stormLeft": max(0, STORM_TICKS - g.tick),
-            "stormTotal": STORM_TICKS,
+            "stormElapsed": round(
+                self.game_secs, 1
+            ),  # real seconds into the night → the client's smooth dawn bar
+            "stormTotal": STORM_SECONDS,
             "alive": len(g.living()),
             "total": len(g.agents),
             "agents": agents,
@@ -529,17 +538,25 @@ async def _game_loop():
                 await _broadcast()
                 continue
             async with G.lock:
-                if llm.enabled():
-                    mt = await _autonomous_tick()  # full-autonomous: agents drive the task phase
-                else:
-                    mt = G.g.step()  # offline / unprovisioned: the deterministic engine drives
-                    G.enqueue_task_events()
-                if mt is not None and G.g.winner is None:
-                    await _run_meeting(mt)
+                if G.game_secs >= STORM_SECONDS and G.g.winner is None:
+                    G.g.winner, G.g.win_by = "crew", "storm"  # dawn — the crew outlasted the storm
+                if G.g.winner is None:
+                    if llm.enabled():
+                        mt = (
+                            await _autonomous_tick()
+                        )  # full-autonomous: agents drive the task phase
+                    else:
+                        mt = G.g.step()  # offline / unprovisioned: the deterministic engine drives
+                        G.enqueue_task_events()
+                    if mt is not None and G.g.winner is None:
+                        await _run_meeting(mt)
                 if G.g.winner is not None:
                     G.phase = "gameover"
                     G.record_result()
                     await _broadcast()
+            G.game_secs += (
+                loop.time() - start
+            )  # the night advances by this iteration's real time (meetings too)
             if G.phase == "gameover":
                 await asyncio.sleep(GAMEOVER_LINGER)
                 async with G.lock:
