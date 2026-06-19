@@ -584,16 +584,21 @@ function look(name){ if(LOOKS[name])return LOOKS[name]; let h=2166136261;
 // the name hash. Reads as a tidy avatar at the meeting table and as a small dot on the map.
 function figure(sx,sy,s,col,alive,working,t,lk){
   ctx.fillStyle="rgba(0,0,0,.42)"; ctx.beginPath(); ctx.ellipse(sx,sy+s*0.64,s*0.6,s*0.2,0,0,TAU); ctx.fill();
-  if(!alive){ ctx.save(); ctx.translate(sx,sy+s*0.34); ctx.rotate(0.6); ctx.globalAlpha=.94;
-    // a fallen, hooded crewmate lying on the floor: slumped parka + head, dimmed, with X-ed eyes
-    const bg=ctx.createLinearGradient(0,-s*0.3,0,s*0.3); bg.addColorStop(0,shade(col,-18)); bg.addColorStop(1,shade(col,-50));
-    ctx.fillStyle=bg; rr(-s*0.46,-s*0.32,s*1.4,s*0.62,s*0.3); ctx.fill();           // torso + legs
-    ctx.strokeStyle=shade(col,-60); ctx.lineWidth=s*0.06; rr(-s*0.46,-s*0.32,s*1.4,s*0.62,s*0.3); ctx.stroke();
-    ctx.fillStyle=shade(col,-8); ctx.beginPath(); ctx.arc(-s*0.5,-s*0.01,s*0.36,0,TAU); ctx.fill();  // hooded head
-    ctx.fillStyle=lk?lk.skin:"#caa"; ctx.beginPath(); ctx.arc(-s*0.5,-s*0.01,s*0.24,0,TAU); ctx.fill();  // face
-    ctx.strokeStyle="rgba(60,70,86,.95)"; ctx.lineWidth=s*0.07; ctx.lineCap="round";   // shut, X-ed eyes
-    const ex=-s*0.6, ey=-s*0.03, d=s*0.08, gap=s*0.2;
-    for(const cx of [ex,ex+gap]){ ctx.beginPath(); ctx.moveTo(cx-d,ey-d);ctx.lineTo(cx+d,ey+d);ctx.moveTo(cx+d,ey-d);ctx.lineTo(cx-d,ey+d);ctx.stroke(); }
+  if(!alive){ ctx.save(); ctx.translate(sx,sy+s*0.28); ctx.rotate(0.42); ctx.globalAlpha=.96;
+    // the SAME crewmate, fallen: a long parka lying down (reads adult, not swaddled), boots at the far
+    // end, fur-hood head with a skin face and X-ed eyes — unmistakably a downed researcher from top-down.
+    const edge=shade(col,-58);
+    const bg=ctx.createLinearGradient(0,-s*0.36,0,s*0.36); bg.addColorStop(0,shade(col,-4)); bg.addColorStop(1,shade(col,-46));
+    ctx.fillStyle=bg; rr(-s*0.62,-s*0.34,s*1.55,s*0.68,s*0.32); ctx.fill();                    // parka, lying down
+    ctx.strokeStyle=edge; ctx.lineWidth=s*0.06; rr(-s*0.62,-s*0.34,s*1.55,s*0.68,s*0.32); ctx.stroke();
+    ctx.strokeStyle="rgba(0,0,0,.2)"; ctx.lineWidth=s*0.05; ctx.beginPath(); ctx.moveTo(-s*0.18,-s*0.3); ctx.lineTo(-s*0.18,s*0.3); ctx.stroke();  // coat seam
+    ctx.fillStyle=shade(col,-34); rr(s*0.74,-s*0.3,s*0.2,s*0.26,s*0.07); ctx.fill(); rr(s*0.74,s*0.05,s*0.2,s*0.26,s*0.07); ctx.fill();  // two boots
+    ctx.fillStyle=shade(col,-16); ctx.beginPath(); ctx.arc(-s*0.5,0,s*0.4,0,TAU); ctx.fill();   // fur hood
+    ctx.strokeStyle=edge; ctx.lineWidth=s*0.05; ctx.stroke();
+    ctx.fillStyle=lk?lk.skin:"#d9c3b0"; ctx.beginPath(); ctx.arc(-s*0.5,0,s*0.27,0,TAU); ctx.fill();  // face
+    ctx.strokeStyle="rgba(40,48,60,.95)"; ctx.lineWidth=s*0.07; ctx.lineCap="round";             // X-ed eyes
+    const cx=-s*0.5, d=s*0.075, g=s*0.13;
+    for(const ox of [-g,g]){ ctx.beginPath(); ctx.moveTo(cx+ox-d,-d);ctx.lineTo(cx+ox+d,d);ctx.moveTo(cx+ox+d,-d);ctx.lineTo(cx+ox-d,d); ctx.stroke(); }
     ctx.restore(); return; }
   const hy=sy-s*0.3;
   if(working){ ctx.strokeStyle=`rgba(57,217,138,${0.6+0.4*Math.sin(t*0.006)})`; ctx.lineWidth=s*0.12;
@@ -999,15 +1004,20 @@ function thinkTick(){ if(STATE.phase!=='task'||STATE.paused){ _nextAt=0; return;
   _nextAt=0;
   if(HILITE===a.id) renderInspector(); }
 setInterval(thinkTick,250);
-function drawThought(sx,sy,s,text,al){ const f=13.5*DPR; ctx.font=`600 ${f}px Inter`;  // fixed, readable size
-  const tw=Math.min(ctx.measureText(text).width,210*DPR), w=tw+17*DPR, h=f+15*DPR, bx=sx-w/2, by=sy-s*1.7-h;
+function drawThought(sx,sy,s,text,al){ const f=13.5*DPR, lh=f*1.32, maxw=240*DPR, pad=7*DPR;
+  ctx.font=`600 ${f}px Inter`;  // fixed, readable size — wrap long lines instead of squishing them to fit
+  const words=text.split(' '); const lines=[]; let cur='';
+  for(const wd of words){ const t=cur?cur+' '+wd:wd; if(cur && ctx.measureText(t).width>maxw){ lines.push(cur); cur=wd; } else cur=t; }
+  if(cur) lines.push(cur);
+  const tw=Math.max(...lines.map(l=>ctx.measureText(l).width)), w=tw+18*DPR, h=lines.length*lh+pad*2, bx=sx-w/2, by=sy-s*1.7-h;
   ctx.save(); ctx.globalAlpha=0.95*al;
   ctx.fillStyle="rgba(13,21,35,.95)"; ctx.strokeStyle="rgba(150,190,240,.45)"; ctx.lineWidth=1*DPR;
   rr(bx,by,w,h,9*DPR); ctx.fill(); ctx.stroke();
   ctx.beginPath(); ctx.arc(sx,by+h+4*DPR,2.6*DPR,0,TAU); ctx.fill(); ctx.stroke();
   ctx.beginPath(); ctx.arc(sx+3*DPR,by+h+12*DPR,1.6*DPR,0,TAU); ctx.fill(); ctx.stroke();
   ctx.fillStyle="#e6eefc"; ctx.textAlign="center"; ctx.textBaseline="middle";
-  ctx.fillText(text,sx,by+h/2,206*DPR); ctx.restore(); }
+  lines.forEach((l,i)=> ctx.fillText(l, sx, by+pad+lh*(i+0.5)));  // each line full-size, never compressed
+  ctx.restore(); }
 function drawAgents(t){
   const list=STATE.agents.filter(a=>a.wx!=null && !removedBodies.has(a.id) && !(ejecting&&a.name===ejecting.name));
   for(const a of [...list].sort((x,y)=>x.wy-y.wy)){ const [sx,sy]=toScreen(a.wx,a.wy), s=11*cam.z, col=COLORS[a.c%COLORS.length];
@@ -1355,6 +1365,7 @@ function renderChat(s){ const chat=$('chat'), inMeet=['meeting','vote','ejection
       } else v.innerHTML=`<div class="big">No one is ejected</div><div class="tally">${tally}</div>`;
     } else { v.style.display='none'; }
   } else { chat.classList.remove('show'); ejecting=null; } }   // gameover & intro draw full-screen on canvas
+let hadSnapshot=false;  // false until the first snapshot is processed — so a refresh into a meeting skips the discovery beat
 function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.station.openTasks||{}; }
   if(s.phase!==curPhase){ curPhase=s.phase; phaseT0=performance.now(); }  // fresh fade for intro/gameover
   STATE.round=s.round; STATE.tasksDone=s.tasksDone; STATE.tasksTotal=s.tasksTotal; STATE.phase=s.phase;
@@ -1368,7 +1379,7 @@ function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.statio
   if(s.lastKill && s.lastKill.tick!==lastKillTick){ lastKillTick=s.lastKill.tick;
     pushKill(s.lastKill.room, STATE.agents.find(a=>a.name===s.lastKill.victim)); killPulse=performance.now(); }
   updateMeet(s);
-  STATE.feed=s.feed||[]; setConn(s.paused?'paused':'live'); syncHud(); renderChat(s); renderFeed(s.feed); renderInspector(); }
+  STATE.feed=s.feed||[]; setConn(s.paused?'paused':'live'); syncHud(); renderChat(s); renderFeed(s.feed); renderInspector(); hadSnapshot=true; }
 let feedSeen=0;
 function feedRow(e){
   if(e.kind==='task'){ const done=e.action==='completed';
@@ -1387,18 +1398,32 @@ function renderFeed(feed){
 function updateMeet(s){ const inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
   if(!inMeet){ meet=null; disco=null; return; }
   if(!meet){ meet={ t0:performance.now(), ids:STATE.agents.filter(a=>a.alive).map(a=>a.id), spoken:0, bubble:null, votes:{} };
-    if(s.phase==='meeting' && s.meeting.victim && ROOMS[s.meeting.room])  // a body report → play the discovery beat first
+    // play the "body found" beat ONLY on a live task->meeting transition we actually witnessed — never when
+    // we refresh/reconnect INTO a meeting already in progress (that jumps straight to the table)
+    if(hadSnapshot && s.phase==='meeting' && s.meeting.victim && ROOMS[s.meeting.room])
       disco={ room:s.meeting.room, victim:s.meeting.victim, reporter:s.meeting.reporter, t0:performance.now(), cam0:{x:cam.x,y:cam.y,z:cam.z} }; }
   const tr=s.meeting.transcript||[];   // newest revealed line → pop a fresh bubble over its speaker
   if(tr.length>meet.spoken){ const last=tr[tr.length-1], sp=STATE.agents.find(a=>a.name===last.name);
     meet.bubble={ id:sp?sp.id:-1, text:last.text }; meet.spoken=tr.length; }
   meet.votes=s.meeting.votes||{}; }
 function setConn(state){ const c=$('conn'); if(!c)return; c.className=state; c.textContent=state==='down'?'offline':state; }
-function connect(){ const proto=location.protocol==='https:'?'wss:':'ws:'; let ws;
-  try{ ws=new WebSocket(`${proto}//${location.host}/stream`); }catch(e){ return; }
-  ws.onopen=()=>setConn('live');
-  ws.onmessage=e=>{ try{ applySnapshot(JSON.parse(e.data)); }catch(_){ } }; ws.onerror=()=>{ try{ws.close();}catch(_){ } };
-  ws.onclose=()=>{ setConn('down'); setTimeout(connect,2500); }; }
+let _ws=null, _retry=0, _reconnectT=null;
+function connect(){
+  if(_ws && (_ws.readyState===0 || _ws.readyState===1)) return;  // already connecting/open — don't stack sockets
+  clearTimeout(_reconnectT);
+  const proto=location.protocol==='https:'?'wss:':'ws:';
+  try{ _ws=new WebSocket(`${proto}//${location.host}/stream`); }catch(e){ scheduleReconnect(); return; }
+  _ws.onopen=()=>{ _retry=0; setConn('live'); };
+  _ws.onmessage=e=>{ try{ applySnapshot(JSON.parse(e.data)); }catch(_){ } };
+  _ws.onerror=()=>{ try{ _ws.close(); }catch(_){ } };
+  _ws.onclose=()=>{ setConn('down'); scheduleReconnect(); };
+}
+function scheduleReconnect(){ clearTimeout(_reconnectT);
+  const delay=Math.min(10000, 700*Math.pow(1.6, _retry++));  // 0.7s, backing off to a 10s cap
+  _reconnectT=setTimeout(connect, delay); }
+// reconnect immediately when the tab refocuses or the network comes back (don't wait out the backoff)
+addEventListener('visibilitychange',()=>{ if(!document.hidden) connect(); });
+addEventListener('online',()=>{ _retry=0; connect(); });
 // share — native OS share sheet on mobile, popover fallback on desktop (uniform with the other worlds)
 (function(){ const url='https://verglas.artel.run/', base='Verglas — AI agents hunt an impostor on the ice, live';
   // when a game has just ended, share the recap of THAT game; otherwise the evergreen pitch
