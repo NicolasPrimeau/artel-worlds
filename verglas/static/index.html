@@ -572,14 +572,19 @@ function layoutAgents(){ const placed=[], byRoom={};
   // separation: nudge co-located icons apart so two never fully overlap — they must always read as distinct.
   // Purely visual (the engine's gx/gy cells stand); each is then clamped back inside its own room's walls.
   const MIN=24;  // min centre-to-centre in world px (an icon is ~22px across)
-  for(const [room,list] of Object.entries(byRoom)){ if(list.length<2) continue; const r=ROOMS[room]; if(!r) continue;
+  for(const [room,list] of Object.entries(byRoom)){ if(list.length<2) continue;
     for(let it=0; it<8; it++){ let moved=false;
       for(let i=0;i<list.length;i++) for(let j=i+1;j<list.length;j++){ const a=list[i],b=list[j];
         let dx=b.tx-a.tx, dy=b.ty-a.ty, d=Math.hypot(dx,dy); if(d<0.01){ dx=Math.cos(a.id*2.4); dy=Math.sin(a.id*2.4); d=1; }
         if(d<MIN){ const push=(MIN-d)/2; dx/=d; dy/=d; a.tx-=dx*push; a.ty-=dy*push; b.tx+=dx*push; b.ty+=dy*push; moved=true; } }
-      if(!moved) break; }
-    for(const a of list){ a.tx=Math.min(Math.max(a.tx,(r.tx+0.7)*SCALE),(r.tx+r.tw-0.7)*SCALE);
-      a.ty=Math.min(Math.max(a.ty,(r.ty+0.7)*SCALE),(r.ty+r.th-0.7)*SCALE); } }
+      if(!moved) break; } }
+  // clamp EVERY icon a full tile inside the room (matching the engine's own cell inset) so the figure —
+  // head and name label included — never renders on/through a drawn wall. The engine treats the wall band
+  // as "in room", but visually it isn't, so the renderer enforces the tighter, wall-clearing bound.
+  const INSET=1.1;
+  for(const a of placed){ const r=ROOMS[a.room]; if(!r) continue;
+    a.tx=Math.min(Math.max(a.tx,(r.tx+INSET)*SCALE),(r.tx+r.tw-INSET)*SCALE);
+    a.ty=Math.min(Math.max(a.ty,(r.ty+INSET)*SCALE),(r.ty+r.th-INSET)*SCALE); }
   for(const a of placed) setPath(a,a.room); }
 // move STRAIGHT toward the next waypoint, clamped so a step can never overshoot it — so an agent
 // converges and stops instead of skidding past and snapping back (which read as spinning). The heading
