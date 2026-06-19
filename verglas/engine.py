@@ -224,10 +224,15 @@ KILL_REACH = 3.0  # the Cold must be within this many cells of the victim — no
 # can darken rooms itself (sabotage) to manufacture a kill spot. These are all tunable.
 STORM_TICKS = 70  # game length (~5 min at ~4.2s/tick) — survive to here and the crew win
 STORM_EVERY = (
-    5  # the storm darkens a lit room about this often (ticks); it speeds up late (see _storm)
+    4  # the storm darkens a lit room about this often (ticks); it speeds up late (see _storm)
 )
-SABOTAGE_CD = 5  # ticks between the Cold's light-sabotages (~20s)
-START_DARK = 3  # rooms already dark when the game opens, so there's danger from the first minute
+DARK_CAP = (
+    7  # the storm won't push past this many dark rooms (the Cold's sabotage can still add more)
+)
+SABOTAGE_CD = (
+    4  # ticks between the Cold's light-sabotages (~16s) — its main tool for making kill spots
+)
+START_DARK = 4  # rooms already dark when the game opens, so there's danger from the first minute
 GX_STEP = (
     1.6  # cells/tick an agent drifts toward its in-room spot (the Cold stalks into range gradually)
 )
@@ -474,7 +479,7 @@ class Game:
 
     def _storm(self) -> None:
         # the storm snuffs a random lit room; capped so it never blacks the whole station out at once
-        if len(self.dark) >= 6:
+        if len(self.dark) >= DARK_CAP:
             return
         lit = [r for r in self.rooms if r not in self.dark]
         if lit:
@@ -528,10 +533,31 @@ class Game:
         for a in self.living():
             a.tasking = False
             if a.impostor:
-                if a.room in self.vents and self.rng.random() < 0.25:
-                    a.room = self.rng.choice(self.vents[a.room])  # vent away secretly
+                # offline heuristic Cold (the live one is the LLM): if alone with one crewmate, darken the
+                # room to make the kill (the kill block below then takes them); otherwise stalk the nearest
+                # crewmate to engineer that one-on-one.
+                occ = self._occ(a.room)
+                crew_here = [c for c in occ if not c.impostor]
+                if len(occ) == 2 and crew_here:
+                    if a.room not in self.dark and self.sab_cd == 0:
+                        self.sabotage(a, a.room)  # darken it — the kill block takes them this tick
                 else:
-                    a.room = self.rng.choice(self.adj[a.room])
+                    # stalk a crewmate who is ALONE in their room (the only crew there), preferring the dark
+                    lone = [
+                        c
+                        for c in self.living(impostor=False)
+                        if sum(1 for o in self._occ(c.room) if not o.impostor) == 1
+                    ]
+                    pool = lone or self.living(impostor=False)
+                    if pool:
+                        tgt = min(
+                            pool,
+                            key=lambda c: (
+                                c.room not in self.dark,
+                                self._room_dist(a.room, c.room),
+                            ),
+                        )
+                        self._toward_room(a, tgt.room)
             elif a.work > 0:  # mid-task: stay at the console until it's done
                 a.work -= 1
                 a.tasking = True
