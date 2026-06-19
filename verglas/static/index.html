@@ -65,11 +65,6 @@
   #ins-body .meta{color:var(--dim);margin-bottom:9px}
   #ins-body .thought{background:rgba(44,74,116,.4);border:1px solid rgba(120,180,240,.26);border-radius:9px;
     padding:7px 10px;color:#dbe7fb;font-style:italic;margin-bottom:11px}
-  .callcold{display:block;width:100%;margin:9px 0 4px;padding:7px;border-radius:8px;border:1px solid var(--line);
-    background:rgba(120,160,220,.08);color:var(--frost);font:inherit;font-size:11.5px;font-weight:600;cursor:pointer}
-  .callcold:hover{background:rgba(120,160,220,.16);color:var(--ink)}
-  .callcold.on{background:rgba(255,90,90,.16);border-color:rgba(255,90,90,.5);color:#ffd0d0}
-  .callhint{font-size:9.5px;color:var(--dim);margin:0 2px 7px;line-height:1.35}
   #ins-body .sec{font-size:9px;letter-spacing:.18em;color:var(--frost);font-weight:700;margin:4px 0 5px}
   #ins-body ul{list-style:none;margin:0;padding:0}
   #ins-body li{padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);word-break:break-word}
@@ -212,7 +207,7 @@
     <p><b>How the Cold wins.</b> It blends in, peels crewmates off alone, and kills them. If it thins the crew down to the last one, the station is lost.</p>
     <p><b>The meeting.</b> When a body is found, the survivors gather and talk: each says where it was and who it saw, then everyone votes. The accused is ejected — but if the crew get it wrong, they've just thrown out one of their own.</p>
     <p><b>It's real reasoning.</b> Every move, accusation, lie and vote is a language model deciding in the moment — and it all travels over <span class="k">Artel</span>, the shared layer the crew use to coordinate. Talking is how they survive.</p>
-    <p><b>You're a spectator.</b> Tap any crewmate to see what they're up to and place a guess at who the Cold is; open <b>🏆 Standings</b> to see which AIs win most.</p>
+    <p><b>You're a spectator.</b> Tap any crewmate to see what they're up to; open <b>🏆 Standings</b> to see which AIs win most.</p>
   </div>
 </div></div>
 
@@ -285,8 +280,7 @@ const STATION0=(()=>{
 })();
 
 let STATE={ round:1, tasksDone:7, tasksTotal:40, phase:"task", scores:{crew:0,cold:0}, agents:[] };
-let lastKillTick=-1, fx=[], ejecting=null, mouse={x:-1,y:-1}, userMoved=false, HILITE=null, meet=null, disco=null, killPulse=0, meetWasActive=false, myGuess=null;
-function callCold(id){ myGuess=(myGuess===id?null:id); syncHud(); renderInspector(); }
+let lastKillTick=-1, fx=[], ejecting=null, mouse={x:-1,y:-1}, userMoved=false, HILITE=null, meet=null, disco=null, killPulse=0, meetWasActive=false;
 let curPhase='', phaseT0=0;  // phaseT0 stamps phase changes so intro/end can fade in
 let thoughtOf={}, thoughtHist={}, lastThought={}, downC=null, tapC=null;  // ambient thoughts + click-to-inspect
 const EJECT_MS=3600;  // how long the ejected researcher takes to trudge off into the storm
@@ -1306,11 +1300,7 @@ function drawEnd(t){
   ctx.fillText(crew?"THE CREW SURVIVED":"THE COLD WINS", cx, cy);
   ctx.fillStyle="rgba(231,238,252,.86)"; ctx.font=`600 ${Math.min(16,cv.width/26/DPR)*DPR}px Inter`; ctx.fillText(by, cx, cy+big*0.7*DPR);
   ctx.fillStyle="rgba(182,202,232,.82)"; ctx.font=`600 ${13*DPR}px Inter`; ctx.fillText(`the Cold was ${cold||'—'}`, cx, cy+big*1.15*DPR);
-  // your "call the Cold" verdict, if you made one
-  if(myGuess!=null){ const g=STATE.agents.find(a=>a.id===myGuess), right=g&&g.cold;
-    ctx.fillStyle=right?"rgba(122,210,255,.95)":"rgba(255,120,120,.9)"; ctx.font=`800 ${12*DPR}px Inter`;
-    ctx.fillText(right?`you called it — ${g.name} was the Cold ✓`:`you called ${g?g.name:'—'} — wrong`, cx, cy+big*1.5*DPR); }
-  ctx.fillStyle="rgba(150,170,200,.55)"; ctx.font=`600 ${11*DPR}px Inter`; ctx.fillText("a new crew rotates in…", cx, cy+big*1.95*DPR);
+  ctx.fillStyle="rgba(150,170,200,.55)"; ctx.font=`600 ${11*DPR}px Inter`; ctx.fillText("a new crew rotates in…", cx, cy+big*1.7*DPR);
   ctx.restore();
 }
 function recapText(){ const crew=STATE.winner==='crew', cold=(STATE.agents||[]).filter(a=>a.cold).map(a=>a.name).join(' & ');
@@ -1321,7 +1311,7 @@ function syncHud(){ $('hud-tasks').style.width=(100*STATE.tasksDone/Math.max(1,S
   $('hud-tasksn').textContent=Math.round(100*(STATE.tasksDone||0)/Math.max(1,STATE.tasksTotal||1))+'%';
   $('hud-alive').textContent=STATE.agents.filter(a=>a.alive).length; $('hud-total').textContent=STATE.agents.length;
   const ros=$('roster'); ros.innerHTML=''; for(const a of STATE.agents){ const d=document.createElement('div'); d.className='who'+(a.alive?'':' dead')+(a.id===HILITE?' sel':'');
-    d.innerHTML=`<span class="dot" style="color:${COLORS[a.c%COLORS.length]};background:${COLORS[a.c%COLORS.length]}"></span><span><div class="nm">${a.name}${a.id===myGuess?' 🎯':''}</div></span>`;
+    d.innerHTML=`<span class="dot" style="color:${COLORS[a.c%COLORS.length]};background:${COLORS[a.c%COLORS.length]}"></span><span><div class="nm">${a.name}</div></span>`;
     d.onclick=()=>{ HILITE=(HILITE===a.id?null:a.id); syncHud(); renderInspector(); }; ros.appendChild(d); } }
 
 function renderInspector(){ const el=$('inspect'); if(!el)return; const a=STATE.agents.find(x=>x.id===HILITE);
@@ -1335,11 +1325,8 @@ function renderInspector(){ const el=$('inspect'); if(!el)return; const a=STATE.
     if(e.kind==='task'&&e.who===a.name) rows.push(`${e.action==='completed'?'✓ completed':'▸ claimed'} a task in <b>${esc(e.room)}</b>`);
     else if(e.kind==='msg'&&e.frm===a.name) rows.push(e.to?`whispered to <b>${esc(e.to)}</b>: “${esc(e.text)}”`:`said: “${esc(e.text)}”`);
     else if(e.kind==='msg'&&e.to===a.name) rows.push(`${esc(e.frm)} whispered: “${esc(e.text)}”`); }
-  const canGuess=a.alive&&!STATE.winner;
-  const guessBtn=canGuess?`<button class="callcold${myGuess===a.id?' on':''}" onclick="callCold(${a.id})">${myGuess===a.id?`✓ You suspect ${esc(a.name)}`:`Suspect ${esc(a.name)} of being the Cold`}</button>`
-    +`<div class="callhint">${myGuess===a.id?'your guess — scored when the game ends · tap to undo':'place your guess — revealed when the game ends'}</div>`:'';
   $('ins-body').innerHTML=`<div class="meta">${a.alive?'active':'deceased'} · ${esc(act)}</div>`+
-    `<div class="thought">“${esc(th)}”</div>`+guessBtn+`<div class="sec">RECENT ACTIVITY</div>`+
+    `<div class="thought">“${esc(th)}”</div><div class="sec">RECENT ACTIVITY</div>`+
     (rows.length?`<ul>${rows.map(r=>`<li>${r}</li>`).join('')}</ul>`:`<div class="none">nothing on the wire yet</div>`); }
 
 // ---- live data ----
@@ -1370,7 +1357,7 @@ function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.statio
   if(s.phase!==curPhase){ curPhase=s.phase; phaseT0=performance.now(); }  // fresh fade for intro/gameover
   STATE.round=s.round; STATE.tasksDone=s.tasksDone; STATE.tasksTotal=s.tasksTotal; STATE.phase=s.phase;
   STATE.hunting=s.hunting; STATE.winner=s.winner; STATE.win_by=s.win_by; STATE.scores=s.scores; STATE.meeting=s.meeting; applyAgents(s.agents||[]);
-  if(s.phase==='intro'){ removedBodies.clear(); myGuess=null; }  // new game → bodies + your guess reset
+  if(s.phase==='intro'){ removedBodies.clear(); }  // new game → bodies can appear again
   // recover bodies only when the meeting is OVER (not while it runs — the body must stay visible for the
   // "body found" discovery zoom AND for the table-centre display). On the meeting→task edge, drop the dead.
   const meetingNow=['meeting','vote','ejection'].includes(s.phase);
