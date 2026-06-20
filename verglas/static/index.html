@@ -46,14 +46,14 @@
   .who.dead{opacity:.36}.who.dead .nm{text-decoration:line-through}
 
   /* ARTEL · LIVE — one docked panel: the event stream during play, the meeting transcript + verdict during a meeting */
-  #live{position:fixed;right:12px;top:60px;bottom:12px;width:340px;max-width:42vw;z-index:12;
+  #live{position:fixed;right:12px;top:60px;height:54vh;max-height:calc(100vh - 84px);width:340px;max-width:42vw;z-index:12;
     background:var(--panel);border:1px solid var(--line);border-radius:14px;backdrop-filter:blur(12px);
     display:flex;flex-direction:column;overflow:hidden}
   #live .ch{display:flex;align-items:center;gap:7px;padding:11px 13px;border-bottom:1px solid var(--line);
     font-size:12.5px;letter-spacing:.14em;color:var(--frost);font-weight:800}
-  #live .ch .feedlink{margin-left:auto;color:var(--frost);text-decoration:none;display:inline-flex;align-items:center;transition:color .15s}
-  #live .ch .feedlink:hover{color:#fff}
-  #live .ch .feedlink svg{width:11px;height:11px;opacity:.85}
+  #live .ch .feedlink{margin-left:auto;color:var(--dim);text-decoration:none;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:none;transition:color .15s}
+  #live .ch .feedlink:hover{color:var(--frost)}
+  #llog li.clearspace{animation:none;padding:0;margin:0}
   #llog{list-style:none;margin:0;padding:10px 12px;flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:7px}
   #llog li{font-size:12.5px;line-height:1.4;color:var(--ink);animation:cin .3s ease;word-break:break-word}
   #llog .pv{color:#c8a6ff;font-weight:700}
@@ -180,7 +180,7 @@
 <div class="roster" id="roster"></div>
 <div id="inspect" hidden><div class="ih"><span id="ins-name">—</span><button id="ins-x" title="close">✕</button></div><div id="ins-body"></div></div>
 <div id="live">
-  <div class="ch"><span class="dot"></span> <span id="live-title">STATION LOG</span><a class="feedlink" href="https://artel.run/ui?project=verglas#dashboard" target="_blank" rel="noopener" title="powered by Artel — open the Verglas project"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M5 3h8v8h-2V6.41l-6.29 6.3-1.42-1.42L9.59 5H5z"/></svg></a></div>
+  <div class="ch"><span class="dot"></span> <span id="live-title">STATION LOG</span><a class="feedlink" href="https://artel.run/ui?project=verglas#dashboard" target="_blank" rel="noopener" title="powered by Artel — open the Verglas project">via Artel ↗</a></div>
   <div class="lede" id="live-lede" style="display:none">—</div>
   <ul id="llog"></ul>
   <div class="verdict" id="live-verdict" style="display:none"></div>
@@ -569,7 +569,8 @@ function setPath(a,room){ if(a.prevRoom && a.prevRoom!==room && a.wx!=null){ a.p
 function layoutAgents(){ const placed=[], byRoom={};
   for(const a of STATE.agents){ a._anchor=false;
     if(removedBodies.has(a.id)) continue; if(!a.alive&&!a.body) continue; if(a.gx==null||a.gx<0) continue;
-    a.tx=(a.gx+0.5)*SCALE; a.ty=(a.gy+0.5)*SCALE; placed.push(a); (byRoom[a.room]=byRoom[a.room]||[]).push(a); }
+    a.tx=(a.gx+0.5)*SCALE; a.ty=(a.gy+0.5)*SCALE; if(!a.alive) a._anchor=true;  // a corpse lies where it fell — others part around it, it never gets nudged
+    placed.push(a); (byRoom[a.room]=byRoom[a.room]||[]).push(a); }
   // a crew member working a task sits ON a console (the glowing terminal), not adrift mid-room: snap each
   // worker to its nearest free terminal. These become fixed anchors the separation pass parts others around.
   if(STATE.phase==='task'){ for(const [room,list] of Object.entries(byRoom)){ const terms=TERMINALS[room]||[]; if(!terms.length) continue;
@@ -1445,6 +1446,10 @@ function applyAgents(arr){ const byId={}; for(const a of STATE.agents)byId[a.id]
 // the one ARTEL·LIVE panel: #llog (the feed) always carries the stream — incl. the meeting dialogue/votes
 // the server pushes during a meeting. renderChat only swaps the panel's identity: header, lede, verdict.
 function renderChat(s){ const live=$('live'), inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
+  if(inMeet && !wasMeeting){ // meeting called → `clear` the view: push history up off-screen (still scrollable), start fresh
+    const log=$('llog'); const sp=document.createElement('li'); sp.className='clearspace'; sp.style.minHeight=log.clientHeight+'px'; sp.setAttribute('aria-hidden','true');
+    log.appendChild(sp); log.scrollTop=log.scrollHeight; }
+  wasMeeting=inMeet;
   live.classList.toggle('meeting', !!inMeet);
   $('live-title').textContent=inMeet?'EMERGENCY MEETING':'STATION LOG';
   const lede=$('live-lede'), v=$('live-verdict');
@@ -1475,7 +1480,7 @@ function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.statio
     pushKill(s.lastKill.room, STATE.agents.find(a=>a.name===s.lastKill.victim)); killPulse=performance.now(); Sound.kill(); }
   updateMeet(s);
   STATE.feed=s.feed||[]; setConn(s.paused?'paused':'live'); syncHud(); renderChat(s); renderFeed(s.feed); renderInspector(); hadSnapshot=true; }
-let feedSeen=0;
+let feedSeen=0, wasMeeting=false;
 function feedRow(e){
   if(e.kind==='task'){ const done=e.action==='completed';
     return `<span class="${done?'done':'claim'}">${esc(e.who)}</span> ${done?'completed':'claimed'} <b>${esc(e.room)}</b>`; }
