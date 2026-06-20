@@ -328,11 +328,16 @@ async def _release_tasks(aids) -> None:
             await artel.unclaim_task(aid, tid)
 
 
+def _jit(secs: float, frac: float = 0.3) -> float:
+    # sequencing beats are jittered so the pacing never feels metronomic; lingers/fades stay precise
+    return secs * _rng.uniform(1.0 - frac, 1.0 + frac)
+
+
 def _stmt_hold(text: str) -> float:
     # STMT_DELAY sets the pace for a ~12-word line; scale to the actual length, jitter ±35% so the
     # table never feels metronomic, then clamp so a terse jab still registers and a long accusation
     # doesn't stall the room
-    base = STMT_DELAY * (len(text.split()) / 12.0) * _rng.uniform(0.65, 1.35)
+    base = _jit(STMT_DELAY * (len(text.split()) / 12.0), 0.35)
     return max(STMT_DELAY_MIN, min(STMT_DELAY_MAX, base))
 
 
@@ -357,7 +362,7 @@ async def _run_meeting(mt) -> None:
         if kind == "settle":  # discussion over → a beat before the vote
             G.phase = "vote"
             await _broadcast()
-            await asyncio.sleep(PRE_VOTE)
+            await asyncio.sleep(_jit(PRE_VOTE))
             return
         name = G.g.by_id(agent_id).name
         if (
@@ -368,7 +373,7 @@ async def _run_meeting(mt) -> None:
             G.whisper = [name, G.g.by_id(payload["to"]).name]
             G.push_feed("msg", frm=name, to=G.g.by_id(payload["to"]).name, text=payload["text"])
             await _broadcast()
-            await asyncio.sleep(WHISPER_DELAY)
+            await asyncio.sleep(_jit(WHISPER_DELAY))
             G.whisper = None
             return
         if kind == "statement":
@@ -383,7 +388,7 @@ async def _run_meeting(mt) -> None:
             await artel.say(agent_id, name, f"votes {target}.", subject="verglas-vote")
             G.push_feed("msg", frm=name, to=None, text=f"votes {target}")
             await _broadcast()
-            await asyncio.sleep(VOTE_DELAY)
+            await asyncio.sleep(_jit(VOTE_DELAY))
 
     if llm.enabled():
         votes = await run_llm_meeting(G.g, mt, on_item, gate=_wait_watched)
@@ -609,7 +614,7 @@ async def _game_loop():
             # one bad tick (a flaky Artel call, a transient hiccup) must never kill the loop and freeze the
             # world — log it and keep ticking. The lock is released by its context manager.
             log.warning("game loop tick failed: %s", e)
-        await asyncio.sleep(max(0.0, TASK_TICK - (loop.time() - start)))
+        await asyncio.sleep(max(0.0, _jit(TASK_TICK) - (loop.time() - start)))
 
 
 @contextlib.asynccontextmanager
