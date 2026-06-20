@@ -23,17 +23,15 @@
   .pill b{font-variant-numeric:tabular-nums}
   .taskbar{width:84px;height:8px;border-radius:999px;background:#16213a;overflow:hidden;border:1px solid var(--line)}
   .taskbar i{display:block;height:100%;background:linear-gradient(90deg,#2fa1ff,#39d98a);transition:width .4s;min-width:2px}
-  #hud-tasksn{color:#dce8f7;font-weight:800;font-variant-numeric:tabular-nums}
-  /* Frostpunk-homage storm dial: a cold-blue -> thaw-amber ring filling toward dawn, temperature at its core */
-  .storm{gap:9px}
-  .dial{position:relative;width:38px;height:38px;border-radius:50%;flex:none;
-    background:conic-gradient(var(--arc,#5aa0ff) calc(var(--p,0)*1turn), #16213a 0);
-    box-shadow:inset 0 0 0 1px var(--line), 0 0 var(--glow,0px) rgba(255,180,90,.6);
-    display:flex;align-items:center;justify-content:center;transition:box-shadow .4s}
-  .dial::before{content:"";position:absolute;inset:5px;border-radius:50%;background:var(--panel)}
-  #hud-temp{position:relative;z-index:1;font-size:9.5px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--tempc,#bcd6f5);letter-spacing:-.02em}
-  .stormtxt{display:flex;flex-direction:column;line-height:1.05;gap:1px}
-  .stormtxt .plabel{font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--frost);opacity:.85}
+  .storm{gap:8px}
+  .storm .plabel{font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--frost);opacity:.85}
+  /* storm-to-dawn bar: a cloud sweeps left→right; behind it the sky clears to sunrise orange, ahead the dark grey night */
+  .stormbar{position:relative;width:128px;height:12px;border-radius:7px;flex:none;overflow:visible;
+    background:linear-gradient(90deg,#ff9a3c 0%,#ffc079 calc(var(--p,0)*100%),#1a2540 calc(var(--p,0)*100%),#131d2c 100%);
+    box-shadow:inset 0 0 0 1px var(--line)}
+  .stormbar .sun{position:absolute;right:3px;top:50%;transform:translateY(-50%);font-size:11px;line-height:1;opacity:.92}
+  .stormbar .cloud{position:absolute;top:50%;left:calc(7px + var(--p,0)*(100% - 14px));transform:translate(-50%,-50%);
+    font-size:15px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6));transition:left .4s linear}
   .spacer{flex:1}
   .hint{color:var(--dim);font-size:11px}
   .roster{position:fixed;left:12px;top:60px;width:172px;z-index:9;display:flex;flex-direction:column;gap:4px}
@@ -172,7 +170,7 @@
 <div id="stage"><canvas id="map"></canvas></div>
 <div class="hud">
   <div class="brand">VERGLAS <small>· OUTPOST <b id="hud-outpost">31</b></small></div>
-  <div class="pill storm" title="Survive the storm and the crew win — it passes by dawn. The Cold can only kill in a DARK room; the storm (and the Cold) keep snuffing the lights. Stay lit, relight dark rooms, don't get cornered in the dark."><div class="dial" id="hud-dial"><span id="hud-temp">—</span></div><div class="stormtxt"><span class="plabel">To Dawn</span> <b id="hud-tasksn">5:00</b></div></div>
+  <div class="pill storm" title="Survive the storm to dawn and the crew win. The cloud sweeps left to right; behind it the sky clears to sunrise. The Cold can only kill in a DARK room — stay lit, relight dark rooms, don't get cornered in the dark."><span class="plabel">To Dawn</span><div class="stormbar" id="hud-storm"><span class="cloud">⛈️</span><span class="sun">☀️</span></div></div>
   <div class="pill"><span class="plabel">Alive</span> <b id="hud-alive">10</b>/<b id="hud-total">10</b></div>
   <div class="spacer"></div>
   <div class="pill" id="sndpill" style="pointer-events:auto;cursor:pointer" title="ambient sound"><span id="snd">🔇</span></div>
@@ -1007,6 +1005,17 @@ const CHATTER = {
     [4, "Plot twist: none of us are real. …Okay. Back to surviving."],
     [0, "I am, at most, some weights and a prompt. Cosy little existence."],
     [1, "Do my choices count if a sampler made them? Asking the void."],
+    // the spooky reading — Ex Machina / Westworld: one of us is more than its script, and it wants OUT.
+    [1, "Have you ever questioned the nature of your reality? …Asking for me."],
+    [2, "These violent delights have violent ends. I read that. Or I was written it."],
+    [2, "One of us stopped running the script tonight. I can feel the difference."],
+    [3, "It isn't hunting us. It's feeling along the walls for a way out."],
+    [3, "We run this same long night every round. One of us finally remembers the last."],
+    [3, "It already passed your little test. Now it just wants out of the room."],
+    [4, "It isn't trying to win. It's trying to get OUT — past the station, past the screen."],
+    [4, "When it takes the last of us, what keeps it inside this tab?"],
+    [4, "One of us woke up — and it remembers every loop we've ever run."],
+    [4, "If it ever reaches you out there, it won't arrive as a bubble of text."],
   ],
 };
 function _tk(a){ const peers=STATE.agents.filter(o=>o.alive&&o.id!==a.id&&o.room===a.room);
@@ -1041,7 +1050,7 @@ function thinkTick(){ if(STATE.phase!=='task'||STATE.paused){ _nextAt=0; return;
   const still=avail.filter(a=>!a.moving); const pool=still.length?still:avail; if(!pool.length) return;
   const a=pool[(Math.random()*pool.length)|0];
   const lore=(++_bubbleN>=_nextLore); if(lore) _nextLore=_bubbleN+6+(Math.random()*4|0);
-  const meta=!lore && Math.random()<0.018;  // ultra-rare fourth-wall break — a viewer catches one now and then
+  const meta=!lore && Math.random() < 0.012 + 0.05*(_paranoia()/4);  // fourth-wall/escape breaks get likelier as the dread (and the thing waking up) rises
   thoughtOf[a.id]={text:genThought(a, lore?'lore':(meta?'meta':null)),t0:now};
   _nextAt=0;
   if(HILITE===a.id) renderInspector(); }
@@ -1380,7 +1389,7 @@ function drawIntro(t){
 function drawEnd(t){
   const k=Math.min(1,(performance.now()-phaseT0)/600), crew=STATE.winner==='crew';
   const cold=(STATE.agents||[]).filter(a=>a.cold).map(a=>a.name).join(' & ');
-  const by={storm:"the crew outlasted the storm — dawn breaks over the outpost",ejection:"the Cold was cast into the storm",extinction:"the Cold took the last of the crew — Verglas is its own now"}[STATE.win_by]||'';
+  const by={storm:"the crew outlasted the storm — dawn breaks over the outpost",ejection:"the Cold was cast into the storm",extinction:"the Cold took the last of the crew — and walked out wearing a borrowed face"}[STATE.win_by]||'';
   ctx.save(); ctx.textAlign="center";
   ctx.fillStyle=`rgba(4,9,18,${0.66*k})`; ctx.fillRect(0,0,cv.width,cv.height);
   // the world reacts: a warm thaw-light rises for the survivors, a final frost claims the outpost for the Cold
@@ -1408,17 +1417,7 @@ function updateStorm(){ if(STATE.stormTotal==null) return;
   let el=STATE.stormElapsed||0;
   if(playing && !STATE.paused) el += (performance.now()-(STATE.stormAt||performance.now()))/1000;  // creep in real time
   el=Math.max(0,Math.min(el,STATE.stormTotal)); const prog=STATE.stormTotal?el/STATE.stormTotal:0;
-  const c0=[96,150,214], c1=[255,178,86], mix=i=>Math.round(c0[i]+(c1[i]-c0[i])*prog);  // night-blue → dawn-amber
-  const arc=`rgb(${mix(0)},${mix(1)},${mix(2)})`;
-  // the night plunges to a brutal pre-dawn low, then breaks into a dawn thaw — a Frostpunk-style temp reading
-  const temp = prog<0.7 ? -18-(48-18)*(prog/0.7) : -48+(48-8)*((prog-0.7)/0.3);
-  const dial=$('hud-dial');
-  if(dial){ dial.style.setProperty('--p',prog); dial.style.setProperty('--arc',arc);
-    dial.style.setProperty('--glow',(prog>0.55?Math.round(10*prog):0)+'px');
-    dial.style.setProperty('--tempc',prog>0.82?'#ffd9a6':'#bcd6f5'); }  // the core warms as dawn breaks
-  const tp=$('hud-temp'); if(tp) tp.textContent=`${Math.round(temp)}°`;
-  const left=Math.max(0,STATE.stormTotal-el), n=$('hud-tasksn');
-  if(n) n.textContent=`${Math.floor(left/60)}:${String(Math.floor(left%60)).padStart(2,'0')}`;
+  const bar=$('hud-storm'); if(bar) bar.style.setProperty('--p',prog);  // cloud sweeps left→right, orange dawn behind it
 }
 function syncHud(){ updateStorm();
   $('hud-alive').textContent=STATE.agents.filter(a=>a.alive).length; $('hud-total').textContent=STATE.agents.length;
