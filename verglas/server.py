@@ -28,12 +28,12 @@ log = logging.getLogger("verglas")
 
 STATIC = Path(__file__).parent / "static"
 TASK_TICK = float(env("TICK_INTERVAL", "4.2"))  # min seconds per task-phase tick
-STMT_DELAY = float(env("STMT_DELAY", "4.6"))  # seconds each spoken line holds
+STMT_DELAY = float(env("STMT_DELAY", "3.4"))  # seconds each spoken line holds
 PRE_VOTE = float(env("PRE_VOTE", "3.5"))  # the table settles before the vote opens
 DISCO_HOLD = float(
     env("DISCO_HOLD", "9.0")
 )  # hold for the client's gather-then-5s "body found" beat (≈2.5s rush + 5s) before the talk starts
-VOTE_DELAY = float(env("VOTE_DELAY", "1.9"))  # seconds between revealed votes
+VOTE_DELAY = float(env("VOTE_DELAY", "1.3"))  # seconds between revealed votes
 WHISPER_DELAY = 1.6  # how long a private-whisper indicator flashes before play moves on
 EJECT_WALK = (
     4.0  # the ejected researcher is walked out into the storm — BEFORE we reveal what they were
