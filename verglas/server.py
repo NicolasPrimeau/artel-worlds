@@ -33,8 +33,8 @@ STMT_DELAY_MIN = float(env("STMT_DELAY_MIN", "1.8"))  # floor so quick retorts n
 STMT_DELAY_MAX = float(env("STMT_DELAY_MAX", "5.2"))  # ceiling so a long line never stalls the room
 PRE_VOTE = float(env("PRE_VOTE", "3.5"))  # the table settles before the vote opens
 DISCO_HOLD = float(
-    env("DISCO_HOLD", "9.0")
-)  # hold for the client's gather-then-5s "body found" beat (≈2.5s rush + 5s) before the talk starts
+    env("DISCO_HOLD", "7.0")
+)  # hold for the client's "body found" beat (slow readable gather + a brief hold) before the talk starts
 VOTE_DELAY = float(env("VOTE_DELAY", "1.3"))  # seconds between revealed votes
 WHISPER_DELAY = 1.6  # how long a private-whisper indicator flashes before play moves on
 EJECT_WALK = (
@@ -50,7 +50,10 @@ STORM_SECONDS = float(
 )  # the storm passes after ~5 min of real play (meetings included) — survive to dawn and the crew win
 _ADMIN_TOKEN = os.environ.get("WORLDS_ADMIN_TOKEN", "")
 N_AGENTS = int(env("AGENTS", "10"))
-N_IMPOSTORS = int(env("IMPOSTORS", "2"))
+N_IMPOSTORS = int(env("IMPOSTORS", "2"))  # the most Colds a night can have
+TWO_COLD_CHANCE = float(
+    env("TWO_COLD_CHANCE", "0.25")
+)  # most nights have one Cold; two is the rarer, harder one
 
 
 def _state_path() -> Path:
@@ -131,7 +134,11 @@ class Verglas:
         self.enqueue_task_events()
 
     def _new_game(self) -> None:
-        self.g = new_game(_rng.randint(1, 2**31 - 1), n=N_AGENTS, impostors=N_IMPOSTORS)
+        imps = 2 if N_IMPOSTORS >= 2 and _rng.random() < TWO_COLD_CHANCE else min(N_IMPOSTORS, 1)
+        self.g = new_game(_rng.randint(1, 2**31 - 1), n=N_AGENTS, impostors=imps)
+        self.g.storm_by_ticks = (
+            False  # the real-seconds dawn clock below owns the storm win, not ticks
+        )
         self.tasks_total = self.g.tasks_goal
         self.game_secs = 0.0  # fresh storm clock for the new night
         self.phase = "intro"  # opening card first; the loop holds it, then play begins

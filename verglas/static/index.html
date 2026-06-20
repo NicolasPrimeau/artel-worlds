@@ -302,7 +302,7 @@ let lastKillTick=-1, fx=[], ejecting=null, mouse={x:-1,y:-1}, userMoved=false, H
 let curPhase='', phaseT0=0;  // phaseT0 stamps phase changes so intro/end can fade in
 let thoughtOf={}, thoughtHist={}, lastThought={}, downC=null, tapC=null;  // ambient thoughts + click-to-inspect
 const EJECT_MS=3600;  // how long the ejected researcher takes to trudge off into the storm
-const DISCO_MAX=15000;  // the "body found" beat ends once the crew have all gathered + 5s — this is the safety cap
+const DISCO_MAX=12000;  // the "body found" beat ends once the crew have all gathered + a brief hold — this is the safety cap
 const INTRO_MS=12000;   // opening card duration — matches the server's INTRO_LINGER so the fade-out lands on the cut
 (function seed(){ const names=["Softmaxwell","Overfitz","Hallucinov","Frostbyte","ReLuther","Quantz","Attenborough","Embeddington","Adamson","Tokarev"];
   const rk=Object.keys(STATION0.rects);
@@ -1313,7 +1313,7 @@ function drawDiscovery(t){
     liv.forEach((a,i)=>{ a.room=disco.room; a.task=false;
       const ang=TAU*i/n, rad=Math.min(r.tw,r.th)*0.32;
       a.tx=(r.tx+r.tw/2+Math.cos(ang)*rad)*SCALE; a.ty=(r.ty+r.th/2+Math.sin(ang)*rad)*SCALE; setPath(a,disco.room); });
-    for(let i=0;i<8;i++) moveAgents(); }   // hurry to the scene fast enough that even far rooms arrive before the cut
+    for(let i=0;i<3;i++) moveAgents(); }   // walk to the scene at a readable pace — you can see the order they arrive in
   drawSky(); drawAmbient(t); drawStation(t); drawAgents(t); applyLighting(); drawFx();
   const vic=STATE.agents.find(a=>a.name===disco.victim);
   const [bx,by]= (vic&&vic.wx!=null)?toScreen(vic.wx,vic.wy):(r?toScreen(r.cx,r.cy):[cv.width/2,cv.height/2]);
@@ -1339,7 +1339,7 @@ function drawFrame(t){
   if(disco){ const ms=performance.now()-disco.t0;
     const moving=STATE.agents.some(a=>a.alive&&a.moving);
     if(ms>1500 && !moving && !disco.gatheredAt) disco.gatheredAt=performance.now();  // everyone's in the room
-    const done=(disco.gatheredAt && performance.now()-disco.gatheredAt>=5000) || ms>=DISCO_MAX;  // +5s, or a hard cap
+    const done=(disco.gatheredAt && performance.now()-disco.gatheredAt>=2200) || ms>=DISCO_MAX;  // brief hold once gathered, or a hard cap
     if(!done){ drawDiscovery(t); return; }
     cam.x=disco.cam0.x; cam.y=disco.cam0.y; cam.z=disco.cam0.z; disco=null;  // restore the overview camera
     if(meet) $('chat').classList.add('show'); }  // only NOW does the meeting chat appear

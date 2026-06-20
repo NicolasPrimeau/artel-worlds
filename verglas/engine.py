@@ -398,6 +398,10 @@ class Game:
     )  # rooms currently unlit — the only places a kill can happen
     winner: str | None = None  # "crew" | "impostor"
     win_by: str | None = None  # "storm" | "ejection" | "extinction"
+    storm_by_ticks: bool = (
+        True  # offline/tests end the night on STORM_TICKS; the live server runs a
+    )
+    # real-seconds dawn clock (the HUD "To Dawn") and disables this so the two never disagree
     hunting: bool = False  # the final hunt is on: one crew left, the Cold has dropped the mask
     hunt_ticks: int = 0  # how long the final hunt has run (the flee can't last forever)
     meetings: list = field(default_factory=list)
@@ -859,7 +863,7 @@ class Game:
             self.winner, self.win_by = "impostor", "extinction"
             return True
         if (
-            self.tick >= STORM_TICKS
+            self.storm_by_ticks and self.tick >= STORM_TICKS
         ):  # the crew outlasted the storm — dawn, and they're still standing
             self.winner, self.win_by = "crew", "storm"
             return True
