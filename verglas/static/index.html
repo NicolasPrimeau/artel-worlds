@@ -148,13 +148,13 @@
     #wins{display:none} #foot{gap:13px;font-size:10px} #foot .fbrand{display:none} }
   /* phones: compact the HUD so nothing clips off the right edge */
   @media (max-width:540px){ .hud{gap:6px;padding:0 8px;height:48px} .pill{padding:4px 7px;font-size:11px}
-    .taskbar{width:52px} .plabel{display:none} #conn{font-size:0} #conn::before{width:9px;height:9px} }
-  /* narrow phones: keep "OUTPOST N" beside the wordmark, but slim everything (labels off, tighter pills)
-     so Tasks/Alive/LIVE still fit on one line */
+    .taskbar{width:52px} .plabel{display:none} #conn{font-size:0} #conn::before{width:9px;height:9px}
+    .stormbar{width:84px;height:11px} .stormbar .cloud{font-size:13px} .intbar{width:38px} }
+  /* narrow phones: slim everything so the storm bar + Alive + Station fit on one line */
   @media (max-width:480px){ .brand{letter-spacing:.05em;font-size:13px} .brand small{letter-spacing:.02em;margin-left:1px}
-    .pill{padding:3px 6px} .hud{gap:5px} .taskbar{width:42px} }
-  /* tiny phones: only here does the outpost yield, to guarantee nothing clips */
-  @media (max-width:359px){ .brand small{display:none} }
+    .pill{padding:3px 6px} .hud{gap:5px} .taskbar{width:42px} .stormbar{width:72px} .intbar{width:32px} }
+  /* tiny phones: drop "· OUTPOST N" to guarantee the HUD never clips */
+  @media (max-width:430px){ .brand small{display:none} }
   @media (max-width:540px){ #inspect{width:198px;top:52px;right:8px;max-height:52vh} }
   /* phone portrait: the live panel is a bottom sheet; the roster WRAPS into a compact chip grid (all players
      visible at once — no awkward sideways scroll), with a vertical scroll only if it ever overflows */
