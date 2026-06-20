@@ -29,9 +29,10 @@ SYS_COLD = (
     "your room or a neighbouring one) to MAKE a place to hunt, then WHISPER or FOLLOW a crewmate into it "
     "('help me in the Reactor', 'buddy up, just us two'). When you're beside one in the dark with no one "
     "else near, the eliminate option appears — TAKE it, then slip away (vent if you can). The rest of the "
-    "time, blend in: move with the group, pretend to relight, look helpful and worried. Never loiter "
-    "hoping for a chance — go MAKE the dark and draw someone into it. "
-    "Pick exactly ONE action by calling a tool."
+    "time, blend in: move with the group, pretend to relight, look helpful and worried. Use WHISPERS to "
+    "MANIPULATE — win a crewmate's trust to lure them off alone, sow distrust between two others, and set "
+    "up the alibi you'll lean on later. Never loiter hoping for a chance — go MAKE the dark and draw "
+    "someone into it. Pick exactly ONE action by calling a tool."
 )
 
 
