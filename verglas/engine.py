@@ -685,12 +685,15 @@ class Game:
         return any(not c.impostor for c in self._occ(a.room) if c.id != a.id)
 
     def _flee_body(self, m) -> None:
-        # the Cold never lingers over a kill: it vents out if the room has one (instant, unseen), else
-        # slips into a neighbouring room on foot — gone before a crewmate can walk in on the scene.
-        if m.room in self.vents:
-            m.room = self.rng.choice(self.vents[m.room])
-        elif self.adj.get(m.room):
-            m.room = self.rng.choice(sorted(self.adj[m.room]))
+        # the Cold never lingers over a kill: it slips away at once — by vent or on foot — and retreats
+        # toward the DARK where it can strike again, not into the light beside the body. Among the dark it
+        # drifts to where a lone crewmate already is (its next setup); it avoids walking into a crowd.
+        dests = list(self.vents.get(m.room, ())) + sorted(self.adj.get(m.room, ()))
+        if not dests:
+            return
+        self.rng.shuffle(dests)
+        crew_n = {r: sum(1 for c in self._occ(r) if not c.impostor) for r in dests}
+        m.room = max(dests, key=lambda r: (r in self.dark, crew_n[r] == 1, -crew_n[r]))
 
     def do_kill(self, m, victim_id: int, force: bool = False) -> bool:
         occ = self._occ(m.room)

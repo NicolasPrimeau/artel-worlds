@@ -103,6 +103,21 @@ def test_cold_leaves_the_room_immediately_after_a_kill():
     assert cold.room != room  # ...but the Cold is already gone
 
 
+def test_cold_flees_toward_the_dark_after_a_kill():
+    g = new_game(7, 8, 2)
+    cold = next(a for a in g.living() if a.impostor)
+    room = next(r for r in g.rooms if len(g.adj.get(r, ())) >= 2)
+    nbrs = sorted(g.adj[room])
+    for a in g.living():
+        a.room = "__elsewhere__"
+    cold.room = room
+    g.vents = {}  # force the on-foot path so the choice is among the neighbours
+    g.dark = {nbrs[0]}  # exactly one neighbour is dark — the Cold should pick it
+
+    g._flee_body(cold)
+    assert cold.room == nbrs[0]  # retreats into the dark, not a lit neighbour
+
+
 def test_body_finder_opens_the_meeting_with_context():
     g = new_game(5, 8, 2)
     crew = [a for a in g.living() if not a.impostor]
