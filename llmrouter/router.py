@@ -170,16 +170,18 @@ class Router:
         return data["choices"][0]["message"]
 
     async def _run(self, req: Request, extract):
-        # shared round-robin/cooldown loop; `extract(msg)` returns the result or None (a miss → next model)
+        # shared round-robin/cooldown loop; `extract(msg)` returns the result or None (a miss → next model).
+        # returns (result, model_id) on success, (None, None) on miss — callers that don't want the model
+        # just unwrap the first element.
         eligible = self._eligible(req)
         if not eligible:
-            return None
+            return None, None
         tries = max(4, len(eligible) + 1)
         async with self._sem, httpx.AsyncClient(timeout=req.timeout) as h:
             for _ in range(tries):
                 m = await self._pick(eligible)
                 if m is None:
-                    return None
+                    return None, None
                 wait = m.cooldown - time.monotonic()
                 if wait > 0:
                     await asyncio.sleep(min(wait, self._max_wait))
@@ -187,7 +189,7 @@ class Router:
                     got = extract(await self._call(h, m, req))
                     if got is not None:
                         self._record(m, "ok")
-                        return got
+                        return got, m.model
                     self._record(m, "err")
                 except RateLimited as ex:
                     m.cooldown = time.monotonic() + min(
@@ -196,31 +198,49 @@ class Router:
                     self._record(m, "429")
                 except Exception:
                     self._record(m, "err")
+        return None, None
+
+    @staticmethod
+    def _text(msg):
+        out = (msg.get("content") or "").strip()
+        return out or None
+
+    @staticmethod
+    def _tool(msg):
+        for tc in msg.get("tool_calls") or []:
+            fn = tc.get("function") or {}
+            name = fn.get("name")
+            if not name:
+                continue
+            try:
+                args = json.loads(fn.get("arguments") or "{}")
+            except Exception:
+                args = {}
+            return {"name": name, "args": args if isinstance(args, dict) else {}}
         return None
 
     async def complete(self, req: Request) -> str:
-        def text(msg):
-            out = (msg.get("content") or "").strip()
-            return out or None
+        res, _ = await self._run(req, self._text)
+        return res or ""
 
-        return await self._run(req, text) or ""
+    async def complete_m(self, req: Request) -> tuple:
+        # like complete(), but returns (text, model_id) so callers can show which model spoke
+        res, model = await self._run(req, self._text)
+        return (res or ""), model
+
+    async def act_m(self, req: Request) -> tuple:
+        return await self._run(req, self._tool)  # (action|None, model_id|None)
+
+    async def complete_many_m(self, reqs: list[Request]) -> list[tuple]:
+        return await asyncio.gather(*(self.complete_m(r) for r in reqs))
+
+    async def act_many_m(self, reqs: list[Request]) -> list[tuple]:
+        return await asyncio.gather(*(self.act_m(r) for r in reqs))
 
     async def act(self, req: Request) -> dict | None:
         # returns the first tool call as {"name": str, "args": dict}, or None if no model produced one.
-        def tool(msg):
-            for tc in msg.get("tool_calls") or []:
-                fn = tc.get("function") or {}
-                name = fn.get("name")
-                if not name:
-                    continue
-                try:
-                    args = json.loads(fn.get("arguments") or "{}")
-                except Exception:
-                    args = {}
-                return {"name": name, "args": args if isinstance(args, dict) else {}}
-            return None
-
-        return await self._run(req, tool)
+        res, _ = await self._run(req, self._tool)
+        return res
 
     async def complete_many(self, reqs: list[Request]) -> list[str]:
         return await asyncio.gather(*(self.complete(r) for r in reqs))

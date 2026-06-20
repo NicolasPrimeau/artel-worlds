@@ -281,7 +281,7 @@ async def _agent_act(game, mt, transcript, dms, a, opener=False) -> dict:
             f"Survivors: {', '.join(others)}.\n"
             'Reply ONLY as JSON: {"act":"say|whisper|pass","to":"<name, only if whisper>","text":"<one short line>"}'
         )
-    out = await llm.complete(sys, user, temperature=0.85, timeout=10.0)
+    out, model = await llm.complete_m(sys, user, temperature=0.85, timeout=10.0)
     ok = bool(
         out
     )  # False = the call failed/timed out (rate limited) — the meeting bails on a run of these
@@ -291,13 +291,13 @@ async def _agent_act(game, mt, transcript, dms, a, opener=False) -> dict:
     if not text or _is_pass(text) or _looks_truncated(text):
         # the opener must set the scene even if the model fumbles → fall back to a plain factual line
         if opener:
-            return {"act": "say", "text": _canned_statement(game, a), "ok": ok}
+            return {"act": "say", "text": _canned_statement(game, a), "ok": ok, "model": model}
         return {"act": "pass", "ok": ok}
     if act == "whisper" and not opener:
         r = by_name.get(str(parsed.get("to", "")).strip().lower())
         if r and r.id != a.id:
-            return {"act": "whisper", "to": r.id, "text": text, "ok": True}
-    return {"act": "say", "text": text, "ok": True}
+            return {"act": "whisper", "to": r.id, "text": text, "ok": True, "model": model}
+    return {"act": "say", "text": text, "ok": True, "model": model}
 
 
 async def _vote_round(game, mt, transcript, dms=None, on_item=None) -> dict:
@@ -330,16 +330,16 @@ async def _vote_round(game, mt, transcript, dms=None, on_item=None) -> dict:
             'Reply ONLY as JSON: {"vote": "<name or skip>", "reason": "<a few words>"}'
         )
         jobs.append((sys, user))
-    outs = await llm.complete_many(jobs, temperature=0.3)
+    pairs = await llm.complete_many_m(jobs, temperature=0.3)
     by_name = {a.name.lower(): a.id for a in living}
     votes: dict = {}
-    for a, text in zip(living, outs):
+    for a, (text, model) in zip(living, pairs):
         parsed = llm.parse_json(_strip_think(text)) or {}
         choice = str(parsed.get("vote", "skip")).strip().lower()
         votes[a.id] = by_name.get(choice, -1)
         mt.votes = dict(votes)  # partial ballot, so the snapshot can reveal votes one by one
         if on_item:
-            await on_item("vote", a.id, votes[a.id])
+            await on_item("vote", a.id, votes[a.id], model)
     return votes
 
 
@@ -382,13 +382,18 @@ async def run_llm_meeting(game: Game, mt: Meeting, on_item=None, gate=None) -> d
             quiet = 0
             spoken_actions += 1
             if on_item:
-                await on_item("statement", actor.id, action["text"])
+                await on_item("statement", actor.id, action["text"], action.get("model"))
         elif action["act"] == "whisper":
             dms.setdefault(action["to"], []).append((actor.name, action["text"]))
             quiet = 0
             spoken_actions += 1
             if on_item:
-                await on_item("whisper", actor.id, {"to": action["to"], "text": action["text"]})
+                await on_item(
+                    "whisper",
+                    actor.id,
+                    {"to": action["to"], "text": action["text"]},
+                    action.get("model"),
+                )
         else:
             quiet += 1
         if quiet >= 2 and spoken_actions >= 3:  # the floor petered out

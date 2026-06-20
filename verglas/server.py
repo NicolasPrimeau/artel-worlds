@@ -362,10 +362,11 @@ async def _run_meeting(mt) -> None:
     if mt.victim is not None:  # let the client's "body found" beat play before the talk
         await asyncio.sleep(DISCO_HOLD)
 
-    async def on_item(kind: str, agent_id: int, payload) -> None:
+    async def on_item(kind: str, agent_id: int, payload, model: str | None = None) -> None:
         # paces the meeting: spoken lines hold on screen, private whispers flash a discreet indicator,
         # the table SETTLES before the vote, then votes land one at a time. Public lines + votes go on
-        # the Artel bus; whispers are real private Artel DMs.
+        # the Artel bus; whispers are real private Artel DMs. `model` = the LLM that produced this line,
+        # surfaced as a tiny per-line tag in the station log.
         if kind == "settle":  # discussion over → a beat before the vote
             G.phase = "vote"
             await _broadcast()
@@ -378,7 +379,13 @@ async def _run_meeting(mt) -> None:
             G.phase = "meeting"
             await artel.dm(agent_id, payload["to"], payload["text"])
             G.whisper = [name, G.g.by_id(payload["to"]).name]
-            G.push_feed("msg", frm=name, to=G.g.by_id(payload["to"]).name, text=payload["text"])
+            G.push_feed(
+                "msg",
+                frm=name,
+                to=G.g.by_id(payload["to"]).name,
+                text=payload["text"],
+                model=model,
+            )
             await _broadcast()
             await asyncio.sleep(_jit(WHISPER_DELAY))
             G.whisper = None
@@ -386,14 +393,14 @@ async def _run_meeting(mt) -> None:
         if kind == "statement":
             G.phase = "meeting"
             await artel.say(agent_id, name, payload)
-            G.push_feed("msg", frm=name, to=None, text=payload)
+            G.push_feed("msg", frm=name, to=None, text=payload, model=model)
             await _broadcast()
             await asyncio.sleep(_stmt_hold(payload))
         else:
             G.phase = "vote"
             target = G.g.by_id(payload).name if payload is not None and payload >= 0 else "abstains"
             await artel.say(agent_id, name, f"votes {target}.", subject="verglas-vote")
-            G.push_feed("msg", frm=name, to=None, text=f"votes {target}")
+            G.push_feed("msg", frm=name, to=None, text=f"votes {target}", model=model)
             await _broadcast()
             await asyncio.sleep(_jit(VOTE_DELAY))
 
@@ -469,7 +476,7 @@ def _target_id(g, name):
     return a.id if a else None
 
 
-async def _apply_action(g, a, action) -> str | None:
+async def _apply_action(g, a, action, model: str | None = None) -> str | None:
     # turn one tool call into engine intent + real Artel side-effects. Returns "meeting" if the agent
     # called one. Unknown/garbled actions are no-ops — the agent simply re-decides next tick.
     name = action.get("name")
@@ -500,7 +507,7 @@ async def _apply_action(g, a, action) -> str | None:
             G.inbox.setdefault(to, []).append((a.name, text[:120]))
             G.interrupted.add(to)
             G.whisper = [a.name, g.by_id(to).name]
-            G.push_feed("msg", frm=a.name, to=g.by_id(to).name, text=text[:120])
+            G.push_feed("msg", frm=a.name, to=g.by_id(to).name, text=text[:120], model=model)
     elif name == "darken":
         room = args.get("room")
         if room:
@@ -533,10 +540,10 @@ async def _autonomous_tick():
         reqs = [autonomy.build_request(g, a, G.inbox.get(a.id)) for a in deciders]
         for a in deciders:
             G.inbox.pop(a.id, None)  # whispers are consumed into this decision
-        actions = await llm.act_many(reqs)
-        for a, action in zip(deciders, actions):
+        actions = await llm.act_many_m(reqs)
+        for a, (action, model) in zip(deciders, actions):
             act = action if action is not None else g.default_action(a)
-            await _apply_action(g, a, act)
+            await _apply_action(g, a, act, model)
     # no crewmate stands idle while the station is dark: any living crew left with nothing committed this
     # tick (e.g. they only whispered, or the model stalled) is sent to relight the nearest dark room. This
     # keeps the board moving AND routes crew through the dark rooms where bodies lie, so kills get found.
