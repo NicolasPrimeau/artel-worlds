@@ -358,7 +358,9 @@ async def run_llm_meeting(game: Game, mt: Meeting, on_item=None, gate=None) -> d
     fails = 0
     opener = _opener(game, mt)  # the caller opens with context before the floor goes emergent
     n = len(game.living())
-    cap = min(n + 1, 9)  # keep the LLM call count modest — free-tier-Groq-friendly
+    cap = min(
+        n, 6
+    )  # keep the discussion short so the vote comes round fast (and the call count modest)
     for i in range(cap):
         if gate is not None:
             await gate()  # pause here while unwatched, resume when a viewer returns

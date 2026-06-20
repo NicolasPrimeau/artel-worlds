@@ -28,10 +28,10 @@ log = logging.getLogger("verglas")
 
 STATIC = Path(__file__).parent / "static"
 TASK_TICK = float(env("TICK_INTERVAL", "4.2"))  # min seconds per task-phase tick
-STMT_DELAY = float(env("STMT_DELAY", "3.4"))  # base seconds a spoken line holds (jittered per line)
-STMT_DELAY_MIN = float(env("STMT_DELAY_MIN", "1.8"))  # floor so quick retorts never blink past
-STMT_DELAY_MAX = float(env("STMT_DELAY_MAX", "5.2"))  # ceiling so a long line never stalls the room
-PRE_VOTE = float(env("PRE_VOTE", "3.5"))  # the table settles before the vote opens
+STMT_DELAY = float(env("STMT_DELAY", "2.6"))  # base seconds a spoken line holds (jittered per line)
+STMT_DELAY_MIN = float(env("STMT_DELAY_MIN", "1.4"))  # floor so quick retorts never blink past
+STMT_DELAY_MAX = float(env("STMT_DELAY_MAX", "4.0"))  # ceiling so a long line never stalls the room
+PRE_VOTE = float(env("PRE_VOTE", "2.0"))  # the table settles before the vote opens
 DISCO_HOLD = float(
     env("DISCO_HOLD", "7.0")
 )  # hold for the client's "body found" beat (slow readable gather + a brief hold) before the talk starts
