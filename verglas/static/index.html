@@ -190,7 +190,6 @@
   <div class="pill"><span class="plabel">Alive</span> <b id="hud-alive">10</b>/<b id="hud-total">10</b></div>
   <div class="spacer"></div>
   <div class="pill" id="sndpill" style="pointer-events:auto;cursor:pointer" title="ambient sound"><span id="snd">🔇</span></div>
-  <div class="pill"><span id="conn" class="live">live</span></div>
 </div>
 <div class="roster" id="roster"></div>
 <div id="feed"><div class="fh"><a class="feedlink" href="https://artel.run/ui?project=verglas#dashboard" target="_blank" rel="noopener" title="open the Verglas project on Artel">ARTEL · LIVE <svg viewBox="0 0 16 16" fill="currentColor"><path d="M5 3h8v8h-2V6.41l-6.29 6.3-1.42-1.42L9.59 5H5z"/></svg></a><button id="feedToggle" type="button" aria-label="collapse feed" title="collapse">▾</button></div><ul id="flog"></ul></div>
@@ -1453,12 +1452,16 @@ function applyAgents(arr){ const byId={}; for(const a of STATE.agents)byId[a.id]
 function renderChat(s){ const chat=$('chat'), inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
   if(inMeet){ chat.classList.toggle('show', !disco); const m=s.meeting; $('chat-title').textContent='EMERGENCY MEETING';
     $('chat-lede').textContent=m.victim?`${m.reporter} found ${m.victim} dead in ${m.room}`:`${m.reporter} sounded the alarm`;
-    const tl=(m.transcript||[]).map(l=>`<li><span class="who" style="color:${nameColor(l.name)}">${l.name}</span><span class="tx">${esc(l.text)}</span></li>`);
+    const tl=(m.transcript||[]).map(l=>`<span class="who" style="color:${nameColor(l.name)}">${l.name}</span><span class="tx">${esc(l.text)}</span>`);
     // votes land in the chat as deterministic "X voted for Y" lines (server reveals them one by one), so a
     // missed bubble never loses you a vote — the log holds every ballot.
-    const vl=Object.entries(m.votes||{}).map(([a,b])=>`<li><span class="who" style="color:${nameColor(a)}">${a}</span><span class="tx" style="color:#f1a9a9">${b==='skip'?'abstains':'voted for '+esc(b)}</span></li>`);
-    $('clog').innerHTML=[...tl,...vl].join('');
-    const log=$('clog'); log.scrollTop=log.scrollHeight; const v=$('chat-verdict');
+    const vl=Object.entries(m.votes||{}).map(([a,b])=>`<span class="who" style="color:${nameColor(a)}">${a}</span><span class="tx" style="color:#f1a9a9">${b==='skip'?'abstains':'voted for '+esc(b)}</span>`);
+    // append only NEW lines so existing ones aren't recreated (rebuilding innerHTML re-fired the per-line
+    // fade on every message → the whole log flashed). Full rebuild only when the list shrinks (new meeting).
+    const log=$('clog'); const rows=[...tl,...vl];
+    if(rows.length<log.children.length) log.innerHTML='';
+    for(let i=log.children.length;i<rows.length;i++){ const li=document.createElement('li'); li.innerHTML=rows[i]; log.appendChild(li); }
+    log.scrollTop=log.scrollHeight; const v=$('chat-verdict');
     if(s.phase==='ejection'){ const tally=Object.entries(m.votes||{}).map(([a,b])=>`${a}→${b}`).join(' · ');
       v.style.display='';
       if(m.ejected){
