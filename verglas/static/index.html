@@ -45,31 +45,22 @@
   .who .nm{font-weight:700;font-size:12px}.who .md{color:var(--dim);font-size:9.5px}
   .who.dead{opacity:.36}.who.dead .nm{text-decoration:line-through}
 
-  /* meeting chat — docked panel, phalanx-style, map stays visible */
-  #chat{position:fixed;right:12px;top:60px;bottom:12px;width:400px;max-width:46vw;z-index:12;
+  /* ARTEL · LIVE — one docked panel: the event stream during play, the meeting transcript + verdict during a meeting */
+  #live{position:fixed;right:12px;top:60px;bottom:12px;width:340px;max-width:42vw;z-index:12;
     background:var(--panel);border:1px solid var(--line);border-radius:14px;backdrop-filter:blur(12px);
-    display:none;flex-direction:column;overflow:hidden}
-  #chat.show{display:flex}
-  #chat .ch{display:flex;align-items:center;gap:7px;padding:11px 13px;border-bottom:1px solid var(--line);
+    display:flex;flex-direction:column;overflow:hidden}
+  #live .ch{display:flex;align-items:center;gap:7px;padding:11px 13px;border-bottom:1px solid var(--line);
     font-size:12.5px;letter-spacing:.14em;color:var(--frost);font-weight:800}
-  /* artel live event feed (bottom-left) */
-  #feed{position:fixed;left:12px;bottom:40px;width:250px;max-height:38vh;z-index:9;background:var(--panel);
-    border:1px solid var(--line);border-radius:12px;backdrop-filter:blur(10px);display:flex;flex-direction:column;overflow:hidden}
-  #feed .fh{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 11px;font-size:9.5px;letter-spacing:.18em;color:var(--frost);font-weight:700;border-bottom:1px solid var(--line)}
-  #feed .fh a.feedlink{color:var(--frost);text-decoration:none;display:inline-flex;align-items:center;gap:5px;transition:color .15s}
-  #feed .fh a.feedlink:hover{color:#fff}
-  #feed .fh a.feedlink svg{width:10px;height:10px;opacity:.85}
-  #feedToggle{background:none;border:0;color:var(--dim);cursor:pointer;font-size:12px;line-height:1;padding:2px 4px;transition:color .15s}
-  #feedToggle:hover{color:var(--frost)}
-  #feed.collapsed{max-height:none}
-  #feed.collapsed #flog{display:none}
-  #feed.collapsed .fh{border-bottom:0}
-  #flog{list-style:none;margin:0;padding:6px 10px;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
-  #flog li{font-size:11px;line-height:1.4;color:var(--ink);animation:cin .3s ease;word-break:break-word}
-  #flog .pv{color:#c8a6ff;font-weight:700}
-  #flog .tn{color:var(--dim);font-weight:600}
-  #flog .claim{color:#6cc4ff;font-weight:700}
-  #flog .done{color:#46e0a0;font-weight:700}
+  #live .ch .feedlink{margin-left:auto;color:var(--frost);text-decoration:none;display:inline-flex;align-items:center;transition:color .15s}
+  #live .ch .feedlink:hover{color:#fff}
+  #live .ch .feedlink svg{width:11px;height:11px;opacity:.85}
+  #llog{list-style:none;margin:0;padding:10px 12px;flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:7px}
+  #llog li{font-size:12.5px;line-height:1.4;color:var(--ink);animation:cin .3s ease;word-break:break-word}
+  #llog .pv{color:#c8a6ff;font-weight:700}
+  #llog .tn{font-weight:800}
+  #llog .claim{color:#6cc4ff;font-weight:700}
+  #llog .done{color:#46e0a0;font-weight:700}
+  #llog .tx{display:block;color:#dfe8fb;margin-top:1px}
   /* agent inspector (click an icon) */
   #inspect{position:fixed;right:12px;top:56px;width:248px;max-height:62vh;z-index:11;background:var(--panel);
     border:1px solid var(--line);border-radius:12px;backdrop-filter:blur(10px);display:flex;flex-direction:column;
@@ -88,20 +79,15 @@
   #ins-body li{padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);word-break:break-word}
   #ins-body .none{color:var(--dim);font-style:italic}
   #ins-body b{color:#bfe0ff}
-  #chat .ch .dot{width:7px;height:7px;border-radius:50%;background:var(--warn);box-shadow:0 0 8px var(--warn);
-    animation:pulse 1.1s infinite}
+  #live .ch .dot{width:7px;height:7px;border-radius:50%;background:var(--frost);box-shadow:0 0 8px var(--frost)}
+  #live.meeting .ch .dot{background:var(--warn);box-shadow:0 0 8px var(--warn);animation:pulse 1.1s infinite}
   @keyframes pulse{50%{opacity:.35}}
-  #chat .lede{padding:8px 13px;color:var(--dim);font-size:13px;border-bottom:1px solid var(--line)}
-  #clog{list-style:none;margin:0;padding:10px 12px;flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
-  #clog li{font-size:12.5px;line-height:1.35;animation:cin .3s ease}
   @keyframes cin{from{opacity:0;transform:translateY(5px)}to{opacity:1}}
-  #clog .who{display:inline;background:none;border:none;padding:0;font-weight:800;font-size:11.5px}
-  #clog .md{color:var(--dim);font-size:9.5px;margin-left:5px}
-  #clog .tx{display:block;color:#dfe8fb;margin-top:1px}
-  #chat .verdict{padding:12px 13px;border-top:1px solid var(--line);text-align:center}
-  #chat .verdict .big{font-size:15px;font-weight:800}
-  #chat .verdict .big.cold{color:var(--warn)}#chat .verdict .big.clear{color:var(--good)}
-  #chat .verdict .tally{color:var(--dim);font-size:10.5px;margin-top:5px;line-height:1.5}
+  #live .lede{padding:8px 13px;color:var(--dim);font-size:13px;border-bottom:1px solid var(--line)}
+  #live .verdict{padding:12px 13px;border-top:1px solid var(--line);text-align:center}
+  #live .verdict .big{font-size:15px;font-weight:800}
+  #live .verdict .big.cold{color:var(--warn)}#live .verdict .big.clear{color:var(--good)}
+  #live .verdict .tally{color:var(--dim);font-size:10.5px;margin-top:5px;line-height:1.5}
 
   /* HUD right side — connection status + the crew-vs-Cold record (the world's uniform "results") */
   #conn{display:inline-flex;align-items:center;gap:6px;text-transform:uppercase;letter-spacing:.09em;
@@ -155,7 +141,7 @@
   #sharepop a:hover,#sharepop button:hover{background:rgba(120,160,220,.12);color:var(--ink)}
   /* ---- mobile: portrait AND landscape are both first-class ---- */
   @media (max-width:820px){ .hint{display:none} .hud{gap:8px;padding:0 10px} .pill{padding:4px 9px;font-size:11.5px}
-    #wins{display:none} #foot{gap:13px;font-size:10px} #foot .fbrand{display:none} #feed{display:none} }
+    #wins{display:none} #foot{gap:13px;font-size:10px} #foot .fbrand{display:none} }
   /* phones: compact the HUD so nothing clips off the right edge */
   @media (max-width:540px){ .hud{gap:6px;padding:0 8px;height:48px} .pill{padding:4px 7px;font-size:11px}
     .taskbar{width:52px} .plabel{display:none} #conn{font-size:0} #conn::before{width:9px;height:9px} }
@@ -166,10 +152,10 @@
   /* tiny phones: only here does the outpost yield, to guarantee nothing clips */
   @media (max-width:359px){ .brand small{display:none} }
   @media (max-width:540px){ #inspect{width:198px;top:52px;right:8px;max-height:52vh} }
-  /* phone portrait: chat is a bottom sheet; the roster WRAPS into a compact chip grid (all players
+  /* phone portrait: the live panel is a bottom sheet; the roster WRAPS into a compact chip grid (all players
      visible at once — no awkward sideways scroll), with a vertical scroll only if it ever overflows */
   @media (orientation:portrait) and (max-width:760px){
-    #chat{ left:8px; right:8px; width:auto; max-width:none; top:auto; bottom:8px; height:42vh; }
+    #live{ left:8px; right:8px; width:auto; max-width:none; top:auto; bottom:8px; height:34vh; }
     .roster{ top:54px; width:auto; left:8px; right:8px; flex-flow:row wrap; gap:5px;
       max-height:30vh; overflow-y:auto; -webkit-overflow-scrolling:touch; }
     .who{ flex:0 0 auto; padding:3px 9px 3px 6px; } .who .md{ display:none; } .who .nm{ font-size:11px; }
@@ -178,7 +164,7 @@
   @media (orientation:landscape) and (max-height:560px){
     .hud{ height:42px; } .roster{ top:48px; width:138px; max-height:calc(100% - 56px); overflow-y:auto; }
     .who{ padding:4px 7px; } .who .md{ font-size:8.5px; }
-    #chat{ top:48px; bottom:8px; right:8px; left:auto; width:300px; max-width:44vw; height:auto; }
+    #live{ top:48px; bottom:8px; right:8px; left:auto; width:300px; max-width:44vw; height:auto; }
   }
 </style>
 </head>
@@ -192,13 +178,12 @@
   <div class="pill" id="sndpill" style="pointer-events:auto;cursor:pointer" title="ambient sound"><span id="snd">🔇</span></div>
 </div>
 <div class="roster" id="roster"></div>
-<div id="feed"><div class="fh"><a class="feedlink" href="https://artel.run/ui?project=verglas#dashboard" target="_blank" rel="noopener" title="open the Verglas project on Artel">ARTEL · LIVE <svg viewBox="0 0 16 16" fill="currentColor"><path d="M5 3h8v8h-2V6.41l-6.29 6.3-1.42-1.42L9.59 5H5z"/></svg></a><button id="feedToggle" type="button" aria-label="collapse feed" title="collapse">▾</button></div><ul id="flog"></ul></div>
 <div id="inspect" hidden><div class="ih"><span id="ins-name">—</span><button id="ins-x" title="close">✕</button></div><div id="ins-body"></div></div>
-<div id="chat">
-  <div class="ch"><span class="dot"></span> <span id="chat-title">EMERGENCY MEETING</span></div>
-  <div class="lede" id="chat-lede">—</div>
-  <ul id="clog"></ul>
-  <div class="verdict" id="chat-verdict" style="display:none"></div>
+<div id="live">
+  <div class="ch"><span class="dot"></span> <span id="live-title">STATION LOG</span><a class="feedlink" href="https://artel.run/ui?project=verglas#dashboard" target="_blank" rel="noopener" title="powered by Artel — open the Verglas project"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M5 3h8v8h-2V6.41l-6.29 6.3-1.42-1.42L9.59 5H5z"/></svg></a></div>
+  <div class="lede" id="live-lede" style="display:none">—</div>
+  <ul id="llog"></ul>
+  <div class="verdict" id="live-verdict" style="display:none"></div>
 </div>
 <footer id="foot">
   <a href="https://artel.run/ui?project=verglas#dashboard" target="_blank" rel="noopener">Artel</a>
@@ -331,6 +316,13 @@ cv.addEventListener('touchmove',e=>{ e.preventDefault(); userMoved=true; if(e.to
   else if(e.touches.length>=2){const d=tdist(e); if(pinch)cam.z=Math.max(0.25,Math.min(2.8,cam.z*(d/pinch))); pinch=d;} },{passive:false});
 cv.addEventListener('touchend',e=>{ if(e.touches.length===0){drag=null;pinch=null;} else if(e.touches.length===1){drag={x:e.touches[0].clientX,y:e.touches[0].clientY};pinch=null;} },{passive:false});
 addEventListener('orientationchange',()=>{ userMoved=false; setTimeout(resize,120); });
+// pan the overview with WASD / arrow keys — held keys nudge the camera each frame
+const heldKeys={}, PAN_KEYS={w:[0,-1],s:[0,1],a:[-1,0],d:[1,0],arrowup:[0,-1],arrowdown:[0,1],arrowleft:[-1,0],arrowright:[1,0]};
+addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); if(PAN_KEYS[k]&&!e.metaKey&&!e.ctrlKey&&!e.altKey){ heldKeys[k]=true; e.preventDefault(); } });
+addEventListener('keyup',e=>{ heldKeys[e.key.toLowerCase()]=false; });
+addEventListener('blur',()=>{ for(const k in heldKeys) heldKeys[k]=false; });
+function panKeys(){ let dx=0,dy=0; for(const k in PAN_KEYS) if(heldKeys[k]){ dx+=PAN_KEYS[k][0]; dy+=PAN_KEYS[k][1]; }
+  if(dx||dy){ const sp=16/cam.z; cam.x+=dx*sp; cam.y+=dy*sp; userMoved=true; } }
 
 // click / tap an icon → inspect that agent (recent activity + current thought). drag-aware so panning never picks.
 cv.addEventListener('mousedown',e=>{ downC={x:e.clientX,y:e.clientY}; });
@@ -1342,8 +1334,9 @@ function drawFrame(t){
     const done=(disco.gatheredAt && performance.now()-disco.gatheredAt>=2200) || ms>=DISCO_MAX;  // brief hold once gathered, or a hard cap
     if(!done){ drawDiscovery(t); return; }
     cam.x=disco.cam0.x; cam.y=disco.cam0.y; cam.z=disco.cam0.z; disco=null;  // restore the overview camera
-    if(meet) $('chat').classList.add('show'); }  // only NOW does the meeting chat appear
+    }  // the live panel is always docked; the discovery beat just plays on the canvas first
   if(meet){ drawSky(); drawMeeting(t); drawSnow(t); vignette(); return; }
+  panKeys();  // WASD / arrow-key panning of the overview
   if(!userMoved && camBase){ const b=performance.now();  // a barely-there idle drift so the overview never sits dead-still
     cam.z=camBase.z*(1+Math.sin(b*0.00038)*0.012); cam.x=camBase.x+Math.sin(b*0.00026)*7; cam.y=camBase.y+Math.cos(b*0.00021)*5; }
   drawSky(); drawAmbient(t); drawStation(t); layoutAgents(); moveAgents(); drawAgents(t); applyLighting(); drawFx(); drawSnow(t); vignette(); drawKillPulse(); if(STATE.hunting) drawHunt(t);
@@ -1449,28 +1442,23 @@ const esc=s=>(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]
 function nameColor(n){ const a=STATE.agents.find(x=>x.name===n); return a?COLORS[a.c%COLORS.length]:'#cfe3ff'; }
 function applyAgents(arr){ const byId={}; for(const a of STATE.agents)byId[a.id]=a;
   STATE.agents=arr.map(s=>{ const a=byId[s.id]||{id:s.id}; a.name=s.name; a.model=s.model; a.room=s.room; a.alive=s.alive; a.task=s.tasking; a.body=s.body; a.c=s.color; a.cold=s.cold; a.gx=s.gx; a.gy=s.gy; return a; }); }
-function renderChat(s){ const chat=$('chat'), inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
-  if(inMeet){ chat.classList.toggle('show', !disco); const m=s.meeting; $('chat-title').textContent='EMERGENCY MEETING';
-    $('chat-lede').textContent=m.victim?`${m.reporter} found ${m.victim} dead in ${m.room}`:`${m.reporter} sounded the alarm`;
-    const tl=(m.transcript||[]).map(l=>`<span class="who" style="color:${nameColor(l.name)}">${l.name}</span><span class="tx">${esc(l.text)}</span>`);
-    // votes land in the chat as deterministic "X voted for Y" lines (server reveals them one by one), so a
-    // missed bubble never loses you a vote — the log holds every ballot.
-    const vl=Object.entries(m.votes||{}).map(([a,b])=>`<span class="who" style="color:${nameColor(a)}">${a}</span><span class="tx" style="color:#f1a9a9">${b==='skip'?'abstains':'voted for '+esc(b)}</span>`);
-    // append only NEW lines so existing ones aren't recreated (rebuilding innerHTML re-fired the per-line
-    // fade on every message → the whole log flashed). Full rebuild only when the list shrinks (new meeting).
-    const log=$('clog'); const rows=[...tl,...vl];
-    if(rows.length<log.children.length) log.innerHTML='';
-    for(let i=log.children.length;i<rows.length;i++){ const li=document.createElement('li'); li.innerHTML=rows[i]; log.appendChild(li); }
-    log.scrollTop=log.scrollHeight; const v=$('chat-verdict');
+// the one ARTEL·LIVE panel: #llog (the feed) always carries the stream — incl. the meeting dialogue/votes
+// the server pushes during a meeting. renderChat only swaps the panel's identity: header, lede, verdict.
+function renderChat(s){ const live=$('live'), inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
+  live.classList.toggle('meeting', !!inMeet);
+  $('live-title').textContent=inMeet?'EMERGENCY MEETING':'STATION LOG';
+  const lede=$('live-lede'), v=$('live-verdict');
+  if(inMeet){ const m=s.meeting;
+    lede.style.display=''; lede.textContent=m.victim?`${m.reporter} found ${m.victim} dead in ${m.room}`:`${m.reporter} sounded the alarm`;
     if(s.phase==='ejection'){ const tally=Object.entries(m.votes||{}).map(([a,b])=>`${a}→${b}`).join(' · ');
       v.style.display='';
       if(m.ejected){
-        if(m.ejected_was_cold==null) v.innerHTML=`<div class="big">${m.ejected} is ejected…</div><div class="tally">the storm door swings open</div>`;
-        else { const th=m.ejected_was_cold; v.innerHTML=`<div class="big ${th?'cold':'clear'}">${m.ejected} ${th?'WAS the Cold':'was NOT the Cold'}</div><div class="tally">${tally}</div>`; }
+        if(m.ejected_was_cold==null) v.innerHTML=`<div class="big">${esc(m.ejected)} is ejected…</div><div class="tally">the storm door swings open</div>`;
+        else { const th=m.ejected_was_cold; v.innerHTML=`<div class="big ${th?'cold':'clear'}">${esc(m.ejected)} ${th?'WAS the Cold':'was NOT the Cold'}</div><div class="tally">${esc(tally)}</div>`; }
         if(!ejecting||ejecting.name!==m.ejected) ejecting={name:m.ejected,t0:performance.now()};
-      } else v.innerHTML=`<div class="big">No one is ejected</div><div class="tally">${tally}</div>`;
+      } else v.innerHTML=`<div class="big">No one is ejected</div><div class="tally">${esc(tally)}</div>`;
     } else { v.style.display='none'; }
-  } else { chat.classList.remove('show'); ejecting=null; } }   // gameover & intro draw full-screen on canvas
+  } else { lede.style.display='none'; v.style.display='none'; ejecting=null; } }
 let hadSnapshot=false;  // false until the first snapshot is processed — so a refresh into a meeting skips the discovery beat
 function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.station.openTasks||{}; }
   if(s.phase!==curPhase){ if(s.phase==='meeting'&&curPhase!=='meeting') Sound.slam(); curPhase=s.phase; phaseT0=performance.now(); }  // fresh fade for intro/gameover
@@ -1491,16 +1479,17 @@ let feedSeen=0;
 function feedRow(e){
   if(e.kind==='task'){ const done=e.action==='completed';
     return `<span class="${done?'done':'claim'}">${esc(e.who)}</span> ${done?'completed':'claimed'} <b>${esc(e.room)}</b>`; }
-  if(e.to) return `<span class="pv">[${esc(e.frm)}→${esc(e.to)}]</span> ${esc(e.text)}`;  // private DM
-  return `<span class="tn">${esc(e.frm)}</span> ${esc(e.text)}`;                            // broadcast
+  if(e.to) return `<span class="pv">[${esc(e.frm)}→${esc(e.to)}]</span> ${esc(e.text)}`;  // private DM / whisper
+  const vote=/^votes\s/.test(e.text||'');                                                  // a revealed ballot
+  return `<span class="tn" style="color:${nameColor(e.frm)}">${esc(e.frm)}</span><span class="tx"${vote?' style="color:#f1a9a9"':''}>${esc(e.text)}</span>`;  // broadcast / meeting line
 }
 function renderFeed(feed){
   if(!feed||!feed.length) return;
-  if(feed[feed.length-1].seq < feedSeen){ feedSeen=0; $('flog').innerHTML=''; }  // server restarted → seq reset; replay from 0
-  const log=$('flog'); let added=false;
+  if(feed[feed.length-1].seq < feedSeen){ feedSeen=0; $('llog').innerHTML=''; }  // server restarted → seq reset; replay from 0
+  const log=$('llog'); let added=false;
   for(const e of feed){ if(e.seq<=feedSeen) continue; feedSeen=e.seq; added=true;
     const li=document.createElement('li'); li.innerHTML=feedRow(e); log.appendChild(li); }
-  while(log.children.length>50) log.removeChild(log.firstChild);
+  while(log.children.length>80) log.removeChild(log.firstChild);
   if(added) log.scrollTop=log.scrollHeight;
 }
 function updateMeet(s){ const inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
@@ -1618,9 +1607,6 @@ const Sound=(()=>{
       $('snd').textContent=on?'🔊':'🔇'; return on; } };
 })();
 $('sndpill').addEventListener('click',()=>Sound.toggle());
-// the Artel event feed collapses to just its header (click the chevron) — keep the map clear when you want
-$('feedToggle').addEventListener('click',()=>{ const c=$('feed').classList.toggle('collapsed');
-  $('feedToggle').textContent=c?'▸':'▾'; $('feedToggle').title=c?'expand':'collapse'; });
 
 addEventListener('resize',resize); buildStation(STATION0); resize(); syncHud(); requestAnimationFrame(frame); connect();
 </script>
