@@ -254,6 +254,15 @@ _SPREAD = [
 ]
 START_GRACE = KILL_CD  # the same ~15s gates the FIRST kill too — no long opening grace
 FOLLOW_TICKS = 6  # how long an autonomous agent tails a buddy before it stops to decide again
+# --- station integrity ------------------------------------------------------------------------------
+# the outpost is dying where the lights are out: every DARK room bleeds integrity each tick. Let it hit
+# zero and the station blacks out — the crew lose even if alive. This FORCES them to spread out and keep
+# the whole station lit instead of huddling in a safe corner. Relighting (clearing the board) is the cure.
+INTEGRITY_MAX = 100.0
+DARK_DRAIN = (
+    0.5  # integrity lost per dark room per tick — ~2-3 rooms dark is sustainable, a huddle is not
+)
+INTEGRITY_RECOVER = 2.0  # regained per tick when the whole station is lit (nothing dark)
 # meetings happen ONLY on a body report — there is no emergency button (no calling a meeting with no body)
 MAX_TICKS = 600
 
@@ -397,11 +406,17 @@ class Game:
         default_factory=set
     )  # rooms currently unlit — the only places a kill can happen
     winner: str | None = None  # "crew" | "impostor"
-    win_by: str | None = None  # "storm" | "ejection" | "extinction"
+    win_by: str | None = None  # "storm" | "ejection" | "extinction" | "blackout"
     storm_by_ticks: bool = (
         True  # offline/tests end the night on STORM_TICKS; the live server runs a
     )
     # real-seconds dawn clock (the HUD "To Dawn") and disables this so the two never disagree
+    integrity: float = (
+        INTEGRITY_MAX  # the station's health — drains while rooms are dark (live only)
+    )
+    integrity_on: bool = (
+        False  # live turns this on; off for offline/tests so their outcomes are unchanged
+    )
     hunting: bool = False  # the final hunt is on: one crew left, the Cold has dropped the mask
     hunt_ticks: int = 0  # how long the final hunt has run (the flee can't last forever)
     meetings: list = field(default_factory=list)
@@ -509,6 +524,17 @@ class Game:
         every = max(2, STORM_EVERY - self.tick // 24)
         return self.tick % every == 0
 
+    def _tick_integrity(self) -> None:
+        # the station bleeds out where it's dark; a fully lit station slowly recovers. Forces the crew to
+        # spread out and keep the WHOLE outpost lit, not huddle in a safe corner while the rest goes dark.
+        if not self.integrity_on:
+            return
+        d = len(self.dark)
+        if d:
+            self.integrity = max(0.0, self.integrity - DARK_DRAIN * d)
+        else:
+            self.integrity = min(INTEGRITY_MAX, self.integrity + INTEGRITY_RECOVER)
+
     def sabotage(self, a, room) -> bool:
         # the Cold kills the lights in its own room or a neighbouring one (to make a kill spot). Anonymous.
         if not (a.impostor and self.sab_cd == 0):
@@ -561,6 +587,7 @@ class Game:
             self.sab_cd -= 1
         if self._storm_due():
             self._storm()
+        self._tick_integrity()
 
         for a in self.living():
             a.tasking = False
@@ -809,6 +836,7 @@ class Game:
             self.sab_cd -= 1
         if self._storm_due():
             self._storm()
+        self._tick_integrity()
         for a in self.living():
             a.tasking = False
             if a.work > 0:
@@ -861,6 +889,9 @@ class Game:
             return True
         if not self.living(impostor=False):  # the Cold has taken the last of the crew
             self.winner, self.win_by = "impostor", "extinction"
+            return True
+        if self.integrity_on and self.integrity <= 0:  # the station bled out in the dark — blackout
+            self.winner, self.win_by = "impostor", "blackout"
             return True
         if (
             self.storm_by_ticks and self.tick >= STORM_TICKS

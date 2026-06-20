@@ -24,7 +24,12 @@
   .taskbar{width:84px;height:8px;border-radius:999px;background:#16213a;overflow:hidden;border:1px solid var(--line)}
   .taskbar i{display:block;height:100%;background:linear-gradient(90deg,#2fa1ff,#39d98a);transition:width .4s;min-width:2px}
   .storm{gap:8px}
-  .storm .plabel{font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--frost);opacity:.85}
+  .storm .plabel,.intg .plabel{font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--frost);opacity:.85}
+  /* station integrity: a depleting bar (green→amber→red) — falls while rooms are dark, blackout at 0 */
+  .intg{gap:8px}
+  .intbar{position:relative;width:64px;height:8px;border-radius:999px;flex:none;background:#16213a;overflow:hidden;box-shadow:inset 0 0 0 1px var(--line)}
+  .intbar i{display:block;height:100%;width:var(--i,100%);background:var(--ic,#39d98a);transition:width .4s,background .4s}
+  .intg.crit{animation:pulse 1s infinite}
   /* storm-to-dawn bar: a cloud sweeps left→right; behind it the sky clears to sunrise orange, ahead the dark grey night */
   .stormbar{position:relative;width:128px;height:12px;border-radius:7px;flex:none;overflow:visible;
     background:linear-gradient(90deg,#ff9a3c 0%,#ffc079 calc(var(--p,0)*100%),#1a2540 calc(var(--p,0)*100%),#131d2c 100%);
@@ -178,6 +183,7 @@
   <div class="brand">VERGLAS <small>· OUTPOST <b id="hud-outpost">31</b></small></div>
   <div class="pill storm" title="Survive the storm to dawn and the crew win. The cloud sweeps left to right; behind it the sky clears to sunrise. The Cold can only kill in a DARK room — stay lit, relight dark rooms, don't get cornered in the dark."><span class="plabel">To Dawn</span><div class="stormbar" id="hud-storm"><span class="cloud">🌨️</span><span class="sun">☀️</span></div></div>
   <div class="pill"><span class="plabel">Alive</span> <b id="hud-alive">10</b>/<b id="hud-total">10</b></div>
+  <div class="pill intg" id="intpill" title="Station integrity — it falls while rooms are dark. Keep the whole station lit; at 0% the outpost blacks out and the crew lose, even alive."><span class="plabel">Station</span><div class="intbar"><i id="hud-int"></i></div></div>
   <div class="spacer"></div>
   <div class="pill" id="sndpill" style="pointer-events:auto;cursor:pointer" title="ambient sound"><span id="snd">🔇</span></div>
 </div>
@@ -1395,7 +1401,7 @@ function drawIntro(t){
 function drawEnd(t){
   const k=Math.min(1,(performance.now()-phaseT0)/600), crew=STATE.winner==='crew';
   const cold=(STATE.agents||[]).filter(a=>a.cold).map(a=>a.name).join(' & ');
-  const by={storm:"the crew outlasted the storm — dawn breaks over the outpost",ejection:"the Cold was cast into the storm",extinction:"the Cold took the last of the crew — and walked out wearing a borrowed face"}[STATE.win_by]||'';
+  const by={storm:"the crew outlasted the storm — dawn breaks over the outpost",ejection:"the Cold was cast into the storm",extinction:"the Cold took the last of the crew — and walked out wearing a borrowed face",blackout:"the station went dark — the long night swallowed the outpost"}[STATE.win_by]||'';
   ctx.save(); ctx.textAlign="center";
   ctx.fillStyle=`rgba(4,9,18,${0.66*k})`; ctx.fillRect(0,0,cv.width,cv.height);
   // the world reacts: a warm thaw-light rises for the survivors, a final frost claims the outpost for the Cold
@@ -1427,6 +1433,10 @@ function updateStorm(){ if(STATE.stormTotal==null) return;
 }
 function syncHud(){ updateStorm();
   $('hud-alive').textContent=STATE.agents.filter(a=>a.alive).length; $('hud-total').textContent=STATE.agents.length;
+  const iv=STATE.integrity==null?100:STATE.integrity, ib=$('hud-int');
+  if(ib){ ib.style.width=Math.max(0,iv)+'%';
+    ib.style.background=iv>50?'#39d98a':(iv>22?'#e8c24a':'#ff5a5a');  // green → amber → red as the station fails
+    $('intpill').classList.toggle('crit', iv<=22); }
   const ros=$('roster'); ros.innerHTML=''; for(const a of STATE.agents){ const d=document.createElement('div'); d.className='who'+(a.alive?'':' dead')+(a.id===HILITE?' sel':'');
     d.innerHTML=`<span class="dot" style="color:${COLORS[a.c%COLORS.length]};background:${COLORS[a.c%COLORS.length]}"></span><span><div class="nm">${a.name}</div></span>`;
     d.onclick=()=>{ HILITE=(HILITE===a.id?null:a.id); syncHud(); renderInspector(); }; ros.appendChild(d); } }
@@ -1477,6 +1487,7 @@ function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.statio
   if(s.phase!==curPhase){ if(s.phase==='meeting'&&curPhase!=='meeting') Sound.slam(); curPhase=s.phase; phaseT0=performance.now(); }  // fresh fade for intro/gameover
   STATE.round=s.round; STATE.dark=s.dark||[]; STATE.paused=!!s.paused;
   STATE.stormElapsed=s.stormElapsed||0; STATE.stormTotal=s.stormTotal||300; STATE.stormAt=performance.now(); STATE.phase=s.phase;
+  STATE.integrity=s.integrity;
   STATE.hunting=s.hunting; STATE.winner=s.winner; STATE.win_by=s.win_by; STATE.scores=s.scores; STATE.meeting=s.meeting; applyAgents(s.agents||[]);
   if(s.phase==='intro'){ removedBodies.clear(); }  // new game → bodies can appear again
   // recover bodies only when the meeting is OVER (not while it runs — the body must stay visible for the

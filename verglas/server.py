@@ -46,8 +46,8 @@ INTRO_LINGER = (
     12.0  # the opening card — three lines fade in at reading pace, then a brief hold before play
 )
 STORM_SECONDS = float(
-    env("STORM_SECONDS", "300")
-)  # the storm passes after ~5 min of real play (meetings included) — survive to dawn and the crew win
+    env("STORM_SECONDS", "240")
+)  # base length of the night (meetings included) — shorter than before to keep games brisk
 _ADMIN_TOKEN = os.environ.get("WORLDS_ADMIN_TOKEN", "")
 N_AGENTS = int(env("AGENTS", "10"))
 N_IMPOSTORS = int(env("IMPOSTORS", "2"))  # the most Colds a night can have
@@ -139,6 +139,7 @@ class Verglas:
         self.g.storm_by_ticks = (
             False  # the real-seconds dawn clock below owns the storm win, not ticks
         )
+        self.g.integrity_on = True  # the station-integrity drain/blackout is a live-only mechanic
         self.tasks_total = self.g.tasks_goal
         self.game_secs = 0.0  # fresh storm clock for the new night
         self.phase = "intro"  # opening card first; the loop holds it, then play begins
@@ -272,6 +273,9 @@ class Verglas:
                 self.game_secs, 1
             ),  # real seconds into the night → the client's smooth dawn bar
             "stormTotal": STORM_SECONDS,
+            "integrity": round(
+                g.integrity, 1
+            ),  # station health 0-100 → HUD readout; 0 = blackout, crew lose
             "alive": len(g.living()),
             "total": len(g.agents),
             "agents": agents,

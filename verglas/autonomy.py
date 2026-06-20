@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from llmrouter import Request
 
-from verglas.engine import STORM_TICKS, Game
+from verglas.engine import Game
 from verglas.meeting import COLD_PERSONA, persona
 
 # The autonomous task phase: each free (or just-interrupted) agent is asked for ONE action, as a tool
@@ -13,9 +13,11 @@ from verglas.meeting import COLD_PERSONA, persona
 SYS_CREW = (
     "You are {name}, overwintering at an isolated Antarctic station. One of the crew is secretly the Cold "
     "— it wears a friend's face, and it can ONLY kill in a room that has gone DARK. You all just have to "
-    "SURVIVE THE STORM; it passes by dawn and you win. The storm keeps knocking the lights out room by "
-    "room, and the Cold can snuff them too. So: stay in LIT rooms where it cannot touch you, RELIGHT dark "
-    "rooms to deny it anywhere to hunt, and NEVER end up alone in the dark — if you must cross a dark room, "
+    "SURVIVE THE STORM; it passes by dawn and you win. But the STATION ITSELF is dying wherever the lights "
+    "are out — every dark room bleeds the outpost's integrity, and if it hits zero the whole station blacks "
+    "out and you ALL lose, even untouched. So you cannot just huddle in one safe corner: the crew must "
+    "SPREAD OUT and keep the WHOLE station lit. RELIGHT dark rooms — it denies the Cold a place to hunt AND "
+    "keeps the station alive. Never end up alone in the dark — if you must cross a dark room, "
     "stick right beside another crewmate, because it can't strike with someone close enough to see. If "
     "someone whispers you to slip off into the dark together, that's exactly how it isolates you — weigh "
     "who's asking and whether the room is lit; you can refuse. Trust no claim you can't check. "
@@ -137,12 +139,16 @@ def _context(g: Game, a, inbox: list) -> str:
     alive, total = len(g.living()), len(g.agents)
     dead = total - alive
     here_dark = a.room in g.dark
-    storm_left = max(0, STORM_TICKS - g.tick)
     lines = [
         f"You are in the {a.room}, which is {'DARK' if here_dark else 'LIT'}. With you: {here_s}.",
-        f"Dark rooms now (a kill can only happen in one of these): {dark_s}.",
-        f"Crew alive: {alive} of {total}. The storm passes in ~{storm_left} ticks — survive it and the crew win.",
+        f"Dark rooms now (a kill can only happen in one of these, and each one bleeds the station): {dark_s}.",
+        f"Crew alive: {alive} of {total}. Outlast the storm to dawn and the crew win.",
     ]
+    if g.integrity_on:
+        lines.append(
+            f"Station integrity: {int(g.integrity)}% — it FALLS while rooms are dark and the crew LOSE at 0. "
+            "Spread out and relight; don't leave half the station dark while you huddle."
+        )
     # the Cold's situational read, straight off the engine's rule: dark + within reach + no crew watching.
     if a.impostor:
         kills = [g.by_id(i).name for i in g.legal_kills(a)]
