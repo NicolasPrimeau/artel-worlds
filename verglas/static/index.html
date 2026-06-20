@@ -453,7 +453,10 @@ function drawStation(t){
     ctx.fillStyle=fg; ctx.fillRect(L,T,w,h);
     ctx.strokeStyle="rgba(110,140,190,.05)"; ctx.lineWidth=1; for(let yy=T+18*cam.z; yy<T+h; yy+=18*cam.z){ ctx.beginPath(); ctx.moveTo(L,yy); ctx.lineTo(L+w,yy); ctx.stroke(); }
     ctx.fillStyle=`rgba(${c[0]},${c[1]},${c[2]},.12)`; ctx.fillRect(L,T,w,h);  // faint room-accent wash
-    for(const [dx,dy,fw,fh,k] of (FURN[n]||[[-.1,0,.5,.4,'machine']])) drawFurn(sx+dx*w,sy+dy*h,fw*w,fh*h,k,t);
+    // size furniture off a CAPPED room extent (not the full room) so props stay proportional to the icons
+    // in oversized rooms — a bed is ~a couple tiles, not half the Infirmary. Positions still use the full room.
+    const fwUnit=Math.min(r.w,9*SCALE)*cam.z, fhUnit=Math.min(r.h,8*SCALE)*cam.z;
+    for(const [dx,dy,fw,fh,k] of (FURN[n]||[[-.1,0,.5,.4,'machine']])) drawFurn(sx+dx*w,sy+dy*h,fw*fwUnit,fh*fhUnit,k,t);
     // task terminals — one console per cell in TERMINALS[n] (wall cells, never doorways). The screen
     // glows cyan while its task is open/in-progress; dim when there's nothing to do here.
     const cnt=OPEN[n]||0, terms=TERMINALS[n]||[], cs=7*cam.z;
