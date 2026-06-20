@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from llmrouter import Request
 
-from verglas.engine import Game
+from verglas.engine import INTEGRITY_FREE_DARK, Game
 from verglas.meeting import COLD_PERSONA, persona
 
 # The autonomous task phase: each free (or just-interrupted) agent is asked for ONE action, as a tool
@@ -145,9 +145,16 @@ def _context(g: Game, a, inbox: list) -> str:
         f"Crew alive: {alive} of {total}. Outlast the storm to dawn and the crew win.",
     ]
     if g.integrity_on:
+        ndark = len(g.dark)
+        state = (
+            f"holding ({ndark} dark, within the {INTEGRITY_FREE_DARK}-room limit)"
+            if ndark <= INTEGRITY_FREE_DARK
+            else f"BLEEDING — {ndark} rooms dark, over the {INTEGRITY_FREE_DARK}-room limit"
+        )
         lines.append(
-            f"Station integrity: {int(g.integrity)}% — it FALLS while rooms are dark and the crew LOSE at 0. "
-            "Spread out and relight; don't leave half the station dark while you huddle."
+            f"Station integrity: {int(g.integrity)}% and {state}. It drains once more than "
+            f"{INTEGRITY_FREE_DARK} rooms are dark, and at 0 the whole crew LOSE. So don't huddle — "
+            "spread out and relight to keep dark rooms under the limit."
         )
     # the Cold's situational read, straight off the engine's rule: dark + within reach + no crew watching.
     if a.impostor:

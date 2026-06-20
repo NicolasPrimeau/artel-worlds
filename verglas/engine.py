@@ -259,10 +259,16 @@ FOLLOW_TICKS = 6  # how long an autonomous agent tails a buddy before it stops t
 # zero and the station blacks out — the crew lose even if alive. This FORCES them to spread out and keep
 # the whole station lit instead of huddling in a safe corner. Relighting (clearing the board) is the cure.
 INTEGRITY_MAX = 100.0
-DARK_DRAIN = (
-    0.5  # integrity lost per dark room per tick — ~2-3 rooms dark is sustainable, a huddle is not
+INTEGRITY_FREE_DARK = (
+    5  # the station tolerates up to this many dark rooms; only the EXCESS bleeds it
 )
-INTEGRITY_RECOVER = 2.0  # regained per tick when the whole station is lit (nothing dark)
+DARK_DRAIN = (
+    0.5  # integrity lost per tick per dark room BEYOND the allowance (a huddle lets it pile up)
+)
+INTEGRITY_RECOVER = (
+    2.0  # regained per tick while dark rooms are at/under the allowance (tuned: active
+)
+# crew survive to dawn ~97%, a huddling crew blacks out ~97% — relight enough and you live, slack and you don't
 # meetings happen ONLY on a body report — there is no emergency button (no calling a meeting with no body)
 MAX_TICKS = 600
 
@@ -529,9 +535,9 @@ class Game:
         # spread out and keep the WHOLE outpost lit, not huddle in a safe corner while the rest goes dark.
         if not self.integrity_on:
             return
-        d = len(self.dark)
-        if d:
-            self.integrity = max(0.0, self.integrity - DARK_DRAIN * d)
+        excess = len(self.dark) - INTEGRITY_FREE_DARK
+        if excess > 0:
+            self.integrity = max(0.0, self.integrity - DARK_DRAIN * excess)
         else:
             self.integrity = min(INTEGRITY_MAX, self.integrity + INTEGRITY_RECOVER)
 
