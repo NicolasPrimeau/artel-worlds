@@ -145,9 +145,7 @@
   #sharepop a:hover,#sharepop button:hover{background:rgba(120,160,220,.12);color:var(--ink)}
   /* ---- mobile: portrait AND landscape are both first-class ---- */
   @media (max-width:820px){ .hint{display:none} .hud{gap:8px;padding:0 10px} .pill{padding:4px 9px;font-size:11.5px}
-    #wins{display:none} #foot{gap:13px;font-size:10px} #foot .fbrand{display:none} #feed{max-height:19vh} }
-  /* landscape phones (wider than 820 but short): halve the station log too, so it doesn't eat the screen */
-  @media (max-height:520px){ #feed{max-height:19vh} }
+    #wins{display:none} #foot{gap:13px;font-size:10px} #foot .fbrand{display:none} }
   /* phones: compact the HUD so nothing clips off the right edge */
   @media (max-width:540px){ .hud{gap:6px;padding:0 8px;height:48px} .pill{padding:4px 7px;font-size:11px}
     .taskbar{width:52px} .plabel{display:none} #conn{font-size:0} #conn::before{width:9px;height:9px}
@@ -161,7 +159,7 @@
   /* phone portrait: the live panel is a bottom sheet; the roster WRAPS into a compact chip grid (all players
      visible at once — no awkward sideways scroll), with a vertical scroll only if it ever overflows */
   @media (orientation:portrait) and (max-width:760px){
-    #live{ left:8px; right:8px; width:auto; max-width:none; top:auto; bottom:8px; height:38vh; }
+    #live{ left:8px; right:8px; width:auto; max-width:none; top:auto; bottom:8px; height:26vh; }
     .roster{ top:54px; width:auto; left:8px; right:8px; flex-flow:row wrap; gap:5px;
       max-height:26vh; overflow-y:auto; -webkit-overflow-scrolling:touch; }
     .who{ flex:0 0 auto; padding:3px 9px 3px 6px; } .who .md{ display:none; } .who .nm{ font-size:11px; }
@@ -1488,7 +1486,7 @@ let hadSnapshot=false;  // false until the first snapshot is processed — so a 
 function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.station.openTasks||{}; }
   if(s.phase!==curPhase){ if(s.phase==='meeting'&&curPhase!=='meeting') Sound.slam(); curPhase=s.phase; phaseT0=performance.now();
     // the intro/end cards draw full-screen — keep the station log from floating over them (it's worst on mobile)
-    const fe=$('feed'); if(fe) fe.style.display=(s.phase==='intro'||s.phase==='gameover')?'none':''; }  // fresh fade for intro/gameover
+    const fe=$('live'); if(fe) fe.style.display=(s.phase==='intro'||s.phase==='gameover')?'none':''; }  // fresh fade for intro/gameover
   STATE.round=s.round; STATE.dark=s.dark||[]; STATE.paused=!!s.paused;
   STATE.stormElapsed=s.stormElapsed||0; STATE.stormTotal=s.stormTotal||300; STATE.stormAt=performance.now(); STATE.phase=s.phase;
   STATE.integrity=s.integrity;
