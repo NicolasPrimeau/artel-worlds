@@ -3,6 +3,7 @@ from __future__ import annotations
 from llmrouter import Request
 
 from verglas.engine import STORM_TICKS, Game
+from verglas.meeting import COLD_PERSONA, persona
 
 # The autonomous task phase: each free (or just-interrupted) agent is asked for ONE action, as a tool
 # call. The tools are deliberately dead-simple — every target is an enum the model picks from a short
@@ -191,7 +192,10 @@ def _context(g: Game, a, inbox: list) -> str:
 
 
 def build_request(g: Game, a, inbox: list | None = None) -> Request:
-    sys = (SYS_COLD if a.impostor else SYS_CREW).format(name=a.name)
+    base = (SYS_COLD if a.impostor else SYS_CREW).format(name=a.name)
+    # carry the agent's persona into the task phase too, so anything it whispers reads unmistakably as them
+    voice = COLD_PERSONA if a.impostor else f"You are unmistakably {a.name}: {persona(a.name)}"
+    sys = f"{base} {voice[0].upper() + voice[1:]}. Let that voice flavour anything you whisper."
     return Request(
         system=sys,
         user=_context(g, a, inbox or []),
