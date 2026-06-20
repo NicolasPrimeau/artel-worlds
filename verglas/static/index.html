@@ -23,7 +23,17 @@
   .pill b{font-variant-numeric:tabular-nums}
   .taskbar{width:84px;height:8px;border-radius:999px;background:#16213a;overflow:hidden;border:1px solid var(--line)}
   .taskbar i{display:block;height:100%;background:linear-gradient(90deg,#2fa1ff,#39d98a);transition:width .4s;min-width:2px}
-  #hud-tasksn{color:var(--good);font-weight:800;font-variant-numeric:tabular-nums}
+  #hud-tasksn{color:#dce8f7;font-weight:800;font-variant-numeric:tabular-nums}
+  /* Frostpunk-homage storm dial: a cold-blue -> thaw-amber ring filling toward dawn, temperature at its core */
+  .storm{gap:9px}
+  .dial{position:relative;width:38px;height:38px;border-radius:50%;flex:none;
+    background:conic-gradient(var(--arc,#5aa0ff) calc(var(--p,0)*1turn), #16213a 0);
+    box-shadow:inset 0 0 0 1px var(--line), 0 0 var(--glow,0px) rgba(255,180,90,.6);
+    display:flex;align-items:center;justify-content:center;transition:box-shadow .4s}
+  .dial::before{content:"";position:absolute;inset:5px;border-radius:50%;background:var(--panel)}
+  #hud-temp{position:relative;z-index:1;font-size:9.5px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--tempc,#bcd6f5);letter-spacing:-.02em}
+  .stormtxt{display:flex;flex-direction:column;line-height:1.05;gap:1px}
+  .stormtxt .plabel{font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--frost);opacity:.85}
   .spacer{flex:1}
   .hint{color:var(--dim);font-size:11px}
   .roster{position:fixed;left:12px;top:60px;width:172px;z-index:9;display:flex;flex-direction:column;gap:4px}
@@ -176,7 +186,7 @@
 <div id="stage"><canvas id="map"></canvas></div>
 <div class="hud">
   <div class="brand">VERGLAS <small>· OUTPOST <b id="hud-outpost">31</b></small></div>
-  <div class="pill" title="Survive the storm and the crew win — it passes by dawn. The Cold can only kill in a DARK room; the storm (and the Cold) keep snuffing the lights. Stay lit, relight dark rooms, don't get cornered in the dark."><span class="plabel">Storm</span> <div class="taskbar"><i id="hud-tasks" style="width:0%"></i></div> <b id="hud-tasksn">0%</b></div>
+  <div class="pill storm" title="Survive the storm and the crew win — it passes by dawn. The Cold can only kill in a DARK room; the storm (and the Cold) keep snuffing the lights. Stay lit, relight dark rooms, don't get cornered in the dark."><div class="dial" id="hud-dial"><span id="hud-temp">—</span></div><div class="stormtxt"><span class="plabel">To Dawn</span> <b id="hud-tasksn">5:00</b></div></div>
   <div class="pill"><span class="plabel">Alive</span> <b id="hud-alive">10</b>/<b id="hud-total">10</b></div>
   <div class="spacer"></div>
   <div class="pill" id="sndpill" style="pointer-events:auto;cursor:pointer" title="ambient sound"><span id="snd">🔇</span></div>
@@ -1402,9 +1412,15 @@ function updateStorm(){ if(STATE.stormTotal==null) return;
   let el=STATE.stormElapsed||0;
   if(playing && !STATE.paused) el += (performance.now()-(STATE.stormAt||performance.now()))/1000;  // creep in real time
   el=Math.max(0,Math.min(el,STATE.stormTotal)); const prog=STATE.stormTotal?el/STATE.stormTotal:0;
-  const bar=$('hud-tasks'); if(bar){ bar.style.width=(100*prog)+'%';
-    const c0=[96,150,214], c1=[255,178,86], mix=i=>Math.round(c0[i]+(c1[i]-c0[i])*prog);  // night → dawn
-    bar.style.background=`rgb(${mix(0)},${mix(1)},${mix(2)})`; bar.style.boxShadow=prog>0.55?`0 0 ${6*prog}px rgba(255,180,90,${0.5*prog})`:'none'; }
+  const c0=[96,150,214], c1=[255,178,86], mix=i=>Math.round(c0[i]+(c1[i]-c0[i])*prog);  // night-blue → dawn-amber
+  const arc=`rgb(${mix(0)},${mix(1)},${mix(2)})`;
+  // the night plunges to a brutal pre-dawn low, then breaks into a dawn thaw — a Frostpunk-style temp reading
+  const temp = prog<0.7 ? -18-(48-18)*(prog/0.7) : -48+(48-8)*((prog-0.7)/0.3);
+  const dial=$('hud-dial');
+  if(dial){ dial.style.setProperty('--p',prog); dial.style.setProperty('--arc',arc);
+    dial.style.setProperty('--glow',(prog>0.55?Math.round(10*prog):0)+'px');
+    dial.style.setProperty('--tempc',prog>0.82?'#ffd9a6':'#bcd6f5'); }  // the core warms as dawn breaks
+  const tp=$('hud-temp'); if(tp) tp.textContent=`${Math.round(temp)}°`;
   const left=Math.max(0,STATE.stormTotal-el), n=$('hud-tasksn');
   if(n) n.textContent=`${Math.floor(left/60)}:${String(Math.floor(left%60)).padStart(2,'0')}`;
 }
