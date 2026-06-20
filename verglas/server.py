@@ -548,12 +548,14 @@ async def _autonomous_tick():
         for a, (action, model) in zip(deciders, actions):
             act = action if action is not None else g.default_action(a)
             await _apply_action(g, a, act, model)
-    # no crewmate stands idle while the station is dark: any living crew left with nothing committed this
-    # tick (e.g. they only whispered, or the model stalled) is sent to relight the nearest dark room. This
-    # keeps the board moving AND routes crew through the dark rooms where bodies lie, so kills get found.
-    for a in g.living(impostor=False):
-        if g.needs_decision(a) and g.open_tasks:
-            await _apply_action(g, a, g.default_action(a))
+    # keep the crew MOVING into the dark: any living crewmate not actively working or walking to a task is
+    # sent to relight the nearest dark room (overriding a passive follow/whisper/idle). This stops them
+    # huddling on one side — they constantly sweep the dark rooms, so bodies get found fast and the station
+    # stays lit. Crew already en route to / working a console are left alone.
+    if g.open_tasks:
+        for a in g.living(impostor=False):
+            if a.work == 0 and a.dest is None:
+                await _apply_action(g, a, g.default_action(a))
     mt = g.execute()  # a meeting opens here ONLY when a body is found (no emergency button)
     for ev in (
         g.events

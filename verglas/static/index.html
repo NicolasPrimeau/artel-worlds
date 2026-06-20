@@ -1509,14 +1509,22 @@ function feedRow(e){
   const vote=/^votes\s/.test(e.text||'');                                                  // a revealed ballot
   return `<span class="tn" style="color:${nameColor(e.frm)}">${esc(e.frm)}</span><span class="tx"${vote?' style="color:#f1a9a9"':''}>${esc(e.text)}${mdlTag(e)}</span>`;  // broadcast / meeting line
 }
+// the station log reveals on a smooth cadence instead of dumping a tick's whole burst at once. A queue
+// holds pending lines; pumpFeed releases them ~1/sec, but speeds up as the backlog grows and hard-flushes
+// if it ever falls more than a few behind — so it reads steadily WITHOUT ever lagging substantially.
+let feedQueue = [];
+function _appendFeed(e){ const log=$('llog'); const li=document.createElement('li'); li.innerHTML=feedRow(e);
+  log.appendChild(li); while(log.children.length>80) log.removeChild(log.firstChild); log.scrollTop=log.scrollHeight; }
+const FEED_BASE=820, FEED_MIN=140, FEED_MAXLAG=6; let _feedAt=0;
+function pumpFeed(now){ const q=feedQueue.length; if(!q) return;
+  if(q>FEED_MAXLAG){ for(const e of feedQueue.splice(0,q-3)) _appendFeed(e); _feedAt=now; return; }  // caught too far behind → catch up, keep a short tail
+  const delay=Math.max(FEED_MIN, FEED_BASE-(q-1)*160);  // the more is waiting, the faster they come
+  if(now-_feedAt<delay) return; _feedAt=now; _appendFeed(feedQueue.shift()); }
+setInterval(()=>pumpFeed(performance.now()), 90);
 function renderFeed(feed){
   if(!feed||!feed.length) return;
-  if(feed[feed.length-1].seq < feedSeen){ feedSeen=0; $('llog').innerHTML=''; }  // server restarted → seq reset; replay from 0
-  const log=$('llog'); let added=false;
-  for(const e of feed){ if(e.seq<=feedSeen) continue; feedSeen=e.seq; added=true;
-    const li=document.createElement('li'); li.innerHTML=feedRow(e); log.appendChild(li); }
-  while(log.children.length>80) log.removeChild(log.firstChild);
-  if(added) log.scrollTop=log.scrollHeight;
+  if(feed[feed.length-1].seq < feedSeen){ feedSeen=0; feedQueue=[]; $('llog').innerHTML=''; }  // server restarted → seq reset; replay from 0
+  for(const e of feed){ if(e.seq<=feedSeen) continue; feedSeen=e.seq; feedQueue.push(e); }
 }
 function updateMeet(s){ const inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
   if(!inMeet){ meet=null; disco=null; return; }
