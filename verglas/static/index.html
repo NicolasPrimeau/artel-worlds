@@ -1485,8 +1485,8 @@ function renderChat(s){ const live=$('live'), inMeet=['meeting','vote','ejection
 let hadSnapshot=false;  // false until the first snapshot is processed — so a refresh into a meeting skips the discovery beat
 function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.station.openTasks||{}; }
   if(s.phase!==curPhase){ if(s.phase==='meeting'&&curPhase!=='meeting') Sound.slam(); curPhase=s.phase; phaseT0=performance.now();
-    // the intro/end cards draw full-screen — keep the station log from floating over them (it's worst on mobile)
-    const fe=$('live'); if(fe) fe.style.display=(s.phase==='intro'||s.phase==='gameover')?'none':''; }  // fresh fade for intro/gameover
+    // the intro/end cards draw full-screen — keep the floating panels (station log + crew roster) off them
+    const hideCards=(s.phase==='intro'||s.phase==='gameover'); for(const id of ['live','roster']){ const el=$(id); if(el) el.style.display=hideCards?'none':''; } }  // fresh fade for intro/gameover
   STATE.round=s.round; STATE.dark=s.dark||[]; STATE.paused=!!s.paused;
   STATE.stormElapsed=s.stormElapsed||0; STATE.stormTotal=s.stormTotal||300; STATE.stormAt=performance.now(); STATE.phase=s.phase;
   STATE.integrity=s.integrity;
