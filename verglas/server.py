@@ -28,7 +28,9 @@ log = logging.getLogger("verglas")
 
 STATIC = Path(__file__).parent / "static"
 TASK_TICK = float(env("TICK_INTERVAL", "4.2"))  # min seconds per task-phase tick
-STMT_DELAY = float(env("STMT_DELAY", "3.4"))  # seconds each spoken line holds
+STMT_DELAY = float(env("STMT_DELAY", "3.4"))  # base seconds a spoken line holds (jittered per line)
+STMT_DELAY_MIN = float(env("STMT_DELAY_MIN", "1.8"))  # floor so quick retorts never blink past
+STMT_DELAY_MAX = float(env("STMT_DELAY_MAX", "5.2"))  # ceiling so a long line never stalls the room
 PRE_VOTE = float(env("PRE_VOTE", "3.5"))  # the table settles before the vote opens
 DISCO_HOLD = float(
     env("DISCO_HOLD", "9.0")
@@ -326,6 +328,14 @@ async def _release_tasks(aids) -> None:
             await artel.unclaim_task(aid, tid)
 
 
+def _stmt_hold(text: str) -> float:
+    # STMT_DELAY sets the pace for a ~12-word line; scale to the actual length, jitter ±35% so the
+    # table never feels metronomic, then clamp so a terse jab still registers and a long accusation
+    # doesn't stall the room
+    base = STMT_DELAY * (len(text.split()) / 12.0) * _rng.uniform(0.65, 1.35)
+    return max(STMT_DELAY_MIN, min(STMT_DELAY_MAX, base))
+
+
 async def _run_meeting(mt) -> None:
     G.g.reconvene()  # everyone — task-workers included — downs tools and gathers at the Mess Hall table
     await _release_tasks(
@@ -366,7 +376,7 @@ async def _run_meeting(mt) -> None:
             await artel.say(agent_id, name, payload)
             G.push_feed("msg", frm=name, to=None, text=payload)
             await _broadcast()
-            await asyncio.sleep(STMT_DELAY)
+            await asyncio.sleep(_stmt_hold(payload))
         else:
             G.phase = "vote"
             target = G.g.by_id(payload).name if payload is not None and payload >= 0 else "abstains"
