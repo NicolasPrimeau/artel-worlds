@@ -1468,7 +1468,10 @@ function renderInspector(){ const el=$('inspect'); if(!el)return; const a=STATE.
   const inMeet=['meeting','vote','ejection'].includes(STATE.phase);
   if(!a||inMeet){ el.hidden=true; return; } el.hidden=false;
   $('ins-name').textContent=a.name; $('ins-name').style.color=COLORS[a.c%COLORS.length];
-  let act; if(!a.alive)act=`dead in the ${a.room}`; else if(a.task)act=`working a task · ${a.room}`; else act=`in the ${a.room}`;
+  let act; if(!a.alive)act=`dead in the ${a.room}`;
+  else if(a.task)act=`relighting the ${a.room}`;
+  else if(a.dest)act=`heading to ${a.dest} to relight`;
+  else act=`in the ${a.room}`;
   const th=(thoughtOf[a.id]&&thoughtOf[a.id].text)||lastThought[a.id]||genThought(a);
   const feed=STATE.feed||[], rows=[];
   for(let i=feed.length-1;i>=0&&rows.length<7;i--){ const e=feed[i];
@@ -1483,7 +1486,7 @@ function renderInspector(){ const el=$('inspect'); if(!el)return; const a=STATE.
 const esc=s=>(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function nameColor(n){ const a=STATE.agents.find(x=>x.name===n); return a?COLORS[a.c%COLORS.length]:'#cfe3ff'; }
 function applyAgents(arr){ const byId={}; for(const a of STATE.agents)byId[a.id]=a;
-  STATE.agents=arr.map(s=>{ const a=byId[s.id]||{id:s.id}; a.name=s.name; a.model=s.model; a.room=s.room; a.alive=s.alive; a.task=s.tasking; a.body=s.body; a.c=s.color; a.cold=s.cold; a.gx=s.gx; a.gy=s.gy; return a; }); }
+  STATE.agents=arr.map(s=>{ const a=byId[s.id]||{id:s.id}; a.name=s.name; a.model=s.model; a.room=s.room; a.alive=s.alive; a.task=s.tasking; a.dest=s.dest; a.body=s.body; a.c=s.color; a.cold=s.cold; a.gx=s.gx; a.gy=s.gy; return a; }); }
 // the one ARTEL·LIVE panel: #llog (the feed) always carries the stream — incl. the meeting dialogue/votes
 // the server pushes during a meeting. renderChat only swaps the panel's identity: header, lede, verdict.
 function renderChat(s){ const live=$('live'), inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
@@ -1540,7 +1543,7 @@ function feedRow(e){
 let feedQueue = [];
 function _appendFeed(e){ const log=$('llog'); const li=document.createElement('li'); li.innerHTML=feedRow(e);
   log.appendChild(li); while(log.children.length>80) log.removeChild(log.firstChild); log.scrollTop=log.scrollHeight; }
-const FEED_BASE=820, FEED_MIN=140, FEED_MAXLAG=6; let _feedAt=0;
+const FEED_BASE=1000, FEED_MIN=180, FEED_MAXLAG=6; let _feedAt=0;
 function pumpFeed(now){ const q=feedQueue.length; if(!q) return;
   if(q>FEED_MAXLAG){ for(const e of feedQueue.splice(0,q-3)) _appendFeed(e); _feedAt=now; return; }  // caught too far behind → catch up, keep a short tail
   const delay=Math.max(FEED_MIN, FEED_BASE-(q-1)*160);  // the more is waiting, the faster they come
@@ -1549,7 +1552,7 @@ setInterval(()=>pumpFeed(performance.now()), 90);
 function renderFeed(feed){
   if(!feed||!feed.length) return;
   if(feed[feed.length-1].seq < feedSeen){ feedSeen=0; feedQueue=[]; $('llog').innerHTML=''; }  // server restarted → seq reset; replay from 0
-  for(const e of feed){ if(e.seq<=feedSeen) continue; feedSeen=e.seq; feedQueue.push(e); }
+  for(const e of feed){ if(e.seq<=feedSeen) continue; feedSeen=e.seq; if(e.kind==='task') continue; feedQueue.push(e); }  // task claims/completes live in the agent view, not the global log — keeps it slow + on the deduction
 }
 function updateMeet(s){ const inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
   if(!inMeet){ meet=null; disco=null; return; }

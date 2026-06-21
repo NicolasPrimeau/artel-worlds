@@ -225,6 +225,7 @@ class Verglas:
                 "room": a.room,
                 "alive": a.alive,
                 "tasking": a.tasking,
+                "dest": a.dest,  # the room it's walking to relight (shown in the agent inspector)
                 "body": not a.alive,
                 "color": a.id,
                 "gx": round(a.gx, 2),
