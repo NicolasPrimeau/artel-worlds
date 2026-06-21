@@ -751,6 +751,17 @@ class Game:
         crew_n = {r: sum(1 for c in self._occ(r) if not c.impostor) for r in dests}
         m.room = max(dests, key=lambda r: (r in self.dark, crew_n[r] == 1, -crew_n[r]))
 
+    def _avoid_bodies(self) -> None:
+        # the Cold never returns to a kill: drop any intent aimed at a room holding a corpse, and if it's
+        # standing in one, slip out before a crewmate walks in and catches it over the body it left.
+        for m in self.living(impostor=True):
+            if m.dest in self.bodies:
+                m.dest = None
+            if m.goto in self.bodies:
+                m.goto = None
+            if m.room in self.bodies:
+                self._flee_body(m)
+
     def _release_task(self, victim) -> None:
         # a crewmate killed mid-task frees its claim: the unfinished relight goes back on the board for the
         # living to pick up, instead of the dark room staying claimed by a corpse for the rest of the game.
@@ -905,6 +916,7 @@ class Game:
                     a.follow = None  # buddy gone, or time to stop and reassess
                 elif buddy.room != a.room:
                     self._toward_room(a, buddy.room)
+        self._avoid_bodies()  # the Cold slips out of any room holding a corpse before it can be seen there
         self._place()  # settle each agent's cell within its (now final) room — the Cold creeps into reach
         for a in self.living():
             a.trail.append((self.tick, a.room))

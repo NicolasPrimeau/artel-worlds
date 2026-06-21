@@ -178,6 +178,19 @@ def test_a_killed_crewmate_frees_its_task():
     assert victim.dest is None and victim.tasking is False
 
 
+def test_cold_steers_clear_of_a_body_room():
+    g = new_game(5, 8, 2)
+    cold = next(a for a in g.living() if a.impostor)
+    room = next(r for r in g.rooms if g.adj.get(r))
+    g.bodies[room] = 999  # a corpse lies here
+    cold.room = room
+    cold.dest = room  # ...and the Cold is standing in it / headed back to it
+
+    g._avoid_bodies()
+    assert cold.room != room  # it slipped out before anyone could walk in
+    assert cold.dest is None  # and dropped the intent to return
+
+
 def test_body_finder_opens_the_meeting_with_context():
     g = new_game(5, 8, 2)
     crew = [a for a in g.living() if not a.impostor]

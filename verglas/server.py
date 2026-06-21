@@ -487,6 +487,8 @@ async def _apply_action(g, a, action, model: str | None = None) -> str | None:
     args = action.get("args") or {}
     if name == "go_to_task":
         room = args.get("room")
+        if a.impostor and room in g.bodies:
+            room = None  # the Cold won't "relight" the room it left a body in — that's how it gets caught
         if room in g.open_tasks:
             pool = G.task_pool.get(room) or []
             tid = pool.pop(0) if pool else None
