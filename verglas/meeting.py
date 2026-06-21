@@ -366,7 +366,12 @@ async def _vote_round(game, mt, transcript, dms=None, on_item=None) -> dict:
     pairs = await llm.complete_many_m(jobs, temperature=0.3)
     by_name = {a.name.lower(): a.id for a in living}
     votes: dict = {}
-    for a, (text, model) in zip(living, pairs):
+    for i, a in enumerate(
+        living
+    ):  # EVERY living agent votes (or abstains) — never drop one to a short
+        text, model = (
+            pairs[i] if i < len(pairs) else ("", None)
+        )  # batch, or it'd be ejected-before-it-voted
         parsed = llm.parse_json(_strip_think(text)) or {}
         choice = str(parsed.get("vote", "skip")).strip().lower()
         votes[a.id] = by_name.get(choice, -1)

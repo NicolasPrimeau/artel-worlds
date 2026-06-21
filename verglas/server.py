@@ -416,6 +416,9 @@ async def _run_meeting(mt) -> None:
 
         votes = await run_canned_meeting(G.g, mt, make_decider(share=True), on_item)
     G.g.apply_votes(mt, votes)
+    mt.votes = votes
+    await _broadcast()  # show the COMPLETE ballot...
+    await asyncio.sleep(_jit(VOTE_DELAY))  # ...and let every vote land before the walk-out begins
     # ejection: walk the ejected out (suspense), THEN reveal whether they were the Cold
     G.phase = "ejection"
     G.revealed = False
