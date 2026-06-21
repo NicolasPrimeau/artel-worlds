@@ -167,7 +167,7 @@
      visible at once — no awkward sideways scroll), with a vertical scroll only if it ever overflows */
   @media (orientation:portrait) and (max-width:760px){
     #live{ left:8px; right:8px; width:auto; max-width:none; top:auto; bottom:calc(var(--footh,40px) + 8px); height:24vh; }
-    #live.meeting{ height:50vh; }  /* the emergency meeting needs room — half the screen for the dialogue + votes */
+    #live.meeting{ height:34vh; }  /* a bit taller for the meeting dialogue, but low enough to leave the table + votes on the map visible */
     .roster{ top:54px; width:auto; left:8px; right:8px; flex-flow:row wrap; gap:5px;
       max-height:25vh; overflow-y:auto; -webkit-overflow-scrolling:touch; }
     .who{ flex:0 0 auto; padding:3px 9px 3px 6px; } .who .md{ display:none; } .who .nm{ font-size:11px; }
