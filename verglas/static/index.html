@@ -164,7 +164,7 @@
   /* phone portrait: the live panel is a bottom sheet; the roster WRAPS into a compact chip grid (all players
      visible at once — no awkward sideways scroll), with a vertical scroll only if it ever overflows */
   @media (orientation:portrait) and (max-width:760px){
-    #live{ left:8px; right:8px; width:auto; max-width:none; top:auto; bottom:8px; height:24vh; }
+    #live{ left:8px; right:8px; width:auto; max-width:none; top:auto; bottom:calc(var(--footh,40px) + 8px); height:24vh; }
     #live.meeting{ height:50vh; }  /* the emergency meeting needs room — half the screen for the dialogue + votes */
     .roster{ top:54px; width:auto; left:8px; right:8px; flex-flow:row wrap; gap:5px;
       max-height:25vh; overflow-y:auto; -webkit-overflow-scrolling:touch; }
@@ -312,7 +312,8 @@ const INTRO_MS=12000;   // opening card duration — matches the server's INTRO_
 
 const cv=$('map'), ctx=cv.getContext('2d');
 let cam={x:0,y:0,z:1}, DPR=Math.min(1.75,window.devicePixelRatio||1);
-function resize(){ cv.width=innerWidth*DPR; cv.height=innerHeight*DPR; if(!userMoved) fit(); }  // rotate → refit
+function resize(){ cv.width=innerWidth*DPR; cv.height=innerHeight*DPR; if(!userMoved) fit();
+  const f=$('foot'); if(f) document.documentElement.style.setProperty('--footh', f.offsetHeight+'px'); }  // refit; publish footer height so the bottom-sheet log can sit clear of it
 function bounds(){ return {x0:TB.x0-50,y0:TB.y0-50,x1:TB.x1+50,y1:TB.y1+60}; }
 let camBase=null;  // the fitted overview; the idle camera breathes gently around it
 function fit(){ if(!Object.keys(ROOMS).length)return; const b=bounds(),ww=b.x1-b.x0,wh=b.y1-b.y0;
