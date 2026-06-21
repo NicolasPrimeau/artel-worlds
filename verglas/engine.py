@@ -438,6 +438,10 @@ class Game:
     integrity_on: bool = (
         False  # live turns this on; off for offline/tests so their outcomes are unchanged
     )
+    dark_cap: int = DARK_CAP  # storm's max dark rooms — scaled to the station size in new_game
+    free_dark: int = (
+        INTEGRITY_FREE_DARK  # dark rooms tolerated before integrity bleeds — scaled too
+    )
     hunting: bool = False  # the final hunt is on: one crew left, the Cold has dropped the mask
     hunt_ticks: int = 0  # how long the final hunt has run (the flee can't last forever)
     meetings: list = field(default_factory=list)
@@ -534,7 +538,7 @@ class Game:
 
     def _storm(self) -> None:
         # the storm snuffs a random lit room; capped so it never blacks the whole station out at once
-        if len(self.dark) >= DARK_CAP:
+        if len(self.dark) >= self.dark_cap:
             return
         lit = [r for r in self.rooms if r not in self.dark]
         if lit:
@@ -550,7 +554,7 @@ class Game:
         # spread out and keep the WHOLE outpost lit, not huddle in a safe corner while the rest goes dark.
         if not self.integrity_on:
             return
-        excess = len(self.dark) - INTEGRITY_FREE_DARK
+        excess = len(self.dark) - self.free_dark
         if excess > 0:
             self.integrity = max(0.0, self.integrity - DARK_DRAIN * excess)
         else:
@@ -1002,9 +1006,11 @@ def new_game(seed: int, n=6, impostors=1) -> Game:
         corridor=corridor,
         outpost=rng.randint(1, 99),
     )
-    g.dark = set(
-        g.rng.sample(g.rooms, min(START_DARK, len(g.rooms)))
-    )  # a few rooms already unlit at dawn
+    # the dark knobs are tuned at 12 rooms; scale them by station size so small stations stay playable
+    g.dark_cap = round(DARK_CAP * len(g.rooms) / 12)
+    g.free_dark = round(INTEGRITY_FREE_DARK * len(g.rooms) / 12)
+    start_dark = min(g.dark_cap, round(START_DARK * len(g.rooms) / 12))
+    g.dark = set(g.rng.sample(g.rooms, start_dark))  # a few rooms already unlit at dawn
     g.open_tasks = list(g.dark)  # the relight board starts as those dark rooms
     g._place()  # seed each agent's cell so the first snapshot already has positions
     return g

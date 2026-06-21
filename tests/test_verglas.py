@@ -77,6 +77,17 @@ def test_scaled_stations_are_reachable_and_correctly_sized():
             assert hit == set(names), (nr, seed, set(names) - hit)
 
 
+def test_dark_knobs_scale_with_station_size():
+    # START_DARK / DARK_CAP / INTEGRITY_FREE_DARK are tuned at 12 rooms; on a smaller station they must
+    # scale or it's unplayable (every room dark at dawn, or the storm can never be capped under the count)
+    for n in (6, 8, 10, 14):
+        g = new_game(1, n, 1)
+        nr = len(g.rooms)
+        assert g.dark_cap <= nr  # the storm can never demand more dark rooms than exist
+        assert len(g.dark) <= g.dark_cap  # don't open the night already past the cap
+        assert g.free_dark < g.dark_cap  # always some drain pressure before a blackout is reachable
+
+
 def test_room_adjacency_graph_is_connected():
     for seed in range(300):
         names, adj, vents, rects, doors, centers, corr = _generate_station(random.Random(seed))
