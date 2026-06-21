@@ -49,7 +49,7 @@ STORM_SECONDS = float(
     env("STORM_SECONDS", "240")
 )  # base length of the night (meetings included) — shorter than before to keep games brisk
 _ADMIN_TOKEN = os.environ.get("WORLDS_ADMIN_TOKEN", "")
-N_AGENTS = int(env("AGENTS", "10"))
+N_AGENTS = int(env("AGENTS", "7"))
 N_IMPOSTORS = int(env("IMPOSTORS", "2"))  # the most Colds a night can have
 TWO_COLD_CHANCE = float(
     env("TWO_COLD_CHANCE", "0.25")
