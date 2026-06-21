@@ -61,6 +61,8 @@
     font-size:12.5px;letter-spacing:.14em;color:var(--frost);font-weight:800}
   #live .ch .feedlink{margin-left:auto;color:var(--dim);text-decoration:none;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:none;transition:color .15s}
   #live .ch .feedlink:hover{color:var(--frost)}
+  .livetog{margin-left:6px;background:none;border:0;color:var(--dim);cursor:pointer;font-size:13px;line-height:1;padding:2px 4px;transition:color .15s,transform .2s}
+  .livetog:hover{color:var(--frost)} #live.collapsed .livetog{transform:rotate(180deg)}
   #llog li.clearspace{animation:none;padding:0;margin:0}
   #llog{list-style:none;margin:0;padding:10px 12px;flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:7px}
   #llog li{font-size:12.5px;line-height:1.4;color:var(--ink);animation:cin .3s ease;word-break:break-word}
@@ -179,8 +181,12 @@
   /* mobile: drop the model tag (too dense for a small panel) and keep the log roomy and legible */
   @media (max-width:820px){
     #live .ch{ font-size:11.5px; padding:9px 11px; } #live .lede{ font-size:12px; padding:7px 11px; }
+
     #llog{ padding:9px 11px; gap:8px; } #llog li{ font-size:12.5px; line-height:1.45; } #llog .mdl{ display:none; }
   }
+  /* collapsed station log — just the header bar (click the chevron). Last in the sheet so it wins height. */
+  #live.collapsed{ height:auto; }
+  #live.collapsed #llog, #live.collapsed #live-lede, #live.collapsed #live-verdict{ display:none; }
 </style>
 </head>
 <body>
@@ -196,7 +202,7 @@
 <div class="roster" id="roster"></div>
 <div id="inspect" hidden><div class="ih"><span id="ins-name">—</span><button id="ins-x" title="close">✕</button></div><div id="ins-body"></div></div>
 <div id="live">
-  <div class="ch"><span class="dot"></span> <span id="live-title">STATION LOG</span><a class="feedlink" href="https://artel.run/ui?project=verglas#dashboard" target="_blank" rel="noopener" title="powered by Artel — open the Verglas project">via Artel ↗</a></div>
+  <div class="ch"><span class="dot"></span> <span id="live-title">STATION LOG</span><a class="feedlink" href="https://artel.run/ui?project=verglas#dashboard" target="_blank" rel="noopener" title="powered by Artel — open the Verglas project">via Artel ↗</a><button id="liveToggle" class="livetog" type="button" aria-label="collapse the log" title="collapse">▾</button></div>
   <div class="lede" id="live-lede" style="display:none">—</div>
   <ul id="llog"></ul>
   <div class="verdict" id="live-verdict" style="display:none"></div>
@@ -1660,6 +1666,7 @@ const Sound=(()=>{
       $('snd').textContent=on?'🔊':'🔇'; return on; } };
 })();
 $('sndpill').addEventListener('click',()=>Sound.toggle());
+$('liveToggle').addEventListener('click',()=>$('live').classList.toggle('collapsed'));
 $('crewToggle').addEventListener('click',()=>document.body.classList.toggle('crew-collapsed'));
 
 addEventListener('resize',resize); buildStation(STATION0); resize(); syncHud(); requestAnimationFrame(frame); connect();
