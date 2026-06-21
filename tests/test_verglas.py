@@ -4,7 +4,13 @@ from collections import deque
 
 import verglas.engine as E
 from verglas.brain import make_decider
-from verglas.engine import Meeting, _generate_station, new_game
+from verglas.engine import (
+    MIN_ROOMS,
+    Meeting,
+    _generate_station,
+    _room_count,
+    new_game,
+)
 from verglas.meeting import run_canned_meeting
 
 
@@ -48,6 +54,27 @@ def test_every_room_is_reachable_in_every_generated_station():
         names, adj, vents, rects, doors, centers, corr = _generate_station(random.Random(seed))
         hit = _reachable_rooms(rects, corr)
         assert hit == set(names), (seed, set(names) - hit)
+
+
+def test_room_count_scales_with_the_crew():
+    assert _room_count(4) == MIN_ROOMS  # clamped up — never too few to play
+    assert _room_count(100) == 12  # capped at the named-room list
+    assert _room_count(8) < _room_count(12)  # fewer agents → fewer rooms
+
+
+def test_scaled_stations_are_reachable_and_correctly_sized():
+    # the floorplan now scales to a target room count; every size must still be one connected
+    # walkable network with exactly that many named rooms, or the path router clips through walls
+    pick = random.Random(99)
+    for nr in range(MIN_ROOMS, 13):
+        for _ in range(60):
+            seed = pick.randint(1, 2**31 - 1)
+            names, adj, vents, rects, doors, centers, corr = _generate_station(
+                random.Random(seed), nr
+            )
+            assert len(names) == nr, (nr, len(names), seed)
+            hit = _reachable_rooms(rects, corr)
+            assert hit == set(names), (nr, seed, set(names) - hit)
 
 
 def test_room_adjacency_graph_is_connected():

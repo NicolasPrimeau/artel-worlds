@@ -52,19 +52,32 @@ SIZE_ORDER = [
     "Comms",
     "Freezer",
 ]
-GW, GH = 48, 34  # fine floorplan tile grid → rooms vary organically (room count is fixed at 12)
+GW, GH = 48, 34  # base floorplan grid for a full 12-room station; scaled down for smaller crews
 _ROOM_MIN = 7  # min room dimension in tiles (keeps rooms reasonable on the fine grid)
 _MIN_DOOR = 6  # min shared-wall length (tiles) for an EXTRA (loop) doorway
+ROOMS_PER_AGENT = (
+    0.9  # the outpost scales with the crew — fewer agents → fewer rooms → a tighter station
+)
+MIN_ROOMS = 6  # never fewer than this, or there's nowhere to isolate a kill or hide
 
 
-def _generate_station(rng: random.Random):
+def _room_count(n_agents: int) -> int:
+    return max(MIN_ROOMS, min(len(ROOM_NAMES), round(n_agents * ROOMS_PER_AGENT)))
+
+
+def _generate_station(rng: random.Random, n_rooms: int = 12):
     # BSP dungeon layout (how games fake real building plans): recursively partition the grid, place a
     # room INSET inside each leaf cell (varied size + position, with gaps between rooms), then connect
     # the rooms with L-shaped corridors. Result reads as architecture — clean rectangular rooms scattered
     # in a rectilinear footprint, linked by corridors — not a grid, not blobs, not a comb.
+    # the grid scales with the target room count (density held ~constant), so a smaller crew gets a
+    # smaller, tighter outpost — same room geometry, just fewer of them.
+    scale = (n_rooms / 12) ** 0.5
+    gw = max(2 * _ROOM_MIN + 6, round(GW * scale))
+    gh = max(2 * _ROOM_MIN + 6, round(GH * scale))
     s = 2 * _ROOM_MIN  # a cell must be this big in a dim to split (leaving two >= _ROOM_MIN)
-    cells = [(1, 1, GW - 2, GH - 2)]
-    while len(cells) < 12:
+    cells = [(1, 1, gw - 2, gh - 2)]
+    while len(cells) < n_rooms:
         cands = sorted(
             (i for i in range(len(cells)) if cells[i][2] >= s or cells[i][3] >= s),
             key=lambda i: -cells[i][2] * cells[i][3],
@@ -88,9 +101,11 @@ def _generate_station(rng: random.Random):
         ox = rng.randint(1, w - rw - 1) if w - rw - 1 >= 1 else 1
         oy = rng.randint(1, h - rh - 1) if h - rh - 1 >= 1 else 1
         rooms.append((x + ox, y + oy, rw, rh))
-    order = sorted(range(12), key=lambda i: -rooms[i][2] * rooms[i][3])  # biggest -> Mess Hall
-    names = list(SIZE_ORDER)
-    rects = {SIZE_ORDER[k]: rooms[order[k]] for k in range(12)}
+    order = sorted(
+        range(len(rooms)), key=lambda i: -rooms[i][2] * rooms[i][3]
+    )  # biggest -> Mess Hall
+    names = list(SIZE_ORDER[: len(rooms)])
+    rects = {SIZE_ORDER[k]: rooms[order[k]] for k in range(len(rooms))}
     cen = {n: (rects[n][0] + rects[n][2] / 2, rects[n][1] + rects[n][3] / 2) for n in names}
     roomtiles = {
         (tx, ty)
@@ -117,7 +132,7 @@ def _generate_station(rng: random.Random):
         )
         for x, y in leg1 + leg2:
             for dx in (0, 1):
-                if 0 <= x + dx < GW and 0 <= y < GH and (x + dx, y) not in roomtiles:
+                if 0 <= x + dx < gw and 0 <= y < gh and (x + dx, y) not in roomtiles:
                     corr.add((x + dx, y))
         adj[a].add(b)
         adj[b].add(a)
@@ -125,7 +140,7 @@ def _generate_station(rng: random.Random):
 
     # MST over room centres → connected corridor tree; then a few extra links for loops
     intree = {names[0]}
-    while len(intree) < 12:
+    while len(intree) < len(names):
         best = min(
             ((cen[a][0] - cen[b][0]) ** 2 + (cen[a][1] - cen[b][1]) ** 2, a, b)
             for a in intree
@@ -190,7 +205,7 @@ def _generate_station(rng: random.Random):
                 break
             for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 nb = (x + dx, y + dy)
-                if not (0 <= nb[0] < GW and 0 <= nb[1] < GH) or nb in prev:
+                if not (0 <= nb[0] < gw and 0 <= nb[1] < gh) or nb in prev:
                     continue
                 if nb in walk or nb not in roomtile_set:  # walkable, or empty space we may carve
                     prev[nb] = (x, y)
@@ -968,7 +983,7 @@ class Game:
 
 def new_game(seed: int, n=6, impostors=1) -> Game:
     rng = random.Random(seed)
-    rooms, adj, vents, rects, doors, centers, corridor = _generate_station(rng)
+    rooms, adj, vents, rects, doors, centers, corridor = _generate_station(rng, _room_count(n))
     order = list(range(n))
     rng.shuffle(order)
     imp_ids = set(order[:impostors])
