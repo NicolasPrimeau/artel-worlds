@@ -1527,7 +1527,7 @@ function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.statio
     pushKill(s.lastKill.room, STATE.agents.find(a=>a.name===s.lastKill.victim)); killPulse=performance.now(); Sound.kill(); }
   updateMeet(s);
   STATE.feed=s.feed||[]; setConn(s.paused?'paused':'live'); syncHud(); renderChat(s); renderFeed(s.feed); renderInspector(); hadSnapshot=true; }
-let feedSeen=0, wasMeeting=false;
+let feedSeen=0, wasMeeting=false, _resync=false;
 // the tiny truth under the hood: the actual model that generated this line. Hidden on mobile (density).
 function mdlTag(e){ if(!e.model) return ''; const m=String(e.model).split('/').pop(); return ` <span class="mdl">· ${esc(m)}</span>`; }
 function feedRow(e){
@@ -1551,7 +1551,14 @@ function pumpFeed(now){ const q=feedQueue.length; if(!q) return;
 setInterval(()=>pumpFeed(performance.now()), 90);
 function renderFeed(feed){
   if(!feed||!feed.length) return;
-  if(feed[feed.length-1].seq < feedSeen){ feedSeen=0; feedQueue=[]; $('llog').innerHTML=''; }  // server restarted → seq reset; replay from 0
+  if(_resync || feed[feed.length-1].seq < feedSeen){
+    // a (re)connect, or the server's seq reset (new game): rebuild the log cleanly IN ORDER from the
+    // window — don't slow-pump a backlog, which dumped a jumbled burst of events on reconnect
+    _resync=false; feedQueue=[]; $('llog').innerHTML='';
+    for(const e of feed.filter(e=>e.kind!=='task').slice(-12)) _appendFeed(e);
+    feedSeen=feed[feed.length-1].seq;
+    return;
+  }
   for(const e of feed){ if(e.seq<=feedSeen) continue; feedSeen=e.seq; if(e.kind==='task') continue; feedQueue.push(e); }  // task claims/completes live in the agent view, not the global log — keeps it slow + on the deduction
 }
 function updateMeet(s){ const inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
@@ -1572,7 +1579,7 @@ function connect(){
   clearTimeout(_reconnectT);
   const proto=location.protocol==='https:'?'wss:':'ws:';
   try{ _ws=new WebSocket(`${proto}//${location.host}/stream`); }catch(e){ scheduleReconnect(); return; }
-  _ws.onopen=()=>{ _retry=0; setConn('live'); };
+  _ws.onopen=()=>{ _retry=0; setConn('live'); _resync=true; };  // first snapshot after (re)connect rebuilds the log in order
   _ws.onmessage=e=>{ try{ applySnapshot(JSON.parse(e.data)); }catch(_){ } };
   _ws.onerror=()=>{ try{ _ws.close(); }catch(_){ } };
   _ws.onclose=()=>{ setConn('down'); scheduleReconnect(); };
