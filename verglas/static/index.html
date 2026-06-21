@@ -25,13 +25,13 @@
   .taskbar i{display:block;height:100%;background:linear-gradient(90deg,#2fa1ff,#39d98a);transition:width .4s;min-width:2px}
   .storm{gap:8px}
   .storm .plabel,.intg .plabel{font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--frost);opacity:.85}
-  /* station integrity — mirrors the storm bar: a lit bar (green→amber→red) shrinks into the blacked-out
-     dark as the outpost fails; a bulb marks the station's power. blackout (crew lose) at 0. */
+  /* station temperature — mirrors the storm bar: a warmth bar (amber→cold-blue) shrinks into the dark as
+     the outpost freezes; a thermometer marks it. eased toward the live value in updateTemp(); freeze=lose at 0. */
   .intg{gap:8px}
   .intbar{position:relative;width:160px;height:12px;border-radius:7px;flex:none;background:#0d1320;overflow:hidden;box-shadow:inset 0 0 0 1px var(--line)}
-  .intbar i{display:block;height:100%;width:var(--i,100%);background:var(--ic,#39d98a);transition:width .4s,background .4s}
+  .intbar i{display:block;height:100%;width:var(--i,100%);background:var(--ic,#ffb056)}
   .intbar .bulb{position:absolute;left:5px;top:50%;transform:translateY(-50%);z-index:1;font-size:11px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))}
-  #hud-intn{font-weight:800;font-variant-numeric:tabular-nums;font-size:11px;min-width:30px;text-align:right;color:#39d98a}
+  #hud-intn{font-weight:800;font-variant-numeric:tabular-nums;font-size:11px;min-width:42px;text-align:right;color:#ffb056}
   .intg.crit{animation:pulse 1s infinite} .intg.crit .bulb{opacity:.5}
   /* storm-to-dawn bar: a cloud sweeps left→right; behind it the sky clears to sunrise orange, ahead the dark grey night */
   .stormbar{position:relative;width:128px;height:12px;border-radius:7px;flex:none;overflow:visible;
@@ -188,7 +188,7 @@
 <div class="hud">
   <div class="brand">VERGLAS <small>· OUTPOST <b id="hud-outpost">31</b></small></div>
   <div class="pill storm" title="Survive the storm to dawn and the crew win. The cloud sweeps left to right; behind it the sky clears to sunrise. The Cold can only kill in a DARK room — stay lit, relight dark rooms, don't get cornered in the dark."><span class="plabel">To Dawn</span><div class="stormbar" id="hud-storm"><span class="cloud">🌨️</span><span class="sun">☀️</span></div></div>
-  <div class="pill intg" id="intpill" title="Station power — it falls while rooms are dark; relight them to recover. At 0% the outpost blacks out and the crew lose, even if alive."><span class="plabel">Power</span><div class="intbar"><i id="hud-int"></i><span class="bulb">💡</span></div> <b id="hud-intn">100%</b></div>
+  <div class="pill intg" id="intpill" title="Station temperature — it falls while rooms are dark and cold; relight them to warm back up. If it bottoms out the outpost freezes and the crew lose, even if alive."><span class="plabel">Temp</span><div class="intbar"><i id="hud-int"></i><span class="bulb">🌡️</span></div> <b id="hud-intn">—</b></div>
   <div class="spacer"></div>
   <div class="pill" id="sndpill" style="pointer-events:auto;cursor:pointer" title="ambient sound"><span id="snd">🔇</span></div>
   <div class="pill crewtog" id="crewToggle" style="pointer-events:auto;cursor:pointer" title="show / hide the crew list"><span class="ico">👥</span></div>
@@ -1358,6 +1358,7 @@ function drawDiscovery(t){
 }
 function drawFrame(t){
   updateStorm();  // smooth real-time dawn clock, every frame regardless of phase
+  updateTemp();   // station temperature eases toward its live value, every frame regardless of phase
   if(STATE.phase==='intro'){ drawSky(); drawAmbient(t); drawStation(t); applyLighting(); drawSnow(t); vignette(); drawIntro(t); return; }
   if(disco){ const ms=performance.now()-disco.t0;
     const moving=STATE.agents.some(a=>a.alive&&a.moving);
@@ -1396,7 +1397,7 @@ function drawIntro(t){
   const lines=[
     [1000, "228,236,250", "The winter crew is alone on the ice."],
     [4400, "255,120,120", "Something came in from the cold."],
-    [7800, "186,212,248", "Stay in the light. It hunts in the dark."],
+    [7800, "186,212,248", "Stay in the light. It hunts in the cold."],
   ];
   ctx.font=`600 ${fs}px Inter`; ctx.globalAlpha=1;
   lines.forEach((ln,i)=>{ const a=fin(ln[0],1800)*(1-out);   // ~1.8s gentle fade-in per line
@@ -1437,13 +1438,20 @@ function updateStorm(){ if(STATE.stormTotal==null) return;
   el=Math.max(0,Math.min(el,STATE.stormTotal)); const prog=STATE.stormTotal?el/STATE.stormTotal:0;
   const bar=$('hud-storm'); if(bar) bar.style.setProperty('--p',prog);  // cloud sweeps left→right, orange dawn behind it
 }
-function syncHud(){ updateStorm();
-  const iv=STATE.integrity==null?100:STATE.integrity, ib=$('hud-int');
-  if(ib){ ib.style.width=Math.max(0,iv)+'%';
-    const col=iv>50?'#39d98a':(iv>22?'#e8c24a':'#ff5a5a');  // green → amber → red as the station fails
-    ib.style.background=col;
-    const n=$('hud-intn'); if(n){ n.textContent=Math.round(Math.max(0,iv))+'%'; n.style.color=col; }
-    $('intpill').classList.toggle('crit', iv<=22); }
+// the station's warmth eases toward the live value each frame, so a room going dark/relit slides the gauge
+// instead of jumping. integrity 0..100 → a +18°C..-42°C reading; warm amber when safe, cold blue near a freeze.
+let _shownIv=null;
+function updateTemp(){ const ib=$('hud-int'); if(!ib) return;
+  const target=STATE.integrity==null?100:Math.max(0,Math.min(100,STATE.integrity));
+  _shownIv = _shownIv==null ? target : _shownIv + (target-_shownIv)*0.05;
+  if(Math.abs(target-_shownIv)<0.1) _shownIv=target;
+  const iv=_shownIv, f=iv/100, warm=[255,176,86], cold=[124,178,255], mix=i=>Math.round(cold[i]+(warm[i]-cold[i])*f);
+  const col=`rgb(${mix(0)},${mix(1)},${mix(2)})`;
+  ib.style.width=iv+'%'; ib.style.background=col;
+  const n=$('hud-intn'); if(n){ n.textContent=Math.round(-42+0.6*iv)+'°C'; n.style.color=col; }
+  $('intpill').classList.toggle('crit', iv<=22);
+}
+function syncHud(){ updateStorm(); updateTemp();
   const ros=$('roster'); ros.innerHTML=''; for(const a of STATE.agents){ const d=document.createElement('div'); d.className='who'+(a.alive?'':' dead')+(a.id===HILITE?' sel':'');
     d.innerHTML=`<span class="dot" style="color:${COLORS[a.c%COLORS.length]};background:${COLORS[a.c%COLORS.length]}"></span><span><div class="nm">${a.name}</div></span>`;
     d.onclick=()=>{ HILITE=(HILITE===a.id?null:a.id); syncHud(); renderInspector(); }; ros.appendChild(d); } }
