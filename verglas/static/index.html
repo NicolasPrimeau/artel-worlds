@@ -25,11 +25,13 @@
   .taskbar i{display:block;height:100%;background:linear-gradient(90deg,#2fa1ff,#39d98a);transition:width .4s;min-width:2px}
   .storm{gap:8px}
   .storm .plabel,.intg .plabel{font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--frost);opacity:.85}
-  /* station integrity: a depleting bar (green→amber→red) — falls while rooms are dark, blackout at 0 */
+  /* station integrity — mirrors the storm bar: a lit bar (green→amber→red) shrinks into the blacked-out
+     dark as the outpost fails; a bulb marks the station's power. blackout (crew lose) at 0. */
   .intg{gap:8px}
-  .intbar{position:relative;width:64px;height:8px;border-radius:999px;flex:none;background:#16213a;overflow:hidden;box-shadow:inset 0 0 0 1px var(--line)}
+  .intbar{position:relative;width:112px;height:12px;border-radius:7px;flex:none;background:#0d1320;overflow:hidden;box-shadow:inset 0 0 0 1px var(--line)}
   .intbar i{display:block;height:100%;width:var(--i,100%);background:var(--ic,#39d98a);transition:width .4s,background .4s}
-  .intg.crit{animation:pulse 1s infinite}
+  .intbar .bulb{position:absolute;left:5px;top:50%;transform:translateY(-50%);z-index:1;font-size:11px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))}
+  .intg.crit{animation:pulse 1s infinite} .intg.crit .bulb{opacity:.5}
   /* storm-to-dawn bar: a cloud sweeps left→right; behind it the sky clears to sunrise orange, ahead the dark grey night */
   .stormbar{position:relative;width:128px;height:12px;border-radius:7px;flex:none;overflow:visible;
     background:linear-gradient(90deg,#ff9a3c 0%,#ffc079 calc(var(--p,0)*100%),#1a2540 calc(var(--p,0)*100%),#131d2c 100%);
@@ -162,6 +164,7 @@
      visible at once — no awkward sideways scroll), with a vertical scroll only if it ever overflows */
   @media (orientation:portrait) and (max-width:760px){
     #live{ left:8px; right:8px; width:auto; max-width:none; top:auto; bottom:8px; height:24vh; }
+    #live.meeting{ height:50vh; }  /* the emergency meeting needs room — half the screen for the dialogue + votes */
     .roster{ top:54px; width:auto; left:8px; right:8px; flex-flow:row wrap; gap:5px;
       max-height:25vh; overflow-y:auto; -webkit-overflow-scrolling:touch; }
     .who{ flex:0 0 auto; padding:3px 9px 3px 6px; } .who .md{ display:none; } .who .nm{ font-size:11px; }
@@ -184,8 +187,7 @@
 <div class="hud">
   <div class="brand">VERGLAS <small>· OUTPOST <b id="hud-outpost">31</b></small></div>
   <div class="pill storm" title="Survive the storm to dawn and the crew win. The cloud sweeps left to right; behind it the sky clears to sunrise. The Cold can only kill in a DARK room — stay lit, relight dark rooms, don't get cornered in the dark."><span class="plabel">To Dawn</span><div class="stormbar" id="hud-storm"><span class="cloud">🌨️</span><span class="sun">☀️</span></div></div>
-  <div class="pill"><span class="plabel">Alive</span> <b id="hud-alive">10</b>/<b id="hud-total">10</b></div>
-  <div class="pill intg" id="intpill" title="Station integrity — it falls while rooms are dark. Keep the whole station lit; at 0% the outpost blacks out and the crew lose, even alive."><span class="plabel">Station</span><div class="intbar"><i id="hud-int"></i></div></div>
+  <div class="pill intg" id="intpill" title="Station integrity — it falls while rooms are dark. Keep the whole station lit; at 0% the outpost blacks out and the crew lose, even alive."><span class="plabel">Station</span><div class="intbar"><i id="hud-int"></i><span class="bulb">💡</span></div></div>
   <div class="spacer"></div>
   <div class="pill" id="sndpill" style="pointer-events:auto;cursor:pointer" title="ambient sound"><span id="snd">🔇</span></div>
   <div class="pill crewtog" id="crewToggle" style="pointer-events:auto;cursor:pointer" title="show / hide the crew list"><span class="ico">👥</span></div>
@@ -1435,7 +1437,6 @@ function updateStorm(){ if(STATE.stormTotal==null) return;
   const bar=$('hud-storm'); if(bar) bar.style.setProperty('--p',prog);  // cloud sweeps left→right, orange dawn behind it
 }
 function syncHud(){ updateStorm();
-  $('hud-alive').textContent=STATE.agents.filter(a=>a.alive).length; $('hud-total').textContent=STATE.agents.length;
   const iv=STATE.integrity==null?100:STATE.integrity, ib=$('hud-int');
   if(ib){ ib.style.width=Math.max(0,iv)+'%';
     ib.style.background=iv>50?'#39d98a':(iv>22?'#e8c24a':'#ff5a5a');  // green → amber → red as the station fails

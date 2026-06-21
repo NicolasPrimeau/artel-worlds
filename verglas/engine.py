@@ -682,6 +682,7 @@ class Game:
                     victim = self.rng.choice(victims)
                     m.gx, m.gy = victim.gx, victim.gy  # close in for the strike
                     victim.alive = False
+                    self._release_task(victim)
                     self.bodies[m.room] = victim.id
                     self.last_kill = {"tick": self.tick, "victim": victim.id, "room": m.room}
                     self.cd = KILL_CD
@@ -732,6 +733,15 @@ class Game:
         crew_n = {r: sum(1 for c in self._occ(r) if not c.impostor) for r in dests}
         m.room = max(dests, key=lambda r: (r in self.dark, crew_n[r] == 1, -crew_n[r]))
 
+    def _release_task(self, victim) -> None:
+        # a crewmate killed mid-task frees its claim: the unfinished relight goes back on the board for the
+        # living to pick up, instead of the dark room staying claimed by a corpse for the rest of the game.
+        if victim.dest is not None and victim.dest not in self.open_tasks:
+            self.open_tasks.append(victim.dest)
+        victim.dest = victim.goto = victim.follow = None
+        victim.work = 0
+        victim.tasking = False
+
     def do_kill(self, m, victim_id: int, force: bool = False) -> bool:
         occ = self._occ(m.room)
         victim = next((c for c in occ if c.id == victim_id and not c.impostor), None)
@@ -751,6 +761,7 @@ class Game:
         ):
             return False
         victim.alive = False
+        self._release_task(victim)
         self.bodies[m.room] = victim.id
         self.last_kill = {"tick": self.tick, "victim": victim.id, "room": m.room}
         self.cd = KILL_CD

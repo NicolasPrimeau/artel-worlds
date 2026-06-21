@@ -118,6 +118,28 @@ def test_cold_flees_toward_the_dark_after_a_kill():
     assert cold.room == nbrs[0]  # retreats into the dark, not a lit neighbour
 
 
+def test_a_killed_crewmate_frees_its_task():
+    g = new_game(5, 8, 2)
+    cold = next(a for a in g.living() if a.impostor)
+    victim = next(a for a in g.living() if not a.impostor)
+    room = next(r for r in g.rooms if g.adj.get(r))
+    for a in g.living():
+        a.room = "__elsewhere__"
+    cold.room = victim.room = room
+    cold.gx, cold.gy = victim.gx, victim.gy = 5.0, 5.0
+    g.dark.add(room)
+    g.cd = 0
+    g.tick = 999
+    task_room = next(r for r in g.rooms if r != room)
+    if task_room in g.open_tasks:
+        g.open_tasks.remove(task_room)
+    victim.dest = task_room  # the victim had claimed a relight in another room
+
+    assert g.do_kill(cold, victim.id) is True
+    assert task_room in g.open_tasks  # the claim is freed back to the board for the living
+    assert victim.dest is None and victim.tasking is False
+
+
 def test_body_finder_opens_the_meeting_with_context():
     g = new_game(5, 8, 2)
     crew = [a for a in g.living() if not a.impostor]
