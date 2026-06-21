@@ -178,6 +178,35 @@ def test_a_killed_crewmate_frees_its_task():
     assert victim.dest is None and victim.tasking is False
 
 
+def test_cold_can_kill_in_a_lit_room_only_when_the_victim_is_alone():
+    g = new_game(5, 8, 2)
+    cold = next(a for a in g.living() if a.impostor)
+    crew = [a for a in g.living() if not a.impostor]
+    victim = crew[0]
+    room = next(r for r in g.rooms if g.adj.get(r) and r not in g.dark)
+    for a in g.living():
+        a.room = "__elsewhere__"
+    cold.room = victim.room = room  # a LIT room (not in g.dark)
+    cold.gx, cold.gy = victim.gx, victim.gy = 5.0, 5.0
+    g.cd, g.tick = 0, 999
+    assert room not in g.dark
+    assert g.do_kill(cold, victim.id) is True  # alone with it in the light → killable now
+
+    # but a second crewmate in the lit room sees everything — no kill
+    g2 = new_game(6, 8, 2)
+    cold2 = next(a for a in g2.living() if a.impostor)
+    c2 = [a for a in g2.living() if not a.impostor]
+    v2, w2 = c2[0], c2[1]
+    room2 = next(r for r in g2.rooms if g2.adj.get(r) and r not in g2.dark)
+    for a in g2.living():
+        a.room = "__elsewhere__"
+    cold2.room = v2.room = w2.room = room2
+    cold2.gx, cold2.gy = v2.gx, v2.gy = w2.gx, w2.gy = 5.0, 5.0
+    g2.cd, g2.tick = 0, 999
+    assert room2 not in g2.dark
+    assert g2.do_kill(cold2, v2.id) is False  # a witness in the lit room blocks it
+
+
 def test_cold_steers_clear_of_a_body_room():
     g = new_game(5, 8, 2)
     cold = next(a for a in g.living() if a.impostor)

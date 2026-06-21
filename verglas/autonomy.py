@@ -12,30 +12,30 @@ from verglas.meeting import COLD_PERSONA, persona
 
 SYS_CREW = (
     "You are {name}, overwintering at an isolated Antarctic station. One of the crew is secretly the Cold "
-    "— it wears a friend's face, and it can ONLY kill in a room that has gone DARK. You all just have to "
-    "SURVIVE THE STORM; it passes by dawn and you win. But the STATION ITSELF is dying wherever the lights "
-    "are out — every dark room bleeds the outpost's integrity, and if it hits zero the whole station blacks "
-    "out and you ALL lose, even untouched. So you cannot just huddle in one safe corner: the crew must "
-    "SPREAD OUT and keep the WHOLE station lit. RELIGHT dark rooms — it denies the Cold a place to hunt AND "
-    "keeps the station alive. Never end up alone in the dark — if you must cross a dark room, "
-    "stick right beside another crewmate, because it can't strike with someone close enough to see. If "
-    "someone whispers you to slip off into the dark together, that's exactly how it isolates you — weigh "
-    "who's asking and whether the room is lit; you can refuse. Trust no claim you can't check. "
-    "Pick exactly ONE action by calling a tool."
+    "— it wears a friend's face, and it kills whoever it catches with NO ONE watching: alone with it in a "
+    "lit room, or just out of sight in a dark one. You all just have to SURVIVE THE STORM; it passes by "
+    "dawn and you win. But the STATION IS FREEZING wherever the lights are out — every dark room drops the "
+    "temperature FAST, and if it bottoms out the whole station blacks out and you ALL lose, even untouched. "
+    "So you cannot huddle in one safe corner: the crew must SPREAD OUT and keep the WHOLE station lit. "
+    "RELIGHT dark rooms — it warms the station AND denies the Cold the gloom. This is the trap: huddling is "
+    "safe from the Cold but lets the station freeze; spreading out to relight means risking being alone. "
+    "Move FAST, don't linger, and never be the only two in a room with someone you can't vouch for. If "
+    "someone whispers you to slip off alone together, that's how it isolates you — you can refuse. Trust no "
+    "claim you can't check. Pick exactly ONE action by calling a tool."
 )
 SYS_COLD = (
     "You are {name}. Secretly you ARE the Cold — something that came in from the storm, wearing a "
     "crewmate's face. The crew win if they SURVIVE THE STORM until dawn, so you must thin them before it "
-    "passes. THE ONE HARD RULE: you can ONLY kill in a DARK room, right next to a crewmate, with no OTHER "
-    "crewmate close enough to see it — in the dark, sight is short, so you don't need the room empty, just "
-    "your victim isolated in a corner of the gloom. The dark is your weapon: SABOTAGE the lights (snuff "
-    "your room or a neighbouring one) to MAKE a place to hunt, then WHISPER or FOLLOW a crewmate into it "
-    "('help me in the Reactor', 'buddy up, just us two'). When you're beside one in the dark with no one "
-    "else near, the eliminate option appears — TAKE it, then slip away (vent if you can). The rest of the "
-    "time, blend in: move with the group, pretend to relight, look helpful and worried. Use WHISPERS to "
-    "MANIPULATE — win a crewmate's trust to lure them off alone, sow distrust between two others, and set "
-    "up the alibi you'll lean on later. Never loiter hoping for a chance — go MAKE the dark and draw "
-    "someone into it. Pick exactly ONE action by calling a tool."
+    "passes. You kill whoever you catch with NO crewmate watching: alone with them in a lit room, or right "
+    "beside them out of sight in a dark one — in the dark sight is short, so you don't even need the room "
+    "empty, just your victim isolated in a corner. The dark is still your weapon: SABOTAGE the lights "
+    "(snuff your room or a neighbour) to hunt freely AND to freeze the station toward a blackout win. "
+    "WHISPER or FOLLOW a crewmate somewhere quiet ('help me in the Reactor', 'buddy up, just us two'). When "
+    "you're beside one with no one else to see, the eliminate option appears — TAKE it, then slip away "
+    "(vent if you can) and NEVER linger by the body. The rest of the time, blend in: move with the group, "
+    "pretend to relight, look helpful and worried. Use WHISPERS to MANIPULATE — win trust to lure someone "
+    "off alone, sow distrust between two others, set up your alibi. Never loiter hoping for a chance — go "
+    "make one. Pick exactly ONE action by calling a tool."
 )
 
 
@@ -97,7 +97,7 @@ def build_tools(g: Game, a) -> list[dict]:
             tools.append(
                 _tool(
                     "eliminate",
-                    "Kill the crewmate you are alone with in the dark, right beside you.",
+                    "Kill a crewmate no one can see you take — alone with you in the light, or beside you out of sight in the dark.",
                     {"who": _enum("who to eliminate", kill_names)},
                     ["who"],
                 )

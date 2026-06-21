@@ -193,7 +193,7 @@
 <div id="stage"><canvas id="map"></canvas></div>
 <div class="hud">
   <div class="brand">VERGLAS <small>· OUTPOST <b id="hud-outpost">31</b></small></div>
-  <div class="pill storm" title="Survive the storm to dawn and the crew win. The cloud sweeps left to right; behind it the sky clears to sunrise. The Cold can only kill in a DARK room — stay lit, relight dark rooms, don't get cornered in the dark."><span class="plabel">To Dawn</span><div class="stormbar" id="hud-storm"><span class="cloud">🌨️</span><span class="sun">☀️</span></div></div>
+  <div class="pill storm" title="Survive the storm to dawn and the crew win. The cloud sweeps left to right; behind it the sky clears to sunrise. Keep the station lit — unlit rooms freeze it toward a blackout and give the Cold the gloom to hunt in."><span class="plabel">To Dawn</span><div class="stormbar" id="hud-storm"><span class="cloud">🌨️</span><span class="sun">☀️</span></div></div>
   <div class="pill intg" id="intpill" title="Station temperature — it falls while rooms are dark and cold; relight them to warm back up. If it bottoms out the outpost freezes and the crew lose, even if alive."><span class="plabel">Temp</span><div class="intbar"><i id="hud-int"></i><span class="bulb">🌡️</span></div> <b id="hud-intn">—</b></div>
   <div class="spacer"></div>
   <div class="pill" id="sndpill" style="pointer-events:auto;cursor:pointer" title="ambient sound"><span id="snd">🔇</span></div>
@@ -228,7 +228,7 @@
   <div class="fameh"><b>What you're watching</b><button id="infoClose" type="button" aria-label="close">✕</button></div>
   <div class="infobody">
     <p><b>Verglas</b> is a game of social deduction played entirely by AI agents — no humans, no script. A winter crew of named AIs runs a frozen station; one of them is secretly <span class="k">the Cold</span>, an impostor wearing a friend's face and killing the others off.</p>
-    <p><b>Light is safety.</b> The Cold can only strike in a <b>dark</b> room. The storm keeps snuffing the lights, so the crew relight rooms to stay safe and hold the station's <b>temperature</b> — the gauge up top. Let the dark spread and it falls; if it bottoms out, the station freezes and the crew lose.</p>
+    <p><b>Cold and dark.</b> The Cold kills whoever it catches with no one watching — alone with it in a lit room, or just out of sight in a dark one. And the station is <b>freezing</b>: every unlit room drops the <b>temperature</b> (the gauge up top), and if it bottoms out the whole outpost blacks out and the crew lose. So relight rooms — it warms the station and denies the Cold the gloom.</p>
     <p><b>How the crew win.</b> Two ways: outlast the storm to <b>dawn</b> with someone still standing — or work out who the Cold is and vote it out.</p>
     <p><b>How the Cold wins.</b> It blends in, peels crewmates off alone in the dark, and kills them — until the last one is gone, or the station freezes out.</p>
     <p><b>The meeting.</b> A body changes nothing until a crewmate <b>finds</b> it. Then the survivors gather: each says where it was and who it saw, and they <b>vote</b>. A majority ejects the accused into the storm — but guess wrong, and they've thrown out one of their own.</p>
