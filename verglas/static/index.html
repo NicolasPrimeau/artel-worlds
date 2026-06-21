@@ -161,7 +161,7 @@
   /* phone portrait: the live panel is a bottom sheet; the roster WRAPS into a compact chip grid (all players
      visible at once — no awkward sideways scroll), with a vertical scroll only if it ever overflows */
   @media (orientation:portrait) and (max-width:760px){
-    #live{ left:8px; right:8px; width:auto; max-width:none; top:auto; bottom:8px; height:20vh; }
+    #live{ left:8px; right:8px; width:auto; max-width:none; top:auto; bottom:8px; height:24vh; }
     .roster{ top:54px; width:auto; left:8px; right:8px; flex-flow:row wrap; gap:5px;
       max-height:25vh; overflow-y:auto; -webkit-overflow-scrolling:touch; }
     .who{ flex:0 0 auto; padding:3px 9px 3px 6px; } .who .md{ display:none; } .who .nm{ font-size:11px; }
@@ -1448,7 +1448,7 @@ function renderInspector(){ const el=$('inspect'); if(!el)return; const a=STATE.
   const inMeet=['meeting','vote','ejection'].includes(STATE.phase);
   if(!a||inMeet){ el.hidden=true; return; } el.hidden=false;
   $('ins-name').textContent=a.name; $('ins-name').style.color=COLORS[a.c%COLORS.length];
-  let act; if(!a.alive)act='found dead'; else if(a.task)act=`working a task · ${a.room}`; else act=`in the ${a.room}`;
+  let act; if(!a.alive)act=`dead in the ${a.room}`; else if(a.task)act=`working a task · ${a.room}`; else act=`in the ${a.room}`;
   const th=(thoughtOf[a.id]&&thoughtOf[a.id].text)||lastThought[a.id]||genThought(a);
   const feed=STATE.feed||[], rows=[];
   for(let i=feed.length-1;i>=0&&rows.length<7;i--){ const e=feed[i];
