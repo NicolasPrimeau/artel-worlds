@@ -16,7 +16,10 @@ import httpx
 log = logging.getLogger("verglas.artel")
 
 ARTEL_URL = os.environ.get("ARTEL_URL", "https://artel.run").rstrip("/")
-PROJECT = env("PROJECT", "verglas")
+PROJECT = (
+    "verglas"  # the Artel coordination project (and public dashboard). Fixed to verglas — the old
+)
+# "alibi" codename is retired; this ignores any stale ALIBI_PROJECT/VERGLAS_PROJECT env from the deploy
 _IDS = [s.strip() for s in env("AGENT_IDS").split(",") if s.strip()]
 _KEYS = [s.strip() for s in env("AGENT_KEYS").split(",") if s.strip()]
 AGENTS = [{"id": i, "key": k} for i, k in zip(_IDS, _KEYS)]
