@@ -837,14 +837,16 @@ class Game:
 
     def default_action(self, a) -> dict:
         # the safe fallback when the LLM is unavailable or returns no/invalid tool call: claim the nearest
-        # open task, else buddy the nearest survivor. Keeps the game flowing without judgement.
+        # open task, else SPREAD OUT — drift to the least-crowded neighbouring room rather than mobbing a
+        # buddy. Keeps the crew sweeping the station (and giving the Cold real targets) instead of blobbing.
         if self.open_tasks:
             room = min(self.open_tasks, key=lambda r: self._room_dist(a.room, r))
             return {"name": "go_to_task", "args": {"room": room}}
-        others = [o for o in self.living() if o.id != a.id]
-        if others:
-            tgt = min(others, key=lambda o: self._room_dist(a.room, o.room))
-            return {"name": "follow", "args": {"who": tgt.name}}
+        nbrs = self.adj.get(a.room) or set()
+        if nbrs:
+            occ = {r: sum(1 for o in self.living() if o.room == r) for r in nbrs}
+            tgt = min(nbrs, key=lambda r: (occ[r], self._room_dist(a.room, r)))
+            return {"name": "move_to", "args": {"room": tgt}}
         return {"name": "wait", "args": {}}
 
     def execute(self) -> Meeting | None:
