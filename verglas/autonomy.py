@@ -86,7 +86,10 @@ def build_tools(g: Game, a) -> list[dict]:
                 "Send one short private line to a crewmate.",
                 {
                     "who": _enum("who to message", others),
-                    "message": {"type": "string", "description": "one short sentence"},
+                    "message": {
+                        "type": "string",
+                        "description": "ONE short sentence, 14 words max — longer gets cut off",
+                    },
                 },
                 ["who", "message"],
             )

@@ -494,6 +494,18 @@ def _target_id(g, name):
     return a.id if a else None
 
 
+def _clip(text: str, n: int = 120) -> str:
+    # a clean cut at a word boundary with an ellipsis, so a too-long line never breaks mid-word in the log
+    text = text.strip()
+    if len(text) <= n:
+        return text
+    cut = text[: n - 1].rstrip()
+    sp = cut.rfind(" ")
+    if sp > n * 0.5:
+        cut = cut[:sp]
+    return cut.rstrip(" ,.;:!-—") + "…"
+
+
 async def _apply_action(g, a, action, model: str | None = None) -> str | None:
     # turn one tool call into engine intent + real Artel side-effects. Returns "meeting" if the agent
     # called one. Unknown/garbled actions are no-ops — the agent simply re-decides next tick.
@@ -523,11 +535,12 @@ async def _apply_action(g, a, action, model: str | None = None) -> str | None:
         to = _target_id(g, args.get("who"))
         text = str(args.get("message", "")).strip()
         if to is not None and text:
+            clipped = _clip(text)
             await artel.dm(a.id, to, f"{a.name}: {text}"[:280])
-            G.inbox.setdefault(to, []).append((a.name, text[:120]))
+            G.inbox.setdefault(to, []).append((a.name, clipped))
             G.interrupted.add(to)
             G.whisper = [a.name, g.by_id(to).name]
-            G.push_feed("msg", frm=a.name, to=g.by_id(to).name, text=text[:120], model=model)
+            G.push_feed("msg", frm=a.name, to=g.by_id(to).name, text=clipped, model=model)
     elif name == "darken":
         room = args.get("room")
         if room:
