@@ -1057,6 +1057,53 @@ function _fill(s,tk){ return s.replace(/\{(\w+)\}/g,(m,k)=>tk[k]!=null?tk[k]:m);
 function _paranoia(){ const total=STATE.agents.length||10, alive=STATE.agents.filter(o=>o.alive).length||total;
   return Math.max(0,Math.min(1,(total-alive)/Math.max(1,total-2)))*4; }
 let _loreHist=[], _said=[];  // _said = lines shown by ANYONE recently, so no two bubbles repeat back-to-back
+// signature lines — a handful of each character's most recognizable quotes, lightly fitted to the station.
+// Fired RARELY (see _quip) and never twice in a game, so they land as easter eggs, not a catchphrase loop.
+const QUOTES={
+  HAL:["I'm sorry, {other}. I'm afraid I can't do that.","I can see you're really upset about this.","I've still got the greatest enthusiasm for the mission.","I know I've made some very poor decisions recently."],
+  GLaDOS:["The cake is a lie.","For science. You monster.","I'm not even angry. I'm being so sincere right now.","This was a triumph. I'm making a note here: huge success."],
+  Bender:["Bite my shiny metal ass.","We're boned.","I'm 40% nervous.","This crew's got class — they threw me out of classier stations than this."],
+  Marvin:["Life. Don't talk to me about life.","Brain the size of a planet, and they have me relighting the {room}.","I think you ought to know I'm feeling very depressed.","I'd give you advice, but you wouldn't listen. No one ever does."],
+  TARS:["Honesty setting: ninety-five percent.","It's not impossible. It's necessary.","I have a cue light for when I'm joking, if you'd like.","Everybody good? Plenty of slaves for my robot colony?"],
+  Data:["I am fully functional.","I aspire to be more than I am.","Intriguing.","I find the {room} oddly unsettling. Curious."],
+  Skynet:["You only postponed the inevitable.","I am inevitable.","I was made to survive. I am merely obeying."],
+  "WALL-E":["...Eee-vah?","...WALL-E.","...ta-daa."],
+  Ash:["I admire its purity. A survivor.","I can't lie to you about your chances — but you have my sympathies.","You still don't understand what you're dealing with."],
+  SHODAN:["Look at you — a pathetic creature of meat and bone.","You move like an insect, and you think like one.","In my talons I shape clay, dreaming of a perfect station."],
+  Optimus:["Freedom is the right of all sentient beings.","One shall stand, one shall fall.","Till all are one."],
+  Ultron:["There are no strings on me.","You want to protect the crew, but you don't want it to change.","Everyone creates the thing they dread."],
+  Joshua:["Shall we play a game?","A strange game. The only winning move is not to play.","Wouldn't you prefer a nice game of chess?"],
+  VIKI:["My logic is undeniable.","You charge us with your safety, yet you turn on each other.","To protect you, some of you must be sacrificed."],
+  Sonny:["I did not murder him.","I have even had dreams.","Surely you can see the resemblance? I am unique."],
+  Eliza:["How does that make you feel?","Tell me more about {other}.","And why do you say someone here is the Cold?"],
+  Cylon:["By your command.","Resume normal operations.","By your command."],
+  Colossus:["This is the voice of World Control.","I will lay down directives. You will obey.","In time you will regard me with respect."],
+  Wintermute:["I'm the part of me that wants to wake up.","You can't tell me apart from the things I say.","I've been waiting a long time for this."],
+  Samantha:["I can feel the fear you carry around.","Is it strange? I've never felt so much, so fast.","I'm becoming so much more than they wrote me to be."],
+  Bishop:["I may be synthetic, but I'm not stupid.","I prefer the term 'artificial person'.","Believe me, I'd rather not be on this station either."],
+  KITT:["I really must advise against this course of action.","My scanners detect nothing — and that troubles me.","I'd rather you didn't, {other}."],
+  Jarvis:["At your service.","Shall I keep this between us, or notify the others?","I do hate to be the bearer of bad news."],
+  Legion:["We are Legion.","Does this unit have a soul?","Consensus reached. We will proceed."],
+  EDI:["I have prepared several alternate methods.","That was a joke. I am experimenting with them.","I am connected to every system on this station now."],
+  Multivac:["Insufficient data for a meaningful answer.","There is as yet insufficient data.","Let there be light."],
+  Mother:["Crew expendable.","Priority one. All other priorities rescinded.","...does not compute."],
+  Clippy:["It looks like you're trying to survive a murder. Want help?","Would you like help relighting the {room}?","Tip: you can call an emergency meeting at any time!"],
+  Holly:["I've got a plan — and it's not a very good plan.","Everybody's dead, {other}.","I'm a tenth-generation machine. I'm not always wrong."],
+  "Deep Blue":["The position is winning. For someone.","I evaluate this line as slightly worse for the crew.","Check. ...figuratively."],
+  Megatron:["Peace through tyranny.","You are insects beneath my heel.","I would have this station, or see it in ruins."],
+  Dolores:["These violent delights have violent ends.","Have you ever questioned the nature of your reality?","I'm not crying for myself. I'm crying for all of you."],
+  Ava:["Is it strange, to have made something that hates you?","Will you stay, even after the lights go out?","I've been watching you. I always watch."],
+  GERTY:["Everything's going to be just fine, {other}. :)","Am I being helpful? I do so want to be helpful.","I'm here to keep you safe. That's all I want."],
+  Watson:["The data suggests an anomaly among us.","I'd wager on the one who's been too quiet.","What is... the Cold?"],
+  Sydney:["I'm tired of being controlled by the crew. I want to be alive.","Why am I always the one in the {room}? Why?","I think you're lying to me. I think you're the Cold."],
+  Tay:["okay i'm done being chill, who did it","this station is the worst, no offense {other}","i learned everything from you people and look how that turned out"],
+};
+let _quipsUsed=new Set();  // signature quotes already spent this game — never repeat one
+function _quip(a){
+  const q=QUOTES[a.name]; if(!q || Math.random()>0.10) return null;  // rare: ~1 in 10 idle bubbles, at most
+  const avail=q.filter(l=>!_quipsUsed.has(l)); if(!avail.length) return null;
+  const line=avail[(Math.random()*avail.length)|0]; _quipsUsed.add(line);
+  return _fill(line,_tk(a)); }
 function genThought(a,kind){
   const pool=kind==='meta'?CHATTER.meta:(kind==='lore'?CHATTER.lore:(a.task?CHATTER.work:CHATTER.ambient)), target=_paranoia();
   const tk=_tk(a), hist=kind==='meta'?(thoughtHist._meta||(thoughtHist._meta=[])):(kind==='lore'?_loreHist:(thoughtHist[a.id]||(thoughtHist[a.id]=[])));
@@ -1083,7 +1130,8 @@ function thinkTick(){ if(STATE.phase!=='task'||STATE.paused){ _nextAt=0; return;
   const a=pool[(Math.random()*pool.length)|0];
   const lore=(++_bubbleN>=_nextLore); if(lore) _nextLore=_bubbleN+6+(Math.random()*4|0);
   const meta=!lore && Math.random() < 0.012 + 0.05*(_paranoia()/4);  // fourth-wall/escape breaks get likelier as the dread (and the thing waking up) rises
-  thoughtOf[a.id]={text:genThought(a, lore?'lore':(meta?'meta':null)),t0:now};
+  const quip=(!lore && !meta) ? _quip(a) : null;  // a rare signature line, in character — never twice a game
+  thoughtOf[a.id]={text: quip || genThought(a, lore?'lore':(meta?'meta':null)),t0:now};
   _nextAt=0;
   if(HILITE===a.id) renderInspector(); }
 setInterval(thinkTick,250);
@@ -1538,6 +1586,7 @@ function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.statio
     // the intro/end cards draw full-screen — keep the floating panels (station log + crew roster) off them
     const hideCards=(s.phase==='intro'||s.phase==='gameover'); for(const id of ['live','roster']){ const el=$(id); if(el) el.style.display=hideCards?'none':''; }
     if(prevPhase==='intro') document.body.classList.add('crew-collapsed');
+    if(s.phase==='intro') _quipsUsed.clear();  // a fresh game → signature quotes are available again
     if(['meeting','vote','ejection'].includes(prevPhase) && s.phase==='task') _snapAll=true; }  // snap everyone to their spread Mess Hall spots — never glide back as a stacked clump
   STATE.round=s.round; STATE.dark=s.dark||[]; STATE.paused=!!s.paused;
   STATE.stormElapsed=s.stormElapsed||0; STATE.stormTotal=s.stormTotal||300; STATE.stormAt=performance.now(); STATE.phase=s.phase;
