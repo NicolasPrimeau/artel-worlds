@@ -159,6 +159,29 @@ def _brief(game: Game, mt: Meeting, a) -> str:
         f"Your movements this shift: {_trail_str(game, a)}.",
         f"Who you saw: {_seen_str(game, a)}.",
     ]
+    # pre-digest the raw sightings into an evidence read, so even a small model votes on what it actually
+    # saw, not vibes: who it can clear (was beside them), and who it never laid eyes on (a real suspect)
+    seen_counts: dict = {}
+    for s in a.seen:
+        for i in s.present:
+            seen_counts[i] = seen_counts.get(i, 0) + 1
+    span = max(len(a.trail), 1)
+    vouch = [
+        _name(game, i)
+        for i, c in seen_counts.items()
+        if game.by_id(i).alive and c >= max(2, span * 0.5)
+    ]
+    unseen = [o.name for o in game.living() if o.id != a.id and seen_counts.get(o.id, 0) == 0]
+    if vouch:
+        lines.append(
+            f"You were beside {', '.join(vouch)} for much of the shift — you'd have seen them kill, so they "
+            "are almost certainly NOT the Cold; don't waste your vote on them."
+        )
+    if unseen:
+        lines.append(
+            f"You never once crossed paths with {', '.join(unseen)} — you can't account for them, so the "
+            "Cold is most likely one of them."
+        )
     if not a.impostor and a.witnessed:
         for imp in a.witnessed:
             if game.by_id(imp).alive:
