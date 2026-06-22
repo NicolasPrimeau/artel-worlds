@@ -1234,17 +1234,23 @@ function drawSky(t){
 // the ejected researcher is walked out into the storm before we cut back to the station. ----
 function meetLede(){ const m=STATE.meeting||{}; if(m.victim) return `${m.reporter} found ${m.victim} dead in the ${m.room}`;
   return m.reporter?`${m.reporter} called everyone in`:`emergency meeting`; }
-function bubble(x,y,text,kind){ const f=12*DPR; ctx.font=`600 ${f}px Inter`;
+function bubble(x,y,text,kind,below){ const f=12*DPR; ctx.font=`600 ${f}px Inter`;
   const maxw=190*DPR, words=(text||'').split(' '), lines=[]; let ln='';
   for(const w of words){ const tryln=ln?ln+' '+w:w; if(ctx.measureText(tryln).width>maxw&&ln){ lines.push(ln); ln=w; } else ln=tryln; }
   if(ln)lines.push(ln); const lh=f*1.28, pad=9*DPR;
   const bw=Math.min(maxw,Math.max(...lines.map(l=>ctx.measureText(l).width)))+pad*2, bh=lines.length*lh+pad*1.6;
-  let bx=x-bw/2, by=y-bh; bx=Math.max(6*DPR,Math.min(cv.width-bw-6*DPR,bx)); by=Math.max((meet&&meet.top||56*DPR)+40*DPR,by);
+  let bx=x-bw/2; bx=Math.max(6*DPR,Math.min(cv.width-bw-6*DPR,bx));
+  // a top-half seat hangs its bubble BELOW the icon (tail up) so it never gets clamped under the header and
+  // torn off the icon; everyone else floats it above (tail down) as before
+  let by= below ? Math.min(cv.height-bh-6*DPR, y) : Math.max((meet&&meet.top||56*DPR)+40*DPR, y-bh);
   ctx.save();
   ctx.fillStyle= kind==='vote' ? "rgba(34,24,30,.95)" : "rgba(16,24,38,.95)";
   ctx.strokeStyle= kind==='vote' ? "rgba(255,120,120,.6)" : "rgba(130,170,225,.55)"; ctx.lineWidth=1.4*DPR;
   rr(bx,by,bw,bh,9*DPR); ctx.fill(); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(x-6*DPR,by+bh); ctx.lineTo(x+6*DPR,by+bh); ctx.lineTo(x,by+bh+9*DPR); ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  if(below){ ctx.moveTo(x-6*DPR,by); ctx.lineTo(x+6*DPR,by); ctx.lineTo(x,by-9*DPR); }
+  else { ctx.moveTo(x-6*DPR,by+bh); ctx.lineTo(x+6*DPR,by+bh); ctx.lineTo(x,by+bh+9*DPR); }
+  ctx.closePath(); ctx.fill();
   ctx.fillStyle=kind==='vote'?"#ffd7d7":"#e7eefc"; ctx.textAlign="center"; ctx.textBaseline="middle";
   lines.forEach((l,i)=>ctx.fillText(l,bx+bw/2,by+pad*0.8+lh*(i+0.5)));
   ctx.restore(); }
@@ -1311,10 +1317,10 @@ function drawMeeting(t){
     ctx.fillStyle="rgba(231,238,252,.95)"; ctx.textAlign="center"; ctx.font=`700 ${9.5*DPR}px Inter`;
     ctx.fillText(a.name,p.x,p.y+dy+s*1.5); ctx.restore();
     const vt=meet.votes&&meet.votes[a.name];
-    if(vt!==undefined&&!out){ ctx.globalAlpha=fade; bubble(p.x,p.y-s*1.25,vt==='skip'?'skips':'→ '+vt,'vote'); ctx.globalAlpha=1; }
+    if(vt!==undefined&&!out){ const tb=p.y<cy; ctx.globalAlpha=fade; bubble(p.x,tb?p.y+s*1.25:p.y-s*1.25,vt==='skip'?'skips':'→ '+vt,'vote',tb); ctx.globalAlpha=1; }
   }
   // the speaker's live line — only during discussion; the instant voting starts, every speech bubble clears
-  if(meet.bubble && STATE.phase==='meeting'){ const sp=seats[meet.bubble.id]; if(sp){ ctx.globalAlpha=fade; bubble(sp.x,sp.y-s*1.5,meet.bubble.text,'say'); ctx.globalAlpha=1; } }
+  if(meet.bubble && STATE.phase==='meeting'){ const sp=seats[meet.bubble.id]; if(sp){ const tb=sp.y<cy; ctx.globalAlpha=fade; bubble(sp.x,tb?sp.y+s*1.5:sp.y-s*1.5,meet.bubble.text,'say',tb); ctx.globalAlpha=1; } }
   // a private whisper between two survivors — a dashed line + tag; the content lives on Artel, not here
   const wsp=STATE.meeting&&STATE.meeting.whisper;
   if(wsp){ const fa=STATE.agents.find(a=>a.name===wsp[0]), ta=STATE.agents.find(a=>a.name===wsp[1]);
@@ -1422,7 +1428,9 @@ function drawIntro(t){
 function drawEnd(t){
   const k=Math.min(1,(performance.now()-phaseT0)/600), crew=STATE.winner==='crew';
   const cold=(STATE.agents||[]).filter(a=>a.cold).map(a=>a.name).join(' & ');
-  const by={storm:"the crew outlasted the storm — dawn breaks over the outpost",ejection:"the Cold was cast into the storm",extinction:"the Cold took the last of the crew — and walked out wearing a borrowed face",blackout:"the station went dark — the long night swallowed the outpost"}[STATE.win_by]||'';
+  const frozen=STATE.win_by==='blackout';  // they let the station freeze — paranoia, not the Cold, finished them
+  const by=frozen?"they huddled together and let the dark close in — their own paranoia froze them to death"
+    :{storm:"the crew outlasted the storm — dawn breaks over the outpost",ejection:"the Cold was cast into the storm",extinction:"the Cold took the last of the crew — and walked out wearing a borrowed face"}[STATE.win_by]||'';
   ctx.save(); ctx.textAlign="center";
   ctx.fillStyle=`rgba(4,9,18,${0.66*k})`; ctx.fillRect(0,0,cv.width,cv.height);
   // the world reacts: a warm thaw-light rises for the survivors, a final frost claims the outpost for the Cold
@@ -1432,13 +1440,19 @@ function drawEnd(t){
     fg.addColorStop(0,"rgba(150,195,245,0)"); fg.addColorStop(1,`rgba(150,195,245,${0.18*k})`); ctx.fillStyle=fg; ctx.fillRect(0,0,cv.width,cv.height); }
   const cx=cv.width/2, cy=cv.height*0.40, big=Math.min(52,cv.width/11/DPR);
   ctx.globalAlpha=k; ctx.fillStyle="rgba(150,178,218,.7)"; ctx.font=`700 ${12*DPR}px Inter`; ctx.fillText("— OUTPOST LOG —", cx, cy-big*0.95*DPR);
-  const wtitle=crew?"THE CREW SURVIVED":"THE COLD WINS";
-  ctx.fillStyle=crew?"rgba(122,210,255,.98)":"rgba(255,86,86,.98)"; let ts=big*DPR; ctx.font=`900 ${ts}px Inter`;
+  const wtitle=frozen?"FROZEN TO DEATH":(crew?"THE CREW SURVIVED":"THE COLD WINS");
+  ctx.fillStyle=frozen?"rgba(150,200,255,.98)":(crew?"rgba(122,210,255,.98)":"rgba(255,86,86,.98)"); let ts=big*DPR; ctx.font=`900 ${ts}px Inter`;
   const wmax=cv.width*0.8, ww=ctx.measureText(wtitle).width; if(ww>wmax){ ts*=wmax/ww; ctx.font=`900 ${ts}px Inter`; }  // shrink to fit narrow screens (extra margin: 900-weight renders wider than it measures)
   ctx.fillText(wtitle, cx, cy);
-  ctx.fillStyle="rgba(231,238,252,.86)"; ctx.font=`600 ${Math.min(16,cv.width/26/DPR)*DPR}px Inter`; ctx.fillText(by, cx, cy+big*0.7*DPR);
-  ctx.fillStyle="rgba(182,202,232,.82)"; ctx.font=`600 ${13*DPR}px Inter`; ctx.fillText(`the Cold was ${cold||'—'}`, cx, cy+big*1.15*DPR);
-  ctx.fillStyle="rgba(150,170,200,.55)"; ctx.font=`600 ${11*DPR}px Inter`; ctx.fillText("a new crew rotates in…", cx, cy+big*1.7*DPR);
+  // subtitle — word-wrapped so the longer outros never clip on a phone; later lines flow below it
+  const sfs=Math.min(16,cv.width/26/DPR)*DPR; ctx.fillStyle="rgba(231,238,252,.86)"; ctx.font=`600 ${sfs}px Inter`;
+  const sw=cv.width*0.84, swords=by.split(' '), slines=[]; let sl='';
+  for(const w of swords){ const tt=sl?sl+' '+w:w; if(ctx.measureText(tt).width>sw&&sl){ slines.push(sl); sl=w; } else sl=tt; }
+  if(sl) slines.push(sl);
+  let yy=cy+big*0.6*DPR; const slh=sfs*1.32; slines.forEach(l=>{ ctx.fillText(l,cx,yy); yy+=slh; });
+  yy+=6*DPR;
+  if(!frozen){ ctx.fillStyle="rgba(182,202,232,.82)"; ctx.font=`600 ${13*DPR}px Inter`; ctx.fillText(`the Cold was ${cold||'—'}`, cx, yy); yy+=22*DPR; }  // no Cold credit when they froze themselves
+  ctx.fillStyle="rgba(150,170,200,.55)"; ctx.font=`600 ${11*DPR}px Inter`; ctx.fillText("a new crew rotates in…", cx, yy+8*DPR);
   ctx.restore();
 }
 function recapText(){ const crew=STATE.winner==='crew', cold=(STATE.agents||[]).filter(a=>a.cold).map(a=>a.name).join(' & ');
