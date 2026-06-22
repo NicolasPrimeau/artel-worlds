@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 
 from verglas import llm
@@ -333,9 +334,7 @@ async def _agent_act(game, mt, transcript, dms, a, opener=False) -> dict:
     return {"act": "say", "text": text, "ok": True, "model": model}
 
 
-async def _vote_round(game, mt, transcript, dms=None, on_item=None) -> dict:
-    dms = dms or {}
-    living = game.living()
+def _vote_jobs(game, mt, transcript, dms, living):
     public = _public(game, mt)
     convo = _transcript_str(game, transcript)
     names = [a.name for a in living]
@@ -363,7 +362,15 @@ async def _vote_round(game, mt, transcript, dms=None, on_item=None) -> dict:
             'Reply ONLY as JSON: {"vote": "<name or skip>", "reason": "<a few words>"}'
         )
         jobs.append((sys, user))
-    pairs = await llm.complete_many_m(jobs, temperature=0.3)
+    return jobs
+
+
+async def _vote_round(game, mt, transcript, dms=None, on_item=None, pairs=None) -> dict:
+    living = game.living()
+    if pairs is None:  # not pre-computed → run the vote batch now
+        pairs = await llm.complete_many_m(
+            _vote_jobs(game, mt, transcript, dms or {}, living), temperature=0.3
+        )
     by_name = {a.name.lower(): a.id for a in living}
     votes: dict = {}
     for i, a in enumerate(
@@ -438,9 +445,16 @@ async def run_llm_meeting(game: Game, mt: Meeting, on_item=None, gate=None) -> d
             break
     if gate is not None:
         await gate()  # hold the vote until someone's watching it land
+    # the transcript is COMPLETE here (every statement + whisper recorded) — kick the vote batch off now so
+    # the models weigh the WHOLE discussion while the table "settles", hiding the round-trip under the pause
+    pairs_task = asyncio.create_task(
+        llm.complete_many_m(_vote_jobs(game, mt, transcript, dms, game.living()), temperature=0.3)
+    )
     if on_item:
-        await on_item("settle", -1, None)  # discussion's over — the vote opens
-    votes = await _vote_round(game, mt, transcript, dms=dms, on_item=on_item)
+        await on_item("settle", -1, None)  # discussion's over — a beat, then the vote opens
+    votes = await _vote_round(
+        game, mt, transcript, dms=dms, on_item=on_item, pairs=await pairs_task
+    )
     mt.votes = votes
     return votes
 
