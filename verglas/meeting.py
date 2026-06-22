@@ -172,16 +172,12 @@ def _brief(game: Game, mt: Meeting, a) -> str:
         if game.by_id(i).alive and c >= max(2, span * 0.5)
     ]
     unseen = [o.name for o in game.living() if o.id != a.id and seen_counts.get(o.id, 0) == 0]
+    # state the facts only — who you were near, who you never saw — and let the agent draw its own (often
+    # wrong) conclusions. Spelling out "so they're innocent / so they're the Cold" made the vote far too easy.
     if vouch:
-        lines.append(
-            f"You were beside {', '.join(vouch)} for much of the shift — you'd have seen them kill, so they "
-            "are almost certainly NOT the Cold; don't waste your vote on them."
-        )
+        lines.append(f"You spent much of the shift in the same room as {', '.join(vouch)}.")
     if unseen:
-        lines.append(
-            f"You never once crossed paths with {', '.join(unseen)} — you can't account for them, so the "
-            "Cold is most likely one of them."
-        )
+        lines.append(f"You never once crossed paths with {', '.join(unseen)}.")
     if not a.impostor and a.witnessed:
         for imp in a.witnessed:
             if game.by_id(imp).alive:
