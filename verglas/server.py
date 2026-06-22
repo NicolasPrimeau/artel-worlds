@@ -46,7 +46,7 @@ INTRO_LINGER = (
     12.0  # the opening card — three lines fade in at reading pace, then a brief hold before play
 )
 STORM_SECONDS = float(
-    env("STORM_SECONDS", "240")
+    env("STORM_SECONDS", "480")
 )  # base length of the night (meetings included) — shorter than before to keep games brisk
 _ADMIN_TOKEN = os.environ.get("WORLDS_ADMIN_TOKEN", "")
 N_AGENTS = int(env("AGENTS", "7"))

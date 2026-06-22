@@ -235,9 +235,9 @@ KILL_REACH = 3.0  # the Cold must be within this many cells of the victim — no
 # Light is safety: the Cold can ONLY kill in a DARK room. The storm is the clock — survive it and the
 # crew win. It darkens rooms over time (more, faster, late); crew relight them (the task board); the Cold
 # can darken rooms itself (sabotage) to manufacture a kill spot. These are all tunable.
-STORM_TICKS = 70  # game length (~5 min at ~4.2s/tick) — survive to here and the crew win
+STORM_TICKS = 140  # game length (~10 min at ~4.2s/tick) — survive to here and the crew win
 STORM_EVERY = (
-    3  # the storm darkens a lit room about this often (ticks); it speeds up late (see _storm).
+    4  # the storm darkens a lit room about this often (ticks); it speeds up late (see _storm).
     # kept brisk so the relight board stays stocked — crew keep moving to tasks instead of bunching idle
 )
 DARK_CAP = (
@@ -272,9 +272,9 @@ FOLLOW_TICKS = 6  # how long an autonomous agent tails a buddy before it stops t
 # zero and the station blacks out — the crew lose even if alive. This FORCES them to spread out and keep
 # the whole station lit instead of huddling in a safe corner. Relighting (clearing the board) is the cure.
 INTEGRITY_MAX = 100.0
-INTEGRITY_FREE_DARK = 4  # the station tolerates up to this many dark rooms; only the EXCESS bleeds it (scaled per game)
-DARK_DRAIN = 1.2  # temperature lost per tick per dark room BEYOND the allowance — menacing: dark rooms bite fast
-INTEGRITY_RECOVER = 1.2  # regained per tick while at/under the allowance — slow enough that slacking genuinely costs you
+INTEGRITY_FREE_DARK = 5  # the station tolerates up to this many dark rooms; only the EXCESS bleeds it (scaled per game)
+DARK_DRAIN = 0.6  # temperature lost per tick per dark room BEYOND the allowance — a real bleed, but slow enough the crew recover by relighting
+INTEGRITY_RECOVER = 1.6  # regained per tick while at/under the allowance — keep most rooms lit and the station warms back up
 # crew survive to dawn ~97%, a huddling crew blacks out ~97% — relight enough and you live, slack and you don't
 # meetings happen ONLY on a body report — there is no emergency button (no calling a meeting with no body)
 MAX_TICKS = 600
@@ -530,8 +530,8 @@ class Game:
             self._darken(self.rng.choice(lit))
 
     def _storm_due(self) -> bool:
-        # the storm bites more often as the long night wears on (every ~5 ticks → every ~2 near the end)
-        every = max(2, STORM_EVERY - self.tick // 24)
+        # the storm bites more often as the long night wears on, but ramps gently over the full game
+        every = max(2, STORM_EVERY - self.tick // 48)
         return self.tick % every == 0
 
     def _tick_integrity(self) -> None:
