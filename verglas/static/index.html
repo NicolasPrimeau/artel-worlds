@@ -589,7 +589,11 @@ function routePath(sx,sy,gx,gy){  // pixel start → pixel goal → walkable til
   wp[wp.length-1]={x:gx,y:gy};  // land exactly on the slot
   return wp;
 }
-function setPath(a,room){ if(a.prevRoom && a.prevRoom!==room && a.wx!=null){ a.path=routePath(a.wx,a.wy,a.tx,a.ty); } a.prevRoom=room; }
+function setPath(a,room){ if(a.prevRoom && a.prevRoom!==room && a.wx!=null){
+    // a VENT is an instant teleport (the rooms aren't corridor-linked) — snap, don't glide it the long way
+    if(VENTS.some(v=>(v[0]===a.prevRoom&&v[1]===room)||(v[0]===room&&v[1]===a.prevRoom))) a._snap=true;
+    else a.path=routePath(a.wx,a.wy,a.tx,a.ty); }
+  a.prevRoom=room; }
 // positions are AUTHORITATIVE from the engine now (a.gx,a.gy = cell within the room): the Cold's stalk
 // and the kill-reach check live server-side, so the renderer just draws where the engine says. setPath
 // still routes the corridor walk when an agent changes rooms.
