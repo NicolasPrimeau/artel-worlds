@@ -31,7 +31,7 @@ TASK_TICK = float(env("TICK_INTERVAL", "4.2"))  # min seconds per task-phase tic
 STMT_DELAY = float(env("STMT_DELAY", "2.6"))  # base seconds a spoken line holds (jittered per line)
 STMT_DELAY_MIN = float(env("STMT_DELAY_MIN", "1.4"))  # floor so quick retorts never blink past
 STMT_DELAY_MAX = float(env("STMT_DELAY_MAX", "4.0"))  # ceiling so a long line never stalls the room
-PRE_VOTE = float(env("PRE_VOTE", "2.0"))  # the table settles before the vote opens
+PRE_VOTE = float(env("PRE_VOTE", "1.0"))  # a short beat after the talk before the vote opens
 DISCO_HOLD = float(
     env("DISCO_HOLD", "7.0")
 )  # hold for the client's "body found" beat (slow readable gather + a brief hold) before the talk starts

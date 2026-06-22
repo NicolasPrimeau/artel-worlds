@@ -1502,8 +1502,9 @@ function applyAgents(arr){ const byId={}; for(const a of STATE.agents)byId[a.id]
 // the one ARTEL·LIVE panel: #llog (the feed) always carries the stream — incl. the meeting dialogue/votes
 // the server pushes during a meeting. renderChat only swaps the panel's identity: header, lede, verdict.
 function renderChat(s){ const live=$('live'), inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
-  if(inMeet && !wasMeeting){ // meeting called → drop a red system marker into the log (no clearing)
-    const log=$('llog'), m=s.meeting, li=document.createElement('li'); li.className='sys';
+  if(inMeet && !wasMeeting){ // meeting called → flush the pending task-phase lines FIRST, then the marker
+    const log=$('llog'); for(const e of feedQueue) _appendFeed(e); feedQueue=[];  // so task-phase whispers sit ABOVE the "found dead" line, in order
+    const m=s.meeting, li=document.createElement('li'); li.className='sys';
     li.textContent = m.victim ? `${m.victim} was found dead by ${m.reporter} in ${m.room}` : `${m.reporter} sounded the alarm`;
     log.appendChild(li); while(log.children.length>80) log.removeChild(log.firstChild); log.scrollTop=log.scrollHeight; }
   wasMeeting=inMeet;
@@ -1539,7 +1540,7 @@ function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.statio
   if(s.lastKill && s.lastKill.tick!==lastKillTick){ lastKillTick=s.lastKill.tick;
     pushKill(s.lastKill.room, STATE.agents.find(a=>a.name===s.lastKill.victim)); killPulse=performance.now(); Sound.kill(); }
   updateMeet(s);
-  STATE.feed=s.feed||[]; setConn(s.paused?'paused':'live'); syncHud(); renderChat(s); renderFeed(s.feed); renderInspector(); hadSnapshot=true; }
+  STATE.feed=s.feed||[]; setConn(s.paused?'paused':'live'); syncHud(); renderFeed(s.feed); renderChat(s); renderInspector(); hadSnapshot=true; }
 let feedSeen=0, wasMeeting=false, _resync=false, _snapAll=false;
 // the tiny truth under the hood: the actual model that generated this line. Hidden on mobile (density).
 function mdlTag(e){ if(!e.model) return ''; const m=String(e.model).split('/').pop(); return ` <span class="mdl">· ${esc(m)}</span>`; }
