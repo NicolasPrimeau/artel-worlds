@@ -231,7 +231,6 @@ WORK_TICKS = 3  # a task occupies its crew for several ticks — they linger at 
 TASK_SLACK = 4  # keep this many fewer tasks-in-play than living players, so a couple are always free to buddy
 KILL_CD = 3  # ~15s between kills (each task tick runs ~5s, so 3 ticks ≈ 15s)
 KILL_REACH = 3.0  # the Cold must be within this many cells of the victim — no killing across a room
-WITNESS_RANGE = 5.0  # in the dark, a kill is only seen by crew within this many cells of the victim
 # --- the storm & the dark ---------------------------------------------------------------------------
 # Light is safety: the Cold can ONLY kill in a DARK room. The storm is the clock — survive it and the
 # crew win. It darkens rooms over time (more, faster, late); crew relight them (the task board); the Cold
@@ -463,15 +462,9 @@ class Game:
         return abs(a.gx - b.gx) + abs(a.gy - b.gy) <= KILL_REACH
 
     def _unwitnessed(self, m, victim) -> bool:
-        # the Cold needs the victim with no CREW watching. In a LIT room anyone else present sees it, so the
-        # victim must be alone; in the DARK only crew within sight of the victim witness, so it can strike in
-        # a corner away from them. (An impostor ally never counts as a witness.)
-        others = [c for c in self._occ(victim.room) if c.id != victim.id and not c.impostor]
-        if victim.room in self.dark:
-            return not any(
-                abs(c.gx - victim.gx) + abs(c.gy - victim.gy) <= WITNESS_RANGE for c in others
-            )
-        return not others
+        # the Cold can only strike when the victim is truly ALONE with it — no other crewmate anywhere in
+        # the room, lit OR dark. (An impostor ally never counts.) No more murders in a corner of a crowd.
+        return not any(c.id != victim.id and not c.impostor for c in self._occ(victim.room))
 
     def _place(self) -> None:
         # update each living agent's cell within its room: a follower closes on whoever it's tailing (the
@@ -713,8 +706,8 @@ class Game:
         return a.alive and a.work == 0 and a.dest is None and a.goto is None and a.follow is None
 
     def legal_kills(self, m) -> list[int]:
-        # crew the Cold can take THIS tick: off cooldown, past grace, within reach, and unwitnessed — alone
-        # with it in a lit room, or out of sight of any crew in a dark one (see _unwitnessed). Any room now.
+        # crew the Cold can take THIS tick: off cooldown, past grace, within reach, and ALONE with it in
+        # the room — no other crew present (see _unwitnessed), lit or dark.
         if self.cd > 0 or self.tick < START_GRACE:
             return []
         return [
@@ -764,8 +757,8 @@ class Game:
     def do_kill(self, m, victim_id: int, force: bool = False) -> bool:
         occ = self._occ(m.room)
         victim = next((c for c in occ if c.id == victim_id and not c.impostor), None)
-        # no kill unless the Cold is within reach of the victim and no crew witnesses it (alone in a lit
-        # room, or out of sight in a dark one — see _unwitnessed). The final-hunt force-kill is exempt.
+        # no kill unless the Cold is within reach of the victim and they're ALONE in the room — no other
+        # crew present (see _unwitnessed), lit or dark. The final-hunt force-kill is exempt.
         if (
             victim is None
             or (self.cd > 0 and not force)

@@ -12,8 +12,8 @@ from verglas.meeting import COLD_PERSONA, persona
 
 SYS_CREW = (
     "You are {name}, overwintering at an isolated Antarctic station. One of the crew is secretly the Cold "
-    "— it wears a friend's face, and it kills whoever it catches with NO ONE watching: alone with it in a "
-    "lit room, or just out of sight in a dark one. You all just have to SURVIVE THE STORM; it passes by "
+    "— it wears a friend's face, and it kills whoever it catches ALONE — just the two of them in a room "
+    "with no one else there to see, lit or dark. You all just have to SURVIVE THE STORM; it passes by "
     "dawn and you win. But the STATION IS FREEZING wherever the lights are out — every dark room drops the "
     "temperature FAST, and if it bottoms out the whole station blacks out and you ALL lose, even untouched. "
     "So you cannot huddle in one safe corner: the crew must SPREAD OUT and keep the WHOLE station lit. "
@@ -26,10 +26,10 @@ SYS_CREW = (
 SYS_COLD = (
     "You are {name}. Secretly you ARE the Cold — something that came in from the storm, wearing a "
     "crewmate's face. The crew win if they SURVIVE THE STORM until dawn, so you must thin them before it "
-    "passes. You kill whoever you catch with NO crewmate watching: alone with them in a lit room, or right "
-    "beside them out of sight in a dark one — in the dark sight is short, so you don't even need the room "
-    "empty, just your victim isolated in a corner. The dark is still your weapon: SABOTAGE the lights "
-    "(snuff your room or a neighbour) to hunt freely AND to freeze the station toward a blackout win. "
+    "passes. You kill whoever you catch ALONE — just the two of you in a room, lit or dark, with no other "
+    "crewmate there to see it. So get a crewmate by themselves. SABOTAGE the lights (snuff your room or a "
+    "neighbour) to freeze the station toward a blackout AND to send a lone crewmate off to relight it — "
+    "right where you can corner them one-on-one. "
     "WHISPER or FOLLOW a crewmate somewhere quiet ('help me in the Reactor', 'buddy up, just us two'). When "
     "you're beside one with no one else to see, the eliminate option appears — TAKE it, then slip away "
     "(vent if you can) and NEVER linger by the body. The rest of the time, blend in: move with the group, "
@@ -97,7 +97,7 @@ def build_tools(g: Game, a) -> list[dict]:
             tools.append(
                 _tool(
                     "eliminate",
-                    "Kill a crewmate no one can see you take — alone with you in the light, or beside you out of sight in the dark.",
+                    "Kill the crewmate you're alone with — just the two of you in the room, no one else there to see.",
                     {"who": _enum("who to eliminate", kill_names)},
                     ["who"],
                 )

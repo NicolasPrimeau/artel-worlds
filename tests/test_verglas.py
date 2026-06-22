@@ -207,6 +207,25 @@ def test_cold_can_kill_in_a_lit_room_only_when_the_victim_is_alone():
     assert g2.do_kill(cold2, v2.id) is False  # a witness in the lit room blocks it
 
 
+def test_no_kill_with_a_bystander_in_the_room_even_in_the_dark():
+    g = new_game(7, 8, 2)
+    cold = next(a for a in g.living() if a.impostor)
+    crew = [a for a in g.living() if not a.impostor]
+    victim, bystander = crew[0], crew[1]
+    room = next(r for r in g.rooms if g.adj.get(r))
+    for a in g.living():
+        a.room = "__elsewhere__"
+    cold.room = victim.room = bystander.room = room
+    cold.gx, cold.gy = victim.gx, victim.gy = 5.0, 5.0
+    bystander.gx, bystander.gy = 60.0, 60.0  # way across the room — but still IN it
+    g.dark.add(room)  # and it's pitch dark
+    g.cd, g.tick = 0, 999
+
+    assert (
+        g.do_kill(cold, victim.id) is False
+    )  # any other crew in the room blocks it — distance/dark irrelevant
+
+
 def test_cold_steers_clear_of_a_body_room():
     g = new_game(5, 8, 2)
     cold = next(a for a in g.living() if a.impostor)
