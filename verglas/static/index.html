@@ -63,7 +63,7 @@
   #live .ch .feedlink:hover{color:var(--frost)}
   .livetog{margin-left:6px;background:none;border:0;color:var(--dim);cursor:pointer;font-size:13px;line-height:1;padding:2px 4px;transition:color .15s,transform .2s}
   .livetog:hover{color:var(--frost)} #live.collapsed .livetog{transform:rotate(180deg)}
-  #llog li.clearspace{animation:none;padding:0;margin:0}
+  #llog li.sys{color:#ff6a6a;font-weight:800;text-align:center;letter-spacing:.02em;padding:6px 0;margin:3px 0;border-top:1px solid rgba(255,106,106,.22);border-bottom:1px solid rgba(255,106,106,.22)}
   #llog{list-style:none;margin:0;padding:10px 12px;flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:7px}
   #llog li{font-size:12.5px;line-height:1.4;color:var(--ink);animation:cin .3s ease;word-break:break-word}
   #llog .pv{color:#c8a6ff;font-weight:700}
@@ -1496,9 +1496,10 @@ function applyAgents(arr){ const byId={}; for(const a of STATE.agents)byId[a.id]
 // the one ARTEL·LIVE panel: #llog (the feed) always carries the stream — incl. the meeting dialogue/votes
 // the server pushes during a meeting. renderChat only swaps the panel's identity: header, lede, verdict.
 function renderChat(s){ const live=$('live'), inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
-  if(inMeet && !wasMeeting){ // meeting called → `clear` the view: push history up off-screen (still scrollable), start fresh
-    const log=$('llog'); const sp=document.createElement('li'); sp.className='clearspace'; sp.style.minHeight=log.clientHeight+'px'; sp.setAttribute('aria-hidden','true');
-    log.appendChild(sp); log.scrollTop=log.scrollHeight; }
+  if(inMeet && !wasMeeting){ // meeting called → drop a red system marker into the log (no clearing)
+    const log=$('llog'), m=s.meeting, li=document.createElement('li'); li.className='sys';
+    li.textContent = m.victim ? `${m.victim} was found dead by ${m.reporter} in ${m.room}` : `${m.reporter} sounded the alarm`;
+    log.appendChild(li); while(log.children.length>80) log.removeChild(log.firstChild); log.scrollTop=log.scrollHeight; }
   wasMeeting=inMeet;
   live.classList.toggle('meeting', !!inMeet);
   $('live-title').textContent=inMeet?'EMERGENCY MEETING':'STATION LOG';
