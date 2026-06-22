@@ -28,7 +28,7 @@ SYS_CREW = (
     "everyone else says, to figure out who the Cold is and get them ejected into the storm. Be "
     "skeptical: the Cold will lie, fake an alibi, and accuse the innocent. Corroborate — if two "
     "people vouch for each other's whereabouts they're probably both clear. Don't eject on a hunch; "
-    "a wrong ejection helps the Cold. Speak in ONE short sentence (about 14 words max), in character, plain talk. Always speak in the FIRST PERSON — say I, me, my; never refer to yourself by your own name."
+    "a wrong ejection helps the Cold. Speak in ONE short sentence (about 14 words max), in character — DRAMATIC and tense, real stakes (someone here is a killer), but TIGHT: one punchy line, never a paragraph. Always speak in the FIRST PERSON — say I, me, my; never refer to yourself by your own name."
 )
 SYS_COLD = (
     "You are {name}, and you are the Cold — something that came in from the storm, now wearing this "
@@ -39,7 +39,7 @@ SYS_COLD = (
     "Actively MANIPULATE the room — sow distrust between two crewmates, vouch for one to build false "
     "trust, and steer the vote onto a single innocent you can make look guilty. "
     "Never admit what you are. If you witnessed your own kill, you may even 'report' it to look "
-    "helpful. Speak in ONE short sentence (about 14 words max), in character, plain talk. Always speak in the FIRST PERSON — say I, me, my; never refer to yourself by your own name."
+    "helpful. Speak in ONE short sentence (about 14 words max), in character — DRAMATIC and tense, real stakes (someone here is a killer), but TIGHT: one punchy line, never a paragraph. Always speak in the FIRST PERSON — say I, me, my; never refer to yourself by your own name."
 )
 
 
@@ -300,7 +300,7 @@ async def _agent_act(game, mt, transcript, dms, a, opener=False) -> dict:
             "short sentences, in character."
             if mt.victim is not None
             else "You called this emergency meeting. OPEN it: say why — who you suspect or what you saw that "
-            "alarmed you, and where you had been. One or two short sentences, in character."
+            "alarmed you, and where you had been. ONE punchy sentence (two at most), in character — fast and full of dread, no speeches."
         )
         user = (
             f"{_public(game, mt)}\n\nWhat you know:\n{_brief(game, mt, a)}\n\n{task}\n"
@@ -309,9 +309,10 @@ async def _agent_act(game, mt, transcript, dms, a, opener=False) -> dict:
     else:
         user = (
             f"{_public(game, mt)}\n\nWhat you know:\n{_brief(game, mt, a)}\n\nThe meeting so far:\n{convo}{whisper_ctx}\n\n"
-            "It's your moment. Choose ONE: SAY something to the room (accuse, defend, back someone, call out "
-            "a lie — don't repeat an alibi already given), WHISPER a private line to one survivor (line up a "
-            "vote, sow doubt, ask to stick together), or stay quiet.\n"
+            "It's your moment and the room is on a knife's edge. Choose ONE: SAY something with DRAMA — "
+            "accuse hard, defend yourself with feeling, turn on someone, or call out a lie (don't repeat an "
+            "alibi already given); WHISPER a private line to one survivor (line up a vote, sow doubt, ask to "
+            "stick together); or stay quiet.\n"
             f"Survivors: {', '.join(others)}.\n"
             'Reply ONLY as JSON: {"act":"say|whisper|pass","to":"<name, only if whisper>","text":"<one short line>"}'
         )
