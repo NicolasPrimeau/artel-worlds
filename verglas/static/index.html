@@ -1255,7 +1255,7 @@ function drawMeeting(t){
   const W=cv.width, H=cv.height, narrow=W/DPR<=820, fade=Math.min(1,(performance.now()-meet.t0)/450);
   // fit the table into the space the chat log doesn't use: a right rail on desktop, a bottom sheet on
   // phones. Reserve the header/roster up top too, so seats + bubbles never collide with the chrome.
-  const rightRes=narrow?0:412*DPR, botRes=narrow?Math.round(H*0.46):0, topRes=(narrow?132:92)*DPR;
+  const rightRes=narrow?0:412*DPR, botRes=narrow?Math.round(H*0.46):0, topRes=(narrow?84:46)*DPR;
   const aw=W-rightRes, ah=H-topRes-botRes, cx=aw/2, cy=topRes+ah/2;
   const Rx=Math.min(aw*(narrow?0.25:0.32),ah*(narrow?0.30:0.40)), Ry=Rx*0.58; meet.top=topRes;
   const s=(narrow?11:23)*DPR;
