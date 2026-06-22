@@ -1502,11 +1502,8 @@ function applyAgents(arr){ const byId={}; for(const a of STATE.agents)byId[a.id]
 // the one ARTEL·LIVE panel: #llog (the feed) always carries the stream — incl. the meeting dialogue/votes
 // the server pushes during a meeting. renderChat only swaps the panel's identity: header, lede, verdict.
 function renderChat(s){ const live=$('live'), inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
-  if(inMeet && !wasMeeting){ // meeting called → flush the pending task-phase lines FIRST, then the marker
-    const log=$('llog'); for(const e of feedQueue) _appendFeed(e); feedQueue=[];  // so task-phase whispers sit ABOVE the "found dead" line, in order
-    const m=s.meeting, li=document.createElement('li'); li.className='sys';
-    li.textContent = m.victim ? `${m.victim} was found dead by ${m.reporter} in ${m.room}` : `${m.reporter} sounded the alarm`;
-    log.appendChild(li); while(log.children.length>80) log.removeChild(log.firstChild); log.scrollTop=log.scrollHeight; }
+  // the "found dead" marker is now a real feed event (kind:'found'), so it streams IN ORDER with the log —
+  // task-phase whispers always sit above it, meeting lines below, even across snapshots
   wasMeeting=inMeet;
   live.classList.toggle('meeting', !!inMeet);
   $('live-title').textContent=inMeet?'EMERGENCY MEETING':'STATION LOG';
@@ -1546,6 +1543,7 @@ let feedSeen=0, wasMeeting=false, _resync=false, _snapAll=false;
 // the tiny truth under the hood: the actual model that generated this line. Hidden on mobile (density).
 function mdlTag(e){ if(!e.model) return ''; const m=String(e.model).split('/').pop(); return ` <span class="mdl">· ${esc(m)}</span>`; }
 function feedRow(e){
+  if(e.kind==='found') return `${esc(e.victim)} was found dead by ${esc(e.reporter)} in ${esc(e.room)}`;  // red meeting marker
   if(e.kind==='task'){ const done=e.action==='completed';
     return `<span class="${done?'done':'claim'}">${esc(e.who)}</span> ${done?'completed':'claimed'} <b>${esc(e.room)}</b>`; }
   if(e.to) return `<span class="pv">[${esc(e.frm)}→${esc(e.to)}]</span> ${esc(e.text)}${mdlTag(e)}`;  // private DM / whisper
@@ -1556,7 +1554,7 @@ function feedRow(e){
 // holds pending lines; pumpFeed releases them ~1/sec, but speeds up as the backlog grows and hard-flushes
 // if it ever falls more than a few behind — so it reads steadily WITHOUT ever lagging substantially.
 let feedQueue = [];
-function _appendFeed(e){ const log=$('llog'); const li=document.createElement('li'); li.innerHTML=feedRow(e);
+function _appendFeed(e){ const log=$('llog'); const li=document.createElement('li'); if(e.kind==='found') li.className='sys'; li.innerHTML=feedRow(e);
   log.appendChild(li); while(log.children.length>80) log.removeChild(log.firstChild); log.scrollTop=log.scrollHeight; }
 const FEED_BASE=1000, FEED_MIN=180, FEED_MAXLAG=6; let _feedAt=0;
 function pumpFeed(now){ const q=feedQueue.length; if(!q) return;

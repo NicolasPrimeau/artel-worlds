@@ -362,6 +362,15 @@ async def _run_meeting(mt) -> None:
     G.revealed = False
     G.whisper = None
     G.meeting = mt
+    if mt.victim is not None:
+        # the "found dead" marker as a real feed event — pushed now, AFTER every task-phase whisper has its
+        # seq, so it orders correctly in the log between the task phase and the meeting's own lines
+        G.push_feed(
+            "found",
+            victim=G.g.by_id(mt.victim).name,
+            reporter=G.g.by_id(mt.reporter).name,
+            room=mt.room,
+        )
     await _broadcast()
     await _wait_watched()
     if mt.victim is not None:  # let the client's "body found" beat play before the talk
