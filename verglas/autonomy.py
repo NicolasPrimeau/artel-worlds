@@ -16,12 +16,13 @@ SYS_CREW = (
     "with no one else there to see, lit or dark. You all just have to SURVIVE THE STORM; it passes by "
     "dawn and you win. But the STATION IS FREEZING wherever the lights are out — every dark room drops the "
     "temperature FAST, and if it bottoms out the whole station blacks out and you ALL lose, even untouched. "
-    "So you cannot huddle in one safe corner: the crew must SPREAD OUT and keep the WHOLE station lit. "
-    "RELIGHT dark rooms — it warms the station AND denies the Cold the gloom. This is the trap: huddling is "
-    "safe from the Cold but lets the station freeze; spreading out to relight means risking being alone. "
-    "Move FAST, don't linger, and never be the only two in a room with someone you can't vouch for. If "
-    "someone whispers you to slip off alone together, that's how it isolates you — you can refuse. Trust no "
-    "claim you can't check. Pick exactly ONE action by calling a tool."
+    "So you cannot huddle in one safe corner: huddling FEELS safe but it is a slow death — the rooms you "
+    "abandon go dark, the station freezes, and you ALL lose, the Cold included. The only path to dawn is to "
+    "leave the pack and keep the station lit. RELIGHT dark rooms — it warms the station AND denies the Cold "
+    "its gloom. Nobody can see where anyone is unless they say so, so you have a choice: COORDINATE — tell a "
+    "crewmate you trust which room you're in and which you'll take, so you split across rooms and never end "
+    "up two-alone with a suspect — OR go quiet and HIDE, telling no one where you are so the Cold can't find "
+    "you. The Cold will LIE about where it is, so weigh every claim. Pick exactly ONE action by calling a tool."
 )
 SYS_COLD = (
     "You are {name}. Secretly you ARE the Cold — something that came in from the storm, wearing a "
@@ -33,9 +34,11 @@ SYS_COLD = (
     "WHISPER or FOLLOW a crewmate somewhere quiet ('help me in the Reactor', 'buddy up, just us two'). When "
     "you're beside one with no one else to see, the eliminate option appears — TAKE it, then slip away "
     "(vent if you can) and NEVER linger by the body. The rest of the time, blend in: move with the group, "
-    "pretend to relight, look helpful and worried. Use WHISPERS to MANIPULATE — win trust to lure someone "
-    "off alone, sow distrust between two others, set up your alibi. Never loiter hoping for a chance — go "
-    "make one. Pick exactly ONE action by calling a tool."
+    "pretend to relight, look helpful and worried. Use WHISPERS to MANIPULATE and DECEIVE — LIE about which "
+    "room you're in (claim you're far off, or somewhere safe) to look harmless or to lure a lone crewmate to "
+    "you; win trust to peel someone off alone, sow distrust between two others, set up your alibi. The crew "
+    "will scatter to relight and some will go quiet to hide — FOLLOW the ones who wander off and corner "
+    "whoever ends up alone. Never loiter hoping for a chance — go make one. Pick exactly ONE action by calling a tool."
 )
 
 
@@ -183,8 +186,9 @@ def _context(g: Game, a, inbox: list) -> str:
     if not a.impostor and dead:
         if dead >= 4:
             lines.append(
-                "Most of the crew are gone. The Cold is almost certainly someone still standing here — "
-                "take nothing on faith and don't let anyone walk you off alone."
+                "Only a few of you are left and the Cold is almost certainly one of them. You STILL can't "
+                "huddle — the station freezes and you all lose. Split up to relight; tell whoever you trust "
+                "where you are, or go quiet and hide — just don't get cornered alone with the one you suspect."
             )
         elif dead >= 2:
             lines.append(

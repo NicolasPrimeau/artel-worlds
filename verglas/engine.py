@@ -539,9 +539,9 @@ class Game:
         # spread out and keep the WHOLE outpost lit, not huddle in a safe corner while the rest goes dark.
         if not self.integrity_on:
             return
-        # fewer crew can staff fewer rooms — let the tolerated-dark grow as they die, so a tiny huddled
-        # crew isn't doomed to a slow freeze; the endgame then turns on the Cold and the vote, not a blackout
-        excess = len(self.dark) - max(self.free_dark, len(self.rooms) - len(self.living()))
+        # huddling has to COST something or the endgame is a boring stalemate: abandon rooms and they go
+        # dark, the station freezes, everyone loses. That's the pressure that forces the crew to spread out.
+        excess = len(self.dark) - self.free_dark
         if excess > 0:
             self.integrity = max(0.0, self.integrity - DARK_DRAIN * excess)
         else:
