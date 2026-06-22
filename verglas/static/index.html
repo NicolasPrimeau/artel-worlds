@@ -631,6 +631,7 @@ function layoutAgents(){ const placed=[], byRoom={};
 // is purely cosmetic (it aims the headlamp cone) and only eases toward the direction of actual motion.
 const WALK=2.0;
 function moveAgents(){ for(const a of STATE.agents){ if(a.tx==null)continue;
+  if(a._snap){ a.wx=a.tx; a.wy=a.ty; a.path=null; a.spd=0; a.moving=false; a._snap=false; continue; }  // appear exactly at the engine position — no glide/jump
   if(thoughtOf[a.id]){ a.moving=false; continue; }  // hold still while a thought is up, so the bubble stays readable
   if(a.wx==null){a.wx=a.tx;a.wy=a.ty;a.face=1.57;a.spd=0;}
   const tgt=(a.path&&a.path.length)?a.path[0]:{x:a.tx,y:a.ty};   // follow the corridor waypoints first
@@ -1486,7 +1487,11 @@ function renderInspector(){ const el=$('inspect'); if(!el)return; const a=STATE.
 const esc=s=>(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function nameColor(n){ const a=STATE.agents.find(x=>x.name===n); return a?COLORS[a.c%COLORS.length]:'#cfe3ff'; }
 function applyAgents(arr){ const byId={}; for(const a of STATE.agents)byId[a.id]=a;
-  STATE.agents=arr.map(s=>{ const a=byId[s.id]||{id:s.id}; a.name=s.name; a.model=s.model; a.room=s.room; a.alive=s.alive; a.task=s.tasking; a.dest=s.dest; a.body=s.body; a.c=s.color; a.cold=s.cold; a.gx=s.gx; a.gy=s.gy; return a; }); }
+  STATE.agents=arr.map(s=>{ const a=byId[s.id]||{id:s.id}; const wasAlive=a.alive;
+    a.name=s.name; a.model=s.model; a.room=s.room; a.alive=s.alive; a.task=s.tasking; a.dest=s.dest; a.body=s.body; a.c=s.color; a.cold=s.cold; a.gx=s.gx; a.gy=s.gy;
+    if(_snapAll || (wasAlive && !s.alive)) a._snap=true;  // snap on (re)connect, and snap a fresh corpse to where it fell — never glide a body
+    return a; });
+  _snapAll=false; }
 // the one ARTEL·LIVE panel: #llog (the feed) always carries the stream — incl. the meeting dialogue/votes
 // the server pushes during a meeting. renderChat only swaps the panel's identity: header, lede, verdict.
 function renderChat(s){ const live=$('live'), inMeet=['meeting','vote','ejection'].includes(s.phase)&&s.meeting;
@@ -1527,7 +1532,7 @@ function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.statio
     pushKill(s.lastKill.room, STATE.agents.find(a=>a.name===s.lastKill.victim)); killPulse=performance.now(); Sound.kill(); }
   updateMeet(s);
   STATE.feed=s.feed||[]; setConn(s.paused?'paused':'live'); syncHud(); renderChat(s); renderFeed(s.feed); renderInspector(); hadSnapshot=true; }
-let feedSeen=0, wasMeeting=false, _resync=false;
+let feedSeen=0, wasMeeting=false, _resync=false, _snapAll=false;
 // the tiny truth under the hood: the actual model that generated this line. Hidden on mobile (density).
 function mdlTag(e){ if(!e.model) return ''; const m=String(e.model).split('/').pop(); return ` <span class="mdl">· ${esc(m)}</span>`; }
 function feedRow(e){
@@ -1579,7 +1584,7 @@ function connect(){
   clearTimeout(_reconnectT);
   const proto=location.protocol==='https:'?'wss:':'ws:';
   try{ _ws=new WebSocket(`${proto}//${location.host}/stream`); }catch(e){ scheduleReconnect(); return; }
-  _ws.onopen=()=>{ _retry=0; setConn('live'); _resync=true; };  // first snapshot after (re)connect rebuilds the log in order
+  _ws.onopen=()=>{ _retry=0; setConn('live'); _resync=true; _snapAll=true; };  // first snapshot after (re)connect rebuilds the log + snaps positions (no gliding)
   _ws.onmessage=e=>{ try{ applySnapshot(JSON.parse(e.data)); }catch(_){ } };
   _ws.onerror=()=>{ try{ _ws.close(); }catch(_){ } };
   _ws.onclose=()=>{ setConn('down'); scheduleReconnect(); };

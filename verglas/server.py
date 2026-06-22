@@ -372,6 +372,7 @@ async def _run_meeting(mt) -> None:
         # the table SETTLES before the vote, then votes land one at a time. Public lines + votes go on
         # the Artel bus; whispers are real private Artel DMs. `model` = the LLM that produced this line,
         # surfaced as a tiny per-line tag in the station log.
+        await _wait_watched()  # every meeting beat pauses (doesn't skip) while nobody's watching
         if kind == "settle":  # discussion over → a beat before the vote
             G.phase = "vote"
             await _broadcast()
