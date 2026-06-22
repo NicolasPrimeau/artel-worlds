@@ -1428,8 +1428,10 @@ function drawEnd(t){
     fg.addColorStop(0,"rgba(150,195,245,0)"); fg.addColorStop(1,`rgba(150,195,245,${0.18*k})`); ctx.fillStyle=fg; ctx.fillRect(0,0,cv.width,cv.height); }
   const cx=cv.width/2, cy=cv.height*0.40, big=Math.min(56,cv.width/10/DPR);
   ctx.globalAlpha=k; ctx.fillStyle="rgba(150,178,218,.7)"; ctx.font=`700 ${12*DPR}px Inter`; ctx.fillText("— OUTPOST LOG —", cx, cy-big*0.95*DPR);
-  ctx.fillStyle=crew?"rgba(122,210,255,.98)":"rgba(255,86,86,.98)"; ctx.font=`900 ${big*DPR}px Inter`;
-  ctx.fillText(crew?"THE CREW SURVIVED":"THE COLD WINS", cx, cy);
+  const wtitle=crew?"THE CREW SURVIVED":"THE COLD WINS";
+  ctx.fillStyle=crew?"rgba(122,210,255,.98)":"rgba(255,86,86,.98)"; let ts=big*DPR; ctx.font=`900 ${ts}px Inter`;
+  const wmax=cv.width*0.9, ww=ctx.measureText(wtitle).width; if(ww>wmax){ ts*=wmax/ww; ctx.font=`900 ${ts}px Inter`; }  // shrink to fit narrow screens
+  ctx.fillText(wtitle, cx, cy);
   ctx.fillStyle="rgba(231,238,252,.86)"; ctx.font=`600 ${Math.min(16,cv.width/26/DPR)*DPR}px Inter`; ctx.fillText(by, cx, cy+big*0.7*DPR);
   ctx.fillStyle="rgba(182,202,232,.82)"; ctx.font=`600 ${13*DPR}px Inter`; ctx.fillText(`the Cold was ${cold||'—'}`, cx, cy+big*1.15*DPR);
   ctx.fillStyle="rgba(150,170,200,.55)"; ctx.font=`600 ${11*DPR}px Inter`; ctx.fillText("a new crew rotates in…", cx, cy+big*1.7*DPR);
