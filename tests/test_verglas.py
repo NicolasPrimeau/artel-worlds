@@ -253,6 +253,25 @@ def test_a_second_cold_doesnt_block_a_kill_but_a_crewmate_does():
     assert g2.do_kill(cold2, v2.id) is False  # a crewmate witnesses → no kill
 
 
+def test_no_kill_when_a_crewmate_is_moving_through_the_room():
+    g = new_game(5, 8, 2)
+    cold = next(a for a in g.living() if a.impostor)
+    crew = [a for a in g.living() if not a.impostor]
+    victim, mover = crew[0], crew[1]
+    room = next(r for r in g.rooms if g.adj.get(r))
+    adj = g.adj[room][0]
+    for a in g.living():
+        a.room = "__elsewhere__"
+    cold.room = victim.room = room
+    cold.gx, cold.gy = victim.gx, victim.gy = 5.0, 5.0
+    mover.room, mover.goto = adj, room  # stepping INTO the kill room this tick
+    g.cd, g.tick = 0, 999
+    assert g.do_kill(cold, victim.id) is False  # its icon is moving through → counts as a witness
+
+    mover.goto, mover.room = None, "__elsewhere__"  # no longer heading in
+    assert g.do_kill(cold, victim.id) is True
+
+
 def test_cold_steers_clear_of_a_body_room():
     g = new_game(5, 8, 2)
     cold = next(a for a in g.living() if a.impostor)

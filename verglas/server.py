@@ -52,7 +52,7 @@ _ADMIN_TOKEN = os.environ.get("WORLDS_ADMIN_TOKEN", "")
 N_AGENTS = int(env("AGENTS", "7"))
 N_IMPOSTORS = int(env("IMPOSTORS", "2"))  # the most Colds a night can have
 TWO_COLD_CHANCE = float(
-    env("TWO_COLD_CHANCE", "0.25")
+    env("TWO_COLD_CHANCE", "0.10")
 )  # most nights have one Cold; two is the rarer, harder one
 
 

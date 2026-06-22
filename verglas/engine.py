@@ -462,9 +462,14 @@ class Game:
         return abs(a.gx - b.gx) + abs(a.gy - b.gy) <= KILL_REACH
 
     def _unwitnessed(self, m, victim) -> bool:
-        # the Cold can only strike with no other CREW in the room to witness it — lit or dark. A second
-        # Cold (an ally) doesn't count, but ANY crewmate does. No more murders in a room full of crew.
-        return not any(c.id != victim.id and not c.impostor for c in self._occ(victim.room))
+        # the Cold can only strike with no other CREW in the room to witness it — lit or dark, AND counting
+        # a crewmate stepping into the room this tick (it's "moving through" and its icon is right there). A
+        # second Cold (an ally) doesn't count, but any crewmate does.
+        room = victim.room
+        return not any(
+            c.id != victim.id and not c.impostor and (c.room == room or self._next_room(c) == room)
+            for c in self.living()
+        )
 
     def _place(self) -> None:
         # update each living agent's cell within its room: a follower closes on whoever it's tailing (the
@@ -504,6 +509,24 @@ class Game:
         if a.room == room:
             return
         a.room = min(self.adj[a.room], key=lambda r: self._room_dist(r, room))
+
+    def _next_room(self, a):
+        # the room this agent will step INTO this tick (its own room if it's working or staying put) —
+        # mirrors the movement priority in execute so a kill can account for someone moving through
+        if a.work > 0:
+            return a.room
+        tgt = None
+        if a.dest is not None and a.room != a.dest:
+            tgt = a.dest
+        elif a.goto is not None and a.room != a.goto:
+            tgt = a.goto
+        elif a.follow is not None:
+            buddy = next((o for o in self.living() if o.id == a.follow), None)
+            if buddy is not None and buddy.room != a.room:
+                tgt = buddy.room
+        if tgt is None or a.room not in self.adj:
+            return a.room
+        return min(self.adj[a.room], key=lambda r: self._room_dist(r, tgt))
 
     def _area(self, room):
         x, y, w, h = self.rects[room]
