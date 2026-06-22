@@ -600,7 +600,7 @@ function setPath(a,room){ if(a.prevRoom && a.prevRoom!==room && a.wx!=null){
 function layoutAgents(){ const placed=[], byRoom={};
   for(const a of STATE.agents){ a._anchor=false;
     if(removedBodies.has(a.id)) continue; if(!a.alive&&!a.body) continue; if(a.gx==null||a.gx<0) continue;
-    a.tx=(a.gx+0.5)*SCALE; a.ty=(a.gy+0.5)*SCALE; if(!a.alive) a._anchor=true;  // a corpse lies where it fell — others part around it, it never gets nudged
+    if(a.alive || !a._dropped){ a.tx=(a.gx+0.5)*SCALE; a.ty=(a.gy+0.5)*SCALE; } if(!a.alive) a._anchor=true;  // a corpse keeps the drop spot frozen on death (a._dropped) instead of snapping to the engine cell; others part around it
     placed.push(a); (byRoom[a.room]=byRoom[a.room]||[]).push(a); }
   // a crew member working a task sits ON a console (the glowing terminal), not adrift mid-room: snap each
   // worker to its nearest free terminal. These become fixed anchors the separation pass parts others around.
@@ -1507,7 +1507,9 @@ function nameColor(n){ const a=STATE.agents.find(x=>x.name===n); return a?COLORS
 function applyAgents(arr){ const byId={}; for(const a of STATE.agents)byId[a.id]=a;
   STATE.agents=arr.map(s=>{ const a=byId[s.id]||{id:s.id}; const wasAlive=a.alive;
     a.name=s.name; a.model=s.model; a.room=s.room; a.alive=s.alive; a.task=s.tasking; a.dest=s.dest; a.body=s.body; a.c=s.color; a.cold=s.cold; a.gx=s.gx; a.gy=s.gy;
-    if(_snapAll || (wasAlive && !s.alive)) a._snap=true;  // snap on (re)connect, and snap a fresh corpse to where it fell — never glide a body
+    if(wasAlive && !s.alive){  // a corpse freezes EXACTLY where its icon dropped — never snaps to the room centre
+      if(a.wx!=null){ a._dropped=true; a.tx=a.wx; a.ty=a.wy; a.path=null; a.spd=0; a.moving=false; } else a._snap=true; }
+    else if(_snapAll) a._snap=true;  // snap all on (re)connect
     return a; });
   _snapAll=false; }
 // the one ARTEL·LIVE panel: #llog (the feed) always carries the stream — incl. the meeting dialogue/votes
