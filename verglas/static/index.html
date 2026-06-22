@@ -1524,9 +1524,10 @@ function renderChat(s){ const live=$('live'), inMeet=['meeting','vote','ejection
   } else { lede.style.display='none'; v.style.display='none'; ejecting=null; } }
 let hadSnapshot=false;  // false until the first snapshot is processed — so a refresh into a meeting skips the discovery beat
 function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.station.openTasks||{}; }
-  if(s.phase!==curPhase){ if(s.phase==='meeting'&&curPhase!=='meeting') Sound.slam(); curPhase=s.phase; phaseT0=performance.now();
+  if(s.phase!==curPhase){ const prevPhase=curPhase; if(s.phase==='meeting'&&prevPhase!=='meeting') Sound.slam(); curPhase=s.phase; phaseT0=performance.now();
     // the intro/end cards draw full-screen — keep the floating panels (station log + crew roster) off them
-    const hideCards=(s.phase==='intro'||s.phase==='gameover'); for(const id of ['live','roster']){ const el=$(id); if(el) el.style.display=hideCards?'none':''; } }  // fresh fade for intro/gameover
+    const hideCards=(s.phase==='intro'||s.phase==='gameover'); for(const id of ['live','roster']){ const el=$(id); if(el) el.style.display=hideCards?'none':''; }
+    if(prevPhase==='intro') document.body.classList.add('crew-collapsed'); }  // the crew list starts collapsed once the game begins
   STATE.round=s.round; STATE.dark=s.dark||[]; STATE.paused=!!s.paused;
   STATE.stormElapsed=s.stormElapsed||0; STATE.stormTotal=s.stormTotal||300; STATE.stormAt=performance.now(); STATE.phase=s.phase;
   STATE.integrity=s.integrity;
@@ -1693,6 +1694,7 @@ $('sndpill').addEventListener('click',()=>Sound.toggle());
 $('live').querySelector('.ch').addEventListener('click',e=>{ if(e.target.closest('a')) return; $('live').classList.toggle('collapsed'); });  // click anywhere on the header to collapse/expand (but let the Artel link through)
 $('crewToggle').addEventListener('click',()=>document.body.classList.toggle('crew-collapsed'));
 
+document.body.classList.add('crew-collapsed');  // crew list starts collapsed (incl. a mid-game join with no intro)
 addEventListener('resize',resize); buildStation(STATION0); resize(); syncHud(); requestAnimationFrame(frame); connect();
 </script>
 </body>
