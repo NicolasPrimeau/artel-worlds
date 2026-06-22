@@ -166,7 +166,7 @@ WORLDS: list[WorldDef] = [
         glyph_bg="repeating-linear-gradient(90deg,#123a1c 0 14px,#15431f 14px 28px)",
         pausable=False,
         reports_paused=False,
-        rank=4,
+        rank=2,
         shape=_shape_pitch,
     ),
     WorldDef(
@@ -197,7 +197,7 @@ WORLDS: list[WorldDef] = [
         ),
         thumb="/thumbs/automata.webp?v=2",
         local=True,
-        rank=3,
+        rank=4,
     ),
     WorldDef(
         key="watchtower",
@@ -214,7 +214,7 @@ WORLDS: list[WorldDef] = [
         extra=("/state",),
         thumb="/thumbs/watchtower.webp?v=3",
         live_chart=True,
-        rank=2,
+        rank=3,
         shape=_shape_watchtower,
     ),
     WorldDef(
