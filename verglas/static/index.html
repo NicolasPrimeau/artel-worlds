@@ -1234,23 +1234,20 @@ function drawSky(t){
 // the ejected researcher is walked out into the storm before we cut back to the station. ----
 function meetLede(){ const m=STATE.meeting||{}; if(m.victim) return `${m.reporter} found ${m.victim} dead in the ${m.room}`;
   return m.reporter?`${m.reporter} called everyone in`:`emergency meeting`; }
-function bubble(x,y,text,kind,below){ const f=12*DPR; ctx.font=`600 ${f}px Inter`;
+function bubble(x,y,text,kind){ const f=12*DPR; ctx.font=`600 ${f}px Inter`;
   const maxw=190*DPR, words=(text||'').split(' '), lines=[]; let ln='';
   for(const w of words){ const tryln=ln?ln+' '+w:w; if(ctx.measureText(tryln).width>maxw&&ln){ lines.push(ln); ln=w; } else ln=tryln; }
   if(ln)lines.push(ln); const lh=f*1.28, pad=9*DPR;
   const bw=Math.min(maxw,Math.max(...lines.map(l=>ctx.measureText(l).width)))+pad*2, bh=lines.length*lh+pad*1.6;
   let bx=x-bw/2; bx=Math.max(6*DPR,Math.min(cv.width-bw-6*DPR,bx));
-  // a top-half seat hangs its bubble BELOW the icon (tail up) so it never gets clamped under the header and
-  // torn off the icon; everyone else floats it above (tail down) as before
-  let by= below ? Math.min(cv.height-bh-6*DPR, y) : Math.max((meet&&meet.top||56*DPR)+40*DPR, y-bh);
+  // always float ABOVE the icon, tail pointing down to it; clamp only to stay on-screen — it may overlay
+  // the EMERGENCY MEETING text, which is fine, because the table sits low enough to leave room
+  let by=Math.max(6*DPR, y-bh);
   ctx.save();
   ctx.fillStyle= kind==='vote' ? "rgba(34,24,30,.95)" : "rgba(16,24,38,.95)";
   ctx.strokeStyle= kind==='vote' ? "rgba(255,120,120,.6)" : "rgba(130,170,225,.55)"; ctx.lineWidth=1.4*DPR;
   rr(bx,by,bw,bh,9*DPR); ctx.fill(); ctx.stroke();
-  ctx.beginPath();
-  if(below){ ctx.moveTo(x-6*DPR,by); ctx.lineTo(x+6*DPR,by); ctx.lineTo(x,by-9*DPR); }
-  else { ctx.moveTo(x-6*DPR,by+bh); ctx.lineTo(x+6*DPR,by+bh); ctx.lineTo(x,by+bh+9*DPR); }
-  ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x-6*DPR,by+bh); ctx.lineTo(x+6*DPR,by+bh); ctx.lineTo(x,by+bh+9*DPR); ctx.closePath(); ctx.fill();
   ctx.fillStyle=kind==='vote'?"#ffd7d7":"#e7eefc"; ctx.textAlign="center"; ctx.textBaseline="middle";
   lines.forEach((l,i)=>ctx.fillText(l,bx+bw/2,by+pad*0.8+lh*(i+0.5)));
   ctx.restore(); }
@@ -1258,7 +1255,7 @@ function drawMeeting(t){
   const W=cv.width, H=cv.height, narrow=W/DPR<=820, fade=Math.min(1,(performance.now()-meet.t0)/450);
   // fit the table into the space the chat log doesn't use: a right rail on desktop, a bottom sheet on
   // phones. Reserve the header/roster up top too, so seats + bubbles never collide with the chrome.
-  const rightRes=narrow?0:412*DPR, botRes=narrow?Math.round(H*0.46):0, topRes=(narrow?84:46)*DPR;
+  const rightRes=narrow?0:412*DPR, botRes=narrow?Math.round(H*0.46):0, topRes=(narrow?132:92)*DPR;
   const aw=W-rightRes, ah=H-topRes-botRes, cx=aw/2, cy=topRes+ah/2;
   const Rx=Math.min(aw*(narrow?0.25:0.32),ah*(narrow?0.30:0.40)), Ry=Rx*0.58; meet.top=topRes;
   const s=(narrow?11:23)*DPR;
@@ -1306,21 +1303,21 @@ function drawMeeting(t){
   const ringx=narrow?1.08:1.16, ringy=narrow?1.12:1.28;
   ids.forEach((id,i)=>{ const ang=-Math.PI/2+i/n*TAU; seats[id]={x:cx+Math.cos(ang)*Rx*ringx, y:cy+Math.sin(ang)*Ry*ringy}; });
   for(const id of [...ids].sort((a,b)=>seats[a].y-seats[b].y)){ const a=STATE.agents.find(x=>x.id===id); if(!a)continue; const p=seats[id];
-    let dy=0,al=1; const out=ejecting&&a.name===ejecting.name;
+    let dy=0,al=1; const out=ejecting&&a.name===ejecting.name, ejd=STATE.meeting&&STATE.meeting.ejected===a.name;
     if(out){ const k=Math.min(1,(performance.now()-ejecting.t0)/EJECT_MS); dy=k*H*0.62; al=1-k; }
     ctx.save(); ctx.globalAlpha=fade*al;
     if(id===HILITE){ ctx.strokeStyle="rgba(150,215,255,.9)"; ctx.lineWidth=2.4*DPR; ctx.beginPath(); ctx.arc(p.x,p.y,s*1.05,0,TAU); ctx.stroke(); }
-    figure(p.x,p.y+dy,s,COLORS[a.c%COLORS.length],a.alive||out,false,t,look(a.name));
+    figure(p.x,p.y+dy,s,COLORS[a.c%COLORS.length],a.alive||out||ejd,false,t,look(a.name));
     if(a.alive&&!out){ const cyc=(performance.now()*0.0003+a.id*0.4)%1;  // breath-fog at the cold table
       if(cyc<0.3){ const pp=cyc/0.3; ctx.fillStyle=`rgba(225,238,250,${0.11*(1-pp)})`;
         ctx.beginPath(); ctx.ellipse(p.x+s*0.2,p.y+dy-s*1.0-pp*s*0.7,s*(0.16+0.25*pp),s*(0.1+0.18*pp),0,0,TAU); ctx.fill(); } }
     ctx.fillStyle="rgba(231,238,252,.95)"; ctx.textAlign="center"; ctx.font=`700 ${9.5*DPR}px Inter`;
     ctx.fillText(a.name,p.x,p.y+dy+s*1.5); ctx.restore();
     const vt=meet.votes&&meet.votes[a.name];
-    if(vt!==undefined&&!out){ const tb=p.y<cy; ctx.globalAlpha=fade; bubble(p.x,tb?p.y+s*1.25:p.y-s*1.25,vt==='skip'?'skips':'→ '+vt,'vote',tb); ctx.globalAlpha=1; }
+    if(vt!==undefined&&!out){ ctx.globalAlpha=fade; bubble(p.x,p.y-s*1.25,vt==='skip'?'skips':'→ '+vt,'vote'); ctx.globalAlpha=1; }
   }
   // the speaker's live line — only during discussion; the instant voting starts, every speech bubble clears
-  if(meet.bubble && STATE.phase==='meeting'){ const sp=seats[meet.bubble.id]; if(sp){ const tb=sp.y<cy; ctx.globalAlpha=fade; bubble(sp.x,tb?sp.y+s*1.5:sp.y-s*1.5,meet.bubble.text,'say',tb); ctx.globalAlpha=1; } }
+  if(meet.bubble && STATE.phase==='meeting'){ const sp=seats[meet.bubble.id]; if(sp){ ctx.globalAlpha=fade; bubble(sp.x,sp.y-s*1.5,meet.bubble.text,'say'); ctx.globalAlpha=1; } }
   // a private whisper between two survivors — a dashed line + tag; the content lives on Artel, not here
   const wsp=STATE.meeting&&STATE.meeting.whisper;
   if(wsp){ const fa=STATE.agents.find(a=>a.name===wsp[0]), ta=STATE.agents.find(a=>a.name===wsp[1]);
