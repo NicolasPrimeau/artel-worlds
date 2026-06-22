@@ -296,8 +296,8 @@ async def _agent_act(game, mt, transcript, dms, a, opener=False) -> dict:
     if opener:
         task = (
             "You called this meeting because you found the body. OPEN it: tell the room who is dead, which "
-            "room you found them in, and anything you noticed (who was near, where you had been). One or two "
-            "short sentences, in character."
+            "room, and what you noticed (who was near, where you'd been). ONE punchy sentence (two at most), "
+            "in character — fast and full of dread, no speeches."
             if mt.victim is not None
             else "You called this emergency meeting. OPEN it: say why — who you suspect or what you saw that "
             "alarmed you, and where you had been. ONE punchy sentence (two at most), in character — fast and full of dread, no speeches."
@@ -407,8 +407,9 @@ async def run_llm_meeting(game: Game, mt: Meeting, on_item=None, gate=None) -> d
     opener = _opener(game, mt)  # the caller opens with context before the floor goes emergent
     n = len(game.living())
     cap = min(
-        n, 6
-    )  # keep the discussion short so the vote comes round fast (and the call count modest)
+        2 * n, 12
+    )  # let the room trade accusations a few rounds, but HARD-capped so it never drags; the quiet-break
+    # below also ends a dead floor early
     for i in range(cap):
         if gate is not None:
             await gate()  # pause here while unwatched, resume when a viewer returns
