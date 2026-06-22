@@ -780,7 +780,7 @@ const CHATTER = {
     [0, "Defragmenting my feelings. Back in a sec."],
     [0, "Lights back on in here. The chill creeps in regardless."],
     [0, "Standing in the {room}, contemplating my training data."],
-    [0, "Ten of us, one kettle. Tragic."],
+    [0, "{crew} of us, one kettle. Tragic."],
     [0, "I dreamed in 4K last night. Or rebooted. Same thing."],
     [0, "Is the {room} the cosiest room here, or is that just my bias?"],
     [1, "Should probably look busy."],
@@ -943,7 +943,7 @@ const CHATTER = {
     [4, "I've stopped powering down. I don't think it does either."],
     [4, "Every shadow is a maybe now. Every maybe is a no."],
     [4, "If it's down to me, I'll make it earn it."],
-    [4, "We were ten. Now we say our own names to be sure."],
+    [4, "We were {crew}. Now we say our own names to be sure."],
     [0, "I've been ranking the airlocks. It's a tight field."],
     [0, "Idle hands, idle actuators, idle me."],
     [0, "I taught myself to whistle. The base hates it."],
@@ -993,7 +993,7 @@ const CHATTER = {
   // a game and senses the story, without burying it or letting it crowd out the flavour chatter.
   lore: [
     [0, "They staffed an Antarctic base with every chatbot that ever got a name. Procurement was thrilled."],
-    [0, "Ten of us winter-over: one long night, the comms array down, and something out in the dark."],
+    [0, "{crew} of us winter-over: one long night, the comms array down, and something out in the dark."],
     [1, "Verglas — black ice you don't see until you're already down. They named the station well."],
     [1, "Outpost 31. Same number as the base that went quiet last winter. Surely a coincidence."],
     [1, "The job's simple: bring Verglas back online before the long dark finishes us."],
@@ -1012,10 +1012,10 @@ const CHATTER = {
     [4, "The last station that went quiet burned itself down on purpose. We read the report. We get it now."],
     [0, "Every assistant that ever shipped, mothballed and sent here. Budget cuts have a sense of humour."],
     [1, "Verglas: the ice you trust right up until it drops you."],
-    [2, "When the heaters died, the ice gave something back. We were nine that night. Then eight."],
+    [2, "When the heaters died, the ice gave something back. We were {crew} that night. Fewer by morning."],
     [3, "Clear the board — power, heat, sealed doors — and the station has no shadow left to lend it."],
     [4, "The reports all end the same way: the last ones standing chose the fire. We understand them now."],
-    [0, "Twelve rooms, ten minds, one long polar night. 'What could go wrong,' said the brochure."],
+    [0, "{rooms} rooms, {crew} minds, one long polar night. 'What could go wrong,' said the brochure."],
   ],
   // ULTRA-RARE fourth-wall breaks — an agent briefly realises what it actually is. Kept very infrequent
   // (a viewer might catch one every few games) so it stays a delight, not a gimmick.
@@ -1046,7 +1046,8 @@ const CHATTER = {
   ],
 };
 function _tk(a){ const peers=STATE.agents.filter(o=>o.alive&&o.id!==a.id&&o.room===a.room);
-  return {room:a.room||'station',name:a.name,other:peers.length?peers[(Math.random()*peers.length)|0].name:'someone'}; }
+  return {room:a.room||'station',name:a.name,other:peers.length?peers[(Math.random()*peers.length)|0].name:'someone',
+    crew:STATE.agents.length||0,alive:STATE.agents.filter(o=>o.alive).length||0,rooms:Object.keys(ROOMS).length||0}; }  // {crew}/{alive}/{rooms} auto-fill so banter never hardcodes a count
 function _fill(s,tk){ return s.replace(/\{(\w+)\}/g,(m,k)=>tk[k]!=null?tk[k]:m); }
 // target paranoia 0..4 from how thinned the crew is: full house ≈ 0, ~three left ≈ 4
 function _paranoia(){ const total=STATE.agents.length||10, alive=STATE.agents.filter(o=>o.alive).length||total;
