@@ -274,8 +274,8 @@ FOLLOW_TICKS = 6  # how long an autonomous agent tails a buddy before it stops t
 # the whole station lit instead of huddling in a safe corner. Relighting (clearing the board) is the cure.
 INTEGRITY_MAX = 100.0
 INTEGRITY_FREE_DARK = 5  # the station tolerates up to this many dark rooms; only the EXCESS bleeds it (scaled per game)
-DARK_DRAIN = 0.6  # temperature lost per tick per dark room BEYOND the allowance — a real bleed, but slow enough the crew recover by relighting
-INTEGRITY_RECOVER = 1.6  # regained per tick while at/under the allowance — keep most rooms lit and the station warms back up
+DARK_DRAIN = 1.5  # temperature lost per tick per dark room BEYOND the allowance, at mid-range (eased near the extremes) — a real, fast bleed
+INTEGRITY_RECOVER = 2.2  # regained per tick while at/under the allowance, at mid-range (eased near full) — relight and the station warms back fast
 # crew survive to dawn ~97%, a huddling crew blacks out ~97% — relight enough and you live, slack and you don't
 # meetings happen ONLY on a body report — there is no emergency button (no calling a meeting with no body)
 MAX_TICKS = 600
@@ -565,11 +565,15 @@ class Game:
             return
         # huddling has to COST something or the endgame is a boring stalemate: abandon rooms and they go
         # dark, the station freezes, everyone loses. That's the pressure that forces the crew to spread out.
+        # swing FAST through the mid-range but ease off near full and near blackout, so it reads as a real
+        # threat without snapping between the extremes
+        x = self.integrity / INTEGRITY_MAX
+        ease = 0.2 + 0.8 * (4 * x * (1 - x))
         excess = len(self.dark) - self.free_dark
         if excess > 0:
-            self.integrity = max(0.0, self.integrity - DARK_DRAIN * excess)
+            self.integrity = max(0.0, self.integrity - DARK_DRAIN * excess * ease)
         else:
-            self.integrity = min(INTEGRITY_MAX, self.integrity + INTEGRITY_RECOVER)
+            self.integrity = min(INTEGRITY_MAX, self.integrity + INTEGRITY_RECOVER * ease)
 
     def sabotage(self, a, room) -> bool:
         # the Cold kills the lights in its own room or a neighbouring one (to make a kill spot). Anonymous.
