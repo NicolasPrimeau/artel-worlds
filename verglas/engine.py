@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import random
 from collections import deque
 from dataclasses import dataclass, field
@@ -960,6 +961,14 @@ class Game:
             a.goto = None
             a.follow = None
             a.tasking = False
+        # ring them evenly around the Mess Hall so they're never stacked on one spot coming out of a meeting
+        liv = sorted(self.living(), key=lambda a: a.id)
+        rx, ry, rw, rh = self.rects[HUB]
+        rcx, rcy = rx + (rw - 1) / 2, ry + (rh - 1) / 2
+        ring = max(1.0, min(rw, rh) * 0.3)
+        for i, a in enumerate(liv):
+            ang = 2 * math.pi * i / max(1, len(liv))
+            a.gx, a.gy = rcx + math.cos(ang) * ring, rcy + math.sin(ang) * ring
 
     # --- meeting: collect votes via `decide`, eject the plurality, reconvene. ---
     def run_meeting(self, mt: Meeting, decide):

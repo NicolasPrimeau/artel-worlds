@@ -1535,7 +1535,8 @@ function applySnapshot(s){ if(s.station){ buildStation(s.station); OPEN=s.statio
   if(s.phase!==curPhase){ const prevPhase=curPhase; if(s.phase==='meeting'&&prevPhase!=='meeting') Sound.slam(); curPhase=s.phase; phaseT0=performance.now();
     // the intro/end cards draw full-screen — keep the floating panels (station log + crew roster) off them
     const hideCards=(s.phase==='intro'||s.phase==='gameover'); for(const id of ['live','roster']){ const el=$(id); if(el) el.style.display=hideCards?'none':''; }
-    if(prevPhase==='intro') document.body.classList.add('crew-collapsed'); }  // the crew list starts collapsed once the game begins
+    if(prevPhase==='intro') document.body.classList.add('crew-collapsed');
+    if(['meeting','vote','ejection'].includes(prevPhase) && s.phase==='task') _snapAll=true; }  // snap everyone to their spread Mess Hall spots — never glide back as a stacked clump
   STATE.round=s.round; STATE.dark=s.dark||[]; STATE.paused=!!s.paused;
   STATE.stormElapsed=s.stormElapsed||0; STATE.stormTotal=s.stormTotal||300; STATE.stormAt=performance.now(); STATE.phase=s.phase;
   STATE.integrity=s.integrity;
