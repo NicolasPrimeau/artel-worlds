@@ -49,7 +49,7 @@ STORM_SECONDS = float(
     env("STORM_SECONDS", "480")
 )  # base length of the night (meetings included) — shorter than before to keep games brisk
 _ADMIN_TOKEN = os.environ.get("WORLDS_ADMIN_TOKEN", "")
-N_AGENTS = int(env("AGENTS", "7"))
+N_AGENTS = int(env("AGENTS", "9"))
 N_IMPOSTORS = int(env("IMPOSTORS", "2"))  # the most Colds a night can have
 TWO_COLD_CHANCE = float(
     env("TWO_COLD_CHANCE", "0.10")
@@ -255,7 +255,9 @@ class Verglas:
                     g.by_id(v).name: ("skip" if t == -1 else g.by_id(t).name)
                     for v, t in (mt.votes or {}).items()
                 }
-            if self.phase == "ejection" and mt.ejected is not None:
+            if self.phase in ("vote", "ejection") and mt.ejected is not None:
+                # expose the ejected as soon as the vote resolves (not only at the ejection beat) so the
+                # table can keep drawing them upright/walking out — never as a corpse during the vote pause
                 meeting["ejected"] = g.by_id(
                     mt.ejected
                 ).name  # who walks out (shown during the walk)
@@ -711,6 +713,9 @@ async def debug():
         "caption": G.caption(),
         "completed": G.completed,
         "phase": G.phase,
+        "agents": N_AGENTS,
+        "impostors_max": N_IMPOSTORS,
+        "two_cold_chance": TWO_COLD_CHANCE,
         "artel": artel.status(),
     }
 
