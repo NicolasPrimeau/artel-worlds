@@ -462,9 +462,9 @@ class Game:
         return abs(a.gx - b.gx) + abs(a.gy - b.gy) <= KILL_REACH
 
     def _unwitnessed(self, m, victim) -> bool:
-        # the Cold must have the room to ITSELF with the victim — no one else present at all, crew OR a
-        # second Cold, lit or dark. No more murders with bystanders standing right there.
-        return all(c.id in (m.id, victim.id) for c in self._occ(victim.room))
+        # the Cold can only strike with no other CREW in the room to witness it — lit or dark. A second
+        # Cold (an ally) doesn't count, but ANY crewmate does. No more murders in a room full of crew.
+        return not any(c.id != victim.id and not c.impostor for c in self._occ(victim.room))
 
     def _place(self) -> None:
         # update each living agent's cell within its room: a follower closes on whoever it's tailing (the
@@ -707,7 +707,7 @@ class Game:
 
     def legal_kills(self, m) -> list[int]:
         # crew the Cold can take THIS tick: off cooldown, past grace, within reach, and ALONE with it in
-        # the room — ALONE with it, no one else present at all (see _unwitnessed), lit or dark.
+        # the room — no other CREW present to witness it (a Cold ally doesn't count; see _unwitnessed).
         if self.cd > 0 or self.tick < START_GRACE:
             return []
         return [
