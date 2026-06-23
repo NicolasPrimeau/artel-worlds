@@ -1482,7 +1482,7 @@ function drawIntro(t){
     [7800, "228,236,250", "Stay in the light. Last until dawn."],
   ];
   ctx.font=`600 ${fs}px Inter`; ctx.globalAlpha=1;
-  lines.forEach((ln,i)=>{ const a=fin(ln[0],1800)*(1-out);   // ~1.8s gentle fade-in per line
+  lines.forEach((ln,i)=>{ const a=fin(ln[0],1440)*(1-out);   // ~1.4s gentle fade-in per line
     ctx.fillStyle=`rgba(${ln[1]},${a.toFixed(3)})`; ctx.fillText(ln[2], cx, cy+big*1.05*DPR+i*26*DPR); });
   ctx.restore();
 }
