@@ -1130,7 +1130,7 @@ function thinkTick(){ if(STATE.phase!=='task'||STATE.paused){ _nextAt=0; return;
   let active=false;
   for(const k in thoughtOf){ if(now-thoughtOf[k].t0>THOUGHT_MS) delete thoughtOf[k]; else active=true; }
   if(active){ _nextAt=0; return; }                              // one is up — never start a second
-  if(!_nextAt){ _nextAt=now+2000+Math.random()*3000; return; }  // just cleared → wait a random 2-5s
+  if(!_nextAt){ _nextAt=now+14000+Math.random()*5000; return; }  // just cleared → wait a random 14-19s (≈half as frequent as the old 2-5s gap, given the ~9.5s a bubble is up)
   if(now<_nextAt) return;                                       // still in the quiet gap
   const avail=STATE.agents.filter(a=>a.alive&&a.wx!=null);
   const still=avail.filter(a=>!a.moving); const pool=still.length?still:avail; if(!pool.length) return;
