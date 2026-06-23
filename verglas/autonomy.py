@@ -66,13 +66,15 @@ def _enum(desc: str, values: list[str]) -> dict:
 def build_tools(g: Game, a) -> list[dict]:
     others = [o.name for o in g.living() if o.id != a.id]
     tools = []
-    dark_rooms = sorted(set(g.open_tasks))  # dark rooms waiting to be relit
+    dark_rooms = sorted(
+        set(g.open_tasks)
+    )  # the board: dark rooms to relight + rooms where a kill was heard
     if dark_rooms:
         tools.append(
             _tool(
                 "go_to_task",
-                "Walk to a DARK room and restore its lights — denies the Cold a place to hunt.",
-                {"room": _enum("which dark room to relight", dark_rooms)},
+                "Walk to a flagged room — relight it if it's dark, or check it if a struggle was reported there (you may find a body).",
+                {"room": _enum("which flagged room to go to", dark_rooms)},
                 ["room"],
             )
         )
@@ -152,6 +154,12 @@ def _context(g: Game, a, inbox: list) -> str:
         f"Dark rooms now (a kill can only happen in one of these, and each one bleeds the station): {dark_s}.",
         f"Crew alive: {alive} of {total}. Outlast the storm to dawn and the crew win.",
     ]
+    if not a.impostor and g.noise:
+        heard = ", ".join(sorted(g.noise))
+        lines.append(
+            f"A STRUGGLE was just heard in {heard} — someone should go and check (you may find a body, "
+            "which opens an emergency meeting). Don't let it go unchecked."
+        )
     if g.integrity_on:
         ndark = len(g.dark)
         state = (

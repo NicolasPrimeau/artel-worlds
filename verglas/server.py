@@ -467,6 +467,13 @@ async def _mirror_event(ev) -> None:
         tid = await artel.create_task(f"Relight the {room}")
         if tid:
             G.task_pool.setdefault(room, []).append(tid)
+    elif (
+        kind == "noise"
+    ):  # a kill was heard → a "check the room" job, so a crewmate goes and finds the body
+        room = ev[1]
+        tid = await artel.create_task(f"Check the {room} — a struggle was heard")
+        if tid:
+            G.task_pool.setdefault(room, []).append(tid)
     elif kind == "claim":
         _, agent_id, room = ev
         pool = G.task_pool.get(room) or []

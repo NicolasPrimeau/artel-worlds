@@ -231,7 +231,6 @@ TASK_SPAWN_P = (
 WORK_TICKS = 3  # a task occupies its crew for several ticks — they linger at the console
 TASK_SLACK = 4  # keep this many fewer tasks-in-play than living players, so a couple are always free to buddy
 KILL_CD = 2  # ~10s between kills — kept short so the Cold stays aggressive and meetings come often
-STALE_BODY_TICKS = 5  # a body nobody walks in on still surfaces after this many ticks — the crew notice someone's gone, and a meeting opens (meetings are the action)
 KILL_REACH = 3.0  # the Cold must be within this many cells of the victim — no killing across a room
 # --- the storm & the dark ---------------------------------------------------------------------------
 # Light is safety: the Cold can ONLY kill in a DARK room. The storm is the clock — survive it and the
@@ -412,9 +411,9 @@ class Game:
     corridor: list = field(default_factory=list)  # corridor tiles [(x,y), ...] linking the rooms
     outpost: int = 31  # the station's number (randomized per game)
     bodies: dict = field(default_factory=dict)  # room -> victim id, undiscovered
-    body_at: dict = field(
-        default_factory=dict
-    )  # room -> tick a body was left there (for the stale-body report)
+    noise: set = field(
+        default_factory=set
+    )  # rooms where a kill was heard — flagged for a crewmate to go investigate (finds the body)
     tick: int = 0
     cd: int = 0  # shared impostor kill cooldown
     sab_cd: int = 0  # the Cold's light-sabotage cooldown
@@ -610,26 +609,25 @@ class Game:
     # a meeting happens ONLY when a CREW member finds a body — never the Cold standing over its own kill
     # (it's alone with the victim by the time it strikes, so it would otherwise always report). the corpse
     # waits in the dark until a crewmate walks in: the intended discovery beat. shared by step()/execute().
+    def _flag_noise(self, room) -> None:
+        # a kill makes noise — flag the room and drop it on the task board (mirrored to Artel as a
+        # "check {room}" job) so a crewmate is naturally drawn over to look, and finds the body
+        self.noise.add(room)
+        if room not in self.open_tasks:
+            self.open_tasks.append(room)
+            self.events.append(("noise", room))  # → a "check the room" task on the Artel board
+
     def _report_body(self) -> Meeting | None:
         for room, victim in list(self.bodies.items()):
             finders = [a for a in self.living(impostor=False) if a.room == room]
             if finders:
                 del self.bodies[room]
-                self.body_at.pop(room, None)
+                self.noise.discard(room)
+                if room in self.open_tasks:
+                    self.open_tasks.remove(room)
                 for f in finders:
                     f.found.append((self.tick, room, victim))
                 return Meeting(self.tick, finders[0].id, room, victim)
-        # nobody walked in on it — but the crew can only go so long before they notice someone's gone:
-        # an old body surfaces on its own and opens a meeting, so a clustered crew can't starve out the action
-        for room, victim in list(self.bodies.items()):
-            if self.tick - self.body_at.get(room, self.tick) >= STALE_BODY_TICKS:
-                crew = self.living(impostor=False)
-                if crew:
-                    finder = min(crew, key=lambda a: self._room_dist(a.room, room))
-                    del self.bodies[room]
-                    self.body_at.pop(room, None)
-                    finder.found.append((self.tick, room, victim))
-                    return Meeting(self.tick, finder.id, room, victim)
         return None
 
     # --- task phase: one tick of move / task / kill. Returns a Meeting trigger or None. ---
@@ -737,7 +735,7 @@ class Game:
                     victim.alive = False
                     self._release_task(victim)
                     self.bodies[m.room] = victim.id
-                    self.body_at[m.room] = self.tick
+                    self._flag_noise(m.room)
                     self.last_kill = {"tick": self.tick, "victim": victim.id, "room": m.room}
                     self.cd = KILL_CD
                     self._flee_body(m)
@@ -820,7 +818,7 @@ class Game:
         victim.alive = False
         self._release_task(victim)
         self.bodies[m.room] = victim.id
-        self.body_at[m.room] = self.tick
+        self._flag_noise(m.room)
         self.last_kill = {"tick": self.tick, "victim": victim.id, "room": m.room}
         self.cd = KILL_CD
         self._flee_body(m)
