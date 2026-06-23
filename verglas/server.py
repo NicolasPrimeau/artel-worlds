@@ -38,15 +38,15 @@ DISCO_HOLD = float(
 VOTE_DELAY = float(env("VOTE_DELAY", "1.3"))  # seconds between revealed votes
 WHISPER_DELAY = 1.6  # how long a private-whisper indicator flashes before play moves on
 EJECT_WALK = (
-    4.0  # the ejected researcher is walked out into the storm — BEFORE we reveal what they were
+    3.0  # the ejected researcher is walked out into the storm — BEFORE we reveal what they were
 )
-EJECT_REVEAL = 4.0  # then hold on the human/Cold reveal
+EJECT_REVEAL = 3.0  # then hold on the human/Cold reveal
 GAMEOVER_LINGER = 14.0  # hold on the result screen before the next game (esp. a sudden task win)
 INTRO_LINGER = (
     12.0  # the opening card — three lines fade in at reading pace, then a brief hold before play
 )
 STORM_SECONDS = float(
-    env("STORM_SECONDS", "480")
+    env("STORM_SECONDS", "300")
 )  # base length of the night (meetings included) — shorter than before to keep games brisk
 _ADMIN_TOKEN = os.environ.get("WORLDS_ADMIN_TOKEN", "")
 N_AGENTS = int(env("AGENTS", "8"))
@@ -632,6 +632,9 @@ async def _game_loop():
                             "crew",
                             "storm",
                         )  # dawn — the crew outlasted the storm
+                    G.g.storm_frac = min(
+                        1.0, G.game_secs / STORM_SECONDS
+                    )  # feed the temperature's time-ramp
                     if G.g.winner is None:
                         if llm.enabled():
                             mt = (

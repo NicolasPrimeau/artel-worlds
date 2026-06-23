@@ -435,6 +435,9 @@ class Game:
     free_dark: int = (
         INTEGRITY_FREE_DARK  # dark rooms tolerated before integrity bleeds — scaled too
     )
+    storm_frac: float = (
+        0.0  # 0..1 progress through the storm clock; the live server feeds it from game_secs
+    )
     hunting: bool = False  # the final hunt is on: one crew left, the Cold has dropped the mask
     hunt_ticks: int = 0  # how long the final hunt has run (the flee can't last forever)
     meetings: list = field(default_factory=list)
@@ -571,7 +574,11 @@ class Game:
         ease = 0.2 + 0.8 * (4 * x * (1 - x))
         excess = len(self.dark) - self.free_dark
         if excess > 0:
-            self.integrity = max(0.0, self.integrity - DARK_DRAIN * excess * ease)
+            # the temperature barely bites in the first ~half of the storm clock (~3 min of 5), then ramps
+            # hard — so a game that drags past minute 3 is increasingly lost to the freeze by minute 5
+            frac = max(0.0, min(1.0, self.storm_frac))
+            time_mult = 0.15 + max(0.0, frac - 0.5) * 2.5
+            self.integrity = max(0.0, self.integrity - DARK_DRAIN * excess * ease * time_mult)
         else:
             self.integrity = min(INTEGRITY_MAX, self.integrity + INTEGRITY_RECOVER * ease)
 
