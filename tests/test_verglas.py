@@ -476,3 +476,31 @@ def test_fame_leaderboard_tally_and_endpoint():
     assert S.G.fame[crew.name]["crewWins"] == 0  # crew lost
     r = TestClient(S.app).get("/fame.json")
     assert r.status_code == 200 and "rows" in r.json()
+
+
+def test_no_kill_in_post_meeting_grace():
+    g = new_game(5, 8, 1)
+    cold = next(a for a in g.living() if a.impostor)
+    victim = next(a for a in g.living() if not a.impostor)
+    room = next(r for r in g.rooms if g.adj.get(r))
+    for a in g.living():
+        a.room = "__elsewhere__"
+    cold.room = victim.room = room
+    cold.gx, cold.gy = victim.gx, victim.gy = 5.0, 5.0
+    g.dark.add(room)
+    g.tick = 999
+
+    mt = Meeting(tick=g.tick, reporter=victim.id, room=room, victim=None)
+    g.apply_votes(mt, {})
+    assert g.cd == E.POST_MEETING_CD
+
+    cold.room = victim.room = room
+    cold.gx, cold.gy = victim.gx, victim.gy = 5.0, 5.0
+    for a in g.living():
+        if a.id != cold.id and a.id != victim.id:
+            a.room = "__elsewhere__"
+
+    assert g.do_kill(cold, victim.id) is False
+
+    g.cd = 0
+    assert g.do_kill(cold, victim.id) is True

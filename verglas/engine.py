@@ -232,6 +232,7 @@ WORK_TICKS = 3  # a task occupies its crew for several ticks — they linger at 
 TASK_SLACK = 4  # keep this many fewer tasks-in-play than living players, so a couple are always free to buddy
 KILL_CD = 2  # ~10s between kills — kept short so the Cold stays aggressive and meetings come often
 BODY_GRACE = 2  # ticks a fresh body goes unnoticed — the Cold slips away first, so no meeting the instant it kills
+POST_MEETING_CD = 3  # ticks after a meeting before the Cold can kill — crew need a moment to visually scatter from HUB
 KILL_REACH = 3.0  # the Cold must be within this many cells of the victim — no killing across a room
 # --- the storm & the dark ---------------------------------------------------------------------------
 # Light is safety: the Cold can ONLY kill in a DARK room. The storm is the clock — survive it and the
@@ -1086,7 +1087,7 @@ class Game:
             a.dest = None
             a.goto = None
             a.follow = None
-        self.cd = 0  # a meeting RESETS the kill cooldown — the Cold can strike the moment the crew scatter
+        self.cd = POST_MEETING_CD  # short grace after a meeting — crew scatter visually first, then the Cold can hunt
         self._check_win()
 
 
