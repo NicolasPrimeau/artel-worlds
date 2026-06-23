@@ -31,10 +31,10 @@
   .intbar{position:relative;width:104px;height:12px;border-radius:7px;flex:none;background:#0d1320;overflow:hidden;box-shadow:inset 0 0 0 1px var(--line)}
   .intbar i{display:block;height:100%;width:var(--i,100%);background:var(--ic,#ffb056)}
   .intbar .bulb{position:absolute;left:5px;top:50%;transform:translateY(-50%);z-index:1;font-size:11px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))}
-  #hud-intn{font-weight:800;font-variant-numeric:tabular-nums;font-size:11px;min-width:42px;text-align:right;color:#ffb056}
+
   .intg.crit{animation:pulse 1s infinite} .intg.crit .bulb{opacity:.5}
   /* storm-to-dawn bar: a cloud sweeps left→right; behind it the sky clears to sunrise orange, ahead the dark grey night */
-  .stormbar{position:relative;width:104px;height:12px;border-radius:7px;flex:none;overflow:visible;
+  .stormbar{position:relative;width:104px;height:12px;border-radius:7px;flex:none;overflow:hidden;
     background:linear-gradient(90deg,#ff9a3c 0%,#ffc079 calc(var(--p,0)*100%),#1a2540 calc(var(--p,0)*100%),#131d2c 100%);
     box-shadow:inset 0 0 0 1px var(--line)}
   .stormbar .sun{position:absolute;right:3px;top:50%;transform:translateY(-50%);font-size:11px;line-height:1;opacity:.92}
@@ -196,7 +196,7 @@
 <div class="hud">
   <div class="brand">VERGLAS <small>· OUTPOST <b id="hud-outpost">31</b></small></div>
   <div class="pill storm" title="Survive the storm to dawn and the crew win. The cloud sweeps left to right; behind it the sky clears to sunrise. Keep the station lit — unlit rooms freeze it toward a blackout and give the Cold the gloom to hunt in."><span class="plabel">To Dawn</span><div class="stormbar" id="hud-storm"><span class="cloud">🌨️</span><span class="sun">☀️</span></div></div>
-  <div class="pill intg" id="intpill" title="Station temperature — it falls while rooms are dark and cold; relight them to warm back up. If it bottoms out the outpost freezes and the crew lose, even if alive."><span class="plabel">Temp</span><div class="intbar"><i id="hud-int"></i><span class="bulb">🌡️</span></div> <b id="hud-intn">—</b></div>
+  <div class="pill intg" id="intpill" title="Station temperature — it falls while rooms are dark and cold; relight them to warm back up. If it bottoms out the outpost freezes and the crew lose, even if alive."><span class="plabel">Temp</span><div class="intbar"><i id="hud-int"></i><span class="bulb">🌡️</span></div></div>
   <div class="spacer"></div>
   <div class="pill" id="sndpill" style="pointer-events:auto;cursor:pointer" title="ambient sound"><span id="snd">🔇</span></div>
   <div class="pill crewtog" id="crewToggle" style="pointer-events:auto;cursor:pointer" title="show / hide the crew list"><span class="ico">👥</span></div>
