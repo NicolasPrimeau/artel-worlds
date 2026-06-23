@@ -101,6 +101,84 @@ def test_room_adjacency_graph_is_connected():
         assert seen == set(names), (seed, set(names) - seen)
 
 
+def test_frontend_routePath_keeps_glides_on_the_walkable_network():
+    # GUARD against the wall-gliding regression: the renderer's path router (routePath) must keep every
+    # glide on the WALKABLE network (corridors + room interiors). Extract the ACTUAL routePath +
+    # nearestWalkable out of the frontend and fly every room-to-room route over real generated stations;
+    # a straight line across a wall is a hard failure.
+    import json
+    import os
+    import shutil
+    import subprocess
+    import tempfile
+    from pathlib import Path
+
+    node = shutil.which("node")
+    if not node:
+        import pytest
+
+        pytest.skip("node not installed")
+
+    html = (Path(E.__file__).parent / "static" / "index.html").read_text()
+
+    def grab(
+        fn,
+    ):  # pull a whole JS function out by brace-matching (the funcs hold no string-literal braces)
+        i = html.index("function " + fn)
+        depth = 0
+        for k in range(html.index("{", i), len(html)):
+            if html[k] == "{":
+                depth += 1
+            elif html[k] == "}":
+                depth -= 1
+                if depth == 0:
+                    return html[i : k + 1]
+        raise ValueError(fn)
+
+    src = grab("nearestWalkable") + "\n" + grab("routePath")
+
+    SCALE = 26
+    stations = []
+    for seed in range(12):
+        names, adj, vents, rects, doors, centers, corr = _generate_station(random.Random(seed))
+        walkable = {f"{x}|{y}" for (x, y) in corr}
+        tileroom = {}
+        for n, (x, y, w, h) in rects.items():
+            for tx in range(x, x + w):
+                for ty in range(y, y + h):
+                    key = f"{tx}|{ty}"
+                    walkable.add(key)
+                    tileroom[key] = n
+        rooms = {n: {"cx": centers[n][0] * SCALE, "cy": centers[n][1] * SCALE} for n in names}
+        stations.append({"walkable": sorted(walkable), "tileroom": tileroom, "rooms": rooms})
+
+    harness = (
+        f"const SCALE={SCALE};\nlet WALKABLE,TILEROOM;\n{src}\n"
+        "function tileWalk(x,y){return WALKABLE.has(Math.floor(x/SCALE)+'|'+Math.floor(y/SCALE));}\n"
+        "function segOK(p,q){const n=Math.max(1,Math.ceil(Math.hypot(q.x-p.x,q.y-p.y)/(SCALE*0.34)));"
+        "for(let i=0;i<=n;i++){const x=p.x+(q.x-p.x)*i/n,y=p.y+(q.y-p.y)*i/n;if(!tileWalk(x,y))return false;}return true;}\n"
+        f"const STATIONS={json.dumps(stations)};\n"
+        "let glides=0,routed=0;\n"
+        "STATIONS.forEach((st)=>{WALKABLE=new Set(st.walkable);TILEROOM=st.tileroom;const ROOMS=st.rooms;"
+        "const names=Object.keys(ROOMS);for(const a of names)for(const b of names){if(a===b)continue;"
+        "const ra=ROOMS[a],rb=ROOMS[b];const path=routePath(ra.cx,ra.cy,rb.cx,rb.cy);"
+        "const pts=[{x:ra.cx,y:ra.cy},...path];routed++;"
+        "for(let i=0;i<pts.length-1;i++){if(!segOK(pts[i],pts[i+1])){glides++;break;}}}});\n"
+        "console.log(JSON.stringify({glides,routed}));"
+    )
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+        f.write(harness)
+        tmp = f.name
+    try:
+        out = subprocess.run([node, tmp], capture_output=True, text=True, timeout=60)
+    finally:
+        os.unlink(tmp)
+    assert out.returncode == 0, out.stderr[-800:]
+    res = json.loads(out.stdout)
+    assert res["routed"] > 100, res  # actually exercised a lot of routes
+    assert res["glides"] == 0, res  # any waypoint off the walkable network = a glide through a wall
+
+
 def test_cold_alone_with_its_kill_does_not_report_only_crew_does():
     g = new_game(5, 8, 2)
     cold = next(a for a in g.living() if a.impostor)
