@@ -1078,7 +1078,7 @@ class Game:
             a.dest = None
             a.goto = None
             a.follow = None
-        self.cd = KILL_CD
+        self.cd = 0  # a meeting RESETS the kill cooldown — the Cold can strike the moment the crew scatter
         self._check_win()
 
 
