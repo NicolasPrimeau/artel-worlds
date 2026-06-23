@@ -1397,7 +1397,7 @@ function drawMeeting(t){
     ctx.fillStyle="rgba(6,10,20,.66)"; ctx.fillRect(0,cyR-40*DPR,aw,80*DPR);
     ctx.textAlign="center";
     ctx.fillStyle=th?"rgba(255,86,86,.96)":"rgba(120,200,255,.96)"; ctx.font=`900 ${Math.min(30,aw/14/DPR)*DPR}px Inter`;
-    ctx.fillText(th?`${mm.ejected} WAS THE COLD`:`${mm.ejected} WAS HUMAN`, cx, cyR-4*DPR);
+    ctx.fillText(th?`${mm.ejected} WAS THE COLD`:`${mm.ejected} WAS NOT THE COLD`, cx, cyR-4*DPR);
     ctx.fillStyle="rgba(231,238,252,.82)"; ctx.font=`600 ${12.5*DPR}px Inter`;
     ctx.fillText(th?'ejected into the storm':'an innocent, lost to the cold', cx, cyR+22*DPR); }
   ctx.restore();
