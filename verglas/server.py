@@ -695,6 +695,9 @@ async def _game_loop():
                 )  # the night advances by this iteration's real time (meetings too)
                 if G.phase == "gameover":
                     await _archive_game()  # one LLM call → a per-game summary memory on Artel
+                    await (
+                        artel.clear_project()
+                    )  # wipe the board (tasks + messages) now, at game end — memory kept
                     await asyncio.sleep(GAMEOVER_LINGER)
                     async with G.lock:
                         G._new_game()

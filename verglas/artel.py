@@ -120,8 +120,8 @@ async def write_memory(content: str, tags: list[str] | None = None) -> None:
 
 
 async def clear_project() -> None:
-    # wipe the project's tasks + messages so each game starts on a clean Artel board (owner-only — the
-    # first seat created the project on join, so it owns it).
+    # wipe the project's tasks + messages so the board is clean between games — but KEEP memory (the
+    # per-game archive accumulates). Owner-only — the first seat created the project on join, so it owns it.
     if not enabled():
         return
     agent = AGENTS[0]
@@ -130,7 +130,7 @@ async def clear_project() -> None:
         await _client().post(
             f"{ARTEL_URL}/projects/{PROJECT}/clear",
             headers=_headers(agent),
-            json={"tasks": True, "messages": True},
+            json={"memory": False, "tasks": True, "messages": True},
         )
     except Exception as e:
         log.warning("artel clear failed: %s", e)
