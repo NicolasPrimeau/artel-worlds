@@ -56,7 +56,7 @@ SIZE_ORDER = [
 GW, GH = 48, 34  # base floorplan grid for a full 12-room station; scaled down for smaller crews
 _ROOM_MIN = 7  # min room dimension in tiles (keeps rooms reasonable on the fine grid)
 _MIN_DOOR = 6  # min shared-wall length (tiles) for an EXTRA (loop) doorway
-ROOMS_PER_AGENT = 1.0  # the outpost scales with the crew; ~9 rooms for the default 9 — sparse enough for the Cold to hunt
+ROOMS_PER_AGENT = 1.3  # MORE rooms than crew on purpose; ~10 for the default 8 — sparse enough to isolate a victim and to let rooms go dark
 MIN_ROOMS = 6  # never fewer than this, or there's nowhere to isolate a kill or hide
 
 
@@ -273,7 +273,7 @@ FOLLOW_TICKS = 6  # how long an autonomous agent tails a buddy before it stops t
 # zero and the station blacks out — the crew lose even if alive. This FORCES them to spread out and keep
 # the whole station lit instead of huddling in a safe corner. Relighting (clearing the board) is the cure.
 INTEGRITY_MAX = 100.0
-INTEGRITY_FREE_DARK = 5  # the station tolerates up to this many dark rooms; only the EXCESS bleeds it (scaled per game)
+INTEGRITY_FREE_DARK = 4  # the station tolerates up to this many dark rooms; only the EXCESS bleeds it (scaled per game)
 DARK_DRAIN = 1.5  # temperature lost per tick per dark room BEYOND the allowance, at mid-range (eased near the extremes) — a real, fast bleed
 INTEGRITY_RECOVER = 2.2  # regained per tick while at/under the allowance, at mid-range (eased near full) — relight and the station warms back fast
 # crew survive to dawn ~97%, a huddling crew blacks out ~97% — relight enough and you live, slack and you don't
