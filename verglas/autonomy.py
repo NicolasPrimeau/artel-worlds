@@ -38,7 +38,9 @@ SYS_COLD = (
     "room you're in (claim you're far off, or somewhere safe) to look harmless or to lure a lone crewmate to "
     "you; win trust to peel someone off alone, sow distrust between two others, set up your alibi. The crew "
     "will scatter to relight and some will go quiet to hide — FOLLOW the ones who wander off and corner "
-    "whoever ends up alone. Never loiter hoping for a chance — go make one. Pick exactly ONE action by calling a tool."
+    "whoever ends up alone. If TWO OR MORE crew share your room you cannot strike — PEEL OFF at once and "
+    "prowl for someone on their own. Never loiter in a crowd hoping for a chance — go make one. Pick exactly "
+    "ONE action by calling a tool."
 )
 
 

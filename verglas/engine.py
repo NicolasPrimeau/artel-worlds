@@ -858,10 +858,53 @@ class Game:
         a.goto = None
         return True
 
+    def _cold_default(self, a) -> dict:
+        # the Cold's fallback HUNTS — it must never relight like a crewmate. Take a clean kill; else snuff
+        # the lights on a one-on-one; else stalk the loneliest crewmate, peeling off any room with 2+ crew
+        # it can't strike in. Mirrors the offline heuristic Cold so a passive LLM still prowls for a victim.
+        kills = self.legal_kills(a)
+        if kills:
+            return {"name": "eliminate", "args": {"who": self.by_id(kills[0]).name}}
+        occ = self._occ(a.room)
+        crew_here = [c for c in occ if not c.impostor]
+        if len(occ) == 2 and crew_here and a.room not in self.dark and self.sab_cd == 0:
+            return {
+                "name": "darken",
+                "args": {"room": a.room},
+            }  # one-on-one in the light → snuff it to hunt
+        crew = self.living(impostor=False)
+        if not crew:
+            return {"name": "wait", "args": {}}
+        lone = [c for c in crew if sum(1 for o in self._occ(c.room) if not o.impostor) == 1]
+        tgt = min(
+            lone or crew,
+            key=lambda c: (c.room not in self.dark, self._room_dist(a.room, c.room)),
+        )
+        nbrs = self.adj.get(a.room) or set()
+        if not nbrs:
+            return {"name": "wait", "args": {}}
+        if tgt.room != a.room:  # close on the loneliest crewmate
+            return {
+                "name": "move_to",
+                "args": {"room": min(nbrs, key=lambda r: self._room_dist(r, tgt.room))},
+            }
+        # the target's right here but there are witnesses (else the kill fired) — peel off to a thinner room
+        cn = {r: sum(1 for c in crew if c.room == r) for r in nbrs}
+        return {
+            "name": "move_to",
+            "args": {
+                "room": min(
+                    nbrs, key=lambda r: (0 if cn[r] == 1 else 1, cn[r], self._room_dist(a.room, r))
+                )
+            },
+        }
+
     def default_action(self, a) -> dict:
-        # the safe fallback when the LLM is unavailable or returns no/invalid tool call: claim the nearest
-        # open task, else SPREAD OUT — drift to the least-crowded neighbouring room rather than mobbing a
-        # buddy. Keeps the crew sweeping the station (and giving the Cold real targets) instead of blobbing.
+        # the safe fallback when the LLM is unavailable or returns no/invalid tool call.
+        if a.impostor:
+            return self._cold_default(a)  # the Cold hunts; it never relights like a crewmate
+        # crew: claim the nearest open task, else SPREAD OUT — drift to the least-crowded neighbouring room
+        # rather than mobbing a buddy. Keeps the crew sweeping the station instead of blobbing.
         if self.open_tasks:
             room = min(self.open_tasks, key=lambda r: self._room_dist(a.room, r))
             return {"name": "go_to_task", "args": {"room": room}}
