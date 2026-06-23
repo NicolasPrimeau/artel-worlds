@@ -619,7 +619,13 @@ class Game:
 
     def _report_body(self) -> Meeting | None:
         for room, victim in list(self.bodies.items()):
+            # spotted from inside the room — or through the doorway from right next door, so a crewmate
+            # passing by notices instead of walking straight past it
             finders = [a for a in self.living(impostor=False) if a.room == room]
+            if not finders:
+                finders = [
+                    a for a in self.living(impostor=False) if room in self.adj.get(a.room, ())
+                ]
             if finders:
                 del self.bodies[room]
                 self.noise.discard(room)

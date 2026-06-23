@@ -109,9 +109,10 @@ def test_cold_alone_with_its_kill_does_not_report_only_crew_does():
     cold.room = victim.room = room
     victim.alive = False
     g.bodies[room] = victim.id
+    far = next(r for r in g.rooms if r != room and r not in g.adj.get(room, set()))
     for a in g.living(impostor=False):
         a.room = (
-            "Reactor"  # every living crewmate is elsewhere — only the Cold stands over the body
+            far  # every living crewmate is well clear — not in the body room, not even next door
         )
 
     assert g._report_body() is None  # the Cold alone over the body it made never triggers a meeting
