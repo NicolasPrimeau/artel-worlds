@@ -584,15 +584,19 @@ function routePath(sx,sy,gx,gy){  // pixel start → pixel goal → walkable til
   const g=nearestWalkable(Math.floor(gx/SCALE),Math.floor(gy/SCALE));
   const sk=s[0]+'|'+s[1], gk=g[0]+'|'+g[1];
   if(sk===gk) return [{x:gx,y:gy}];
-  // route ONLY through corridors + the start and goal rooms — never cut through a THIRD room (where an icon
-  // would stroll across the middle, right past a body the engine never placed it near)
   const sr=TILEROOM[sk], gr=TILEROOM[gk];
-  const ok=(k)=>{ if(!WALKABLE.has(k)) return false; const rm=TILEROOM[k]; return rm===undefined||rm===sr||rm===gr; };
-  const prev={[sk]:null}, q=[sk]; let found=false;
-  for(let h=0;h<q.length && !found;h++){ const [cx,cy]=q[h].split('|').map(Number);
-    for(const [ox,oy] of [[1,0],[-1,0],[0,1],[0,-1]]){ const nk=(cx+ox)+'|'+(cy+oy);
-      if(ok(nk) && !(nk in prev)){ prev[nk]=q[h]; if(nk===gk){found=true;break;} q.push(nk); } } }
-  if(!(gk in prev)) return [{x:gx,y:gy}];  // corridor route not found → fall back to a direct glide
+  // first try: corridors + the start and goal rooms only — never cut across a THIRD room (strolling past a
+  // body). If THAT can't reach (a multi-room jump like the meeting gather, or a lagging icon), retry over the
+  // FULL walkable network — through rooms if it must, but NEVER a straight line across walls.
+  const search=(restrict)=>{ const prev={[sk]:null}, q=[sk];
+    for(let h=0;h<q.length;h++){ const [cx,cy]=q[h].split('|').map(Number);
+      for(const [ox,oy] of [[1,0],[-1,0],[0,1],[0,-1]]){ const nk=(cx+ox)+'|'+(cy+oy);
+        if((nk in prev)||!WALKABLE.has(nk)) continue;
+        if(restrict){ const rm=TILEROOM[nk]; if(rm!==undefined && rm!==sr && rm!==gr) continue; }
+        prev[nk]=q[h]; if(nk===gk) return prev; q.push(nk); } }
+    return (gk in prev)?prev:null; };
+  const prev=search(true)||search(false);
+  if(!prev) return [{x:gx,y:gy}];  // truly unreachable (shouldn't happen) → direct
   const pts=[]; for(let c=gk; c!==null; c=prev[c]) pts.push(c.split('|').map(Number)); pts.reverse();
   const simp=[pts[0]];  // keep only corners (drop collinear runs) so the walk glides
   for(let i=1;i<pts.length-1;i++){ const a=simp[simp.length-1],b=pts[i],c=pts[i+1];
