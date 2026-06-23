@@ -1478,8 +1478,8 @@ function drawIntro(t){
   // three lines, each fading in slowly IN TURN at reading pace — the next appears as you finish the last
   const lines=[
     [1000, "228,236,250", "The winter crew is alone on the ice."],
-    [4400, "255,120,120", "Something among them isn't human anymore."],
-    [7800, "255,196,120", "Stay in the light. Last until dawn."],
+    [4400, "228,236,250", "Something among them isn't human anymore."],
+    [7800, "228,236,250", "Stay in the light. Last until dawn."],
   ];
   ctx.font=`600 ${fs}px Inter`; ctx.globalAlpha=1;
   lines.forEach((ln,i)=>{ const a=fin(ln[0],1800)*(1-out);   // ~1.8s gentle fade-in per line
