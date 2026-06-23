@@ -56,7 +56,7 @@ SIZE_ORDER = [
 GW, GH = 48, 34  # base floorplan grid for a full 12-room station; scaled down for smaller crews
 _ROOM_MIN = 7  # min room dimension in tiles (keeps rooms reasonable on the fine grid)
 _MIN_DOOR = 6  # min shared-wall length (tiles) for an EXTRA (loop) doorway
-ROOMS_PER_AGENT = 1.3  # MORE rooms than crew on purpose; ~10 for the default 8 — sparse enough to isolate a victim and to let rooms go dark
+ROOMS_PER_AGENT = 1.0  # about one room per crewmate — 7 rooms for 7 players, 8 for 8; tighter than before so the station isn't too sparse to watch
 MIN_ROOMS = 6  # never fewer than this, or there's nowhere to isolate a kill or hide
 
 
