@@ -126,6 +126,7 @@ class Verglas:
         self.inbox.clear()
         self.interrupted.clear()
         self.feed.clear()
+        self.feed_seq = 0  # reset the stream id so the client RESYNCS and wipes the old game's log
         while not self.task_q.empty():
             try:
                 self.task_q.get_nowait()

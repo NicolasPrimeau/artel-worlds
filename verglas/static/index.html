@@ -253,7 +253,7 @@ const ROOM_TINT={ "Mess Hall":[70,92,128],"Lab":[58,100,108],"Comms":[86,78,116]
 const COLORS=["#ff6a6a","#54a8ff","#46e0a0","#ffcf5a","#c98bff","#ff9f4a","#7ce0ff","#ff7ab8","#9be86a","#e0e0e0"];
 const SCALE=26;  // tile → world px; camera auto-fits
 function tint(n){ return ROOM_TINT[n]||[80,90,110]; }
-let ROOMS={}, CORRSET=new Set(), CORRTILES=[], DOORS={}, VENTS=[], OUTPOST=31, stationSig="", TB={x0:0,y0:0,x1:1248,y1:884}, OPEN={}, WALKABLE=new Set(), TERMINALS={};
+let ROOMS={}, CORRSET=new Set(), CORRTILES=[], DOORS={}, VENTS=[], OUTPOST=31, stationSig="", TB={x0:0,y0:0,x1:1248,y1:884}, OPEN={}, WALKABLE=new Set(), TILEROOM={}, TERMINALS={};
 // agents whose body has already been through a meeting — once recovered, never drawn on the floor again
 const removedBodies=new Set();
 function inRoomTile(tx,ty){ for(const r of Object.values(ROOMS)){ if(tx>=r.tx&&tx<r.tx+r.tw&&ty>=r.ty&&ty<r.ty+r.th)return r; } return null; }
@@ -269,8 +269,8 @@ function buildStation(st){
   CORRTILES=st.corridor||[]; CORRSET=new Set(CORRTILES.map(t=>t[0]+'|'+t[1]));
   // the WALKABLE tile set — room interiors + corridor tiles — that the path router travels (rooms and
   // corridors touch only at doorways, so any route through it stays inside the building, never a wall).
-  WALKABLE=new Set(CORRSET);
-  for(const r of Object.values(ROOMS)){ for(let ty=r.ty; ty<r.ty+r.th; ty++) for(let tx=r.tx; tx<r.tx+r.tw; tx++) WALKABLE.add(tx+'|'+ty); }
+  WALKABLE=new Set(CORRSET); TILEROOM={};  // TILEROOM: tile -> room name (corridors are absent) — lets routing avoid cutting through a third room
+  for(const [n,r] of Object.entries(ROOMS)){ for(let ty=r.ty; ty<r.ty+r.th; ty++) for(let tx=r.tx; tx<r.tx+r.tw; tx++){ const k=tx+'|'+ty; WALKABLE.add(k); TILEROOM[k]=n; } }
   // task terminals: wall-hugging interior cells that are NOT doorways, placed NEAR a doorway so a crew
   // entering the room only steps a tile or two to reach one (and works by standing ON its cell). One
   // per the room's size-based capacity, spaced apart.
@@ -584,11 +584,15 @@ function routePath(sx,sy,gx,gy){  // pixel start → pixel goal → walkable til
   const g=nearestWalkable(Math.floor(gx/SCALE),Math.floor(gy/SCALE));
   const sk=s[0]+'|'+s[1], gk=g[0]+'|'+g[1];
   if(sk===gk) return [{x:gx,y:gy}];
+  // route ONLY through corridors + the start and goal rooms — never cut through a THIRD room (where an icon
+  // would stroll across the middle, right past a body the engine never placed it near)
+  const sr=TILEROOM[sk], gr=TILEROOM[gk];
+  const ok=(k)=>{ if(!WALKABLE.has(k)) return false; const rm=TILEROOM[k]; return rm===undefined||rm===sr||rm===gr; };
   const prev={[sk]:null}, q=[sk]; let found=false;
   for(let h=0;h<q.length && !found;h++){ const [cx,cy]=q[h].split('|').map(Number);
     for(const [ox,oy] of [[1,0],[-1,0],[0,1],[0,-1]]){ const nk=(cx+ox)+'|'+(cy+oy);
-      if(WALKABLE.has(nk) && !(nk in prev)){ prev[nk]=q[h]; if(nk===gk){found=true;break;} q.push(nk); } } }
-  if(!(gk in prev)) return [{x:gx,y:gy}];  // unreachable (shouldn't happen) → fall back to direct
+      if(ok(nk) && !(nk in prev)){ prev[nk]=q[h]; if(nk===gk){found=true;break;} q.push(nk); } } }
+  if(!(gk in prev)) return [{x:gx,y:gy}];  // corridor route not found → fall back to a direct glide
   const pts=[]; for(let c=gk; c!==null; c=prev[c]) pts.push(c.split('|').map(Number)); pts.reverse();
   const simp=[pts[0]];  // keep only corners (drop collinear runs) so the walk glides
   for(let i=1;i<pts.length-1;i++){ const a=simp[simp.length-1],b=pts[i],c=pts[i+1];
