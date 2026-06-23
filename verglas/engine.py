@@ -382,6 +382,9 @@ class Agent:
         -1.0
     )  # cell position WITHIN the room (engine-authoritative; the renderer draws from it)
     gy: float = -1.0  # so a kill can require the Cold to actually be close, not across the room
+    prev_room: str | None = (
+        None  # the room this agent occupied LAST tick — still counts as a visual witness this tick
+    )
     # what this agent privately observed — the raw material for its testimony in a meeting
     trail: list = field(default_factory=list)  # (tick, room) — its own movements this round
     seen: list = field(default_factory=list)  # list[Sighting]
@@ -472,12 +475,15 @@ class Game:
         return abs(a.gx - b.gx) + abs(a.gy - b.gy) <= KILL_REACH
 
     def _unwitnessed(self, m, victim) -> bool:
-        # the Cold can only strike with no other CREW in the room to witness it — lit or dark, AND counting
-        # a crewmate stepping into the room this tick (it's "moving through" and its icon is right there). A
-        # second Cold (an ally) doesn't count, but any crewmate does.
+        # the Cold can only strike with no other CREW in the room to witness it — lit or dark. Count a
+        # crewmate as a witness if it IS in the room, is MOVING INTO the room this tick, or was in the
+        # room LAST tick (still visually leaving — the corridor walk hasn't cleared yet). A second Cold
+        # (an ally) never counts, but any crewmate does.
         room = victim.room
         return not any(
-            c.id != victim.id and not c.impostor and (c.room == room or self._next_room(c) == room)
+            c.id != victim.id
+            and not c.impostor
+            and (c.room == room or self._next_room(c) == room or c.prev_room == room)
             for c in self.living()
         )
 
@@ -737,6 +743,11 @@ class Game:
                 ids = [o.id for o in occ]
                 for a in occ:
                     a.seen.append(Sighting(self.tick, room, tuple(x for x in ids if x != a.id)))
+
+        for a in self.living():
+            a.prev_room = (
+                a.room
+            )  # stamp after movement so next tick knows where each agent came from
 
         # the Cold kills: take any crewmate no one else can witness (alone in the light, or unseen in the dark)
         if self.cd == 0:
@@ -1013,6 +1024,10 @@ class Game:
                 ids = [o.id for o in occ]
                 for a in occ:
                     a.seen.append(Sighting(self.tick, room, tuple(x for x in ids if x != a.id)))
+        for a in self.living():
+            a.prev_room = (
+                a.room
+            )  # stamp after movement so next tick's _unwitnessed knows where each agent came from
         if self._check_win():
             return None
         return self._report_body()

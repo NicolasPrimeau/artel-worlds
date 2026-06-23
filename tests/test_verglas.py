@@ -478,6 +478,29 @@ def test_fame_leaderboard_tally_and_endpoint():
     assert r.status_code == 200 and "rows" in r.json()
 
 
+def test_no_kill_while_a_witness_is_still_visually_leaving_the_room():
+    g = new_game(5, 8, 1)
+    cold = next(a for a in g.living() if a.impostor)
+    crew = [a for a in g.living() if not a.impostor]
+    victim, leaver = crew[0], crew[1]
+    room = next(r for r in g.rooms if g.adj.get(r))
+    adj = next(iter(g.adj[room]))
+    for a in g.living():
+        a.room = "__elsewhere__"
+    cold.room = victim.room = room
+    cold.gx, cold.gy = victim.gx, victim.gy = 5.0, 5.0
+    g.dark.add(room)
+    g.cd, g.tick = 0, 999
+
+    leaver.room = adj
+    leaver.prev_room = room  # leaver moved away THIS tick — still visually in the room
+
+    assert g.do_kill(cold, victim.id) is False  # prev_room == kill room → still counts as witness
+
+    leaver.prev_room = adj  # next tick: leaver has been gone for a full tick, animation cleared
+    assert g.do_kill(cold, victim.id) is True
+
+
 def test_no_kill_in_post_meeting_grace():
     g = new_game(5, 8, 1)
     cold = next(a for a in g.living() if a.impostor)
