@@ -230,7 +230,8 @@ TASK_SPAWN_P = (
 )
 WORK_TICKS = 3  # a task occupies its crew for several ticks — they linger at the console
 TASK_SLACK = 4  # keep this many fewer tasks-in-play than living players, so a couple are always free to buddy
-KILL_CD = 3  # ~15s between kills (each task tick runs ~5s, so 3 ticks ≈ 15s)
+KILL_CD = 2  # ~10s between kills — kept short so the Cold stays aggressive and meetings come often
+STALE_BODY_TICKS = 5  # a body nobody walks in on still surfaces after this many ticks — the crew notice someone's gone, and a meeting opens (meetings are the action)
 KILL_REACH = 3.0  # the Cold must be within this many cells of the victim — no killing across a room
 # --- the storm & the dark ---------------------------------------------------------------------------
 # Light is safety: the Cold can ONLY kill in a DARK room. The storm is the clock — survive it and the
@@ -244,9 +245,7 @@ STORM_EVERY = (
 DARK_CAP = (
     8  # the storm won't push past this many dark rooms (the Cold's sabotage can still add more)
 )
-SABOTAGE_CD = (
-    4  # ticks between the Cold's light-sabotages (~16s) — its main tool for making kill spots
-)
+SABOTAGE_CD = 3  # ticks between the Cold's light-sabotages — its main tool for splitting a group and making kill spots
 START_DARK = (
     6  # rooms already dark when the game opens, so the outpost reads as embattled from minute one
 )
@@ -413,6 +412,9 @@ class Game:
     corridor: list = field(default_factory=list)  # corridor tiles [(x,y), ...] linking the rooms
     outpost: int = 31  # the station's number (randomized per game)
     bodies: dict = field(default_factory=dict)  # room -> victim id, undiscovered
+    body_at: dict = field(
+        default_factory=dict
+    )  # room -> tick a body was left there (for the stale-body report)
     tick: int = 0
     cd: int = 0  # shared impostor kill cooldown
     sab_cd: int = 0  # the Cold's light-sabotage cooldown
@@ -613,9 +615,21 @@ class Game:
             finders = [a for a in self.living(impostor=False) if a.room == room]
             if finders:
                 del self.bodies[room]
+                self.body_at.pop(room, None)
                 for f in finders:
                     f.found.append((self.tick, room, victim))
                 return Meeting(self.tick, finders[0].id, room, victim)
+        # nobody walked in on it — but the crew can only go so long before they notice someone's gone:
+        # an old body surfaces on its own and opens a meeting, so a clustered crew can't starve out the action
+        for room, victim in list(self.bodies.items()):
+            if self.tick - self.body_at.get(room, self.tick) >= STALE_BODY_TICKS:
+                crew = self.living(impostor=False)
+                if crew:
+                    finder = min(crew, key=lambda a: self._room_dist(a.room, room))
+                    del self.bodies[room]
+                    self.body_at.pop(room, None)
+                    finder.found.append((self.tick, room, victim))
+                    return Meeting(self.tick, finder.id, room, victim)
         return None
 
     # --- task phase: one tick of move / task / kill. Returns a Meeting trigger or None. ---
@@ -723,6 +737,7 @@ class Game:
                     victim.alive = False
                     self._release_task(victim)
                     self.bodies[m.room] = victim.id
+                    self.body_at[m.room] = self.tick
                     self.last_kill = {"tick": self.tick, "victim": victim.id, "room": m.room}
                     self.cd = KILL_CD
                     self._flee_body(m)
@@ -805,6 +820,7 @@ class Game:
         victim.alive = False
         self._release_task(victim)
         self.bodies[m.room] = victim.id
+        self.body_at[m.room] = self.tick
         self.last_kill = {"tick": self.tick, "victim": victim.id, "room": m.room}
         self.cd = KILL_CD
         self._flee_body(m)
