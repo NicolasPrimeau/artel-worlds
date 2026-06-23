@@ -622,6 +622,35 @@ async def _autonomous_tick():
     return mt
 
 
+async def _archive_game() -> None:
+    # at game-over, one LLM call distils the night into a sentence or two, written to Artel memory as the
+    # permanent record — raw material for the archivist to do with as it pleases. Best-effort; never blocks.
+    if not artel.enabled() or not llm.enabled():
+        return
+    g = G.g
+    cold = " & ".join(a.name for a in g.agents if a.impostor) or "unknown"
+    killed = [a.name for a in g.agents if not a.alive and not a.impostor]
+    survivors = [a.name for a in g.living(impostor=False)]
+    ejected = [g.by_id(mt.ejected).name for mt in g.meetings if mt.ejected is not None]
+    facts = (
+        f"Outcome: {g.winner} won by {g.win_by}. The Cold was {cold}. "
+        f"Killed: {', '.join(killed) or 'no one'}. Voted out: {', '.join(ejected) or 'no one'}. "
+        f"Survivors at the end: {', '.join(survivors) or 'none'}. "
+        f"{len(g.meetings)} emergency meeting(s) were called."
+    )
+    sys = (
+        "You are the archivist of a frozen Antarctic outpost where AI crew hunt a hidden killer, the Cold. "
+        "In ONE or two vivid past-tense sentences, record this night for the permanent log — name the Cold, "
+        "how it ended, and the turning point. Dramatic but factual. No preamble."
+    )
+    try:
+        out, _ = await llm.complete_m(sys, facts, temperature=0.7, timeout=10.0)
+    except Exception as e:
+        log.warning("game archive LLM call failed: %s", e)
+        out = None
+    await artel.write_memory((out or facts).strip(), tags=["game", g.win_by or "unknown"])
+
+
 async def _game_loop():
     loop = asyncio.get_running_loop()
     while True:
@@ -665,6 +694,7 @@ async def _game_loop():
                     loop.time() - start
                 )  # the night advances by this iteration's real time (meetings too)
                 if G.phase == "gameover":
+                    await _archive_game()  # one LLM call → a per-game summary memory on Artel
                     await asyncio.sleep(GAMEOVER_LINGER)
                     async with G.lock:
                         G._new_game()

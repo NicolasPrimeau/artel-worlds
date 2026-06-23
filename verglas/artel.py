@@ -97,6 +97,28 @@ async def dm(from_index: int, to_index: int, text: str, subject: str = "verglas-
         log.warning("artel dm failed for %s: %s", sender["id"], e)
 
 
+async def write_memory(content: str, tags: list[str] | None = None) -> None:
+    # record one fact to the project's shared Artel memory — here, a per-game summary for the archive.
+    # The archivist may later synthesize/promote it; Verglas just lays down the raw material.
+    if not enabled() or not content:
+        return
+    agent = AGENTS[0]
+    await _ensure_joined(agent)
+    try:
+        await _client().post(
+            f"{ARTEL_URL}/memory",
+            headers=_headers(agent),
+            json={
+                "project": PROJECT,
+                "scope": "project",
+                "content": content[:500],
+                "tags": tags or [],
+            },
+        )
+    except Exception as e:
+        log.warning("artel write_memory failed: %s", e)
+
+
 async def clear_project() -> None:
     # wipe the project's tasks + messages so each game starts on a clean Artel board (owner-only — the
     # first seat created the project on join, so it owns it).
