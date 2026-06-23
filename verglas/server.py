@@ -419,7 +419,9 @@ async def _run_meeting(mt) -> None:
             await artel.say(agent_id, name, f"votes {target}.", subject="verglas-vote")
             G.push_feed("msg", frm=name, to=None, text=f"votes {target}", model=model)
             await _broadcast()
-            await asyncio.sleep(_jit(VOTE_DELAY))
+            await asyncio.sleep(
+                0.12
+            )  # tiny floor only — ballots stream in as decided, not on a fixed delay
 
     if llm.enabled():
         votes = await run_llm_meeting(G.g, mt, on_item, gate=_wait_watched)

@@ -385,26 +385,32 @@ def _vote_jobs(game, mt, transcript, dms, living):
     return jobs
 
 
-async def _vote_round(game, mt, transcript, dms=None, on_item=None, pairs=None) -> dict:
+async def _vote_round(game, mt, transcript, dms=None, on_item=None) -> dict:
+    # fire EVERY ballot at once and reveal each the instant that agent's call returns — the votes stream in
+    # as they're decided, instead of landing one-by-one on a fixed delay long after the last line was spoken
     living = game.living()
-    if pairs is None:  # not pre-computed → run the vote batch now
-        pairs = await llm.complete_many_m(
-            _vote_jobs(game, mt, transcript, dms or {}, living), temperature=0.3
-        )
+    jobs = _vote_jobs(game, mt, transcript, dms or {}, living)
     by_name = {a.name.lower(): a.id for a in living}
-    votes: dict = {}
-    for i, a in enumerate(
-        living
-    ):  # EVERY living agent votes (or abstains) — never drop one to a short
-        text, model = (
-            pairs[i] if i < len(pairs) else ("", None)
-        )  # batch, or it'd be ejected-before-it-voted
+
+    async def _ballot(a, sys, user):
+        text, model = await llm.complete_m(sys, user, temperature=0.3, timeout=10.0)
         parsed = llm.parse_json(_strip_think(text)) or {}
-        choice = str(parsed.get("vote", "skip")).strip().lower()
-        votes[a.id] = by_name.get(choice, -1)
-        mt.votes = dict(votes)  # partial ballot, so the snapshot can reveal votes one by one
+        return a, by_name.get(str(parsed.get("vote", "skip")).strip().lower(), -1), model
+
+    tasks = [asyncio.create_task(_ballot(a, *jobs[i])) for i, a in enumerate(living)]
+    if on_item:
+        await on_item(
+            "settle", -1, None
+        )  # discussion's over — a beat, the ballots already running under it
+    votes: dict = {}
+    for fut in asyncio.as_completed(tasks):
+        a, target, model = await fut
+        votes[a.id] = target
+        mt.votes = dict(
+            votes
+        )  # partial ballot — the snapshot reveals each vote the moment it streams in
         if on_item:
-            await on_item("vote", a.id, votes[a.id], model)
+            await on_item("vote", a.id, target, model)
     return votes
 
 
@@ -466,16 +472,7 @@ async def run_llm_meeting(game: Game, mt: Meeting, on_item=None, gate=None) -> d
             break
     if gate is not None:
         await gate()  # hold the vote until someone's watching it land
-    # the transcript is COMPLETE here (every statement + whisper recorded) — kick the vote batch off now so
-    # the models weigh the WHOLE discussion while the table "settles", hiding the round-trip under the pause
-    pairs_task = asyncio.create_task(
-        llm.complete_many_m(_vote_jobs(game, mt, transcript, dms, game.living()), temperature=0.3)
-    )
-    if on_item:
-        await on_item("settle", -1, None)  # discussion's over — a beat, then the vote opens
-    votes = await _vote_round(
-        game, mt, transcript, dms=dms, on_item=on_item, pairs=await pairs_task
-    )
+    votes = await _vote_round(game, mt, transcript, dms=dms, on_item=on_item)
     mt.votes = votes
     return votes
 
