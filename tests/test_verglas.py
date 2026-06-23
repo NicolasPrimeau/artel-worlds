@@ -202,6 +202,27 @@ def test_cold_alone_with_its_kill_does_not_report_only_crew_does():
     assert mt is not None and mt.reporter == crew.id  # a crewmate walking in opens it
 
 
+def test_a_fresh_body_is_not_reported_until_the_cold_can_slip_away():
+    # no emergency meeting the INSTANT the Cold kills — a fresh body goes unnoticed for BODY_GRACE ticks,
+    # so the killer isn't found standing right there (which read like the Cold reporting its own kill).
+    g = new_game(5, 8, 1)
+    cold = next(a for a in g.living() if a.impostor)
+    crew = [a for a in g.living() if not a.impostor]
+    victim = crew[0]
+    room = next(r for r in g.rooms if g.adj.get(r))
+    for a in g.living():
+        a.room = "__elsewhere__"
+    cold.room = victim.room = room
+    cold.gx, cold.gy = victim.gx, victim.gy = 5.0, 5.0
+    g.dark.add(room)
+    g.cd, g.tick = 0, 999
+    assert g.do_kill(cold, victim.id) is True  # do_kill flags noise → stamps body_at with this tick
+    crew[1].room = room  # a crewmate is standing right where the body fell
+    assert g._report_body() is None  # the instant after the kill: too fresh, nobody opens a meeting
+    g.tick += E.BODY_GRACE
+    assert g._report_body() is not None  # once the grace passes, it's found and the meeting opens
+
+
 def test_cold_leaves_the_room_immediately_after_a_kill():
     g = new_game(5, 8, 2)
     cold = next(a for a in g.living() if a.impostor)

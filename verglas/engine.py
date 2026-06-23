@@ -231,6 +231,7 @@ TASK_SPAWN_P = (
 WORK_TICKS = 3  # a task occupies its crew for several ticks — they linger at the console
 TASK_SLACK = 4  # keep this many fewer tasks-in-play than living players, so a couple are always free to buddy
 KILL_CD = 2  # ~10s between kills — kept short so the Cold stays aggressive and meetings come often
+BODY_GRACE = 2  # ticks a fresh body goes unnoticed — the Cold slips away first, so no meeting the instant it kills
 KILL_REACH = 3.0  # the Cold must be within this many cells of the victim — no killing across a room
 # --- the storm & the dark ---------------------------------------------------------------------------
 # Light is safety: the Cold can ONLY kill in a DARK room. The storm is the clock — survive it and the
@@ -411,6 +412,9 @@ class Game:
     corridor: list = field(default_factory=list)  # corridor tiles [(x,y), ...] linking the rooms
     outpost: int = 31  # the station's number (randomized per game)
     bodies: dict = field(default_factory=dict)  # room -> victim id, undiscovered
+    body_at: dict = field(
+        default_factory=dict
+    )  # room -> tick the body dropped (for the fresh-body grace)
     noise: set = field(
         default_factory=set
     )  # rooms where a kill was heard — flagged for a crewmate to go investigate (finds the body)
@@ -613,12 +617,15 @@ class Game:
         # a kill makes noise — flag the room and drop it on the task board (mirrored to Artel as a
         # "check {room}" job) so a crewmate is naturally drawn over to look, and finds the body
         self.noise.add(room)
+        self.body_at[room] = self.tick
         if room not in self.open_tasks:
             self.open_tasks.append(room)
             self.events.append(("noise", room))  # → a "check the room" task on the Artel board
 
     def _report_body(self) -> Meeting | None:
         for room, victim in list(self.bodies.items()):
+            if self.tick - self.body_at.get(room, -BODY_GRACE) < BODY_GRACE:
+                continue  # too fresh — give the Cold a moment to slip away before anyone notices
             # spotted from inside the room — or through the doorway from right next door, so a crewmate
             # passing by notices instead of walking straight past it
             finders = [a for a in self.living(impostor=False) if a.room == room]
@@ -628,6 +635,7 @@ class Game:
                 ]
             if finders:
                 del self.bodies[room]
+                self.body_at.pop(room, None)
                 self.noise.discard(room)
                 if room in self.open_tasks:
                     self.open_tasks.remove(room)
