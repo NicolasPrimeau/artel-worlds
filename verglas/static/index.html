@@ -1402,9 +1402,9 @@ function drawMeeting(t){
     ctx.fillStyle="rgba(6,10,20,.66)"; ctx.fillRect(0,cyR-40*DPR,aw,80*DPR);
     ctx.textAlign="center";
     ctx.fillStyle=th?"rgba(255,86,86,.96)":"rgba(120,200,255,.96)"; ctx.font=`900 ${Math.min(30,aw/14/DPR)*DPR}px Inter`;
-    ctx.fillText(th?`${mm.ejected} WAS THE COLD`:`${mm.ejected} WAS NOT THE COLD`, cx, cyR-4*DPR);
+    ctx.fillText(th?`${mm.ejected} WAS THE COLD`:`${mm.ejected} was one of the Crew.`, cx, cyR-4*DPR);
     ctx.fillStyle="rgba(231,238,252,.82)"; ctx.font=`600 ${12.5*DPR}px Inter`;
-    ctx.fillText(th?'ejected into the storm':'an innocent, lost to the cold', cx, cyR+22*DPR); }
+    ctx.fillText(th?'ejected into the storm':'an innocent sent out into the storm.', cx, cyR+22*DPR); }
   ctx.restore();
 }
 // the "body found" beat — zoom the camera into the victim's room with a red alarm before the meeting
@@ -1593,7 +1593,7 @@ function renderChat(s){ const live=$('live'), inMeet=['meeting','vote','ejection
       v.style.display='';
       if(m.ejected){
         if(m.ejected_was_cold==null) v.innerHTML=`<div class="big">${esc(m.ejected)} is ejected…</div><div class="tally">the storm door swings open</div>`;
-        else { const th=m.ejected_was_cold; v.innerHTML=`<div class="big ${th?'cold':'clear'}">${esc(m.ejected)} ${th?'WAS the Cold':'was NOT the Cold'}</div><div class="tally">${esc(tally)}</div>`; }
+        else { const th=m.ejected_was_cold; v.innerHTML=`<div class="big ${th?'cold':'clear'}">${esc(m.ejected)} ${th?'WAS the Cold':'was one of the Crew.'}</div><div class="tally">${esc(tally)}</div>`; }
         if(!ejecting||ejecting.name!==m.ejected) ejecting={name:m.ejected,t0:performance.now()};
       } else v.innerHTML=`<div class="big">No one is ejected</div><div class="tally">${esc(tally)}</div>`;
     } else { v.style.display='none'; }
