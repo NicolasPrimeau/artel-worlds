@@ -77,8 +77,8 @@
   .card.chaos{background:#f6e7ea}.card.tweak{background:#ece9f2}
   .card.played{opacity:0;pointer-events:none}
   /* played pile — bottom-left, out of the way */
-  #pile{position:fixed;bottom:calc(8px + env(safe-area-inset-bottom));left:12px;
-    width:clamp(68px,18vw,82px);height:clamp(90px,24vw,108px);pointer-events:none;z-index:9;overflow:visible}
+  #pile{position:fixed;bottom:calc(8px + env(safe-area-inset-bottom));right:12px;
+    width:clamp(68px,18vw,82px);height:clamp(90px,24vw,108px);pointer-events:auto;cursor:pointer;z-index:11;overflow:visible}
   .pile-card{position:absolute;inset:0;border:2px solid var(--ink);border-radius:6px;background:var(--cream);
     box-shadow:2px 3px 0 rgba(84,79,87,.14);display:flex;flex-direction:column;gap:2px;padding:clamp(5px,1.6vw,7px) clamp(7px,2vw,9px)}
   .pile-card .ct{font-size:clamp(6px,1.7vw,8px);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:700}
@@ -290,11 +290,37 @@ function makeProps(s){
   g.fillStyle(0x8ab868,1); g.fillEllipse(4,4,6,5); g.fillEllipse(8,5,5,4);
   g.generateTexture("plant_pot",12,16); g.destroy();
 }
+
+function makeIndoorTextures(s){
+  const themes={
+    office: {floor:[0xd0ccc4,0xbcb8b0],hall:[0xa0a0a0,0x909090],wall:[0x343444,0x444454]},
+    pub:    {floor:[0x8c5c38,0x6c4428],hall:[0x7c4c28,0x5c3c18],wall:[0x2c1a0c,0x3c2a18]},
+    school: {floor:[0xc4c8d4,0xb0b4c0],hall:[0x9098a8,0x808898],wall:[0x485060,0x586070]},
+    grocery:{floor:[0xe4e0d8,0xc8c4bc],hall:[0xd0ccca,0xb0acac],wall:[0x686868,0x787878]},
+    dark:   {floor:[0x48443c,0x383430],hall:[0x383430,0x282820],wall:[0x201c18,0x302c28]},
+  };
+  for(const [tn,tc] of Object.entries(themes)){
+    let g=s.add.graphics();
+    g.fillStyle(tc.floor[0],1); g.fillRect(0,0,16,16);
+    g.fillStyle(tc.floor[1],1); g.fillRect(0,0,16,1); g.fillRect(0,0,1,16);
+    g.generateTexture(`floor_${tn}`,16,16); g.destroy();
+
+    g=s.add.graphics();
+    g.fillStyle(tc.hall[0],1); g.fillRect(0,0,16,16);
+    g.fillStyle(tc.hall[1],1); g.fillRect(0,8,16,1); g.fillRect(8,0,1,16);
+    g.generateTexture(`hall_${tn}`,16,16); g.destroy();
+
+    g=s.add.graphics();
+    g.fillStyle(tc.wall[0],1); g.fillRect(0,0,16,16);
+    g.fillStyle(tc.wall[1],1); g.fillRect(0,2,16,3); g.fillRect(0,11,16,3);
+    g.generateTexture(`wall_${tn}`,16,16); g.destroy();
+  }
+}
 const WALK_SPEED = 1.1;   // route tiles per second
 const SPACING = 1.25;     // route-tile gap between followers
 const playerId = (()=>{ let p=localStorage.getItem("vq_pid"); if(!p){p="p"+Math.random().toString(36).slice(2,8);localStorage.setItem("vq_pid",p);} return p; })();
 
-let scene=null, world=null, party=[], built=null, pendingState=null;
+let scene=null, world=null, party=[], npcs=[], built=null, pendingState=null;
 let routeArr=[], wpIdx=[], leaderPos=0, targetIdx=0;
 let currentHeading="", captionVisible=false;
 
@@ -327,6 +353,7 @@ class World extends Phaser.Scene{
     scene=this;
     this.cameras.main.setBackgroundColor("#cdd8c6");
     makeProps(this);
+    makeIndoorTextures(this);
     this.scale.on("resize", ()=>{ if(world) this.cameras.main.setZoom(viewZoom()); });
     // anims for each hero
     for(let i=1;i<=10;i++){
@@ -387,8 +414,12 @@ function buildWorld(W){
   const rt=scene.add.renderTexture(0,0,W.w*TILE,W.h*TILE).setOrigin(0,0).setDepth(0);
   const tileset=W.tileset||"ground";
   const tileFrames=W.tile_frames||{};
+  const isIndoor=tileset==="interior";
+  const thm=W.theme||"office";
+  function indoorTex(tid){ return tid===3?`wall_${thm}`:(tid===1||tid===2)?`hall_${thm}`:`floor_${thm}`; }
   for(let y=0;y<W.h;y++)for(let x=0;x<W.w;x++){
     const tid=W.tiles[y*W.w+x];
+    if(isIndoor){ rt.draw(indoorTex(tid),x*TILE,y*TILE); continue; }
     const frame=tileFrames[String(tid)]!==undefined?tileFrames[String(tid)]:tid;
     rt.drawFrame(tileset,frame,x*TILE,y*TILE);
   }
@@ -403,7 +434,8 @@ function buildWorld(W){
       rt.drawFrame("props",pf(c,r),fx,fy);
     }
   }
-  if(W.tint){ const t=parseInt(W.tint.slice(1),16); rt.setTint(t); }
+  if(W.tint&&!isIndoor){ const t=parseInt(W.tint.slice(1),16); rt.setTint(t); }
+  scene.cameras.main.setBackgroundColor(isIndoor?"#808888":"#cdd8c6");
   scene.rt=rt;
   scene.cameras.main.setBounds(0,0,W.w*TILE,W.h*TILE);
   scene.cameras.main.setZoom(viewZoom());
@@ -420,9 +452,52 @@ function buildParty(snap){
     const shadow=scene.add.image(p.x,p.y+6,"shadow").setDepth(900).setAlpha(.5).setScale(.9);
     const spr=scene.add.sprite(p.x,p.y,"hero"+pm.sprite).setDepth(1000);
     const m={spr,shadow,sprite:pm.sprite,id:pm.id,name:pm.name,role:pm.role,status:pm.status||"ready",dir:snap.pos.facing,moving:false,lead:i===0};
+    spr.setInteractive({useHandCursor:true});
+    spr.on("pointerup",()=>showMemberDetail(pm));
     idle(m); party.push(m);
   }
   scene.cameras.main.startFollow(party[0].spr,true,0.09,0.09);
+}
+
+function buildNPCs(snap){
+  for(const n of npcs){n.spr.destroy();n.shadow.destroy();}
+  npcs=[];
+  if(!snap.quest?.npcs?.length||!snap.world)return;
+  for(const npc of snap.quest.npcs){
+    const wp=snap.world.waypoints[Math.min(npc.waypoint_idx,snap.world.waypoints.length-1)];
+    if(!wp)continue;
+    const px=wp[0]*TILE+TILE/2, py=wp[1]*TILE+TILE/2;
+    const shadow=scene.add.image(px,py+6,"shadow").setDepth(899).setAlpha(.3).setScale(.75);
+    const spr=scene.add.sprite(px,py,"hero"+npc.sprite).setDepth(1000+py);
+    spr.setFrame(DIR_COL["down"]);
+    spr.setInteractive({useHandCursor:true});
+    spr.on("pointerup",()=>showNPCDetail(npc));
+    npcs.push({spr,shadow,id:npc.id,name:npc.name,role:npc.role});
+  }
+}
+
+function showNPCDetail(npc){
+  const ov=document.createElement("div");
+  ov.style.cssText="position:fixed;inset:0;z-index:800;display:flex;align-items:center;justify-content:center;background:rgba(28,26,30,.5);";
+  const box=document.createElement("div");
+  box.style.cssText="background:var(--cream);border:2px solid var(--ink);border-radius:4px;padding:18px 22px;min-width:180px;max-width:min(280px,80vw);box-shadow:4px 4px 0 rgba(84,79,87,.2);transform:rotate(-1deg)";
+  box.innerHTML=`<div style="font-size:8px;letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);margin-bottom:4px">NPC</div><div style="font-size:17px;font-weight:700;font-family:'Cormorant Garamond',serif">${npc.name}</div><div style="font-size:10px;color:var(--ink2);margin-top:3px;letter-spacing:.05em">${npc.role}</div>${npc.personality?`<div style="font-size:11px;font-style:italic;color:var(--ink2);margin-top:8px;border-top:1px solid rgba(84,79,87,.12);padding-top:8px">${npc.personality}</div>`:""}`;
+  ov.appendChild(box);
+  ov.addEventListener("pointerup",()=>ov.remove(),{once:true});
+  document.body.appendChild(ov);
+}
+
+function showMemberDetail(pm){
+  const ov=document.createElement("div");
+  ov.style.cssText="position:fixed;inset:0;z-index:800;display:flex;align-items:center;justify-content:center;background:rgba(28,26,30,.5);";
+  const box=document.createElement("div");
+  const statusColor=pm.status==="lost"?"#c84444":pm.status==="rattled"?"#d4a840":"var(--sage2)";
+  const hpBar=`<div style="display:flex;gap:3px;margin-top:6px">${Array.from({length:pm.hp},()=>`<div style="width:8px;height:8px;background:${statusColor};border:1px solid var(--ink);border-radius:1px"></div>`).join("")}</div>`;
+  box.style.cssText="background:var(--cream);border:2px solid var(--ink);border-radius:4px;padding:18px 22px;min-width:180px;max-width:min(280px,80vw);box-shadow:4px 4px 0 rgba(84,79,87,.2);transform:rotate(1deg)";
+  box.innerHTML=`<div style="font-size:8px;letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);margin-bottom:4px">PARTY</div><div style="font-size:17px;font-weight:700;font-family:'Cormorant Garamond',serif">${pm.name}</div><div style="font-size:10px;color:var(--ink2);margin-top:3px;letter-spacing:.05em">${pm.role}</div><div style="font-size:10px;color:${statusColor};margin-top:4px;text-transform:uppercase;letter-spacing:.06em">${pm.status}</div>${hpBar}`;
+  ov.appendChild(box);
+  ov.addEventListener("pointerup",()=>ov.remove(),{once:true});
+  document.body.appendChild(ov);
 }
 
 function onMove(pos){
@@ -436,7 +511,7 @@ function applyState(snap){
   const W=snap.world;
   if(W && built!==snap.run_id){
     world=W; built=snap.run_id;
-    buildWorld(W); buildParty(snap);
+    buildWorld(W); buildParty(snap); buildNPCs(snap);
     clearBubbles();
   }
   setHud(snap);
@@ -671,6 +746,24 @@ function renderPile(){
     p.style.zIndex=i;
     pile.appendChild(p);
   }
+  pile.onclick=()=>{
+    if(!pileCards.length)return;
+    const ov=document.createElement("div");
+    ov.style.cssText="position:fixed;inset:0;z-index:800;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(28,26,30,.55);padding:20px;overflow-y:auto";
+    const lbl=document.createElement("div");
+    lbl.style.cssText="font-size:9px;letter-spacing:.35em;text-transform:uppercase;color:rgba(255,255,255,.7);margin-bottom:4px";
+    lbl.textContent="played this round";
+    ov.appendChild(lbl);
+    for(const c of pileCards){
+      const card=document.createElement("div");
+      card.className="card "+c.type;
+      card.style.cssText="position:relative;width:min(220px,70vw);height:auto;min-height:0;padding:14px 16px;transform:none;pointer-events:none;flex-shrink:0";
+      card.innerHTML=`<div class="ct">${c.type}</div><div class="cn">${c.name}</div><div class="cd">${c.description}</div>`;
+      ov.appendChild(card);
+    }
+    ov.addEventListener("pointerup",()=>ov.remove(),{once:true});
+    document.body.appendChild(ov);
+  };
 }
 
 async function playCard(id){

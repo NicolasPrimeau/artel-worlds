@@ -60,6 +60,7 @@ async def narrate_card(
     memory_context: str,
     story_so_far: str = "",
     register: str = "a deadpan documentary",
+    npc_context: str = "",
 ) -> dict:
     if dice_value == 20:
         crit = "Critical: something goes spectacularly right, in a way that makes total sense in context but shouldn't."
@@ -72,6 +73,7 @@ async def narrate_card(
 
 SITUATION: {quest_hook}
 COMPLICATION: {complication}
+{f"PERSON AT THIS LOCATION: {npc_context}" if npc_context else ""}
 PEOPLE: {party_summary}
 MORALE: {momentum} (negative = things are going badly, positive = going well — let this show in tone, not in explicit statement)
 {story_block}
@@ -215,6 +217,35 @@ One sentence. Something that happens right now, during the walk.
 Under 20 words. Mundane. Nobody says it's strange. It just happens."""
     req = Request(system="Respond in one sentence only. No fantasy language.", user=prompt)
     return await ROUTER.complete(req)
+
+
+async def generate_npcs(
+    quest_hook: str,
+    complication: str,
+    theme: str,
+    waypoint_count: int,
+) -> list[dict]:
+    prompt = f"""{_TONE}
+
+Generate 3 people who live and work in this place. They are real people doing their jobs.
+They will mostly be minding their own business. They may be involved in the situation.
+
+SITUATION: {quest_hook}
+COMPLICATION: {complication}
+SETTING TYPE: {theme}
+NUMBER OF LOCATIONS: {waypoint_count}
+
+Assign each person to a location (waypoint_idx 0 to {waypoint_count - 1}) they would naturally inhabit.
+behavior is "stationary" (stays put) or "wandering" (moves between locations).
+
+Return exactly 3:
+JSON only: {{"npcs": [{{"name": "First Last", "role": "Job Title", "personality": "one phrase", "waypoint_idx": 0, "behavior": "stationary"}}]}}"""
+    req = Request(system="Respond only with valid JSON.", user=prompt)
+    raw = await ROUTER.complete(req)
+    parsed = parse_json(raw)
+    if parsed and isinstance(parsed.get("npcs"), list):
+        return [n for n in parsed["npcs"][:4] if isinstance(n, dict)]
+    return []
 
 
 async def generate_objectives(quest_hook: str, complication: str) -> list[str]:

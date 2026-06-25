@@ -17,6 +17,7 @@ from .engine import (
     MIN_RESOLUTIONS,
     CardResolution,
     GameState,
+    NPC,
     PlayedCard,
     apply_card_effects,
     apply_disaster,
@@ -60,6 +61,17 @@ def _state_snapshot(state: GameState, include_world: bool = True) -> dict:
             "hook": state.quest.hook,
             "complication": state.quest.complication,
             "objectives": state.quest.objectives,
+            "npcs": [
+                {
+                    "id": n.id,
+                    "name": n.name,
+                    "role": n.role,
+                    "personality": n.personality,
+                    "sprite": n.sprite,
+                    "waypoint_idx": n.waypoint_idx,
+                }
+                for n in state.quest.npcs
+            ],
             "beats": state.quest.beats[-4:],
             "resolution_count": state.quest.resolution_count,
             "register": state.quest.register,
@@ -138,6 +150,15 @@ async def _resolve_window(state: GameState) -> None:
 
         result = {"narrative": card_def.description, "consequence": "", "reactions": []}
         if llm.enabled():
+            current_npc = next(
+                (n for n in state.quest.npcs if n.waypoint_idx == state.target_idx),
+                None,
+            )
+            npc_context = (
+                f"{current_npc.name} ({current_npc.role}): {current_npc.personality}"
+                if current_npc
+                else ""
+            )
             result = await llm.narrate_card(
                 card_name=card_def.name,
                 card_description=card_def.description,
@@ -151,6 +172,7 @@ async def _resolve_window(state: GameState) -> None:
                 memory_context=memory_ctx,
                 story_so_far=_story_so_far(state),
                 register=state.quest.register,
+                npc_context=npc_context,
             )
 
         apply_card_effects(card_def, dice_result, state.quest)
@@ -303,7 +325,9 @@ async def _start_new_game() -> None:
     global _state
     _state = new_game(_rng)
     if llm.enabled():
-        opening, objectives = await asyncio.gather(
+        waypoint_count = len(_state.world.waypoints) if _state.world else 5
+        theme = _state.world.theme if _state.world else "office"
+        opening, objectives, npcs_raw = await asyncio.gather(
             llm.narrate_quest_start(
                 quest_hook=_state.quest.hook,
                 complication=_state.quest.complication,
@@ -313,12 +337,39 @@ async def _start_new_game() -> None:
                 quest_hook=_state.quest.hook,
                 complication=_state.quest.complication,
             ),
+            llm.generate_npcs(
+                quest_hook=_state.quest.hook,
+                complication=_state.quest.complication,
+                theme=theme,
+                waypoint_count=waypoint_count,
+            ),
             return_exceptions=True,
         )
         if isinstance(opening, str) and opening:
             _state.log_event("opening", opening)
         if isinstance(objectives, list):
             _state.quest.objectives = objectives
+        if isinstance(npcs_raw, list):
+            party_sprites = {m.sprite for m in _state.party}
+            available = [s for s in range(1, 11) if s not in party_sprites]
+            npcs = []
+            for i, nd in enumerate(npcs_raw):
+                if not isinstance(nd, dict):
+                    continue
+                sprite = available[i % len(available)] if available else (i % 10 + 1)
+                wp_max = waypoint_count - 1
+                npcs.append(
+                    NPC(
+                        id=f"npc_{i}",
+                        name=nd.get("name", f"Person {i + 1}"),
+                        role=nd.get("role", "Unknown"),
+                        personality=nd.get("personality", ""),
+                        sprite=sprite,
+                        waypoint_idx=min(int(nd.get("waypoint_idx", 0)), wp_max),
+                        behavior=nd.get("behavior", "stationary"),
+                    )
+                )
+            _state.quest.npcs = npcs
     if artel.enabled():
         await artel.write_memory(
             f"New VibeQuest begun: {_state.quest.hook} Complication: {_state.quest.complication}",

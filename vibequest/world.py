@@ -512,8 +512,6 @@ def _place_zone_props(
             return True
         return False
 
-    p(cx, cy - 1, "lamp")
-
     archetype = _ZONE_ARCHETYPES.get(name, "thoroughfare")
     pool = _ARCHETYPE_PROPS.get(archetype, {})
     kinds = pool.get(theme) or pool.get("office") or ["rock"]
