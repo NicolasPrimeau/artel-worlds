@@ -145,7 +145,8 @@ Respond ONLY as JSON:
   "objective": "imperative goal, max 6 words, e.g. 'Slip past the night guard'",
   "opening": "one short spoken line of party dialogue (max 15 words)",
   "speaker": "the role of whoever says it (e.g. Wizard)",
-  "finale": false
+  "finale": false,
+  "next_heading": "short phrase for where the party heads next (max 5 words)"
 }}"""
     req = Request(
         system="You are an inventive DM generating the next scene. Respond only with valid JSON.",

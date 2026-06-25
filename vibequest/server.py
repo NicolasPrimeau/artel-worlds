@@ -20,6 +20,7 @@ from .engine import (
     PlayedCard,
     Scene,
     apply_card_effects,
+    apply_disaster,
     advance_window,
     at_station,
     classify_result,
@@ -60,6 +61,7 @@ def _scene_dict(state: GameState) -> dict | None:
         "opening": s.opening,
         "speaker": s.speaker,
         "finale": s.finale,
+        "next_heading": s.next_heading,
     }
 
 
@@ -102,6 +104,7 @@ async def _ensure_scene(state: GameState, idx: int) -> Scene | None:
             opening=data.get("opening", ""),
             speaker=data.get("speaker", ""),
             finale=bool(data.get("finale")),
+            next_heading=data.get("next_heading", ""),
         )
     else:
         scene = fallback_scene(state, prior, prior.result if prior else "", scene_number, _rng)
@@ -256,12 +259,25 @@ async def _resolve_window(state: GameState) -> None:
         await asyncio.sleep(3.0)
 
     result = classify_result(state.window.resolutions)
+    if result == "disaster":
+        victim = apply_disaster(state, _rng)
+        if victim:
+            status_word = "lost" if victim.status == "lost" else "rattled"
+            state.log_event(
+                "disaster",
+                f"{victim.name} the {victim.role} is {status_word}.",
+                {"victim": victim.id, "status": victim.status},
+            )
     resolved = resolve_scene(state, result, "")
     if resolved:
         conclusion = scene_conclusion(resolved)
         state.log_event("resolution", conclusion, {"card": resolved.title})
         await _broadcast(
-            {"type": "card_resolved", "state": _state_snapshot(state, include_world=False)}
+            {
+                "type": "card_resolved",
+                "state": _state_snapshot(state, include_world=False),
+                "next_heading": resolved.next_heading,
+            }
         )
         await asyncio.sleep(2.0)
 

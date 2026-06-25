@@ -21,6 +21,54 @@ PATH_LIGHT = 7
 BLOCKING = {HEDGE}
 PATHLIKE = {PATH, PATH_LIGHT, LAVENDER}
 
+INDOOR_THEMES = {"office", "dark"}
+
+INDOOR_ROOM_NAMES: dict[str, list[str]] = {
+    "office": [
+        "Open Plan",
+        "Conference Room",
+        "Break Room",
+        "Reception",
+        "Print Bay",
+        "Manager's Office",
+        "Server Room",
+        "Supply Closet",
+    ],
+    "dark": [
+        "Hall",
+        "Crypt",
+        "Chamber",
+        "Cellar",
+        "Vault",
+        "Sanctum",
+        "Dungeon",
+        "Antechamber",
+    ],
+}
+
+INDOOR_ROOM_PROPS: dict[str, dict[str, list[str]]] = {
+    "office": {
+        "Open Plan": ["desk", "chair", "partition", "plant_pot"],
+        "Conference Room": ["desk", "chair", "whiteboard"],
+        "Break Room": ["chair", "coffee"],
+        "Reception": ["desk", "chair", "plant_pot"],
+        "Print Bay": ["cabinet", "copier"],
+        "Manager's Office": ["desk", "chair", "cabinet"],
+        "Server Room": ["cabinet"],
+        "Supply Closet": ["cabinet"],
+    },
+    "dark": {
+        "Hall": ["rock", "topiary"],
+        "Crypt": ["rock"],
+        "Chamber": ["rock", "bush"],
+        "Cellar": ["cabinet", "rock"],
+        "Vault": ["cabinet"],
+        "Sanctum": ["topiary", "flower"],
+        "Dungeon": ["rock"],
+        "Antechamber": ["rock", "topiary"],
+    },
+}
+
 
 @dataclass
 class WorldMap:
@@ -53,8 +101,15 @@ def _idx(w: int, x: int, y: int) -> int:
 
 
 def _bfs(
-    world_w: int, world_h: int, tiles: list[int], a: list[int], b: list[int]
+    world_w: int,
+    world_h: int,
+    tiles: list[int],
+    a: list[int],
+    b: list[int],
+    walkable: set[int] | None = None,
 ) -> list[list[int]]:
+    if walkable is None:
+        walkable = PATHLIKE
     start, goal = (a[0], a[1]), (b[0], b[1])
     prev: dict[tuple[int, int], tuple[int, int] | None] = {start: None}
     q = deque([start])
@@ -69,7 +124,7 @@ def _bfs(
                 continue
             if (nx, ny) in prev:
                 continue
-            if tiles[_idx(world_w, nx, ny)] not in PATHLIKE:
+            if tiles[_idx(world_w, nx, ny)] not in walkable:
                 continue
             prev[(nx, ny)] = cur
             q.append((nx, ny))
@@ -110,7 +165,7 @@ THEMES = {
         "base": FLOOR,
         "ponds": False,
         "tint": "#efe4cf",
-        "scatter": [("rock", 2), ("bush", 1), ("topiary", 1)],
+        "scatter": [("desk", 4), ("chair", 5), ("cabinet", 3), ("partition", 3), ("plant_pot", 2)],
     },
     "concrete": {
         "base": SAND,
@@ -189,7 +244,158 @@ def _carve(tiles: list[int], w: int, h: int, x: int, y: int, tile: int = PATH) -
                 tiles[_idx(w, nx, ny)] = tile
 
 
+def generate_indoor_world(
+    rng: random.Random, theme: str = "office", step_count: int = 6
+) -> WorldMap:
+    th = THEMES.get(theme, THEMES["office"])
+    room_names = INDOOR_ROOM_NAMES.get(theme, INDOOR_ROOM_NAMES["office"])
+    room_props = INDOOR_ROOM_PROPS.get(theme, {})
+    default_props = ["rock"] if theme == "dark" else ["desk", "chair"]
+
+    w, h = 40, 60
+    tiles = [HEDGE] * (w * h)
+
+    _ROOM_MIN = 5
+    s = 2 * _ROOM_MIN
+
+    cells: list[tuple[int, int, int, int]] = [(1, 1, w - 2, h - 2)]
+    n_rooms = min(len(room_names), step_count + 2)
+    while len(cells) < n_rooms:
+        cands = sorted(
+            (i for i in range(len(cells)) if cells[i][2] >= s or cells[i][3] >= s),
+            key=lambda i: -(cells[i][2] * cells[i][3]),
+        )
+        if not cands:
+            break
+        cx, cy, cw, ch = cells.pop(cands[rng.randrange(min(3, len(cands)))])
+        if cw >= s and (ch < s or cw >= ch or rng.random() < 0.5):
+            cut = rng.randint(_ROOM_MIN, cw - _ROOM_MIN)
+            cells += [(cx, cy, cut, ch), (cx + cut, cy, cw - cut, ch)]
+        else:
+            cut = rng.randint(_ROOM_MIN, ch - _ROOM_MIN)
+            cells += [(cx, cy, cw, cut), (cx, cy + cut, cw, ch - cut)]
+
+    rooms: list[tuple[int, int, int, int]] = []
+    for cx, cy, cw, ch in cells:
+        rw = min(cw - 2, max(_ROOM_MIN - 2, cw - rng.randint(1, max(1, cw // 3))))
+        rh = min(ch - 2, max(_ROOM_MIN - 2, ch - rng.randint(1, max(1, ch // 3))))
+        ox = rng.randint(1, cw - rw - 1) if cw - rw - 1 >= 1 else 1
+        oy = rng.randint(1, ch - rh - 1) if ch - rh - 1 >= 1 else 1
+        rooms.append((cx + ox, cy + oy, rw, rh))
+
+    order = sorted(range(len(rooms)), key=lambda i: -(rooms[i][2] * rooms[i][3]))
+    names = room_names[: len(rooms)]
+    rects: dict[str, tuple[int, int, int, int]] = {
+        names[k]: rooms[order[k]] for k in range(len(rooms))
+    }
+
+    room_floor = FLOOR if theme == "office" else th["base"]
+    room_tiles: set[tuple[int, int]] = set()
+    for name, (rx, ry, rw, rh) in rects.items():
+        for ty in range(ry, ry + rh):
+            for tx in range(rx, rx + rw):
+                tiles[_idx(w, tx, ty)] = room_floor
+                room_tiles.add((tx, ty))
+
+    centers: dict[str, tuple[int, int]] = {
+        n: (rects[n][0] + rects[n][2] // 2, rects[n][1] + rects[n][3] // 2) for n in names
+    }
+
+    corr: set[tuple[int, int]] = set()
+
+    def carve_hallway(a: str, b: str) -> None:
+        ax, ay = centers[a]
+        bx, by = centers[b]
+        if rng.random() < 0.5:
+            for tx in range(min(ax, bx), max(ax, bx) + 1):
+                if (tx, ay) not in room_tiles:
+                    corr.add((tx, ay))
+            for ty in range(min(ay, by), max(ay, by) + 1):
+                if (bx, ty) not in room_tiles:
+                    corr.add((bx, ty))
+        else:
+            for ty in range(min(ay, by), max(ay, by) + 1):
+                if (ax, ty) not in room_tiles:
+                    corr.add((ax, ty))
+            for tx in range(min(ax, bx), max(ax, bx) + 1):
+                if (tx, by) not in room_tiles:
+                    corr.add((tx, by))
+
+    intree: set[str] = {names[0]}
+    while len(intree) < len(names):
+        best = min(
+            (
+                (centers[a][0] - centers[b][0]) ** 2 + (centers[a][1] - centers[b][1]) ** 2,
+                a,
+                b,
+            )
+            for a in intree
+            for b in names
+            if b not in intree
+        )
+        carve_hallway(best[1], best[2])
+        intree.add(best[2])
+
+    for tx, ty in corr:
+        if 0 < tx < w - 1 and 0 < ty < h - 1:
+            tiles[_idx(w, tx, ty)] = PATH
+
+    props: list[dict] = []
+    occupied: set[tuple[int, int]] = set()
+
+    waypoints_by_y = sorted(names, key=lambda n: -centers[n][1])
+    waypoints: list[list[int]] = [[centers[n][0], centers[n][1]] for n in waypoints_by_y]
+    waypoints = waypoints[: step_count + 1]
+    used_names = waypoints_by_y[: step_count + 1]
+
+    for name in used_names:
+        cx, cy = centers[name]
+        tiles[_idx(w, cx, cy)] = LAVENDER
+        props.append({"x": cx, "y": cy - 1, "kind": "lamp"})
+        occupied.add((cx, cy))
+        occupied.add((cx, cy - 1))
+
+        kinds = room_props.get(name, default_props)
+        rx, ry, rw, rh = rects[name]
+        candidates = [
+            (tx, ty)
+            for tx in range(rx, rx + rw)
+            for ty in range(ry, ry + rh)
+            if (tx, ty) not in occupied and tiles[_idx(w, tx, ty)] == room_floor
+        ]
+        rng.shuffle(candidates)
+        for placed, (px, py) in enumerate(candidates[:4]):
+            props.append({"x": px, "y": py, "kind": kinds[placed % len(kinds)]})
+            occupied.add((px, py))
+
+    indoor_walkable = {room_floor, PATH, PATH_LIGHT, LAVENDER}
+    route: list[list[int]] = []
+    wp_route_idx: list[int] = []
+    for i, wp in enumerate(waypoints):
+        if i == 0:
+            wp_route_idx.append(0)
+            route.append(list(wp))
+            continue
+        seg = _bfs(w, h, tiles, waypoints[i - 1], wp, walkable=indoor_walkable)
+        wp_route_idx.append(len(route) - 1 + len(seg) - 1)
+        route.extend(seg[1:])
+
+    return WorldMap(
+        w=w,
+        h=h,
+        tiles=tiles,
+        props=props,
+        waypoints=waypoints,
+        route=route,
+        wp_route_idx=wp_route_idx,
+        theme=theme,
+        tint=th["tint"],
+    )
+
+
 def generate_world(rng: random.Random, theme: str = "garden", step_count: int = 6) -> WorldMap:
+    if theme in INDOOR_THEMES:
+        return generate_indoor_world(rng, theme=theme, step_count=step_count)
     th = THEMES.get(theme, THEMES["garden"])
     base = th["base"]
     w, h = 40, 60

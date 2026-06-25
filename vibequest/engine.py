@@ -440,13 +440,14 @@ MAX_SCENES = 6
 class Scene:
     title: str
     description: str
-    objective: str = ""  # short imperative goal, shown as a checkbox
-    opening: str = ""  # one line of party dialogue reacting to the scene
-    speaker: str = ""  # role who says the opening line
+    objective: str = ""
+    opening: str = ""
+    speaker: str = ""
     finale: bool = False
     resolved: bool = False
-    result: str = ""  # triumph | mixed | setback | uneventful
-    summary: str = ""  # short how-it-went, for continuity
+    result: str = ""
+    summary: str = ""
+    next_heading: str = ""
 
 
 REGISTERS = [
@@ -730,6 +731,16 @@ _FALLBACK_SITUATIONS = [
     ("An Unhelpful Sign", "Decipher the sign", "Every arrow says 'Other'. Bold choice."),
     ("The Final Obstacle", "Clear the last obstacle", "One more. There's always one more."),
 ]
+
+
+def apply_disaster(state: GameState, rng: random.Random) -> "PartyMember | None":
+    alive = [m for m in state.party if m.status != "lost"]
+    if not alive:
+        return None
+    victim = rng.choice(alive)
+    victim.hp = max(0, victim.hp - 5)
+    victim.status = "lost" if victim.hp <= 0 else "rattled"
+    return victim
 
 
 def fallback_scene(

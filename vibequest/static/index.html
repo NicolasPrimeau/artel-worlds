@@ -63,6 +63,12 @@
     background:rgba(244,236,214,.86);padding:4px 14px;border-radius:4px;opacity:0;transition:opacity .4s}
   #toast.show{opacity:1}
 
+  /* heading caption shown while party walks between stations */
+  #caption{bottom:calc(148px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);max-width:80vw;text-align:center;
+    font-family:"Cormorant Garamond",serif;font-style:italic;font-size:clamp(11px,3vw,14px);color:var(--ink2);
+    background:rgba(244,236,214,.72);padding:3px 12px;border-radius:4px;opacity:0;transition:opacity .6s;white-space:nowrap}
+  #caption.show{opacity:1}
+
   /* card hand — horizontal scroll strip on mobile, centered on desktop */
   #hand{bottom:calc(8px + env(safe-area-inset-bottom));left:0;right:0;display:flex;gap:clamp(6px,2vw,8px);justify-content:flex-start;align-items:flex-end;
     pointer-events:auto;padding:4px clamp(8px,3vw,16px);flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:none}
@@ -140,6 +146,7 @@
 <div id="objectives" class="ui"></div>
 <div id="bubbles" class="ui"></div>
 <div id="toast" class="ui"></div>
+<div id="caption" class="ui"></div>
 
 <button id="infobtn" class="ui" type="button" aria-label="info">i</button>
 
@@ -189,6 +196,14 @@ const PROP = {
   flower:  { tex:"flowertuft", ox:0, oy:0 },
   rock:    { tex:"rock", ox:0, oy:2 },
   lamp:    { tex:"flag", ox:-2, oy:-8 },
+  desk:      { tex:"desk",      ox:-8, oy:-8,  footprint:2 },
+  chair:     { tex:"chair",     ox:-1, oy:-2 },
+  cabinet:   { tex:"cabinet",   ox:-1, oy:-4 },
+  whiteboard:{ tex:"whiteboard",ox:-8, oy:-6,  footprint:2 },
+  partition: { tex:"partition", ox:-1, oy:-8 },
+  coffee:    { tex:"coffee",    ox:-2, oy:-2 },
+  copier:    { tex:"copier",    ox:-8, oy:-4,  footprint:2 },
+  plant_pot: { tex:"plant_pot", ox:-2, oy:-4 },
 };
 const PROP_COLS = 20;
 
@@ -216,6 +231,62 @@ function makeProps(s){
   g.fillStyle(0xb7b2b8,1); g.fillEllipse(8,8,13,9);
   g.fillStyle(0xcfcbd0,1); g.fillEllipse(6,6,6,4);
   g.generateTexture("rock",16,14); g.destroy();
+  // desk (32x16, warm brown rectangle, monitor + keyboard)
+  g=s.add.graphics();
+  g.fillStyle(0x9b7a52,1); g.fillRect(0,4,32,12);
+  g.fillStyle(0x7a5c38,1); g.fillRect(0,4,32,2);
+  g.fillStyle(0x2a2422,1); g.fillRect(22,5,7,7);
+  g.fillStyle(0x3a3330,1); g.fillRect(4,12,12,2);
+  g.generateTexture("desk",32,16); g.destroy();
+  // chair (14x14, dark gray seat + back)
+  g=s.add.graphics();
+  g.fillStyle(0x5a5560,1); g.fillRect(2,6,10,8);
+  g.fillStyle(0x4a4550,1); g.fillRect(3,1,8,6);
+  g.fillStyle(0x3a3540,1); g.fillRect(2,13,2,1); g.fillRect(10,13,2,1);
+  g.generateTexture("chair",14,14); g.destroy();
+  // cabinet (14x20, gray box with drawer lines)
+  g=s.add.graphics();
+  g.fillStyle(0x9a9ea8,1); g.fillRect(1,0,12,20);
+  g.fillStyle(0x7a7e88,1); g.fillRect(1,6,12,1); g.fillRect(1,13,12,1);
+  g.fillStyle(0xb8bcc6,1); g.fillRect(4,2,4,3); g.fillRect(4,8,4,3); g.fillRect(4,15,4,3);
+  g.generateTexture("cabinet",14,20); g.destroy();
+  // whiteboard (32x14, off-white with border + squiggles)
+  g=s.add.graphics();
+  g.fillStyle(0xf0ede4,1); g.fillRect(0,0,32,14);
+  g.fillStyle(0x544f57,1); g.fillRect(0,0,32,1); g.fillRect(0,13,32,1); g.fillRect(0,0,1,14); g.fillRect(31,0,1,14);
+  g.fillStyle(0xd4a8a4,1); g.fillRect(4,4,7,1); g.fillRect(4,7,5,1);
+  g.fillStyle(0x8aa37c,1); g.fillRect(14,4,6,1); g.fillRect(14,7,8,1);
+  g.fillStyle(0xc8bfd6,1); g.fillRect(24,4,5,1); g.fillRect(22,7,6,1);
+  g.generateTexture("whiteboard",32,14); g.destroy();
+  // partition (14x24, mid-gray tall fabric panel)
+  g=s.add.graphics();
+  g.fillStyle(0x8a8690,1); g.fillRect(1,0,12,24);
+  g.fillStyle(0x9a96a0,1); g.fillRect(2,1,10,22);
+  g.fillStyle(0x7a7680,1); g.fillRect(1,0,1,24); g.fillRect(12,0,1,24);
+  g.generateTexture("partition",14,24); g.destroy();
+  // coffee machine (12x16, dark body + carafe + steam)
+  g=s.add.graphics();
+  g.fillStyle(0x3a3530,1); g.fillRect(1,2,10,10);
+  g.fillStyle(0x5a5550,1); g.fillRect(2,3,8,4);
+  g.fillStyle(0x2a2520,1); g.fillRect(3,12,6,4);
+  g.fillStyle(0xc8c0a8,1); g.fillRect(4,13,4,2);
+  g.fillStyle(0xd0e8f0,1); g.fillRect(4,0,1,2); g.fillRect(6,0,1,3); g.fillRect(8,0,1,1);
+  g.generateTexture("coffee",12,16); g.destroy();
+  // copier (32x16, beige/gray box with paper tray)
+  g=s.add.graphics();
+  g.fillStyle(0xc8c4b8,1); g.fillRect(0,3,32,13);
+  g.fillStyle(0xa8a49a,1); g.fillRect(0,3,32,3);
+  g.fillStyle(0xd8d4c8,1); g.fillRect(2,7,10,7);
+  g.fillStyle(0x8a8880,1); g.fillRect(14,6,14,2); g.fillRect(20,9,4,2);
+  g.generateTexture("copier",32,16); g.destroy();
+  // plant_pot (12x16, terracotta pot + green leaves)
+  g=s.add.graphics();
+  g.fillStyle(0xc86440,1); g.fillRect(3,9,6,7);
+  g.fillStyle(0xa84c28,1); g.fillRect(2,9,1,7); g.fillRect(9,9,1,7);
+  g.fillStyle(0xb84830,1); g.fillRect(2,9,8,2);
+  g.fillStyle(0x6a9a50,1); g.fillEllipse(6,6,11,9);
+  g.fillStyle(0x8ab868,1); g.fillEllipse(4,4,6,5); g.fillEllipse(8,5,5,4);
+  g.generateTexture("plant_pot",12,16); g.destroy();
 }
 const WALK_SPEED = 1.1;   // route tiles per second
 const SPACING = 1.25;     // route-tile gap between followers
@@ -223,6 +294,19 @@ const playerId = (()=>{ let p=localStorage.getItem("vq_pid"); if(!p){p="p"+Math.
 
 let scene=null, world=null, party=[], built=null, pendingState=null;
 let routeArr=[], wpIdx=[], leaderPos=0, targetIdx=0;
+let currentHeading="", captionVisible=false;
+
+function setCaption(text){
+  currentHeading=text||"";
+}
+function updateCaption(moving){
+  const el=document.getElementById("caption");
+  if(!el) return;
+  const want=moving && !!currentHeading;
+  if(want && !captionVisible){ el.textContent=currentHeading; el.classList.add("show"); captionVisible=true; }
+  else if(!want && captionVisible){ el.classList.remove("show"); captionVisible=false; }
+  else if(want && el.textContent!==currentHeading){ el.textContent=currentHeading; }
+}
 
 function pf(col,row){ return row*PROP_COLS+col; }
 
@@ -273,6 +357,7 @@ class World extends Phaser.Scene{
       } else if(m.moving){ m.moving=false; idle(m); }
     }
     updateBubbles();
+    updateCaption(moving);
   }
 }
 
@@ -328,7 +413,7 @@ function buildParty(snap){
     const p=routeXY(Math.max(0,leaderPos-i*SPACING));
     const shadow=scene.add.image(p.x,p.y+6,"shadow").setDepth(900).setAlpha(.5).setScale(.9);
     const spr=scene.add.sprite(p.x,p.y,"hero"+pm.sprite).setDepth(1000);
-    const m={spr,shadow,sprite:pm.sprite,name:pm.name,role:pm.role,dir:snap.pos.facing,moving:false,lead:i===0};
+    const m={spr,shadow,sprite:pm.sprite,id:pm.id,name:pm.name,role:pm.role,status:pm.status||"ready",dir:snap.pos.facing,moving:false,lead:i===0};
     idle(m); party.push(m);
   }
   scene.cameras.main.startFollow(party[0].spr,true,0.09,0.09);
@@ -358,6 +443,25 @@ function setHud(snap){
   document.getElementById("ten").style.width=(q.tension/10*100)+"%";
   document.getElementById("viewers").textContent=snap.viewers||0;
   renderObjectives(q.objectives, q.resolved||0);
+  updatePartyStatus(snap.party||[]);
+}
+
+function updatePartyStatus(members){
+  for(const pm of members){
+    const m=party.find(p=>p.id===pm.id);
+    if(!m) continue;
+    if(pm.status==="lost"){
+      m.spr.setTint(0xcc4444).setAlpha(0.38);
+      m.shadow.setAlpha(0.12);
+    } else if(pm.status==="rattled"){
+      m.spr.setTint(0xd4a843).setAlpha(0.78);
+      m.shadow.setAlpha(0.35);
+    } else {
+      m.spr.clearTint().setAlpha(1);
+      m.shadow.setAlpha(0.5);
+    }
+    m.status=pm.status;
+  }
 }
 
 function renderObjectives(objs, resolved){
@@ -459,6 +563,7 @@ function connect(){
       case "dice_roll": showDice(m); break;
       case "card_resolved": {
         applyState(m.state);
+        if(m.next_heading) setCaption(m.next_heading);
         const last=[...(m.state.log||[])].reverse().find(e=>e.kind==="resolution"&&e.reactions&&e.reactions.length);
         if(last) showReactions(last.reactions);
         break;
