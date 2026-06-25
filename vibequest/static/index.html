@@ -28,13 +28,6 @@
   }
   #titlecard .label{font-size:clamp(7px,2vw,9px);letter-spacing:.4em;text-transform:uppercase;color:var(--rose2);padding-left:.2em}
 #titlecard .title{font-size:clamp(13px,4vw,18px);font-weight:700;letter-spacing:.05em;text-transform:uppercase;line-height:1.08;border-top:1px solid rgba(84,79,87,.15);padding-top:4px;margin-top:1px}
-  #titlecard .obj-list{display:flex;flex-direction:column;gap:3px;margin-top:6px;border-top:1px solid rgba(84,79,87,.15);padding-top:5px}
-  #titlecard .obj{display:flex;align-items:flex-start;gap:5px;font-size:clamp(8px,2.3vw,10px);line-height:1.2;opacity:.9}
-  #titlecard .obj .box{flex:0 0 auto;width:11px;height:11px;border:1.5px solid var(--ink);border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--sage2);background:var(--cream2);margin-top:1px}
-  #titlecard .obj.done{color:var(--ink2)}
-  #titlecard .obj.done .t{text-decoration:line-through;opacity:.6}
-  #titlecard .obj.done .box{background:var(--sage);color:var(--ink)}
-  #titlecard .obj.active .box{border-color:var(--rose2)}
 
   /* speech bubbles over the party (show, don't tell) */
   #bubbles{top:0;left:0;right:0;bottom:0;pointer-events:none;overflow:hidden}
@@ -124,7 +117,6 @@
   <div id="titlecard">
     <div class="label">VibeQuest</div>
     <div class="title" id="qtitle">—</div>
-    <div class="obj-list" id="objectives"></div>
   </div>
 </div>
 <div id="bubbles" class="ui"></div>
@@ -427,7 +419,6 @@ function applyState(snap){
 function setHud(snap){
   const q=snap.quest;
   document.getElementById("qtitle").textContent=q.title||"VibeQuest";
-renderObjectives(q.objectives, q.resolved||0);
   updatePartyStatus(snap.party||[]);
 }
 
@@ -449,15 +440,6 @@ function updatePartyStatus(members){
   }
 }
 
-function renderObjectives(objs, resolved){
-  const el=document.getElementById("objectives"); el.innerHTML="";
-  (objs||[]).forEach((o,i)=>{
-    const r=document.createElement("div");
-    r.className="obj"+(o.done?" done":"")+(i===resolved?" active":"");
-    r.innerHTML=`<span class="box">${o.done?"✓":""}</span><span class="t">${o.text}</span>`;
-    el.appendChild(r);
-  });
-}
 
 // ---- speech bubbles ----
 const bubbles=[];

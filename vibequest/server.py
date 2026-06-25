@@ -14,24 +14,19 @@ from fastapi.staticfiles import StaticFiles
 from . import artel, llm
 from .engine import (
     CARD_BY_ID,
-    MAX_SCENES,
+    MIN_RESOLUTIONS,
     CardResolution,
     GameState,
     PlayedCard,
-    Scene,
     apply_card_effects,
     apply_disaster,
     advance_window,
     at_station,
     classify_result,
-    current_scene,
     deal_hand,
-    fallback_scene,
     maybe_travel_event,
     new_game,
-    resolve_scene,
     roll_d20,
-    scene_conclusion,
     step_party,
     sync_target,
 )
@@ -49,82 +44,8 @@ def _party_summary(state: GameState) -> str:
     return ", ".join(f"{m.name} the {m.role}" for m in state.party)
 
 
-def _scene_dict(state: GameState) -> dict | None:
-    scenes = state.quest.scenes
-    if not scenes:
-        return None
-    idx = min(state.quest.resolved, len(scenes) - 1)
-    s = scenes[idx]
-    return {
-        "title": s.title,
-        "objective": s.objective,
-        "opening": s.opening,
-        "speaker": s.speaker,
-        "finale": s.finale,
-        "next_heading": s.next_heading,
-    }
-
-
-def _objectives(state: GameState) -> list[dict]:
-    out = []
-    for i, s in enumerate(state.quest.scenes):
-        out.append(
-            {
-                "text": s.objective or s.title,
-                "done": i < state.quest.resolved,
-                "task_id": s.task_id,
-                "result": s.result if s.resolved else "",
-            }
-        )
-    return out
-
-
-async def _ensure_scene(state: GameState, idx: int) -> Scene | None:
-    quest = state.quest
-    if idx < len(quest.scenes):
-        return quest.scenes[idx]
-    prior = quest.scenes[-1] if quest.scenes else None
-    story = "; ".join(f"{s.title} ({s.result})" for s in quest.scenes) or "(just beginning)"
-    scene_number = idx + 1
-    data: dict = {}
-    if llm.enabled():
-        try:
-            data = await llm.generate_scene(
-                quest_hook=quest.hook,
-                complication=quest.complication,
-                party_summary=_party_summary(state),
-                register=quest.register,
-                story_so_far=story,
-                prior_result=prior.result if prior else "",
-                momentum=quest.momentum,
-                tension=quest.tension,
-                scene_number=scene_number,
-                max_scenes=MAX_SCENES,
-            )
-        except Exception:
-            data = {}
-    if data and data.get("objective"):
-        scene = Scene(
-            title=data.get("title") or f"Scene {scene_number}",
-            description=data.get("title") or "",
-            objective=data["objective"],
-            opening=data.get("opening", ""),
-            speaker=data.get("speaker", ""),
-            finale=bool(data.get("finale")),
-            next_heading=data.get("next_heading", ""),
-        )
-    else:
-        scene = fallback_scene(state, prior, prior.result if prior else "", scene_number, _rng)
-    quest.scenes.append(scene)
-    if artel.enabled():
-        task_id = await artel.create_task(
-            title=scene.objective or scene.title,
-            description=f"Quest: {quest.hook}\nScene {scene_number}: {scene.title}",
-            tags=["vibequest", f"run:{state.run_id}"],
-        )
-        if task_id:
-            scene.task_id = task_id
-    return scene
+def _story_so_far(state: GameState) -> str:
+    return "; ".join(state.quest.moments[-6:]) or "(just beginning)"
 
 
 def _state_snapshot(state: GameState, include_world: bool = True) -> dict:
@@ -137,14 +58,9 @@ def _state_snapshot(state: GameState, include_world: bool = True) -> dict:
             "title": state.quest.title,
             "hook": state.quest.hook,
             "complication": state.quest.complication,
-            "scene_number": state.quest.resolved + 1,
-            "resolved": state.quest.resolved,
-            "max_scenes": MAX_SCENES,
-            "scene": _scene_dict(state),
-            "objectives": _objectives(state),
+            "moments": state.quest.moments[-4:],
+            "resolution_count": state.quest.resolution_count,
             "register": state.quest.register,
-            "momentum": state.quest.momentum,
-            "tension": state.quest.tension,
             "outcome": state.quest.outcome,
         },
         "party": [
@@ -218,12 +134,6 @@ async def _resolve_window(state: GameState) -> None:
 
         result = {"narrative": card_def.description, "consequence": "", "reactions": []}
         if llm.enabled():
-            scene = current_scene(state)
-            complication = state.quest.complication
-            if scene:
-                complication = (
-                    f"{complication} CURRENT SITUATION: {scene.title} — {scene.description}"
-                )
             result = await llm.narrate_card(
                 card_name=card_def.name,
                 card_description=card_def.description,
@@ -231,10 +141,11 @@ async def _resolve_window(state: GameState) -> None:
                 dice_value=dice_value,
                 dice_label=dice_result.value,
                 quest_hook=state.quest.hook,
-                complication=complication,
+                complication=state.quest.complication,
                 party_summary=_party_summary(state),
                 momentum=state.quest.momentum,
                 memory_context=memory_ctx,
+                story_so_far=_story_so_far(state),
                 register=state.quest.register,
             )
 
@@ -273,8 +184,8 @@ async def _resolve_window(state: GameState) -> None:
         )
         await asyncio.sleep(3.0)
 
-    result = classify_result(state.window.resolutions)
-    if result == "disaster":
+    window_result = classify_result(state.window.resolutions)
+    if window_result == "disaster":
         victim = apply_disaster(state, _rng)
         if victim:
             status_word = "lost" if victim.status == "lost" else "rattled"
@@ -283,24 +194,37 @@ async def _resolve_window(state: GameState) -> None:
                 f"{victim.name} the {victim.role} is {status_word}.",
                 {"victim": victim.id, "status": victim.status},
             )
-    resolved = resolve_scene(state, result, "")
-    if resolved:
-        conclusion = scene_conclusion(resolved)
-        state.log_event("resolution", conclusion, {"card": resolved.title})
-        if artel.enabled() and resolved.task_id:
-            await artel.claim_task(resolved.task_id)
-            if result == "disaster":
-                await artel.fail_task(resolved.task_id, conclusion)
-            else:
-                await artel.complete_task(resolved.task_id, conclusion)
-        await _broadcast(
-            {
-                "type": "card_resolved",
-                "state": _state_snapshot(state, include_world=False),
-                "next_heading": resolved.next_heading,
-            }
+
+    arc = {"finale": False, "summary": "", "outcome": None}
+    if llm.enabled():
+        try:
+            arc = await llm.assess_arc(
+                quest_hook=state.quest.hook,
+                complication=state.quest.complication,
+                story_so_far=_story_so_far(state),
+                result=window_result,
+                momentum=state.quest.momentum,
+                resolution_count=state.quest.resolution_count,
+                min_resolutions=MIN_RESOLUTIONS,
+                register=state.quest.register,
+            )
+        except Exception:
+            pass
+
+    if arc.get("summary"):
+        state.quest.moments.append(arc["summary"])
+    state.quest.resolution_count += 1
+    sync_target(state)
+
+    if arc.get("finale"):
+        state.quest.outcome = arc.get("outcome") or (
+            "success" if state.quest.momentum >= 0 else "failure"
         )
-        await asyncio.sleep(2.0)
+
+    await _broadcast(
+        {"type": "card_resolved", "state": _state_snapshot(state, include_world=False)}
+    )
+    await asyncio.sleep(2.0)
 
     state.window.resolving = False
     state.phase = "active"
@@ -308,24 +232,6 @@ async def _resolve_window(state: GameState) -> None:
     if state.quest.outcome:
         await _end_quest(state)
         return
-
-    # generate the NEXT scene now, while the party walks toward it
-    nxt = await _ensure_scene(state, state.quest.resolved)
-    if nxt:
-        await _broadcast(
-            {
-                "type": "scene",
-                "number": state.quest.resolved + 1,
-                "scene": {
-                    "title": nxt.title,
-                    "objective": nxt.objective,
-                    "opening": nxt.opening,
-                    "speaker": nxt.speaker,
-                    "finale": nxt.finale,
-                },
-                "state": _state_snapshot(state, include_world=False),
-            }
-        )
 
 
 async def _end_quest(state: GameState) -> None:
@@ -362,7 +268,6 @@ async def _start_new_game() -> None:
         )
     if opening:
         _state.log_event("opening", opening)
-    await _ensure_scene(_state, 0)
     if artel.enabled():
         await artel.write_memory(
             f"New VibeQuest begun: {_state.quest.hook} Complication: {_state.quest.complication}",
@@ -428,7 +333,6 @@ def create_app() -> FastAPI:
     async def startup() -> None:
         global _state
         _state = new_game(_rng)
-        await _ensure_scene(_state, 0)
         asyncio.create_task(_window_loop())
         asyncio.create_task(_move_loop())
 

@@ -433,22 +433,8 @@ class CardResolution:
     consequence: str
 
 
-MAX_SCENES = 6
-
-
-@dataclass
-class Scene:
-    title: str
-    description: str
-    objective: str = ""
-    opening: str = ""
-    speaker: str = ""
-    finale: bool = False
-    resolved: bool = False
-    result: str = ""
-    summary: str = ""
-    next_heading: str = ""
-    task_id: str = ""
+MIN_RESOLUTIONS = 3
+MAX_RESOLUTIONS = 8
 
 
 REGISTERS = [
@@ -477,11 +463,11 @@ class QuestState:
     hook: str
     complication: str
     register: str = "a deadpan documentary"
-    scenes: list[Scene] = field(default_factory=list)
-    resolved: int = 0  # number of scenes resolved
-    momentum: int = 0  # -10 to +10, accumulate cards shift this
-    tension: int = 0  # 0 to 10, chaos cards raise this
-    outcome: str | None = None  # "success" | "failure" | None
+    moments: list[str] = field(default_factory=list)
+    resolution_count: int = 0
+    momentum: int = 0
+    tension: int = 0
+    outcome: str | None = None
 
 
 @dataclass
@@ -565,7 +551,7 @@ def new_game(rng: random.Random | None = None) -> GameState:
     window = WindowState(opened_at=now, closes_at=now + CARD_WINDOW)
     run_id = str(uuid.uuid4())[:8]
     theme = pick_theme(quest.hook, quest.register)
-    world = generate_world(rng, theme=theme, step_count=MAX_SCENES)
+    world = generate_world(rng, theme=theme, step_count=MAX_RESOLUTIONS)
     state = GameState(run_id=run_id, party=party, quest=quest, window=window, world=world)
     state.lx, state.ly = world.route[0]
     state.facing = "up"
@@ -579,8 +565,7 @@ def new_game(rng: random.Random | None = None) -> GameState:
 def sync_target(state: GameState) -> None:
     if state.world is None:
         return
-    # walk toward the NEXT unresolved station; pause there to resolve the situation
-    state.target_idx = min(state.quest.resolved + 1, len(state.world.waypoints) - 1)
+    state.target_idx = min(state.quest.resolution_count + 1, len(state.world.waypoints) - 1)
 
 
 def at_station(state: GameState) -> bool:
@@ -690,50 +675,6 @@ def classify_result(resolutions: list[CardResolution]) -> str:
     return "mixed"
 
 
-def current_scene(state: GameState) -> Scene | None:
-    quest = state.quest
-    if quest.resolved < len(quest.scenes):
-        return quest.scenes[quest.resolved]
-    return None
-
-
-def resolve_scene(state: GameState, result: str, summary: str) -> Scene | None:
-    quest = state.quest
-    if quest.resolved >= len(quest.scenes):
-        return None
-    scene = quest.scenes[quest.resolved]
-    scene.resolved = True
-    scene.result = result
-    scene.summary = summary or scene.title
-    quest.resolved += 1
-    if scene.finale:
-        quest.outcome = "success" if quest.momentum >= 0 else "failure"
-    return scene
-
-
-def scene_conclusion(scene: Scene) -> str:
-    by = {
-        "breakthrough": "and somehow pull off a genuine, glorious miracle",
-        "triumph": "and pull it off with unreasonable flair",
-        "mixed": "to mixed and confusing results",
-        "chaotic": "and trigger total, spectacular chaos",
-        "setback": "and make everything slightly worse",
-        "disaster": "and turn it into an unmitigated catastrophe",
-        "uneventful": "with quiet, procedural competence",
-    }.get(scene.result, "somehow")
-    return f"They get through {scene.title.lower()} {by}."
-
-
-_FALLBACK_SITUATIONS = [
-    ("A Locked Door", "Get the door open", "Of course it's locked. It's always locked."),
-    ("The Gatekeeper", "Satisfy the gatekeeper", "I'll handle the paperwork. I always do."),
-    ("A Suspicious Silence", "Survive the quiet", "It's too quiet. I hate it when it's quiet."),
-    ("The Long Corridor", "Cross the corridor", "We've been walking for hours. Has it moved?"),
-    ("An Unhelpful Sign", "Decipher the sign", "Every arrow says 'Other'. Bold choice."),
-    ("The Final Obstacle", "Clear the last obstacle", "One more. There's always one more."),
-]
-
-
 def apply_disaster(state: GameState, rng: random.Random) -> "PartyMember | None":
     alive = [m for m in state.party if m.status != "lost"]
     if not alive:
@@ -742,25 +683,3 @@ def apply_disaster(state: GameState, rng: random.Random) -> "PartyMember | None"
     victim.hp = max(0, victim.hp - 5)
     victim.status = "lost" if victim.hp <= 0 else "rattled"
     return victim
-
-
-def fallback_scene(
-    state: GameState, prior: Scene | None, result: str, scene_number: int, rng: random.Random
-) -> Scene:
-    finale = scene_number >= MAX_SCENES
-    title, objective, opening = rng.choice(_FALLBACK_SITUATIONS)
-    if finale:
-        title, objective, opening = (
-            "The Reckoning",
-            "Finish the quest",
-            "This is it. Try to look heroic.",
-        )
-    speaker = state.party[0].role if state.party else ""
-    return Scene(
-        title=title,
-        description=title,
-        objective=objective,
-        opening=opening,
-        speaker=speaker,
-        finale=finale,
-    )

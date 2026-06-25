@@ -47,6 +47,7 @@ async def narrate_card(
     party_summary: str,
     momentum: int,
     memory_context: str,
+    story_so_far: str = "",
     register: str = "a deadpan documentary",
 ) -> dict:
     crit = ""
@@ -54,6 +55,7 @@ async def narrate_card(
         crit = "This is a NATURAL 20 — a critical success. Something goes spectacularly, memorably right."
     elif dice_value == 1:
         crit = "This is a NATURAL 1 — a critical failure. Something goes genuinely, hilariously wrong with real consequences."
+    story_block = f"STORY SO FAR: {story_so_far}" if story_so_far else ""
     prompt = f"""You are the DM for VibeQuest, where a mundane office errand is treated with total epic seriousness, played in the key of {register}.
 The party is on a quest. Players just played a card; resolve it.
 
@@ -61,13 +63,14 @@ QUEST: {quest_hook}
 COMPLICATION: {complication}
 PARTY: {party_summary}
 MOMENTUM: {momentum} (negative = going badly, positive = going well)
+{story_block}
 MEMORY CONTEXT: {memory_context or "No prior context."}
 
 CARD PLAYED: {card_name} ({card_type})
 CARD EFFECT: {card_description}
 DICE ROLL: {dice_value}/20 ({dice_label}). {crit}
 
-Resolve this card in 2-3 sentences, in the register of {register}. Let the dice steer the outcome: high rolls go well, low rolls go badly, and a nat 1 or nat 20 should clearly swing the story. Be specific to this quest; the party takes absurd things completely seriously.
+Resolve this card in 2-3 sentences, in the register of {register}. Let the dice steer the outcome. Be specific to this quest; the party takes absurd things completely seriously.
 Then write one reaction line per party member (max 15 words each, in character).
 
 Respond as JSON:
@@ -91,72 +94,57 @@ Respond as JSON:
     return parsed
 
 
-_RESULT_NUDGE = {
-    "breakthrough": "The last scene ended in a CRITICAL SUCCESS (natural 20). Something went spectacularly right; open a real door, reward them, change their fortunes.",
-    "triumph": "The last scene went well. They gained ground.",
-    "mixed": "The last scene was a muddle. Nothing is clearly better or worse.",
-    "chaotic": "The last scene went wildly off the rails (a nat 20 AND a nat 1). Reality is unstable; lean into the absurd.",
-    "setback": "The last scene went badly. Add a real complication.",
-    "disaster": "The last scene ended in CATASTROPHE (natural 1). Something went genuinely, irreversibly wrong; a path closes, a threat appears, the situation gets materially worse.",
-    "uneventful": "Nothing decisive happened last scene. The journey continues.",
-}
-
-
-async def generate_scene(
+async def assess_arc(
     quest_hook: str,
     complication: str,
-    party_summary: str,
-    register: str,
     story_so_far: str,
-    prior_result: str,
+    result: str,
     momentum: int,
-    tension: int,
-    scene_number: int,
-    max_scenes: int,
+    resolution_count: int,
+    min_resolutions: int,
+    register: str = "a deadpan documentary",
 ) -> dict:
-    first = scene_number <= 1
-    where = "OPENING SCENE" if first else f"SCENE {scene_number} of at most {max_scenes}"
-    cont = (
-        "This is the very first situation the party encounters. Open in a way that could ONLY belong to this specific quest."
-        if first
-        else f"STORY SO FAR: {story_so_far}\n{_RESULT_NUDGE.get(prior_result, '')} The next situation must follow believably and concretely from that."
+    eligible = resolution_count >= min_resolutions
+    forced = resolution_count >= min_resolutions * 2 + 2
+    finale_instruction = (
+        "You MUST set finale=true — the quest has gone on long enough."
+        if forced
+        else (
+            "Set finale=true if the story has reached a natural conclusion: the quest goal is met or clearly lost, the arc feels complete, and a closing line would land cleanly."
+            if eligible
+            else "Set finale=false — it is too early to end the quest."
+        )
     )
-    finale_rule = f"If the party has plausibly reached the objective (especially after a breakthrough/triumph) OR has clearly failed (after a disaster), set finale=true and make this the climax. You MUST set finale=true if scene_number is {max_scenes}."
-    prompt = f"""You are the DM for VibeQuest, where a mundane office errand is treated with total epic seriousness, played in the key of {register}.
+    prompt = f"""You are the DM for VibeQuest, played in the key of {register}.
 
 QUEST: {quest_hook}
 COMPLICATION: {complication}
-PARTY: {party_summary}
-MOMENTUM: {momentum} (negative = going badly)  TENSION: {tension}
-{where}
-{cont}
+STORY SO FAR: {story_so_far or "(just beginning)"}
+LAST WINDOW RESULT: {result}
+MOMENTUM: {momentum}
 
-Invent the NEXT situation the party walks into. Rules:
-- Play it in the register of {register}; let that genre shape the mood, threat, and language.
-- Be SPECIFIC to THIS quest's people, object, and place. Use concrete details, not generic office tropes.
-- Avoid the obvious gag (no printers out of toner, no cold coffee, no stapler jokes unless the quest is literally about them).
-- Make it a fresh, surprising obstacle. Do not resolve it; just set the scene.
-- SHOW DON'T TELL: the "objective" is a short video-game checkbox goal (imperative, max 6 words). The "opening" is ONE line a party member actually says out loud, in character, reacting to what they see.
-{finale_rule}
+{finale_instruction}
 
-Respond ONLY as JSON:
+Also write a short moment summary (max 8 words, past tense) capturing what just happened — this goes in the quest log.
+
+Respond as JSON:
 {{
-  "title": "2-4 word scene title",
-  "objective": "imperative goal, max 6 words, e.g. 'Slip past the night guard'",
-  "opening": "one short spoken line of party dialogue (max 15 words)",
-  "speaker": "the role of whoever says it (e.g. Wizard)",
   "finale": false,
-  "next_heading": "short phrase for where the party heads next (max 5 words)"
+  "outcome": "success" or "failure" (only if finale=true, based on momentum and story),
+  "summary": "short moment summary, max 8 words"
 }}"""
-    req = Request(
-        system="You are an inventive DM generating the next scene. Respond only with valid JSON.",
-        user=prompt,
-    )
+    req = Request(system="You are a deadpan DM. Respond only with valid JSON.", user=prompt)
     raw = await ROUTER.complete(req)
     parsed = parse_json(raw)
-    if not parsed or "objective" not in parsed:
-        return {}
-    parsed["finale"] = bool(parsed.get("finale")) or scene_number >= max_scenes
+    if not parsed:
+        return {
+            "finale": forced,
+            "outcome": "success" if momentum >= 0 else "failure",
+            "summary": "The quest continued.",
+        }
+    parsed["finale"] = bool(parsed.get("finale")) or forced
+    if parsed["finale"] and "outcome" not in parsed:
+        parsed["outcome"] = "success" if momentum >= 0 else "failure"
     return parsed
 
 
