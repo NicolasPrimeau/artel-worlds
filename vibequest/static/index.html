@@ -105,7 +105,7 @@
   .pile-card.chaos{background:#f09098}.pile-card.tweak{background:#b0a0e8}
   /* card detail overlay */
   .card-detail-overlay{position:fixed;inset:0;z-index:800;display:flex;align-items:center;justify-content:center;background:rgba(28,26,30,.52)}
-  .card-detail-overlay .card{position:relative;width:min(250px,72vw);min-height:0;height:auto;padding:18px 20px;transform:rotate(-2deg) !important;box-shadow:0 20px 60px rgba(0,0,0,.4);cursor:default;pointer-events:none;transition:none}
+  .card-detail-overlay .card{position:relative;left:auto;bottom:auto;width:min(250px,72vw);min-height:0;height:auto;padding:18px 20px;transform:rotate(-2deg) !important;box-shadow:0 20px 60px rgba(0,0,0,.4);cursor:default;pointer-events:none;transition:none}
   .card-detail-overlay .card .cn{font-size:clamp(16px,5vw,20px)}
   .card-detail-overlay .card .cd{font-size:clamp(11px,3.2vw,13px);line-height:1.5}
   .card-detail-overlay .card .flavor{font-size:clamp(9px,2.5vw,11px);color:var(--ink2);font-style:italic;margin-top:8px}
@@ -486,17 +486,19 @@ function buildCharacter(snap){
 function buildNPCs(snap){
   for(const n of npcs){n.spr.destroy();n.shadow.destroy();}
   npcs=[];
-  if(!snap.quest?.npcs?.length||!snap.world)return;
+  const W=world;
+  if(!snap.quest?.npcs?.length||!W)return;
   for(const npc of snap.quest.npcs){
-    const wp=snap.world.waypoints[Math.min(npc.waypoint_idx,snap.world.waypoints.length-1)];
+    const wp=W.waypoints[Math.min(npc.waypoint_idx,W.waypoints.length-1)];
     if(!wp)continue;
     const px=wp[0]*TILE+TILE/2, py=wp[1]*TILE+TILE/2;
     const shadow=scene.add.image(px,py+6,"shadow").setDepth(899).setAlpha(.3).setScale(.75);
     const spr=scene.add.sprite(px,py,"hero"+npc.sprite).setDepth(1000+py);
-    spr.setFrame(DIR_COL["down"]);
     spr.setInteractive({useHandCursor:true});
+    const m={spr,shadow,id:npc.id,name:npc.name,role:npc.role,dir:"down"};
+    idle(m);
     spr.on("pointerup",()=>showNPCDetail(npc));
-    npcs.push({spr,shadow,id:npc.id,name:npc.name,role:npc.role});
+    npcs.push(m);
   }
 }
 
@@ -536,9 +538,11 @@ function applyState(snap){
   if(W && built!==snap.run_id){
     world=W; built=snap.run_id;
     waypointNames=W.waypoint_names||[];
-    buildWorld(W); buildCharacter(snap); buildNPCs(snap);
+    buildWorld(W); buildCharacter(snap);
     clearBubbles();
   }
+  const incoming=snap.quest?.npcs||[];
+  if(world && incoming.length && incoming.length!==npcs.length) buildNPCs(snap);
   setHud(snap);
 }
 
@@ -816,7 +820,7 @@ function renderPile(){
     for(const c of pileCards){
       const card=document.createElement("div");
       card.className="card "+c.type;
-      card.style.cssText="position:relative;width:min(220px,70vw);height:auto;min-height:0;padding:14px 16px;transform:none;pointer-events:none;flex-shrink:0";
+      card.style.cssText="position:relative;left:auto;bottom:auto;width:min(220px,70vw);height:auto;min-height:0;padding:14px 16px;transform:none;pointer-events:none;flex-shrink:0";
       card.innerHTML=`<div class="ct">${c.type}</div><div class="cn">${c.name}</div><div class="cd">${c.description}</div>`;
       ov.appendChild(card);
     }
