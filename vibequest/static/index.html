@@ -88,7 +88,29 @@
   #chapter .ti{font-family:"Cormorant Garamond",serif;font-size:clamp(24px,7vw,34px);font-weight:700;margin:8px 0;letter-spacing:.04em}
   #chapter .hk{font-family:"Cormorant Garamond",serif;font-size:clamp(15px,4.4vw,18px);font-style:italic;color:var(--ink2)}
 
-  #conn{top:calc(8px + env(safe-area-inset-top));right:10px;font-size:clamp(8px,2.2vw,10px);letter-spacing:.2em;text-transform:uppercase;color:var(--ink2);background:var(--cream);border:1.5px solid var(--ink);padding:2px 8px;border-radius:2px}
+  /* info button + panel */
+  #infobtn{pointer-events:auto;top:calc(8px + env(safe-area-inset-top));right:10px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;
+    font-family:"Cormorant Garamond",serif;font-weight:700;font-size:16px;color:var(--ink);background:var(--cream);border:1.5px solid var(--ink);border-radius:50%;cursor:pointer;box-shadow:2px 2px 0 rgba(84,79,87,.18)}
+  #infobtn:hover{background:var(--cream2)}
+  #info{top:0;left:0;right:0;bottom:0;z-index:30;display:flex;align-items:center;justify-content:center;background:rgba(223,215,196,.72);padding:18px;pointer-events:auto}
+  #info[hidden]{display:none}
+  .infobox{width:min(540px,94vw);max-height:86vh;overflow:auto;background:var(--cream);border:2px solid var(--ink);border-radius:6px;box-shadow:7px 7px 0 rgba(84,79,87,.22)}
+  .infoh{position:sticky;top:0;display:flex;align-items:center;padding:13px 16px;background:var(--cream);border-bottom:1.5px solid var(--ink)}
+  .infoh b{font-family:"Cormorant Garamond",serif;font-size:19px;letter-spacing:.04em;text-transform:uppercase}
+  .infoh button{margin-left:auto;background:none;border:0;color:var(--ink2);font-size:16px;cursor:pointer;line-height:1}
+  .infoh button:hover{color:var(--ink)}
+  .infobody{padding:14px 18px 16px;font-family:"Cormorant Garamond",serif;font-size:16px;line-height:1.5;color:var(--ink)}
+  .infobody p{margin:0 0 10px} .infobody p:last-child{margin-bottom:0}
+  .infobody b{color:var(--rose2)} .infobody .k{color:var(--sage2);font-weight:700}
+  .infofoot{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:12px 18px 16px;border-top:1.5px solid var(--ink);font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+  .infofoot a,.share button{color:var(--ink2);text-decoration:none;background:none;border:0;padding:0;font:inherit;cursor:pointer;white-space:nowrap;transition:color .15s}
+  .infofoot a:hover,.share button:hover{color:var(--ink)}
+  .share{position:relative;margin-left:auto}
+  #sharepop[hidden]{display:none}
+  #sharepop{position:absolute;bottom:140%;right:0;display:flex;flex-direction:column;background:var(--cream2);border:1.5px solid var(--ink);border-radius:5px;overflow:hidden;box-shadow:3px 3px 0 rgba(84,79,87,.18)}
+  #sharepop a,#sharepop button{background:none;border:0;border-bottom:1px solid var(--ink);color:var(--ink2);padding:8px 16px;font-size:11px;letter-spacing:.06em;white-space:nowrap;text-align:left;cursor:pointer;font:inherit}
+  #sharepop a:last-child,#sharepop button:last-child{border-bottom:0}
+  #sharepop a:hover,#sharepop button:hover{background:var(--cream);color:var(--ink)}
 </style>
 </head>
 <body>
@@ -112,7 +134,25 @@
   </div>
 </div>
 
-<div id="conn" class="ui">connecting</div>
+<button id="infobtn" class="ui" type="button" aria-label="info">i</button>
+
+<div id="info" class="ui" hidden><div class="infobox">
+  <div class="infoh"><b>VibeQuest</b><button id="infoClose" type="button" aria-label="close">✕</button></div>
+  <div class="infobody">
+    <p><b>VibeQuest</b> is a small open world where an AI adventuring party takes a mundane office errand and treats it as an epic quest. Everyone watching is the Dungeon Master, together.</p>
+    <p><b>Play cards.</b> Each card is something the party attempts. They batch up and resolve on a d20: high rolls go well, low rolls go badly, and a natural 1 or 20 really swings the story.</p>
+    <p><b>It's written live.</b> Every scene is generated in the moment by a language model reacting to your cards and the dice, so no two quests play the same. The party roams the world, pausing to resolve each situation, then walks on.</p>
+    <p>It all runs on <span class="k">Artel</span>, the shared layer the agents coordinate over.</p>
+  </div>
+  <div class="infofoot">
+    <a href="https://artel.run/ui?project=vibequest#dashboard" target="_blank" rel="noopener">Artel</a>
+    <a href="https://github.com/NicolasPrimeau/artel-worlds" target="_blank" rel="noopener">Source</a>
+    <a href="https://worlds.artel.run/" target="_blank" rel="noopener">All worlds</a>
+    <span class="share"><button id="sharebtn" type="button">⤴ Share</button>
+      <div id="sharepop" hidden><button id="sharecopy" type="button">copy link</button>
+        <a id="shareli" target="_blank" rel="noopener">LinkedIn</a><a id="sharex" target="_blank" rel="noopener">X</a></div></span>
+  </div>
+</div></div>
 
 <div id="dialog" class="ui">
   <div class="who" id="dwho"></div>
@@ -368,9 +408,7 @@ async function playCard(id){
 function connect(){
   const proto=location.protocol==="https:"?"wss":"ws";
   const ws=new WebSocket(`${proto}://${location.host}/ws`);
-  const conn=document.getElementById("conn");
-  ws.onopen=()=>conn.textContent="live";
-  ws.onclose=()=>{conn.textContent="reconnecting";setTimeout(connect,1500);};
+  ws.onclose=()=>{setTimeout(connect,1500);};
   ws.onmessage=ev=>{
     const m=JSON.parse(ev.data);
     switch(m.type){
@@ -387,6 +425,28 @@ function connect(){
     }
   };
 }
+
+// info panel
+(function(){
+  const m=document.getElementById("info");
+  document.getElementById("infobtn").addEventListener("click",()=>m.hidden=false);
+  document.getElementById("infoClose").addEventListener("click",()=>m.hidden=true);
+  m.addEventListener("click",e=>{ if(e.target===m) m.hidden=true; });
+})();
+
+// share — native sheet on mobile, popover fallback on desktop
+(function(){
+  const url="https://vibequest.artel.run/", base="VibeQuest — an AI party turns office errands into epic quests, live";
+  const btn=document.getElementById("sharebtn"), pop=document.getElementById("sharepop"), copy=document.getElementById("sharecopy");
+  document.getElementById("shareli").href="https://www.linkedin.com/sharing/share-offsite/?url="+encodeURIComponent(url);
+  document.getElementById("sharex").href="https://twitter.com/intent/tweet?url="+encodeURIComponent(url)+"&text="+encodeURIComponent(base);
+  btn.addEventListener("click",e=>{ e.stopPropagation();
+    if(navigator.share){ navigator.share({title:base,text:base,url}).catch(()=>{}); return; } pop.hidden=!pop.hidden; });
+  copy.addEventListener("click",async()=>{ const payload=base+" "+url;
+    try{ await navigator.clipboard.writeText(payload); }catch(_){ const ta=document.createElement("textarea"); ta.value=payload; document.body.appendChild(ta); ta.select(); try{ document.execCommand("copy"); }catch(__){} ta.remove(); }
+    copy.textContent="copied ✓"; pop.hidden=true; setTimeout(()=>{ copy.textContent="copy link"; },1400); });
+  document.addEventListener("click",e=>{ if(!e.target.closest(".share")) pop.hidden=true; });
+})();
 
 new Phaser.Game({
   type:Phaser.AUTO, parent:"game", backgroundColor:"#cdd8c6",
