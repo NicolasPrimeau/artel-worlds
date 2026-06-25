@@ -184,7 +184,7 @@ const TILE = 16;
 // camera zoom: ~2 on phones (more world in frame), 3 on desktop. Integer for crisp pixels.
 function viewZoom(){ return Math.max(2, Math.min(4, Math.round(window.innerWidth/440))); }
 // Ninja Adventure sheet: 4 columns = directions, 7 rows = frames. Walk = rows 0-3 of a column.
-const DIR_COL = { down:0, up:1, right:2, left:3 };
+const DIR_COL = { down:0, up:1, left:2, right:3 };
 const PROP = {
   tree:    { frames:[[0,6],[1,6],[0,7],[1,7]], ox:-8, oy:-16 },
   tree2:   { frames:[[2,6],[3,6],[2,7],[3,7]], ox:-8, oy:-16 },
