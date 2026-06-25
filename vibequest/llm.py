@@ -89,6 +89,16 @@ async def narrate_card(
         facts_block = "WHAT IS CURRENTLY TRUE:\n" + "\n".join(f"- {f}" for f in story_facts[-10:])
     story_block = f"WHAT HAS HAPPENED: {story_so_far}" if story_so_far else ""
 
+    if npc_context:
+        reaction_instruction = (
+            "Write exactly 2 reactions: first from the PERSON AT THIS LOCATION (use their exact name, speak in their established voice and personality), "
+            "then from the player character. Each reaction under 12 words. Workplace register — tired, distracted, focused on the wrong detail."
+        )
+    else:
+        reaction_instruction = (
+            "Write 1 reaction from the player character. Under 12 words. Workplace register."
+        )
+
     prompt = f"""{_TONE}
 
 SITUATION: {quest_hook}
@@ -108,13 +118,15 @@ The engine has already applied the mechanical effect. Narrate what caused that o
 Be specific to named people, objects, and places already established. Do not contradict anything in WHAT IS CURRENTLY TRUE.
 If a chaos card: something unexpected really does happen, name it concretely.
 
+{reaction_instruction}
+
 Then 0-2 "established" facts: short present-tense statements about what is now true in the world because of this. Only write facts that actually change something (an object's state, a person's situation, a location's status). Skip if nothing new was established.
 
 JSON only:
 {{
   "narrative": "2-3 sentence narration",
   "consequence": "one sentence, the immediate consequence",
-  "reactions": [{{"name": "...", "role": "...", "line": "..."}}],
+  "reactions": [{{"name": "exact person name", "role": "their role", "line": "under 12 words"}}],
   "established": ["fact 1", "fact 2"]
 }}"""
 

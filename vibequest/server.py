@@ -369,6 +369,7 @@ async def _end_quest(state: GameState) -> None:
         {
             "type": "quest_complete",
             "outcome": state.quest.outcome,
+            "closing": closing,
             "state": _state_snapshot(state, include_world=False),
         }
     )

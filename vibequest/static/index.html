@@ -126,6 +126,18 @@
   #chapter .ti{font-family:"Cormorant Garamond",serif;font-size:clamp(24px,7vw,34px);font-weight:700;margin:8px 0;letter-spacing:.04em}
   #chapter .hk{font-family:"Cormorant Garamond",serif;font-size:clamp(15px,4.4vw,18px);font-style:italic;color:var(--ink2)}
 
+  /* quest completion screen */
+  #endscreen{top:0;left:0;right:0;bottom:0;z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;pointer-events:auto;background:rgba(223,215,196,.9);opacity:0;transition:opacity .7s}
+  #endscreen.show{opacity:1}
+  #endscreen[hidden]{display:none!important}
+  .endbox{background:var(--cream);border:2px solid var(--ink);border-radius:6px;padding:clamp(24px,7vw,40px) clamp(28px,8vw,52px);text-align:center;box-shadow:8px 8px 0 rgba(26,20,40,.22);max-width:min(420px,90vw)}
+  .endbox .stamp{font-size:clamp(9px,2.5vw,11px);letter-spacing:.5em;text-transform:uppercase;color:var(--rose2);margin-bottom:8px}
+  .endbox .verdict{font-family:"Cormorant Garamond",serif;font-size:clamp(30px,9vw,44px);font-weight:700;letter-spacing:.04em;margin:4px 0 12px}
+  .endbox .hook{font-family:"Cormorant Garamond",serif;font-size:clamp(14px,4vw,17px);font-style:italic;color:var(--ink2);margin-bottom:16px}
+  .endbox .closing{font-size:clamp(12px,3.2vw,14px);color:var(--ink);line-height:1.55;border-top:1.5px solid rgba(26,20,40,.15);padding-top:14px;margin-top:2px}
+  .endbox .newquest{margin-top:20px;padding:10px 22px;background:var(--ink);color:var(--cream);border:none;border-radius:3px;font-family:"Courier Prime",monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer}
+  .endbox .newquest:hover{background:var(--rose2)}
+
   /* info button + panel */
   #infobtn{pointer-events:auto;top:calc(8px + env(safe-area-inset-top));right:10px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;
     font-family:"Cormorant Garamond",serif;font-weight:700;font-size:16px;color:var(--ink);background:var(--cream);border:1.5px solid var(--ink);border-radius:50%;cursor:pointer;box-shadow:2px 2px 0 rgba(26,20,40,.18)}
@@ -195,6 +207,16 @@
     <div class="ch" id="chno">A VibeQuest</div>
     <div class="ti" id="chti"></div>
     <div class="hk" id="chhk"></div>
+  </div>
+</div>
+
+<div id="endscreen" class="ui" hidden>
+  <div class="endbox">
+    <div class="stamp" id="end-stamp"></div>
+    <div class="verdict" id="end-verdict"></div>
+    <div class="hook" id="end-hook"></div>
+    <div class="closing" id="end-closing"></div>
+    <button class="newquest" onclick="document.getElementById('endscreen').hidden=true">New Quest</button>
   </div>
 </div>
 
@@ -824,10 +846,23 @@ function updateBubbles(){
   }
 }
 function clearBubbles(){ for(const b of bubbles) b.el.remove(); bubbles.length=0; }
-function showReactions(rs){
-  if(!rs||!rs.length||!character) return;
-  const r=rs.find(r=>r.name===character.name)||rs[0];
-  speak(character,character.name,r.line);
+function showReactions(rs,snap){
+  if(!rs||!rs.length) return;
+  const targetIdx=snap&&snap.pos!=null?snap.pos.target_idx:null;
+  const npcData=targetIdx!=null?(snap.quest?.npcs||[]).find(n=>n.waypoint_idx===targetIdx):null;
+  if(npcData){
+    const npcR=rs.find(r=>r.name===npcData.name);
+    const charR=character&&(rs.find(r=>r.name===character.name)||rs.find(r=>r.name!==npcData.name)||rs[rs.length-1]);
+    if(npcR){
+      speak({name:npcData.name},npcData.name,npcR.line,3800);
+      if(charR&&character) setTimeout(()=>{ if(character) speak(character,character.name,charR.line,4200); },4100);
+    } else if(charR&&character){
+      speak(character,character.name,charR.line);
+    }
+  } else if(character){
+    const r=rs.find(r=>r.name===character.name)||rs[0];
+    if(r) speak(character,character.name,r.line);
+  }
 }
 let toastTimer=null;
 function toast(text){
@@ -851,6 +886,59 @@ function showChapter(snap){
   document.getElementById("chhk").textContent=snap.quest.hook||"";
   const el=document.getElementById("chapter"); el.classList.add("show");
   setTimeout(()=>el.classList.remove("show"),3800);
+}
+
+function showEndScreen(snap,closing){
+  const outcome=snap.quest?.outcome||"success";
+  const success=outcome==="success";
+  document.getElementById("end-stamp").textContent=success?"Case Closed":"Filed Under: Unresolved";
+  document.getElementById("end-verdict").textContent=success?"Done.":"Still Pending.";
+  document.getElementById("end-hook").textContent=snap.quest?.hook||"";
+  document.getElementById("end-closing").textContent=closing||"The matter was considered handled.";
+  const el=document.getElementById("endscreen");
+  el.hidden=false;
+  requestAnimationFrame(()=>el.classList.add("show"));
+  sndComplete(success);
+}
+
+let _audioCtx=null;
+function _ac(){ return _audioCtx||(_audioCtx=new(window.AudioContext||window.webkitAudioContext)()); }
+function sndCard(){
+  try{
+    const ctx=_ac(),now=ctx.currentTime;
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.connect(g);g.connect(ctx.destination);
+    o.type="triangle";o.frequency.setValueAtTime(520,now);o.frequency.exponentialRampToValueAtTime(320,now+.12);
+    g.gain.setValueAtTime(.18,now);g.gain.exponentialRampToValueAtTime(.001,now+.18);
+    o.start(now);o.stop(now+.18);
+  }catch(e){}
+}
+function sndDice(value){
+  try{
+    const ctx=_ac(),now=ctx.currentTime;
+    const freq=value===20?880:value===1?180:360+value*8;
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.connect(g);g.connect(ctx.destination);
+    o.type=value===20?"sine":"square";
+    o.frequency.setValueAtTime(freq,now);
+    if(value===20) o.frequency.setValueAtTime(freq*1.5,now+.08);
+    g.gain.setValueAtTime(.22,now);g.gain.exponentialRampToValueAtTime(.001,now+.4);
+    o.start(now);o.stop(now+.4);
+  }catch(e){}
+}
+function sndComplete(success){
+  try{
+    const ctx=_ac(),now=ctx.currentTime;
+    const notes=success?[440,554,659,880]:[440,415,392,330];
+    notes.forEach((f,i)=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.connect(g);g.connect(ctx.destination);
+      o.type="sine";o.frequency.value=f;
+      const t=now+i*.18;
+      g.gain.setValueAtTime(.0,t);g.gain.linearRampToValueAtTime(.2,t+.04);g.gain.exponentialRampToValueAtTime(.001,t+.5);
+      o.start(t);o.stop(t+.5);
+    });
+  }catch(e){}
 }
 
 const PILE_ROTS=[3,-5,7,-2,8,-6,4,-8,2,-4];
@@ -1049,6 +1137,7 @@ function renderPile(){
 }
 
 async function playCard(id){
+  sndCard();
   try{ await fetch("/play",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({card_id:id,player_id:playerId})}); }catch(e){}
 }
 
@@ -1072,16 +1161,16 @@ function connect(){
         if(m.scene&&m.scene.opening){ const mem=memberFor(null,m.scene.speaker); speak(mem,mem&&mem.name,m.scene.opening,5200); }
         break;
       case "travel_event": { speak(character,character&&character.name,m.text,4200); break; }
-      case "dice_roll": showDice(m); break;
+      case "dice_roll": showDice(m); sndDice(m.dice_value); break;
       case "card_resolved": {
         applyState(m.state);
         if(m.next_heading) setCaption(m.next_heading);
         const last=[...(m.state.log||[])].reverse().find(e=>e.kind==="resolution"&&e.reactions&&e.reactions.length);
-        if(last) showReactions(last.reactions);
+        if(last) showReactions(last.reactions,m.state);
         break;
       }
       case "quest_complete": applyState(m.state);
-        toast(m.outcome==="success"?"Quest complete.":"The quest ends in disaster."); break;
+        showEndScreen(m.state,m.closing); break;
       case "card_played": break;
     }
   };
