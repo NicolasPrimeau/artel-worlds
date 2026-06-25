@@ -4,7 +4,6 @@ import asyncio
 import json
 import logging
 import random
-import time
 from pathlib import Path
 
 from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect
@@ -519,23 +518,19 @@ async def _move_loop() -> None:
 async def _window_loop() -> None:
     global _state
     while True:
-        await asyncio.sleep(2.0)
+        await asyncio.sleep(5.0)
         if _state is None or _state.phase == "resolving" or _state.phase == "complete":
             continue
         if not _clients:
             continue
         sync_target(_state)
         if not at_station(_state):
-            continue  # still travelling — situations only resolve at a station
-        now = time.time()
-        if now >= _state.window.closes_at:
-            async with _lock:
-                if (
-                    now >= _state.window.closes_at
-                    and _state.phase == "active"
-                    and at_station(_state)
-                ):
-                    await _resolve_window(_state)
+            continue
+        if not _state.window.cards:
+            continue
+        async with _lock:
+            if _state.window.cards and _state.phase == "active" and at_station(_state):
+                await _resolve_window(_state)
 
 
 def create_app() -> FastAPI:

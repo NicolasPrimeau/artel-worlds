@@ -18,7 +18,7 @@ from .world import WorldMap, facing_from_delta, generate_world
 #   tasks     → quest steps (created at quest start, claimed/completed by AI agents)
 #   messages  → in-the-moment agent coordination ("wizard to paladin: this is a terrible idea")
 
-CARD_WINDOW = 30.0  # seconds per card window
+CARD_WINDOW = 5.0  # seconds between resolution checks
 
 # ── Quest categories ───────────────────────────────────────────────────────────────────────────────
 # A category fixes the world theme and provides a curated task + complication pool.
