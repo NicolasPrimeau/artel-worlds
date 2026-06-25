@@ -10,11 +10,18 @@
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
 <style>
   :root{
-    --cream:#fdf4e8; --cream2:#fff8f0; --rose:#f0c8c0; --rose2:#c85850;
-    --sage:#a8d4b8; --sage2:#5a9e78; --gold:#f0d060; --lav:#c0b0e0; --ink:#3a3040; --ink2:#706878;
+    --beige:#c4ae88;
+    --cream:#f4e8d0; --cream2:#fdf4e2;
+    --coral:#d83c38; --coralpale:#f0a8a0;
+    --blue:#3070b8; --bluepale:#a0c4ec;
+    --mustard:#c89c18; --mustardpale:#eecf60;
+    --mint:#1ea868; --mintpale:#80d4a8;
+    --lav:#6848c0; --lavpale:#b8a8ec;
+    --ink:#1a1428; --ink2:#4c3c64;
+    --rose:#f0a8a0; --rose2:#d83c38; --sage:#80d4a8; --sage2:#1ea868; --gold:#eecf60; --lav:#b8a8ec;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  html,body{height:100%;overflow:hidden;background:#c8d8c0;font-family:"Courier Prime",monospace;color:var(--ink)}
+  html,body{height:100%;overflow:hidden;background:var(--beige);font-family:"Courier Prime",monospace;color:var(--ink)}
   #game{position:fixed;inset:0;z-index:0}
   #game canvas{image-rendering:pixelated}
   .serif{font-family:"Cormorant Garamond",serif}
@@ -24,12 +31,12 @@
   #hud{top:calc(8px + env(safe-area-inset-top));left:10px;display:flex;flex-direction:column;gap:4px;max-width:min(66vw,280px)}
   #titlecard{
     pointer-events:none;background:var(--cream);border:2px solid var(--ink);border-radius:3px;
-    padding:clamp(5px,1.6vw,8px) clamp(10px,3vw,14px);box-shadow:3px 3px 0 rgba(84,79,87,.18);
+    padding:clamp(5px,1.6vw,8px) clamp(10px,3vw,14px);box-shadow:3px 3px 0 rgba(26,20,40,.18);
   }
   #titlecard .label{font-size:clamp(7px,2vw,9px);letter-spacing:.4em;text-transform:uppercase;color:var(--rose2);padding-left:.2em}
-  #titlecard .title{font-size:clamp(13px,4vw,18px);font-weight:700;letter-spacing:.05em;text-transform:uppercase;line-height:1.08;border-top:1px solid rgba(84,79,87,.15);padding-top:4px;margin-top:1px}
+  #titlecard .title{font-size:clamp(13px,4vw,18px);font-weight:700;letter-spacing:.05em;text-transform:uppercase;line-height:1.08;border-top:1px solid rgba(26,20,40,.15);padding-top:4px;margin-top:1px}
   #titlecard .hook{font-size:clamp(9px,2.5vw,11px);color:var(--ink2);font-style:italic;margin-top:3px;line-height:1.4;font-family:"Cormorant Garamond",serif;opacity:.8}
-  #titlecard .objectives{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:3px;border-top:1px solid rgba(84,79,87,.1);padding-top:5px}
+  #titlecard .objectives{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:3px;border-top:1px solid rgba(26,20,40,.1);padding-top:5px}
   #titlecard .objectives li{font-size:clamp(8px,2.2vw,10px);color:var(--ink2);display:flex;align-items:baseline;gap:5px;letter-spacing:.01em;line-height:1.3}
   #titlecard .objectives li .ob{flex-shrink:0;font-size:9px;color:var(--rose2);line-height:1}
   #titlecard .objectives li.done{opacity:.45;text-decoration:line-through}
@@ -38,7 +45,7 @@
   /* speech bubble — fixed above character (camera follows, so character ≈ center) */
   #bubbles{pointer-events:none}
   .bubble{position:fixed;bottom:57%;left:50%;transform:translateX(-50%);max-width:170px;background:var(--cream2);border:2px solid var(--ink);border-radius:8px;
-    padding:5px 9px;font-family:"Cormorant Garamond",serif;font-size:15px;line-height:1.25;color:var(--ink);box-shadow:2px 2px 0 rgba(84,79,87,.2);
+    padding:5px 9px;font-family:"Cormorant Garamond",serif;font-size:15px;line-height:1.25;color:var(--ink);box-shadow:2px 2px 0 rgba(26,20,40,.2);
     white-space:normal;text-align:center;animation:pop .16s ease-out;z-index:300;pointer-events:none}
   .bubble .nm{display:block;font-family:"Courier Prime",monospace;font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--rose2);margin-bottom:1px}
   @keyframes pop{from{opacity:0;transform:translateX(-50%) scale(.85)}to{opacity:1;transform:translateX(-50%) scale(1)}}
@@ -63,7 +70,7 @@
     border:2px solid var(--ink);border-radius:6px;
     background:var(--cream2);padding:clamp(5px,1.4vw,7px) clamp(7px,2vw,10px);
     display:flex;flex-direction:column;gap:3px;
-    box-shadow:3px 4px 0 rgba(84,79,87,.18);
+    box-shadow:3px 4px 0 rgba(26,20,40,.18);
     transform-origin:50% 130%;
     transition:transform .18s ease-out, box-shadow .18s, opacity .18s;
     pointer-events:auto;cursor:pointer;user-select:none;touch-action:none;
@@ -71,14 +78,14 @@
   .card .ct{font-size:clamp(6px,1.7vw,8px);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:700}
   .card .cn{font-size:clamp(11px,3.2vw,14px);font-weight:700;line-height:1.15;font-family:"Cormorant Garamond",serif;letter-spacing:.02em}
   .card .cd{font-size:clamp(7px,1.9vw,9px);color:var(--ink);line-height:1.4;flex:none}
-  .card.accumulate{background:#eef2e6}.card.action{background:#fbf0e6}
-  .card.chaos{background:#f6e7ea}.card.tweak{background:#ece9f2}
+  .card.accumulate{background:#88d8a8}.card.action{background:#f8be60}
+  .card.chaos{background:#f09098}.card.tweak{background:#b0a0e8}
   .card.played{opacity:0;pointer-events:none}
   /* draw pile — bottom-left, above hand */
   #drawpile{position:fixed;left:12px;bottom:clamp(156px,44vw,196px);
     width:clamp(60px,16vw,76px);height:clamp(80px,22vw,100px);z-index:11;cursor:default}
-  .draw-back{position:absolute;inset:0;background:var(--ink);border:2px solid var(--ink);border-radius:6px;box-shadow:2px 3px 0 rgba(84,79,87,.3)}
-  .draw-back::after{content:"";position:absolute;inset:6px;border:1px solid rgba(255,255,255,.15);border-radius:3px}
+  .draw-back{position:absolute;inset:0;background:#5a1a28;border:2px solid #3a0a18;border-radius:6px;box-shadow:2px 3px 0 rgba(30,20,40,.35)}
+  .draw-back::after{content:"";position:absolute;inset:5px;border:1px solid rgba(255,200,180,.2);border-radius:2px}
   .draw-back.s1{transform:translate(-2px,-2px)}
   .draw-back.s2{transform:translate(-4px,-4px)}
   #drawpile .pile-lbl{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:7px;letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);font-family:"Courier Prime",monospace;white-space:nowrap}
@@ -86,12 +93,12 @@
   #pile{position:fixed;right:12px;bottom:clamp(156px,44vw,196px);
     width:clamp(60px,16vw,76px);height:clamp(80px,22vw,100px);pointer-events:auto;cursor:pointer;z-index:11;overflow:visible}
   .pile-card{position:absolute;inset:0;border:2px solid var(--ink);border-radius:6px;background:var(--cream);
-    box-shadow:2px 3px 0 rgba(84,79,87,.14);display:flex;flex-direction:column;gap:2px;padding:clamp(4px,1.4vw,6px) clamp(6px,1.8vw,8px)}
+    box-shadow:2px 3px 0 rgba(26,20,40,.14);display:flex;flex-direction:column;gap:2px;padding:clamp(4px,1.4vw,6px) clamp(6px,1.8vw,8px)}
   .pile-card .ct{font-size:clamp(5px,1.5vw,7px);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:700}
   .pile-card .cn{font-size:clamp(9px,2.5vw,11px);font-weight:700;line-height:1.15;font-family:"Cormorant Garamond",serif}
   .pile-card .cd{font-size:clamp(6px,1.6vw,8px);color:var(--ink);line-height:1.3;flex:none;overflow:hidden}
-  .pile-card.accumulate{background:#eef2e6}.pile-card.action{background:#fbf0e6}
-  .pile-card.chaos{background:#f6e7ea}.pile-card.tweak{background:#ece9f2}
+  .pile-card.accumulate{background:#88d8a8}.pile-card.action{background:#f8be60}
+  .pile-card.chaos{background:#f09098}.pile-card.tweak{background:#b0a0e8}
   @keyframes deal-in{from{opacity:0;transform:var(--deal-start)}to{opacity:1;transform:var(--deal-end)}}
   /* card detail overlay */
   .card-detail-overlay{position:fixed;inset:0;z-index:800;display:flex;align-items:center;justify-content:center;background:rgba(28,26,30,.52)}
@@ -103,7 +110,7 @@
   /* dice overlay */
   #dice{top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .25s}
   #dice.show{opacity:1}
-  #dice .d20{width:clamp(120px,34vw,150px);height:clamp(120px,34vw,150px);background:var(--cream);border:3px solid var(--ink);border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:6px 6px 0 rgba(84,79,87,.2);transform:rotate(-6deg)}
+  #dice .d20{width:clamp(120px,34vw,150px);height:clamp(120px,34vw,150px);background:var(--cream);border:3px solid var(--ink);border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:6px 6px 0 rgba(26,20,40,.2);transform:rotate(-6deg)}
   #dice .num{font-size:clamp(46px,13vw,62px);font-weight:700;line-height:1}
   #dice .lab{font-size:clamp(10px,2.8vw,11px);letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);margin-top:4px}
   #dice .cardname{font-size:clamp(10px,2.8vw,11px);color:var(--ink2);margin-top:6px;max-width:130px;text-align:center}
@@ -111,18 +118,18 @@
   /* chapter intro */
   #chapter{top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .5s;pointer-events:none;padding:0 16px}
   #chapter.show{opacity:1;background:rgba(223,215,196,.55)}
-  #chapter .inner{background:var(--cream);border:2px solid var(--ink);border-radius:4px;padding:clamp(18px,5vw,26px) clamp(22px,7vw,40px);text-align:center;box-shadow:6px 6px 0 rgba(84,79,87,.2);max-width:90vw}
+  #chapter .inner{background:var(--cream);border:2px solid var(--ink);border-radius:4px;padding:clamp(18px,5vw,26px) clamp(22px,7vw,40px);text-align:center;box-shadow:6px 6px 0 rgba(26,20,40,.2);max-width:90vw}
   #chapter .ch{font-size:clamp(10px,2.8vw,11px);letter-spacing:.5em;text-transform:uppercase;color:var(--rose2)}
   #chapter .ti{font-family:"Cormorant Garamond",serif;font-size:clamp(24px,7vw,34px);font-weight:700;margin:8px 0;letter-spacing:.04em}
   #chapter .hk{font-family:"Cormorant Garamond",serif;font-size:clamp(15px,4.4vw,18px);font-style:italic;color:var(--ink2)}
 
   /* info button + panel */
   #infobtn{pointer-events:auto;top:calc(8px + env(safe-area-inset-top));right:10px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;
-    font-family:"Cormorant Garamond",serif;font-weight:700;font-size:16px;color:var(--ink);background:var(--cream);border:1.5px solid var(--ink);border-radius:50%;cursor:pointer;box-shadow:2px 2px 0 rgba(84,79,87,.18)}
+    font-family:"Cormorant Garamond",serif;font-weight:700;font-size:16px;color:var(--ink);background:var(--cream);border:1.5px solid var(--ink);border-radius:50%;cursor:pointer;box-shadow:2px 2px 0 rgba(26,20,40,.18)}
   #infobtn:hover{background:var(--cream2)}
   #info{top:0;left:0;right:0;bottom:0;z-index:30;display:flex;align-items:center;justify-content:center;background:rgba(223,215,196,.72);padding:18px;pointer-events:auto}
   #info[hidden]{display:none}
-  .infobox{width:min(540px,94vw);max-height:86vh;overflow:auto;background:var(--cream);border:2px solid var(--ink);border-radius:6px;box-shadow:7px 7px 0 rgba(84,79,87,.22)}
+  .infobox{width:min(540px,94vw);max-height:86vh;overflow:auto;background:var(--cream);border:2px solid var(--ink);border-radius:6px;box-shadow:7px 7px 0 rgba(26,20,40,.22)}
   .infoh{position:sticky;top:0;display:flex;align-items:center;padding:13px 16px;background:var(--cream);border-bottom:1.5px solid var(--ink)}
   .infoh b{font-family:"Cormorant Garamond",serif;font-size:19px;letter-spacing:.04em;text-transform:uppercase}
   .infoh button{margin-left:auto;background:none;border:0;color:var(--ink2);font-size:16px;cursor:pointer;line-height:1}
@@ -135,7 +142,7 @@
   .infofoot a:hover,.share button:hover{color:var(--ink)}
   .share{position:relative;margin-left:auto}
   #sharepop[hidden]{display:none}
-  #sharepop{position:absolute;bottom:140%;right:0;display:flex;flex-direction:column;background:var(--cream2);border:1.5px solid var(--ink);border-radius:5px;overflow:hidden;box-shadow:3px 3px 0 rgba(84,79,87,.18)}
+  #sharepop{position:absolute;bottom:140%;right:0;display:flex;flex-direction:column;background:var(--cream2);border:1.5px solid var(--ink);border-radius:5px;overflow:hidden;box-shadow:3px 3px 0 rgba(26,20,40,.18)}
   #sharepop a,#sharepop button{background:none;border:0;border-bottom:1px solid var(--ink);color:var(--ink2);padding:8px 16px;font-size:11px;letter-spacing:.06em;white-space:nowrap;text-align:left;cursor:pointer;font:inherit}
   #sharepop a:last-child,#sharepop button:last-child{border-bottom:0}
   #sharepop a:hover,#sharepop button:hover{background:var(--cream);color:var(--ink)}
@@ -484,8 +491,8 @@ function showNPCDetail(npc){
   const ov=document.createElement("div");
   ov.style.cssText="position:fixed;inset:0;z-index:800;display:flex;align-items:center;justify-content:center;background:rgba(28,26,30,.5);";
   const box=document.createElement("div");
-  box.style.cssText="background:var(--cream);border:2px solid var(--ink);border-radius:4px;padding:18px 22px;min-width:180px;max-width:min(280px,80vw);box-shadow:4px 4px 0 rgba(84,79,87,.2);transform:rotate(-1deg)";
-  box.innerHTML=`<div style="font-size:8px;letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);margin-bottom:4px">NPC</div><div style="font-size:17px;font-weight:700;font-family:'Cormorant Garamond',serif">${npc.name}</div><div style="font-size:10px;color:var(--ink2);margin-top:3px;letter-spacing:.05em">${npc.role}</div>${npc.personality?`<div style="font-size:11px;font-style:italic;color:var(--ink2);margin-top:8px;border-top:1px solid rgba(84,79,87,.12);padding-top:8px">${npc.personality}</div>`:""}`;
+  box.style.cssText="background:var(--cream);border:2px solid var(--ink);border-radius:4px;padding:18px 22px;min-width:180px;max-width:min(280px,80vw);box-shadow:4px 4px 0 rgba(26,20,40,.2);transform:rotate(-1deg)";
+  box.innerHTML=`<div style="font-size:8px;letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);margin-bottom:4px">NPC</div><div style="font-size:17px;font-weight:700;font-family:'Cormorant Garamond',serif">${npc.name}</div><div style="font-size:10px;color:var(--ink2);margin-top:3px;letter-spacing:.05em">${npc.role}</div>${npc.personality?`<div style="font-size:11px;font-style:italic;color:var(--ink2);margin-top:8px;border-top:1px solid rgba(26,20,40,.12);padding-top:8px">${npc.personality}</div>`:""}`;
   ov.appendChild(box);
   ov.addEventListener("pointerup",()=>ov.remove(),{once:true});
   document.body.appendChild(ov);
@@ -497,7 +504,7 @@ function showMemberDetail(pm){
   const box=document.createElement("div");
   const statusColor=pm.status==="lost"?"#c84444":pm.status==="rattled"?"#d4a840":"var(--sage2)";
   const hpBar=`<div style="display:flex;gap:3px;margin-top:6px">${Array.from({length:pm.hp},()=>`<div style="width:8px;height:8px;background:${statusColor};border:1px solid var(--ink);border-radius:1px"></div>`).join("")}</div>`;
-  box.style.cssText="background:var(--cream);border:2px solid var(--ink);border-radius:4px;padding:18px 22px;min-width:180px;max-width:min(280px,80vw);box-shadow:4px 4px 0 rgba(84,79,87,.2);transform:rotate(1deg)";
+  box.style.cssText="background:var(--cream);border:2px solid var(--ink);border-radius:4px;padding:18px 22px;min-width:180px;max-width:min(280px,80vw);box-shadow:4px 4px 0 rgba(26,20,40,.2);transform:rotate(1deg)";
   box.innerHTML=`<div style="font-size:8px;letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);margin-bottom:4px">PARTY</div><div style="font-size:17px;font-weight:700;font-family:'Cormorant Garamond',serif">${pm.name}</div><div style="font-size:10px;color:var(--ink2);margin-top:3px;letter-spacing:.05em">${pm.role}</div><div style="font-size:10px;color:${statusColor};margin-top:4px;text-transform:uppercase;letter-spacing:.06em">${pm.status}</div>${hpBar}`;
   ov.appendChild(box);
   ov.addEventListener("pointerup",()=>ov.remove(),{once:true});
@@ -665,7 +672,7 @@ function renderHand(cards){
 
     let holdTimer=null, ptStart=null, dragging=false;
 
-    const raise=()=>{ el.style.transform=cardTransform(t,false,step); el.style.boxShadow="0 12px 24px rgba(84,79,87,.28)"; el.style.zIndex=100; };
+    const raise=()=>{ el.style.transform=cardTransform(t,false,step); el.style.boxShadow="0 12px 24px rgba(26,20,40,.28)"; el.style.zIndex=100; };
     const lower=()=>{ if(selectedCard===el)return; el.style.transform=cardTransform(t,true,step); el.style.boxShadow=""; el.style.zIndex=defZ; };
     const deselect=()=>{ if(selectedCard===el)selectedCard=null; el.style.transform=cardTransform(t,true,step); el.style.boxShadow=""; el.style.zIndex=defZ; };
     el._deselect=deselect; el._step=step; el._t=t; el._defZ=defZ;
@@ -690,7 +697,7 @@ function renderHand(cards){
         el.style.left=r.left+"px"; el.style.top=r.top+"px";
         el.style.width=r.width+"px"; el.style.height=r.height+"px";
         el.style.margin="0"; el.style.transform=`rotate(${t*8}deg)`;
-        el.style.zIndex="300"; el.style.boxShadow="0 16px 32px rgba(84,79,87,.4)"; el.style.opacity=".92";
+        el.style.zIndex="300"; el.style.boxShadow="0 16px 32px rgba(26,20,40,.4)"; el.style.opacity=".92";
       }
       if(dragging){
         el.style.left=(ptStart.rect.left+e.clientX-ptStart.x)+"px";
@@ -719,7 +726,7 @@ function renderHand(cards){
         el.style.position=""; el.style.left=""; el.style.top=""; el.style.width=""; el.style.height="";
         el.style.margin=""; el.style.opacity=""; el.style.transition="";
         el.style.transform=cardTransform(t,selectedCard===el?false:true,step);
-        el.style.boxShadow=selectedCard===el?"0 12px 24px rgba(84,79,87,.28)":"";
+        el.style.boxShadow=selectedCard===el?"0 12px 24px rgba(26,20,40,.28)":"";
         el.style.zIndex=selectedCard===el?100:defZ;
       }
       dragging=false; ptStart=null;
