@@ -45,7 +45,7 @@ def _party_summary(state: GameState) -> str:
 
 
 def _story_so_far(state: GameState) -> str:
-    return "; ".join(state.quest.moments[-6:]) or "(just beginning)"
+    return " | ".join(state.quest.beats[-8:]) or "(just beginning)"
 
 
 def _state_snapshot(state: GameState, include_world: bool = True) -> dict:
@@ -58,7 +58,7 @@ def _state_snapshot(state: GameState, include_world: bool = True) -> dict:
             "title": state.quest.title,
             "hook": state.quest.hook,
             "complication": state.quest.complication,
-            "moments": state.quest.moments[-4:],
+            "beats": state.quest.beats[-4:],
             "resolution_count": state.quest.resolution_count,
             "register": state.quest.register,
             "outcome": state.quest.outcome,
@@ -173,6 +173,9 @@ async def _resolve_window(state: GameState) -> None:
             },
         )
 
+        if result.get("consequence"):
+            state.quest.beats.append(result["consequence"])
+
         if artel.enabled():
             await artel.write_memory(
                 f"Quest: {state.quest.hook}. Card: {card_def.name}. Dice: {dice_value}. {result.get('narrative', '')}",
@@ -185,6 +188,7 @@ async def _resolve_window(state: GameState) -> None:
         await asyncio.sleep(3.0)
 
     window_result = classify_result(state.window.resolutions)
+    state.quest.result_history.append(window_result)
     if window_result == "disaster":
         victim = apply_disaster(state, _rng)
         if victim:
@@ -195,14 +199,14 @@ async def _resolve_window(state: GameState) -> None:
                 {"victim": victim.id, "status": victim.status},
             )
 
-    arc = {"finale": False, "summary": "", "outcome": None}
+    arc = {"finale": False, "outcome": None}
     if llm.enabled():
         try:
             arc = await llm.assess_arc(
                 quest_hook=state.quest.hook,
                 complication=state.quest.complication,
                 story_so_far=_story_so_far(state),
-                result=window_result,
+                result_history=state.quest.result_history,
                 momentum=state.quest.momentum,
                 resolution_count=state.quest.resolution_count,
                 min_resolutions=MIN_RESOLUTIONS,
@@ -211,8 +215,6 @@ async def _resolve_window(state: GameState) -> None:
         except Exception:
             pass
 
-    if arc.get("summary"):
-        state.quest.moments.append(arc["summary"])
     state.quest.resolution_count += 1
     sync_target(state)
 
@@ -220,6 +222,9 @@ async def _resolve_window(state: GameState) -> None:
         state.quest.outcome = arc.get("outcome") or (
             "success" if state.quest.momentum >= 0 else "failure"
         )
+        if arc.get("closing_beat"):
+            state.quest.beats.append(arc["closing_beat"])
+            state.log_event("closing_beat", arc["closing_beat"])
 
     await _broadcast(
         {"type": "card_resolved", "state": _state_snapshot(state, include_world=False)}
