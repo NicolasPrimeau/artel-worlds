@@ -369,16 +369,7 @@ def create_app() -> FastAPI:
                         "title": _state.quest.title,
                         "hook": _state.quest.hook,
                         "momentum": _state.quest.momentum,
-                        "tension": _state.quest.tension,
-                        "scene_number": _state.quest.resolved + 1,
-                        "scenes_resolved": _state.quest.resolved,
-                        "scene": (
-                            _state.quest.scenes[
-                                min(_state.quest.resolved, len(_state.quest.scenes) - 1)
-                            ].title
-                            if _state.quest.scenes
-                            else None
-                        ),
+                        "resolution_count": _state.quest.resolution_count,
                         "outcome": _state.quest.outcome,
                     }
                     if _state

@@ -198,6 +198,30 @@ THEMES = {
 }
 
 
+_ZONE_DEF: dict[str, dict[str, tuple[int, int, int]]] = {
+    "office": {
+        "Open Plan": (FLOOR, 22, 12),
+        "Conference Room": (LAVENDER, 22, 12),
+        "Break Room": (PATH_LIGHT, 18, 10),
+        "Reception": (PATH, 18, 10),
+        "Print Bay": (PATH_LIGHT, 18, 10),
+        "Manager's Office": (FLOOR, 18, 10),
+        "Server Room": (PATH, 16, 8),
+        "Supply Closet": (PATH_LIGHT, 16, 8),
+    },
+    "dark": {
+        "Hall": (FLOOR, 22, 12),
+        "Crypt": (PATH, 18, 10),
+        "Chamber": (LAVENDER, 22, 12),
+        "Cellar": (PATH, 18, 10),
+        "Vault": (FLOOR, 16, 8),
+        "Sanctum": (LAVENDER, 22, 12),
+        "Dungeon": (PATH, 18, 10),
+        "Antechamber": (PATH_LIGHT, 18, 10),
+    },
+}
+
+
 def pick_theme(hook: str, register: str = "") -> str:
     h = f"{hook} {register}".lower()
 
@@ -252,107 +276,247 @@ def pick_theme(hook: str, register: str = "") -> str:
     return "garden"
 
 
+def _place_zone_props(
+    rng: random.Random,
+    name: str,
+    theme: str,
+    cx: int,
+    cy: int,
+    rw: int,
+    rh: int,
+    props: list[dict],
+    occupied: set[tuple[int, int]],
+) -> None:
+    ix0 = cx - rw // 2 + 1
+    ix1 = cx + rw // 2
+    iy0 = cy - rh // 2 + 1
+    iy1 = cy + rh // 2
+
+    def p(x: int, y: int, kind: str) -> bool:
+        if ix0 <= x < ix1 and iy0 <= y < iy1 and (x, y) not in occupied:
+            props.append({"x": x, "y": y, "kind": kind})
+            occupied.add((x, y))
+            return True
+        return False
+
+    p(cx, cy - 1, "lamp")
+
+    if name == "Open Plan":
+        for xi in range(ix0 + 1, ix1 - 1, 4):
+            p(xi, iy0 + 1, "desk")
+            p(xi, iy0 + 2, "chair")
+            p(xi, iy1 - 2, "desk")
+            p(xi, iy1 - 3, "chair")
+        for xi in range(ix0 + 2, ix1 - 2, 6):
+            p(xi, cy, "partition")
+        p(ix0 + 1, iy0 + 1, "plant_pot")
+        p(ix1 - 2, iy0 + 1, "plant_pot")
+
+    elif name == "Conference Room":
+        for xi in range(ix0 + 2, ix1 - 1, 3):
+            p(xi, cy, "desk")
+            p(xi, cy - 1, "chair")
+            p(xi, cy + 1, "chair")
+        p(ix0 + 1, cy - 1, "chair")
+        p(ix0 + 1, cy + 1, "chair")
+        p(ix1 - 2, cy - 1, "chair")
+        p(ix1 - 2, cy + 1, "chair")
+        p(cx - 1, iy0 + 1, "whiteboard")
+        p(cx, iy0 + 1, "whiteboard")
+
+    elif name == "Break Room":
+        p(ix0 + 1, iy0 + 1, "coffee")
+        p(ix0 + 2, iy0 + 1, "coffee")
+        p(ix0 + 3, iy0 + 1, "coffee")
+        for dx, dy in [(-1, 0), (0, 0), (-1, 1), (0, 1)]:
+            p(cx + dx, cy + dy, "chair")
+        p(ix1 - 2, iy0 + 1, "plant_pot")
+        p(ix1 - 2, iy1 - 2, "plant_pot")
+        p(ix0 + 1, iy1 - 2, "plant_pot")
+
+    elif name == "Reception":
+        p(cx - 1, iy1 - 2, "desk")
+        p(cx, iy1 - 2, "desk")
+        p(cx - 1, iy1 - 3, "chair")
+        p(ix0 + 1, cy - 1, "chair")
+        p(ix0 + 1, cy, "chair")
+        p(ix0 + 1, cy + 1, "chair")
+        p(ix0 + 1, iy0 + 1, "plant_pot")
+        p(ix1 - 2, iy0 + 1, "plant_pot")
+
+    elif name == "Print Bay":
+        for xi in range(ix0 + 2, ix1 - 3, 5):
+            p(xi, cy, "copier")
+            p(xi + 1, cy, "copier")
+        for xi in range(ix0 + 1, ix1, 4):
+            p(xi, iy0 + 1, "cabinet")
+        p(ix1 - 2, iy1 - 2, "plant_pot")
+
+    elif name == "Manager's Office":
+        p(cx - 1, iy0 + 2, "desk")
+        p(cx, iy0 + 2, "desk")
+        p(cx - 1, iy0 + 3, "chair")
+        p(cx - 2, cy, "chair")
+        p(cx + 1, cy, "chair")
+        p(ix1 - 2, iy0 + 1, "cabinet")
+        p(ix0 + 1, iy1 - 2, "plant_pot")
+        p(ix1 - 2, iy1 - 2, "plant_pot")
+
+    elif name == "Server Room":
+        for yi in range(iy0 + 1, iy1 - 1, 3):
+            for xi in range(ix0 + 1, ix1 - 1, 3):
+                p(xi, yi, "cabinet")
+                p(xi + 1, yi, "cabinet")
+
+    elif name == "Supply Closet":
+        for xi in range(ix0 + 1, ix1 - 1, 2):
+            p(xi, iy0 + 1, "cabinet")
+            if iy0 + 2 < iy1 - 1:
+                p(xi, iy0 + 2, "cabinet")
+        for xi in range(ix0 + 1, ix1 - 1, 2):
+            p(xi, iy1 - 2, "cabinet")
+
+    elif theme == "dark":
+        kinds = INDOOR_ROOM_PROPS.get(theme, {}).get(name, ["rock"])
+        for xi in range(ix0 + 1, ix1 - 1, 4):
+            p(xi, iy0 + 1, rng.choice(kinds))
+            p(xi, iy1 - 2, rng.choice(kinds))
+        for yi in range(iy0 + 2, iy1 - 1, 4):
+            p(ix0 + 1, yi, rng.choice(kinds))
+            p(ix1 - 2, yi, rng.choice(kinds))
+        for _ in range(3):
+            p(cx + rng.randint(-2, 2), cy + rng.randint(-1, 1), rng.choice(kinds))
+
+    else:
+        kinds = INDOOR_ROOM_PROPS.get(theme, {}).get(name, ["rock"])
+        for _ in range(6):
+            p(
+                rng.randint(ix0 + 1, max(ix0 + 1, ix1 - 2)),
+                rng.randint(iy0 + 1, max(iy0 + 1, iy1 - 2)),
+                rng.choice(kinds),
+            )
+
+
 def generate_indoor_world(
     rng: random.Random, theme: str = "office", step_count: int = 6
 ) -> WorldMap:
-    th = THEMES.get(theme, THEMES["office"])
-    room_names = INDOOR_ROOM_NAMES.get(theme, INDOOR_ROOM_NAMES["office"])
-    room_props = INDOOR_ROOM_PROPS.get(theme, {})
-    default_props = ["rock"] if theme == "dark" else ["desk", "chair"]
+    zone_names = INDOOR_ROOM_NAMES.get(theme, INDOOR_ROOM_NAMES["office"])
+    zone_def_map = _ZONE_DEF.get(theme, _ZONE_DEF["office"])
 
-    w, h = 56, 56
+    n = min(len(zone_names), step_count + 1)
+    used_names = zone_names[:n]
+
+    LEFT_CX, RIGHT_CX = 16, 48
+    ROW_PITCH = 18
+    MARGIN = 6
+    n_rows = (n + 1) // 2
+
+    w = 64
+    h = n_rows * ROW_PITCH + MARGIN * 2
     tiles = [HEDGE] * (w * h)
 
-    for y in range(2, h - 2):
-        for x in range(2, w - 2):
-            tiles[_idx(w, x, y)] = FLOOR
-
-    n = min(len(room_names), step_count + 1)
-    used_names = room_names[:n]
-
-    margin = 8
-    band_h = (h - 2 * margin) / n
+    room_data: list[tuple[int, int, str, int, int, int]] = []
     waypoints: list[list[int]] = []
     for i in range(n):
-        cy = int(h - margin - band_h * (i + 0.5))
-        cx = (
-            rng.randint(margin, w // 2 - 4)
-            if i % 2 == 0
-            else rng.randint(w // 2 + 4, w - margin - 2)
-        )
+        row = i // 2
+        col = i % 2
+        cx = LEFT_CX if col == 0 else RIGHT_CX
+        cy = h - MARGIN - ROW_PITCH // 2 - row * ROW_PITCH
+        name = used_names[i]
+        fl, rw_r, rh_r = zone_def_map.get(name, (FLOOR, 18, 10))
+        rh_r = min(rh_r, ROW_PITCH - 6)
+        room_data.append((cx, cy, name, fl, rw_r, rh_r))
         waypoints.append([cx, cy])
 
-    # Scatter 2×2 HEDGE pillar clusters for visual structure
-    pillar_spots: list[tuple[int, int]] = []
-    for py in range(8, h - 8, 7):
-        for px in range(8, w - 8, 7):
-            pillar_spots.append((px, py))
-    rng.shuffle(pillar_spots)
-    for px, py in pillar_spots[:14]:
-        jx = px + rng.randint(-2, 2)
-        jy = py + rng.randint(-2, 2)
-        if 3 <= jx < w - 4 and 3 <= jy < h - 4:
-            tiles[_idx(w, jx, jy)] = HEDGE
-            tiles[_idx(w, jx + 1, jy)] = HEDGE
-            tiles[_idx(w, jx, jy + 1)] = HEDGE
-            tiles[_idx(w, jx + 1, jy + 1)] = HEDGE
+    for cx, cy, _name, fl, rw_r, rh_r in room_data:
+        hw, hh = rw_r // 2, rh_r // 2
+        for y in range(cy - hh + 1, cy + hh):
+            for x in range(cx - hw + 1, cx + hw):
+                if 0 <= x < w and 0 <= y < h:
+                    tiles[_idx(w, x, y)] = fl
+        for x in range(cx - hw, cx + hw + 1):
+            for bdy in (cy - hh, cy + hh):
+                if 0 <= x < w and 0 <= bdy < h:
+                    tiles[_idx(w, x, bdy)] = HEDGE
+        for y in range(cy - hh, cy + hh + 1):
+            for bdx in (cx - hw, cx + hw):
+                if 0 <= bdx < w and 0 <= y < h:
+                    tiles[_idx(w, bdx, y)] = HEDGE
 
-    # Clear pillars that landed on or near waypoints
-    for wx, wy in waypoints:
-        for dx in range(-3, 4):
-            for dy in range(-3, 4):
-                nx, ny = wx + dx, wy + dy
-                if 2 <= nx < w - 2 and 2 <= ny < h - 2:
-                    tiles[_idx(w, nx, ny)] = FLOOR
+    for row in range(n_rows - 1):
+        lower_cy = h - MARGIN - ROW_PITCH // 2 - row * ROW_PITCH
+        upper_cy = lower_cy - ROW_PITCH
+        lower_rooms = [rd for rd in room_data if rd[1] == lower_cy]
+        upper_rooms = [rd for rd in room_data if rd[1] == upper_cy]
+        if not lower_rooms or not upper_rooms:
+            continue
+        max_rh_lower = max(rd[5] for rd in lower_rooms)
+        max_rh_upper = max(rd[5] for rd in upper_rooms)
+        gap_top = upper_cy + max_rh_upper // 2 + 1
+        gap_bot = lower_cy - max_rh_lower // 2 - 1
+        for y in range(gap_top, gap_bot + 1):
+            for x in range(2, w - 2):
+                tiles[_idx(w, x, y)] = PATH
 
-    # Mark waypoint tiles
-    for wx, wy in waypoints:
-        tiles[_idx(w, wx, wy)] = LAVENDER
+    for i in range(0, n - 1, 2):
+        if i + 1 >= n:
+            break
+        lcx, lcy, _ln, _lfl, lrw, _lrh = room_data[i]
+        rcx, rcy, _rn, _rfl, rrw, _rrh = room_data[i + 1]
+        lwall = lcx + lrw // 2
+        rwall = rcx - rrw // 2
+        for x in range(lwall + 1, rwall):
+            for dy in range(-1, 2):
+                ny = lcy + dy
+                if 0 <= x < w and 0 <= ny < h:
+                    tiles[_idx(w, x, ny)] = PATH
 
-    occupied: set[tuple[int, int]] = set()
+    for i, (cx, cy, _name, fl, rw_r, rh_r) in enumerate(room_data):
+        row = i // 2
+        col = i % 2
+        hw, hh = rw_r // 2, rh_r // 2
+        if row < n_rows - 1:
+            for dx in range(-1, 2):
+                if 0 <= cx + dx < w and 0 <= cy - hh < h:
+                    tiles[_idx(w, cx + dx, cy - hh)] = fl
+        if row > 0 or i == 0:
+            for dx in range(-1, 2):
+                if 0 <= cx + dx < w and 0 <= cy + hh < h:
+                    tiles[_idx(w, cx + dx, cy + hh)] = fl
+        if col == 0 and i + 1 < n:
+            for dy in range(-1, 2):
+                if 0 <= cx + hw < w and 0 <= cy + dy < h:
+                    tiles[_idx(w, cx + hw, cy + dy)] = fl
+        if col == 1:
+            for dy in range(-1, 2):
+                if 0 <= cx - hw < w and 0 <= cy + dy < h:
+                    tiles[_idx(w, cx - hw, cy + dy)] = fl
+
+    cx0, cy0, _n0, fl0, _rw0, rh0 = room_data[0]
+    for y in range(cy0 + rh0 // 2 + 1, min(h - 1, cy0 + rh0 // 2 + MARGIN)):
+        for dx in range(-1, 2):
+            nx = cx0 + dx
+            if 0 <= nx < w and 0 <= y < h:
+                tiles[_idx(w, nx, y)] = PATH
+
+    for cx, cy, *_ in room_data:
+        tiles[_idx(w, cx, cy)] = LAVENDER
+
+    occupied: set[tuple[int, int]] = {(cx, cy) for cx, cy, *_ in room_data}
     props: list[dict] = []
-
-    for i, ([wx, wy], name) in enumerate(zip(waypoints, used_names)):
-        props.append({"x": wx, "y": wy - 1, "kind": "lamp"})
-        occupied.update([(wx, wy), (wx, wy - 1)])
-
-        kinds = room_props.get(name, default_props)
-        ring = [
-            (wx - 2, wy - 1),
-            (wx - 2, wy),
-            (wx - 2, wy + 1),
-            (wx + 2, wy - 1),
-            (wx + 2, wy),
-            (wx + 2, wy + 1),
-            (wx - 1, wy - 2),
-            (wx, wy - 2),
-            (wx + 1, wy - 2),
-            (wx - 1, wy + 2),
-            (wx, wy + 2),
-            (wx + 1, wy + 2),
-        ]
-        for j, (px, py) in enumerate(ring):
-            if 2 <= px < w - 2 and 2 <= py < h - 2 and (px, py) not in occupied:
-                if tiles[_idx(w, px, py)] == FLOOR:
-                    props.append({"x": px, "y": py, "kind": kinds[j % len(kinds)]})
-                    occupied.add((px, py))
-
-    scatter_kinds = room_props.get(used_names[len(used_names) // 2], default_props)
-    for _ in range(100):
-        x, y = rng.randint(3, w - 4), rng.randint(3, h - 4)
-        if (x, y) not in occupied and tiles[_idx(w, x, y)] == FLOOR:
-            props.append({"x": x, "y": y, "kind": rng.choice(scatter_kinds)})
-            occupied.add((x, y))
+    for cx, cy, name, fl, rw_r, rh_r in room_data:
+        _place_zone_props(rng, name, theme, cx, cy, rw_r, rh_r, props, occupied)
 
     indoor_walkable = {FLOOR, PATH, PATH_LIGHT, LAVENDER}
     route: list[list[int]] = []
     wp_route_idx: list[int] = []
-    for i, wp in enumerate(waypoints):
+    for i, (cx, cy, *_) in enumerate(room_data):
         if i == 0:
             wp_route_idx.append(0)
-            route.append(list(wp))
+            route.append([cx, cy])
             continue
-        seg = _bfs(w, h, tiles, waypoints[i - 1], wp, walkable=indoor_walkable)
+        prev_cx, prev_cy = room_data[i - 1][0], room_data[i - 1][1]
+        seg = _bfs(w, h, tiles, [prev_cx, prev_cy], [cx, cy], walkable=indoor_walkable)
         wp_route_idx.append(len(route) - 1 + len(seg) - 1)
         route.extend(seg[1:])
 
@@ -367,7 +531,7 @@ def generate_indoor_world(
         route=route,
         wp_route_idx=wp_route_idx,
         theme=theme,
-        tint=th["tint"],
+        tint=THEMES.get(theme, THEMES["office"])["tint"],
         tileset="interior",
         tile_frames={str(k): v for k, v in frames.items()},
     )
