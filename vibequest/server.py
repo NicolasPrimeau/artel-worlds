@@ -54,7 +54,20 @@ def _scene_dict(state: GameState) -> dict | None:
         return None
     idx = min(state.quest.resolved, len(scenes) - 1)
     s = scenes[idx]
-    return {"title": s.title, "description": s.description, "finale": s.finale}
+    return {
+        "title": s.title,
+        "objective": s.objective,
+        "opening": s.opening,
+        "speaker": s.speaker,
+        "finale": s.finale,
+    }
+
+
+def _objectives(state: GameState) -> list[dict]:
+    out = []
+    for i, s in enumerate(state.quest.scenes):
+        out.append({"text": s.objective or s.title, "done": i < state.quest.resolved})
+    return out
 
 
 async def _ensure_scene(state: GameState, idx: int) -> Scene | None:
@@ -81,10 +94,13 @@ async def _ensure_scene(state: GameState, idx: int) -> Scene | None:
             )
         except Exception:
             data = {}
-    if data and data.get("description"):
+    if data and data.get("objective"):
         scene = Scene(
             title=data.get("title") or f"Scene {scene_number}",
-            description=data["description"],
+            description=data.get("title") or "",
+            objective=data["objective"],
+            opening=data.get("opening", ""),
+            speaker=data.get("speaker", ""),
             finale=bool(data.get("finale")),
         )
     else:
@@ -107,6 +123,8 @@ def _state_snapshot(state: GameState, include_world: bool = True) -> dict:
             "resolved": state.quest.resolved,
             "max_scenes": MAX_SCENES,
             "scene": _scene_dict(state),
+            "objectives": _objectives(state),
+            "register": state.quest.register,
             "momentum": state.quest.momentum,
             "tension": state.quest.tension,
             "outcome": state.quest.outcome,
@@ -261,8 +279,14 @@ async def _resolve_window(state: GameState) -> None:
             {
                 "type": "scene",
                 "number": state.quest.resolved + 1,
-                "scene": {"title": nxt.title, "description": nxt.description, "finale": nxt.finale},
-                "state": _state_snapshot(state),
+                "scene": {
+                    "title": nxt.title,
+                    "objective": nxt.objective,
+                    "opening": nxt.opening,
+                    "speaker": nxt.speaker,
+                    "finale": nxt.finale,
+                },
+                "state": _state_snapshot(state, include_world=False),
             }
         )
 

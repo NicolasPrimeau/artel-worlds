@@ -135,13 +135,16 @@ Invent the NEXT situation the party walks into. Rules:
 - Play it in the register of {register}; let that genre shape the mood, threat, and language.
 - Be SPECIFIC to THIS quest's people, object, and place. Use concrete details, not generic office tropes.
 - Avoid the obvious gag (no printers out of toner, no cold coffee, no stapler jokes unless the quest is literally about them).
-- Make it a fresh, surprising obstacle or encounter. Do not resolve it; just set the scene.
+- Make it a fresh, surprising obstacle. Do not resolve it; just set the scene.
+- SHOW DON'T TELL: the "objective" is a short video-game checkbox goal (imperative, max 6 words). The "opening" is ONE line a party member actually says out loud, in character, reacting to what they see.
 {finale_rule}
 
 Respond ONLY as JSON:
 {{
-  "title": "3-5 word scene title",
-  "description": "1-2 sentences describing the situation the party now faces, in the {register} register",
+  "title": "2-4 word scene title",
+  "objective": "imperative goal, max 6 words, e.g. 'Slip past the night guard'",
+  "opening": "one short spoken line of party dialogue (max 15 words)",
+  "speaker": "the role of whoever says it (e.g. Wizard)",
   "finale": false
 }}"""
     req = Request(
@@ -150,7 +153,7 @@ Respond ONLY as JSON:
     )
     raw = await ROUTER.complete(req)
     parsed = parse_json(raw)
-    if not parsed or "description" not in parsed:
+    if not parsed or "objective" not in parsed:
         return {}
     parsed["finale"] = bool(parsed.get("finale")) or scene_number >= max_scenes
     return parsed

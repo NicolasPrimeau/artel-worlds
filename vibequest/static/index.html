@@ -36,23 +36,32 @@
   .bar > i{display:block;height:100%;width:50%}
   .bar.mom > i{background:var(--sage2)}
   .bar.ten > i{background:var(--rose2)}
-  #scenebar{margin-top:2px;background:var(--cream);border:1.5px solid var(--ink);border-radius:3px;padding:clamp(5px,1.6vw,6px) clamp(12px,4vw,18px);max-width:min(94vw,560px);text-align:center;box-shadow:3px 3px 0 rgba(84,79,87,.14)}
-  #scenebar.finale{background:#f6e7ea;border-color:var(--rose2)}
-  #scenebar .st{font-size:clamp(13px,4.2vw,17px);font-weight:700;letter-spacing:.02em}
-  #scenebar .sd{font-size:clamp(10px,3vw,11px);color:var(--ink2);margin-top:2px;line-height:1.3;
-    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  /* objectives checklist (Against the Storm style) */
+  #objectives{top:calc(8px + env(safe-area-inset-top));left:10px;display:flex;flex-direction:column;gap:3px;max-width:min(62vw,260px)}
+  #objectives .obj{display:flex;align-items:flex-start;gap:6px;background:var(--cream);border:1.5px solid var(--ink);border-radius:3px;
+    padding:4px 8px;font-size:clamp(9px,2.5vw,11px);line-height:1.2;box-shadow:2px 2px 0 rgba(84,79,87,.14);opacity:.96}
+  #objectives .obj .box{flex:0 0 auto;width:12px;height:12px;border:1.5px solid var(--ink);border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--sage2);background:var(--cream2)}
+  #objectives .obj.done{color:var(--ink2)}
+  #objectives .obj.done .t{text-decoration:line-through;opacity:.65}
+  #objectives .obj.done .box{background:var(--sage);color:var(--ink)}
+  #objectives .obj.active{border-color:var(--rose2);box-shadow:2px 2px 0 rgba(212,168,164,.4)}
+  #objectives .obj.active .box{border-color:var(--rose2)}
 
-  /* dialog box (sits above the card hand) */
-  #dialog{
-    bottom:calc(118px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(640px,94vw);
-    background:var(--cream);border:2px solid var(--ink);border-radius:4px;
-    box-shadow:4px 4px 0 rgba(84,79,87,.18);padding:clamp(10px,3vw,14px) clamp(12px,4vw,18px);opacity:0;transition:opacity .35s;
-  }
-  #dialog.show{opacity:1}
-  #dialog .who{font-size:clamp(9px,2.4vw,10px);letter-spacing:.26em;text-transform:uppercase;color:var(--rose2);margin-bottom:4px}
-  #dialog .say{font-family:"Cormorant Garamond",serif;font-size:clamp(15px,4.4vw,19px);line-height:1.32;color:var(--ink);
-    display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
-  #dialog .conseq{margin-top:6px;font-size:clamp(10px,2.8vw,11px);color:var(--sage2);font-style:italic}
+  /* speech bubbles over the party (show, don't tell) */
+  #bubbles{top:0;left:0;right:0;bottom:0;pointer-events:none;overflow:hidden}
+  .bubble{position:absolute;transform:translate(-50%,-100%);max-width:170px;background:var(--cream2);border:2px solid var(--ink);border-radius:8px;
+    padding:5px 9px;font-family:"Cormorant Garamond",serif;font-size:15px;line-height:1.25;color:var(--ink);box-shadow:2px 2px 0 rgba(84,79,87,.2);
+    white-space:normal;text-align:center;animation:pop .16s ease-out}
+  .bubble .nm{display:block;font-family:"Courier Prime",monospace;font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--rose2);margin-bottom:1px}
+  .bubble::after{content:"";position:absolute;left:50%;bottom:-8px;transform:translateX(-50%);border:6px solid transparent;border-top-color:var(--ink)}
+  .bubble::before{content:"";position:absolute;left:50%;bottom:-5px;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--cream2);z-index:1}
+  @keyframes pop{from{transform:translate(-50%,-100%) scale(.7);opacity:0}to{transform:translate(-50%,-100%) scale(1);opacity:1}}
+
+  /* tiny ambient caption (travel beats, scene conclusions) */
+  #toast{bottom:calc(120px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);max-width:90vw;text-align:center;
+    font-family:"Cormorant Garamond",serif;font-style:italic;font-size:clamp(13px,3.6vw,16px);color:var(--ink);
+    background:rgba(244,236,214,.86);padding:4px 14px;border-radius:4px;opacity:0;transition:opacity .4s}
+  #toast.show{opacity:1}
 
   /* card hand — horizontal scroll strip on mobile, centered on desktop */
   #hand{bottom:calc(8px + env(safe-area-inset-bottom));left:0;right:0;display:flex;gap:clamp(6px,2vw,8px);justify-content:flex-start;align-items:flex-end;
@@ -120,19 +129,17 @@
   <div id="titlecard">
     <div class="label">VibeQuest</div>
     <div class="title" id="qtitle">—</div>
-    <div class="hook" id="qhook"></div>
   </div>
   <div id="meters">
     <div class="chip">Momentum <span class="bar mom"><i id="mom"></i></span></div>
     <div class="chip">Tension <span class="bar ten"><i id="ten"></i></span></div>
-    <div class="chip">Scene <span id="scenenum">1</span></div>
     <div class="chip">◔ <span id="viewers">0</span></div>
   </div>
-  <div id="scenebar">
-    <div class="st serif" id="scenetitle"></div>
-    <div class="sd" id="scenedesc"></div>
-  </div>
 </div>
+
+<div id="objectives" class="ui"></div>
+<div id="bubbles" class="ui"></div>
+<div id="toast" class="ui"></div>
 
 <button id="infobtn" class="ui" type="button" aria-label="info">i</button>
 
@@ -153,12 +160,6 @@
         <a id="shareli" target="_blank" rel="noopener">LinkedIn</a><a id="sharex" target="_blank" rel="noopener">X</a></div></span>
   </div>
 </div></div>
-
-<div id="dialog" class="ui">
-  <div class="who" id="dwho"></div>
-  <div class="say serif" id="dsay"></div>
-  <div class="conseq" id="dcon"></div>
-</div>
 
 <div id="dice" class="ui">
   <div class="d20"><div class="num" id="dnum">20</div><div class="lab" id="dlab"></div><div class="cardname" id="dcard"></div></div>
@@ -271,6 +272,7 @@ class World extends Phaser.Scene{
         m.moving=true;
       } else if(m.moving){ m.moving=false; idle(m); }
     }
+    updateBubbles();
   }
 }
 
@@ -344,34 +346,63 @@ function applyState(snap){
   if(W && built!==snap.run_id){
     world=W; built=snap.run_id;
     buildWorld(W); buildParty(snap);
+    clearBubbles();
   }
   setHud(snap);
-  const last=[...(snap.log||[])].reverse().find(e=>e.kind==="resolution");
-  if(last) showDialog(last);
 }
 
 function setHud(snap){
   const q=snap.quest;
   document.getElementById("qtitle").textContent=q.title||"VibeQuest";
-  document.getElementById("qhook").textContent=q.hook||"";
   document.getElementById("mom").style.width=((q.momentum+10)/20*100)+"%";
   document.getElementById("ten").style.width=(q.tension/10*100)+"%";
   document.getElementById("viewers").textContent=snap.viewers||0;
-  document.getElementById("scenenum").textContent=q.scene_number||1;
-  const sc=q.scene;
-  document.getElementById("scenetitle").textContent=sc?sc.title:"";
-  document.getElementById("scenedesc").textContent=sc?sc.description:"";
-  document.getElementById("scenebar").classList.toggle("finale",!!(sc&&sc.finale));
+  renderObjectives(q.objectives, q.resolved||0);
 }
 
-let dialogTimer=null;
-function showDialog(e){
-  document.getElementById("dwho").textContent=e.card?(e.card+(e.dice?(" • d"+e.dice):"")):"";
-  document.getElementById("dsay").textContent=e.text||"";
-  document.getElementById("dcon").textContent=e.consequence||"";
-  document.getElementById("dialog").classList.add("show");
-  clearTimeout(dialogTimer);
-  dialogTimer=setTimeout(()=>document.getElementById("dialog").classList.remove("show"),8000);
+function renderObjectives(objs, resolved){
+  const el=document.getElementById("objectives"); el.innerHTML="";
+  (objs||[]).forEach((o,i)=>{
+    const r=document.createElement("div");
+    r.className="obj"+(o.done?" done":"")+(i===resolved?" active":"");
+    r.innerHTML=`<span class="box">${o.done?"✓":""}</span><span class="t">${o.text}</span>`;
+    el.appendChild(r);
+  });
+}
+
+// ---- speech bubbles ----
+const bubbles=[];
+function memberFor(name, role){
+  return party.find(m=>m.name===name) || party.find(m=>m.role===role) || party[0];
+}
+function speak(member, name, text, dur){
+  if(!member||!text) return;
+  for(const o of bubbles){ if(o.member===member) o.until=0; }
+  const el=document.createElement("div"); el.className="bubble";
+  el.innerHTML=`<span class="nm">${name||member.name}</span>${text}`;
+  document.getElementById("bubbles").appendChild(el);
+  bubbles.push({el,member,until:performance.now()+(dur||4600)});
+}
+function updateBubbles(){
+  if(!scene) return;
+  const cam=scene.cameras.main, now=performance.now(), wv=cam.worldView;
+  for(let i=bubbles.length-1;i>=0;i--){
+    const b=bubbles[i];
+    if(now>b.until){ b.el.remove(); bubbles.splice(i,1); continue; }
+    const sx=(b.member.spr.x-wv.x)*cam.zoom, sy=(b.member.spr.y-wv.y)*cam.zoom;
+    b.el.style.left=sx+"px"; b.el.style.top=(sy-12*cam.zoom)+"px";
+  }
+}
+function clearBubbles(){ for(const b of bubbles) b.el.remove(); bubbles.length=0; }
+function showReactions(rs){
+  let d=0;
+  for(const r of rs||[]){ const m=memberFor(r.name,r.role); const line=r.line;
+    setTimeout(()=>speak(m,r.name,line),d); d+=1300; }
+}
+let toastTimer=null;
+function toast(text){
+  const el=document.getElementById("toast"); el.textContent=text; el.classList.add("show");
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove("show"),5000);
 }
 
 function showDice(d){
@@ -414,14 +445,26 @@ function connect(){
     const m=JSON.parse(ev.data);
     switch(m.type){
       case "state": applyState(m.state); break;
-      case "new_quest": applyState(m.state); showChapter(m.state); break;
+      case "new_quest": { applyState(m.state); showChapter(m.state);
+        const sc=m.state.quest&&m.state.quest.scene;
+        if(sc&&sc.opening){ const mem=memberFor(null,sc.speaker); setTimeout(()=>speak(mem,mem&&mem.name,sc.opening,5200),3900); }
+        break;
+      }
       case "hand": renderHand(m.cards); break;
       case "move": onMove(m.pos); break;
-      case "scene": applyState(m.state); break;
-      case "travel_event": showDialog({card:"On the Road",text:m.text}); break;
+      case "scene": applyState(m.state);
+        if(m.scene&&m.scene.opening){ const mem=memberFor(null,m.scene.speaker); speak(mem,mem&&mem.name,m.scene.opening,5200); }
+        break;
+      case "travel_event": { const mem=party.length?party[Math.floor(Math.random()*party.length)]:null; speak(mem,mem&&mem.name,m.text,4200); break; }
       case "dice_roll": showDice(m); break;
-      case "card_resolved": applyState(m.state); break;
-      case "quest_complete": applyState(m.state); break;
+      case "card_resolved": {
+        applyState(m.state);
+        const last=[...(m.state.log||[])].reverse().find(e=>e.kind==="resolution"&&e.reactions&&e.reactions.length);
+        if(last) showReactions(last.reactions);
+        break;
+      }
+      case "quest_complete": applyState(m.state);
+        toast(m.outcome==="success"?"Quest complete.":"The quest ends in disaster."); break;
       case "card_played": break;
     }
   };

@@ -440,6 +440,9 @@ MAX_SCENES = 6
 class Scene:
     title: str
     description: str
+    objective: str = ""  # short imperative goal, shown as a checkbox
+    opening: str = ""  # one line of party dialogue reacting to the scene
+    speaker: str = ""  # role who says the opening line
     finale: bool = False
     resolved: bool = False
     result: str = ""  # triumph | mixed | setback | uneventful
@@ -586,16 +589,16 @@ def at_station(state: GameState) -> bool:
 
 
 TRAVEL_EVENTS = [
-    "A vending machine hums ominously in the distance. The party does not speak of it.",
-    "They pass a flickering fluorescent light. It is taken as an omen.",
-    "Someone finds a stray paperclip. It is pocketed with great ceremony.",
-    "A lone office plant watches them go. It will remember this.",
-    "The faint smell of someone's reheated fish lunch tests their resolve.",
-    "An abandoned mug of cold coffee marks a fallen adventurer's last stand.",
-    "A motivational poster insists they can do it. They remain unconvinced.",
-    "The carpet changes pattern. Clearly, they have crossed into a new realm.",
-    "A printer wails somewhere far off, out of toner and out of hope.",
-    "They step over a suspicious stapler. No one dares to claim it.",
+    "Are we there yet?",
+    "I have a bad feeling about this corridor.",
+    "Stay close. And stay quiet.",
+    "Did anyone else hear that?",
+    "I'm putting this on my expense report.",
+    "We should've taken the elevator.",
+    "Keep moving. Don't look back.",
+    "This place wasn't on the map.",
+    "My feet hurt. Quest-grade pain.",
+    "If we make it back, I'm taking a long lunch.",
 ]
 
 
@@ -720,15 +723,12 @@ def scene_conclusion(scene: Scene) -> str:
 
 
 _FALLBACK_SITUATIONS = [
-    ("A Locked Door", "The way forward is barred by a door of suspicious ordinariness."),
-    ("The Gatekeeper", "A bored functionary demands the correct, unknowable form."),
-    (
-        "A Suspicious Silence",
-        "Everything is too quiet. Someone has clearly rescheduled the ambush.",
-    ),
-    ("The Long Corridor", "An impossibly long hallway tests both patience and bladder."),
-    ("An Unhelpful Sign", "A sign points in four directions, all labelled 'Other'."),
-    ("The Final Obstacle", "The objective is in sight, guarded by one last petty inconvenience."),
+    ("A Locked Door", "Get the door open", "Of course it's locked. It's always locked."),
+    ("The Gatekeeper", "Satisfy the gatekeeper", "I'll handle the paperwork. I always do."),
+    ("A Suspicious Silence", "Survive the quiet", "It's too quiet. I hate it when it's quiet."),
+    ("The Long Corridor", "Cross the corridor", "We've been walking for hours. Has it moved?"),
+    ("An Unhelpful Sign", "Decipher the sign", "Every arrow says 'Other'. Bold choice."),
+    ("The Final Obstacle", "Clear the last obstacle", "One more. There's always one more."),
 ]
 
 
@@ -736,7 +736,19 @@ def fallback_scene(
     state: GameState, prior: Scene | None, result: str, scene_number: int, rng: random.Random
 ) -> Scene:
     finale = scene_number >= MAX_SCENES
-    title, desc = rng.choice(_FALLBACK_SITUATIONS)
+    title, objective, opening = rng.choice(_FALLBACK_SITUATIONS)
     if finale:
-        title, desc = "The Reckoning", "It all comes down to this absurd, decisive moment."
-    return Scene(title=title, description=desc, finale=finale)
+        title, objective, opening = (
+            "The Reckoning",
+            "Finish the quest",
+            "This is it. Try to look heroic.",
+        )
+    speaker = state.party[0].role if state.party else ""
+    return Scene(
+        title=title,
+        description=title,
+        objective=objective,
+        opening=opening,
+        speaker=speaker,
+        finale=finale,
+    )
