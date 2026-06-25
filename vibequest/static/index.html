@@ -51,23 +51,35 @@
     background:rgba(244,236,214,.72);padding:3px 12px;border-radius:4px;opacity:0;transition:opacity .6s;white-space:nowrap}
   #caption.show{opacity:1}
 
-  /* card hand — horizontal scroll strip on mobile, centered on desktop */
-  #hand{bottom:calc(8px + env(safe-area-inset-bottom));left:0;right:0;display:flex;gap:clamp(6px,2vw,8px);justify-content:flex-start;align-items:flex-end;
-    pointer-events:auto;padding:4px clamp(8px,3vw,16px);flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:none}
-  #hand::-webkit-scrollbar{display:none}
+  /* fan hand — cards anchored at bottom-center, fanned out via JS */
+  #hand{position:fixed;bottom:calc(8px + env(safe-area-inset-bottom));left:50%;width:0;height:0;pointer-events:none;z-index:10}
   .card{
-    pointer-events:auto;cursor:pointer;flex:0 0 auto;width:clamp(76px,23vw,96px);height:clamp(98px,29vw,118px);border:2px solid var(--ink);border-radius:5px;
-    background:var(--cream2);padding:clamp(5px,1.8vw,7px);display:flex;flex-direction:column;gap:3px;scroll-snap-align:center;
-    box-shadow:3px 3px 0 rgba(84,79,87,.16);transition:transform .12s, box-shadow .12s;position:relative;
+    position:absolute;bottom:0;left:0;
+    width:clamp(88px,26vw,110px);height:clamp(118px,34vw,148px);
+    border:2px solid var(--ink);border-radius:6px;
+    background:var(--cream2);padding:clamp(7px,2vw,10px);
+    display:flex;flex-direction:column;gap:4px;
+    box-shadow:3px 4px 0 rgba(84,79,87,.18);
+    transform-origin:50% 130%;
+    transition:transform .18s ease-out, box-shadow .18s, opacity .18s;
+    pointer-events:auto;cursor:pointer;user-select:none;
   }
-  .card:active{transform:translateY(-6px)}
-  @media (hover:hover){ .card:hover{transform:translateY(-10px);box-shadow:5px 7px 0 rgba(84,79,87,.22)} }
-  .card .ct{font-size:clamp(7px,2vw,8px);letter-spacing:.16em;text-transform:uppercase;color:var(--ink2)}
-  .card .cn{font-size:clamp(10px,2.9vw,11px);font-weight:700;line-height:1.1}
-  .card .cd{font-size:clamp(8px,2.4vw,9px);color:var(--ink2);line-height:1.2;flex:1;overflow:hidden}
+  .card .ct{font-size:clamp(8px,2.2vw,10px);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:700}
+  .card .cn{font-size:clamp(13px,3.8vw,16px);font-weight:700;line-height:1.15;font-family:"Cormorant Garamond",serif;letter-spacing:.02em}
+  .card .cd{font-size:clamp(10px,2.8vw,12px);color:var(--ink);line-height:1.35;flex:1;overflow:hidden}
   .card.accumulate{background:#eef2e6}.card.action{background:#fbf0e6}
   .card.chaos{background:#f6e7ea}.card.tweak{background:#ece9f2}
-  .card.played{opacity:.4;pointer-events:none;transform:none}
+  .card.played{opacity:0;pointer-events:none}
+  /* played pile — stacked cards center-bottom */
+  #pile{position:fixed;bottom:calc(clamp(118px,34vw,148px) + 22px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
+    width:clamp(88px,26vw,110px);height:clamp(118px,34vw,148px);pointer-events:none;z-index:9}
+  .pile-card{position:absolute;inset:0;border:2px solid var(--ink);border-radius:6px;background:var(--cream);
+    box-shadow:2px 3px 0 rgba(84,79,87,.14);display:flex;flex-direction:column;gap:4px;padding:clamp(7px,2vw,10px)}
+  .pile-card .ct{font-size:clamp(8px,2.2vw,10px);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:700}
+  .pile-card .cn{font-size:clamp(13px,3.8vw,16px);font-weight:700;line-height:1.15;font-family:"Cormorant Garamond",serif}
+  .pile-card .cd{font-size:clamp(10px,2.8vw,12px);color:var(--ink);line-height:1.35;flex:1;overflow:hidden}
+  .pile-card.accumulate{background:#eef2e6}.pile-card.action{background:#fbf0e6}
+  .pile-card.chaos{background:#f6e7ea}.pile-card.tweak{background:#ece9f2}
 
   /* dice overlay */
   #dice{top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .25s}
@@ -156,6 +168,7 @@
 </div>
 
 <div id="hand" class="ui"></div>
+<div id="pile" class="ui"></div>
 
 <script>
 const TILE = 16;
@@ -494,13 +507,78 @@ function showChapter(snap){
   setTimeout(()=>el.classList.remove("show"),3800);
 }
 
+const PILE_ROTS=[3,-5,7,-2,8,-6,4,-8,2,-4];
+let pileCards=[];
+
+function cardTransform(t,drop){
+  const rot=t*9; const tx=t*70; const ty=drop?Math.abs(t)*14:Math.abs(t)*14-32;
+  return `translateX(calc(-50% + ${tx}px)) translateY(${ty}px) rotate(${rot}deg)`;
+}
+
 function renderHand(cards){
+  pileCards=[]; renderPile();
   const h=document.getElementById("hand"); h.innerHTML="";
-  for(const c of cards){
+  const n=cards.length;
+  for(let i=0;i<n;i++){
+    const c=cards[i];
+    const t=n>1?(i/(n-1))*2-1:0;
     const el=document.createElement("div"); el.className="card "+c.type;
     el.innerHTML=`<div class="ct">${c.type}</div><div class="cn">${c.name}</div><div class="cd">${c.description}</div>`;
-    el.onclick=()=>{ if(el.classList.contains("played"))return; el.classList.add("played"); playCard(c.id); };
+    el.style.transform=cardTransform(t,true);
+    el.style.zIndex=n-Math.round(Math.abs(i-(n-1)/2)*2);
+    el.addEventListener("mouseenter",()=>{
+      if(el.classList.contains("played"))return;
+      el.style.transform=cardTransform(t,false);
+      el.style.boxShadow="0 12px 24px rgba(84,79,87,.28)";
+      el.style.zIndex=100;
+    });
+    el.addEventListener("mouseleave",()=>{
+      if(el.classList.contains("played"))return;
+      el.style.transform=cardTransform(t,true);
+      el.style.boxShadow="";
+      el.style.zIndex=n-Math.round(Math.abs(i-(n-1)/2)*2);
+    });
+    el.onclick=()=>{
+      if(el.classList.contains("played"))return;
+      flyCardToPile(el,c);
+      el.classList.add("played");
+      playCard(c.id);
+    };
     h.appendChild(el);
+  }
+}
+
+function flyCardToPile(el,c){
+  const from=el.getBoundingClientRect();
+  const pile=document.getElementById("pile");
+  const to=pile.getBoundingClientRect();
+  const clone=el.cloneNode(true);
+  Object.assign(clone.style,{
+    position:"fixed",left:from.left+"px",top:from.top+"px",
+    width:from.width+"px",height:from.height+"px",
+    margin:"0",zIndex:"200",pointerEvents:"none",
+    transition:"left .32s cubic-bezier(.25,.8,.25,1),top .32s cubic-bezier(.25,.8,.25,1),transform .32s cubic-bezier(.25,.8,.25,1)",
+    transform:el.style.transform,
+  });
+  document.body.appendChild(clone);
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    const rot=PILE_ROTS[pileCards.length%PILE_ROTS.length];
+    clone.style.left=to.left+"px"; clone.style.top=to.top+"px";
+    clone.style.transform=`rotate(${rot}deg)`;
+  }));
+  setTimeout(()=>{ clone.remove(); pileCards.push(c); renderPile(); },360);
+}
+
+function renderPile(){
+  const pile=document.getElementById("pile"); pile.innerHTML="";
+  for(let i=0;i<pileCards.length;i++){
+    const c=pileCards[i];
+    const p=document.createElement("div"); p.className="pile-card "+c.type;
+    p.innerHTML=`<div class="ct">${c.type}</div><div class="cn">${c.name}</div><div class="cd">${c.description}</div>`;
+    const rot=PILE_ROTS[i%PILE_ROTS.length];
+    p.style.transform=`rotate(${rot}deg) translateY(${-i*2}px)`;
+    p.style.zIndex=i;
+    pile.appendChild(p);
   }
 }
 
@@ -522,6 +600,7 @@ function connect(){
         break;
       }
       case "hand": renderHand(m.cards); break;
+      case "window_closing": pileCards=[]; renderPile(); break;
       case "move": onMove(m.pos); break;
       case "scene": applyState(m.state);
         if(m.scene&&m.scene.opening){ const mem=memberFor(null,m.scene.speaker); speak(mem,mem&&mem.name,m.scene.opening,5200); }
