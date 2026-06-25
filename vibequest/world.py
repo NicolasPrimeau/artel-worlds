@@ -191,7 +191,7 @@ THEMES = {
     "woods": {
         "base": GRASS,
         "ponds": True,
-        "tint": "#e7f1dd",
+        "tint": "#c8e8b8",
         "scatter": [
             ("tree", 5),
             ("tree2", 4),
@@ -204,26 +204,44 @@ THEMES = {
     "garden": {
         "base": GRASS,
         "ponds": True,
-        "tint": "#f7eee0",
+        "tint": "#f8d8c8",
         "scatter": [("topiary", 4), ("flower", 5), ("bush", 3), ("tree", 2), ("rock", 1)],
     },
     "office": {
         "base": FLOOR,
         "ponds": False,
-        "tint": "#efe4cf",
+        "tint": "#ffd8c8",
         "scatter": [("desk", 4), ("chair", 5), ("cabinet", 3), ("partition", 3), ("plant_pot", 2)],
     },
     "concrete": {
         "base": SAND,
         "ponds": False,
-        "tint": "#e2dfd5",
+        "tint": "#e8d890",
         "scatter": [("rock", 5), ("bush", 1)],
     },
     "dark": {
         "base": GRASS,
         "ponds": True,
-        "tint": "#9098b8",
+        "tint": "#b0a8d8",
         "scatter": [("tree", 4), ("rock", 3), ("bush", 1), ("topiary", 1)],
+    },
+    "pub": {
+        "base": FLOOR,
+        "ponds": False,
+        "tint": "#ffe0a0",
+        "scatter": [("chair", 4), ("coffee", 3), ("plant_pot", 2), ("cabinet", 2)],
+    },
+    "school": {
+        "base": FLOOR,
+        "ponds": False,
+        "tint": "#b8e0d0",
+        "scatter": [("desk", 5), ("chair", 4), ("cabinet", 2), ("plant_pot", 2)],
+    },
+    "grocery": {
+        "base": FLOOR,
+        "ponds": False,
+        "tint": "#c8e8b0",
+        "scatter": [("cabinet", 5), ("plant_pot", 3), ("chair", 2)],
     },
 }
 

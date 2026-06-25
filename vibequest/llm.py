@@ -199,6 +199,24 @@ Under 50 words. No em dashes."""
     return await ROUTER.complete(req)
 
 
+async def narrate_travel_card(
+    card_name: str, card_type: str, quest_hook: str, story_so_far: str
+) -> str:
+    prompt = f"""{_TONE}
+
+Someone played a card while the group was mid-transit — walking between places.
+Something happens immediately because of it. Not a big event. Just something.
+
+SITUATION: {quest_hook}
+WHAT HAS HAPPENED: {story_so_far or "Nothing yet."}
+CARD: {card_name} ({card_type})
+
+One sentence. Something that happens right now, during the walk.
+Under 20 words. Mundane. Nobody says it's strange. It just happens."""
+    req = Request(system="Respond in one sentence only. No fantasy language.", user=prompt)
+    return await ROUTER.complete(req)
+
+
 async def generate_objectives(quest_hook: str, complication: str) -> list[str]:
     prompt = f"""{_TONE}
 

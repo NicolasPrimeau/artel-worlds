@@ -10,11 +10,11 @@
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
 <style>
   :root{
-    --cream:#f4ecd6; --cream2:#fbf6e8; --rose:#e3c8c6; --rose2:#d4a8a4;
-    --sage:#b5c7a8; --sage2:#8aa37c; --gold:#e2cea0; --lav:#c8bfd6; --ink:#544f57; --ink2:#7a7480;
+    --cream:#fdf4e8; --cream2:#fff8f0; --rose:#f0c8c0; --rose2:#c85850;
+    --sage:#a8d4b8; --sage2:#5a9e78; --gold:#f0d060; --lav:#c0b0e0; --ink:#3a3040; --ink2:#706878;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  html,body{height:100%;overflow:hidden;background:#dfd7c4;font-family:"Courier Prime",monospace;color:var(--ink)}
+  html,body{height:100%;overflow:hidden;background:#c8d8c0;font-family:"Courier Prime",monospace;color:var(--ink)}
   #game{position:fixed;inset:0;z-index:0}
   #game canvas{image-rendering:pixelated}
   .serif{font-family:"Cormorant Garamond",serif}
@@ -336,8 +336,7 @@ class World extends Phaser.Scene{
       }
     }
     try{
-      this.cameras.main.postFX.addVignette(0.5,0.5,0.92,0.35);
-      this.cameras.main.postFX.addBloom(0xfff4dd,1,1,0.7,1.1);
+      this.cameras.main.postFX.addVignette(0.5,0.5,0.96,0.22);
     }catch(e){}
     if(pendingState){ applyState(pendingState); pendingState=null; }
   }

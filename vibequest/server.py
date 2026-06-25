@@ -38,6 +38,7 @@ _rng = random.SystemRandom()
 _state: GameState | None = None
 _clients: set[WebSocket] = set()
 _lock = asyncio.Lock()
+_travel_processed: set[str] = set()
 
 
 def _party_summary(state: GameState) -> str:
@@ -105,6 +106,8 @@ async def _broadcast(msg: dict) -> None:
 
 
 async def _resolve_window(state: GameState) -> None:
+    global _travel_processed
+    _travel_processed.clear()
     played = advance_window(state, _rng)
 
     state.window.resolving = True
@@ -262,6 +265,40 @@ async def _end_quest(state: GameState) -> None:
     await _start_new_game()
 
 
+async def _travel_card_loop() -> None:
+    while True:
+        await asyncio.sleep(3.0)
+        state = _state
+        if state is None or state.phase != "active" or not _clients:
+            continue
+        if at_station(state):
+            continue
+        pending = [c for c in state.window.cards if c.id not in _travel_processed]
+        if not pending:
+            continue
+        card = pending[0]
+        _travel_processed.add(card.id)
+        card_def = CARD_BY_ID.get(card.card_id)
+        if not card_def:
+            continue
+        event = ""
+        if llm.enabled():
+            try:
+                event = await llm.narrate_travel_card(
+                    card_name=card_def.name,
+                    card_type=card_def.type.value,
+                    quest_hook=state.quest.hook,
+                    story_so_far=" | ".join(state.quest.beats[-4:]),
+                )
+            except Exception:
+                pass
+        if not event:
+            event = f"Something shifts. {card_def.name}."
+        state.quest.beats.append(event)
+        state.log_event("travel_card", event, {"card": card_def.name})
+        await _broadcast({"type": "travel_event", "text": event})
+
+
 async def _start_new_game() -> None:
     global _state
     _state = new_game(_rng)
@@ -349,6 +386,7 @@ def create_app() -> FastAPI:
         _state = new_game(_rng)
         asyncio.create_task(_window_loop())
         asyncio.create_task(_move_loop())
+        asyncio.create_task(_travel_card_loop())
 
     app.mount("/assets", StaticFiles(directory=STATIC / "assets"), name="assets")
 
