@@ -941,6 +941,16 @@ def _normalize_world_metrics(worlds: list) -> None:
                 "recent": f.get("recent") or [],
             }
             caption = f.get("caption")
+        elif key == "vibequest":
+            q = f.get("quest") or {}
+            done = q.get("steps_done", 0)
+            left = q.get("steps_left", 0)
+            results = {
+                "record": f"{done}/{done + left}" if (done + left) > 0 else "—",
+                "label": "quest steps",
+                "recent": [],
+            }
+            caption = q.get("title") or f.get("phase")
         elif key == "automata":
             results = {"record": f.get("population"), "label": "cells alive", "recent": []}
             caption = f"tick {f.get('tick')}" if f.get("tick") is not None else None

@@ -233,6 +233,37 @@ def create_app() -> FastAPI:
     async def health() -> JSONResponse:
         return JSONResponse({"ok": True})
 
+    @app.get("/debug")
+    async def debug() -> JSONResponse:
+        live = _state is not None and _state.phase == "active" and bool(_clients)
+        spend = llm.SPEND if hasattr(llm, "SPEND") else {}
+        return JSONResponse(
+            {
+                "live": live,
+                "viewers": len(_clients),
+                "phase": _state.phase if _state else "idle",
+                "quest": (
+                    {
+                        "title": _state.quest.title,
+                        "hook": _state.quest.hook,
+                        "momentum": _state.quest.momentum,
+                        "tension": _state.quest.tension,
+                        "steps_done": len(_state.quest.completed_steps),
+                        "steps_left": len(_state.quest.steps),
+                        "outcome": _state.quest.outcome,
+                    }
+                    if _state
+                    else None
+                ),
+                "party_size": len(_state.party) if _state else 0,
+                "spend": round(spend.get("usd", 0.0), 5),
+                "spend_days": dict(spend.get("days", {})),
+                "calls": spend.get("calls", 0),
+                "llm_enabled": llm.enabled(),
+                "artel_enabled": artel.enabled(),
+            }
+        )
+
     @app.get("/state")
     async def state_endpoint() -> JSONResponse:
         if _state is None:

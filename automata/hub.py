@@ -123,6 +123,26 @@ def _shape_pitch(pi: dict, extra: dict) -> dict:
     }
 
 
+def _shape_vibequest(vq: dict, extra: dict) -> dict:
+    return {
+        "status": "live" if vq.get("live") else "idle",
+        "paused": False,
+        "model": None,
+        "spend": round(vq.get("spend") or 0.0, 5),
+        "spend_label": "all time",
+        "cap": None,
+        "cache_ratio": None,
+        "viewers": vq.get("viewers"),
+        "spend_days": vq.get("spend_days") or {},
+        "facts": {
+            "phase": vq.get("phase"),
+            "quest": vq.get("quest") or {},
+            "party_size": vq.get("party_size"),
+            "calls": vq.get("calls"),
+        },
+    }
+
+
 def _shape_verglas(al: dict, extra: dict) -> dict:
     return {
         "status": "live" if al.get("live") else "idle",
@@ -235,6 +255,26 @@ WORLDS: list[WorldDef] = [
         glyph_bg="linear-gradient(160deg,#0e1f33,#16293f 60%,#243a52)",
         featured=True,
         shape=_shape_verglas,
+    ),
+    WorldDef(
+        key="vibequest",
+        name="VibeQuest",
+        tag="collaborative DnD",
+        num=6,
+        url="https://vibequest.artel.run/",
+        blurb=(
+            "Players are the Dungeon Master. Play cards to drive the quest; an AI party "
+            "responds in character and rolls the dice. Deadpan Wes Anderson energy, "
+            "infinite mundane quests treated with complete seriousness."
+        ),
+        debug_env="VIBEQUEST_DEBUG_URL",
+        debug_default="https://vibequest.artel.run",
+        glyph="🎲",
+        glyph_bg="linear-gradient(160deg,#3a2a1a,#4a3828 60%,#5a4230)",
+        pausable=False,
+        resettable=False,
+        rank=5,
+        shape=_shape_vibequest,
     ),
 ]
 
