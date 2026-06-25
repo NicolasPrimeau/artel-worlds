@@ -287,19 +287,30 @@ async def generate_npcs(
 ) -> list[dict]:
     prompt = f"""{_TONE}
 
-Generate 3 people who live and work in this place. They are real people doing their jobs.
-They will mostly be minding their own business. They may be involved in the situation.
+Generate 3 people who live and work in this place.
 
 SITUATION: {quest_hook}
 COMPLICATION: {complication}
 SETTING TYPE: {theme}
 NUMBER OF LOCATIONS: {waypoint_count}
 
+Each person needs a personality: write it in the third person, deadpan, very specific. Like a Wes Anderson character card.
+Focus on one precise detail — a habit, an obsession, a fixed routine, a small grievance — delivered completely flatly.
+Not quirky-for-quirky's-sake. Just exactly, specifically who this person is.
+
+Examples of the right register:
+- "Has worked in this building for nine years. Still does not have a permanent desk. Has stopped asking."
+- "Keeps a printed copy of the seating chart from 2019. Refers to it as the correct one."
+- "Is always five minutes early. Mentions this when relevant and also when it is not."
+- "Once sent an email about the coffee situation. The email was three paragraphs. Nothing changed."
+- "Believes the thermostat in room 4B is set incorrectly. Has documented this."
+
 Assign each person to a location (waypoint_idx 0 to {waypoint_count - 1}) they would naturally inhabit.
 behavior is "stationary" (stays put) or "wandering" (moves between locations).
+Use common, mundane first names (no fantasy names).
 
 Return exactly 3:
-JSON only: {{"npcs": [{{"name": "First Last", "role": "Job Title", "personality": "one phrase", "waypoint_idx": 0, "behavior": "stationary"}}]}}"""
+JSON only: {{"npcs": [{{"name": "First Last", "role": "Job Title", "personality": "2-3 sentence description", "waypoint_idx": 0, "behavior": "stationary"}}]}}"""
     req = Request(system="Respond only with valid JSON.", user=prompt)
     raw = await ROUTER.complete(req)
     parsed = parse_json(raw)
