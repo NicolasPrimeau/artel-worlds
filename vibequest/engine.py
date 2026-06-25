@@ -440,6 +440,7 @@ class QuestState:
     outcome: str | None = None
     scene_rounds: int = 0
     scene_beat_start: int = 0
+    facts: list[str] = field(default_factory=list)
 
 
 @dataclass

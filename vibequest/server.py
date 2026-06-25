@@ -171,7 +171,16 @@ async def _resolve_window(state: GameState) -> None:
         if artel.enabled():
             memory_ctx = await artel.search_memory(f"{state.quest.hook} {card_def.name}")
 
-        result = {"narrative": card_def.description, "consequence": "", "reactions": []}
+        momentum_before = state.quest.momentum
+        apply_card_effects(card_def, dice_result, state.quest)
+        momentum_delta = state.quest.momentum - momentum_before
+
+        result = {
+            "narrative": card_def.description,
+            "consequence": "",
+            "reactions": [],
+            "established": [],
+        }
         if llm.enabled():
             current_npc = next(
                 (n for n in state.quest.npcs if n.waypoint_idx == state.target_idx),
@@ -192,13 +201,18 @@ async def _resolve_window(state: GameState) -> None:
                 complication=state.quest.complication,
                 party_summary=_character_desc(state),
                 momentum=state.quest.momentum,
+                momentum_delta=momentum_delta,
                 memory_context=memory_ctx,
                 story_so_far=_story_so_far(state),
+                story_facts=list(state.quest.facts),
                 register=state.quest.register,
                 npc_context=npc_context,
             )
 
-        apply_card_effects(card_def, dice_result, state.quest)
+        new_facts = [f for f in result.get("established", []) if isinstance(f, str)][:2]
+        state.quest.facts.extend(new_facts)
+        if len(state.quest.facts) > 24:
+            state.quest.facts = state.quest.facts[-24:]
 
         resolution = CardResolution(
             card=played_card,
@@ -219,6 +233,7 @@ async def _resolve_window(state: GameState) -> None:
                 "dice_result": dice_result.value,
                 "consequence": result.get("consequence", ""),
                 "reactions": result.get("reactions", []),
+                "established": new_facts,
             },
         )
 
@@ -238,6 +253,8 @@ async def _resolve_window(state: GameState) -> None:
 
     window_result = classify_result(state.window.resolutions)
     state.quest.result_history.append(window_result)
+    had_nat_20 = any(r.dice_result == DiceResult.NAT_20 for r in state.window.resolutions)
+    had_nat_1 = any(r.dice_result == DiceResult.NAT_1 for r in state.window.resolutions)
     if window_result == "disaster":
         victim = apply_disaster(state, _rng)
         if victim:
@@ -260,6 +277,7 @@ async def _resolve_window(state: GameState) -> None:
                 resolution_count=state.quest.resolution_count,
                 min_resolutions=MIN_RESOLUTIONS,
                 register=state.quest.register,
+                story_facts=list(state.quest.facts),
             )
         except Exception:
             pass
@@ -274,32 +292,55 @@ async def _resolve_window(state: GameState) -> None:
         state.quest.resolution_count += 1
         sync_target(state)
     else:
-        scene = {"resolved": True, "dm_note": ""}
-        if llm.enabled():
-            try:
-                scene = await llm.assess_scene(
-                    scene_name=_scene_name(state),
-                    scene_goal=_scene_goal(state),
-                    scene_beats=_scene_beats(state),
-                    rounds=state.quest.scene_rounds,
-                    momentum=state.quest.momentum,
-                    max_rounds=MAX_SCENE_ROUNDS,
-                )
-            except Exception:
-                pass
+        # NAT_20 with no NAT_1: breakthrough forces scene to resolve now
+        # NAT_1 (regardless of 20): disaster forces scene to continue
+        # Both present: chaotic — let the DM decide normally
+        nat20_wins = had_nat_20 and not had_nat_1
+        nat1_blocks = had_nat_1
 
-        force = state.quest.scene_rounds >= MAX_SCENE_ROUNDS
-        if scene.get("resolved") or force:
-            if scene.get("dm_note"):
-                state.log_event("scene_resolved", scene["dm_note"])
+        if nat20_wins:
+            state.log_event("crit_breakthrough", "NAT 20 — scene resolved by breakthrough")
             state.quest.resolution_count += 1
             state.quest.scene_beat_start = len(state.quest.beats)
             state.quest.scene_rounds = 0
             sync_target(state)
+            await _broadcast({"type": "crit_moment", "crit": "nat_20"})
         else:
-            state.quest.scene_rounds += 1
-            if scene.get("dm_note"):
-                state.log_event("scene_continues", scene["dm_note"])
+            if nat1_blocks:
+                await _broadcast({"type": "crit_moment", "crit": "nat_1"})
+
+            scene = {"resolved": False, "dm_note": ""}
+            if llm.enabled() and not nat1_blocks:
+                try:
+                    scene = await llm.assess_scene(
+                        scene_name=_scene_name(state),
+                        scene_goal=_scene_goal(state),
+                        scene_beats=_scene_beats(state),
+                        rounds=state.quest.scene_rounds,
+                        momentum=state.quest.momentum,
+                        max_rounds=MAX_SCENE_ROUNDS,
+                        story_facts=list(state.quest.facts),
+                    )
+                except Exception:
+                    pass
+
+            force = state.quest.scene_rounds >= MAX_SCENE_ROUNDS
+            if not nat1_blocks and (scene.get("resolved") or force):
+                if scene.get("dm_note"):
+                    state.log_event("scene_resolved", scene["dm_note"])
+                state.quest.resolution_count += 1
+                state.quest.scene_beat_start = len(state.quest.beats)
+                state.quest.scene_rounds = 0
+                sync_target(state)
+            else:
+                state.quest.scene_rounds += 1
+                reason = (
+                    "NAT 1 — disaster forces another round"
+                    if nat1_blocks
+                    else scene.get("dm_note", "")
+                )
+                if reason:
+                    state.log_event("scene_continues", reason)
 
     await _broadcast(
         {"type": "card_resolved", "state": _state_snapshot(state, include_world=False)}

@@ -57,25 +57,46 @@ async def narrate_card(
     complication: str,
     party_summary: str,
     momentum: int,
+    momentum_delta: int,
     memory_context: str,
     story_so_far: str = "",
+    story_facts: list[str] | None = None,
     register: str = "a deadpan documentary",
     npc_context: str = "",
 ) -> dict:
     if dice_value == 20:
-        crit = "Critical: something goes spectacularly right, in a way that makes total sense in context but shouldn't."
+        crit = (
+            "NAT 20 — BREAKTHROUGH: Something goes so specifically and absurdly right that it becomes a turning point. "
+            "This is the peak of this scene. Make it concrete, make it count, make it the thing that actually moves the needle. "
+            "Your 'established' facts should reflect what just changed in the world."
+        )
     elif dice_value == 1:
-        crit = "Critical: something goes genuinely, quietly wrong — not dramatic, just wrong in a way that will matter."
+        crit = (
+            "NAT 1 — DISASTER: Something goes so specifically and quietly wrong that the situation gets measurably worse. "
+            "Not dramatic — just wrong, in a way that will matter. Name what broke, who got caught, what's now in the way. "
+            "Your 'established' facts should reflect this new problem."
+        )
     else:
         crit = ""
-    story_block = f"WHAT HAS HAPPENED SO FAR: {story_so_far}" if story_so_far else ""
+
+    delta_desc = (
+        f"momentum {'improved' if momentum_delta > 0 else 'dropped'} by {abs(momentum_delta)}"
+        if momentum_delta != 0
+        else "momentum unchanged"
+    )
+    facts_block = ""
+    if story_facts:
+        facts_block = "WHAT IS CURRENTLY TRUE:\n" + "\n".join(f"- {f}" for f in story_facts[-10:])
+    story_block = f"WHAT HAS HAPPENED: {story_so_far}" if story_so_far else ""
+
     prompt = f"""{_TONE}
 
 SITUATION: {quest_hook}
 COMPLICATION: {complication}
 {f"PERSON AT THIS LOCATION: {npc_context}" if npc_context else ""}
 PEOPLE: {party_summary}
-MORALE: {momentum} (negative = things are going badly, positive = going well — let this show in tone, not in explicit statement)
+MORALE: {momentum} ({delta_desc} from this card — let this show in tone, not in explicit statement)
+{facts_block}
 {story_block}
 CONTEXT: {memory_context or "None."}
 
@@ -83,17 +104,18 @@ CARD PLAYED: {card_name} ({card_type})
 CARD EFFECT: {card_description}
 DICE: {dice_value}/20 ({dice_label}). {crit}
 
-Narrate what happens in 2-3 sentences. Narrative register: {register}.
-The dice result steers the outcome — a high roll means something works, a low roll means it doesn't, but always in a mundane, slightly wrong way.
-Be specific to this situation. Stay grounded. No fantasy language.
+The engine has already applied the mechanical effect. Narrate what caused that outcome — 2-3 sentences, {register} register.
+Be specific to named people, objects, and places already established. Do not contradict anything in WHAT IS CURRENTLY TRUE.
+If a chaos card: something unexpected really does happen, name it concretely.
 
-Then write one reaction line per person — max 12 words each, sounds like a real coworker, slightly off.
+Then 0-2 "established" facts: short present-tense statements about what is now true in the world because of this. Only write facts that actually change something (an object's state, a person's situation, a location's status). Skip if nothing new was established.
 
 JSON only:
 {{
   "narrative": "2-3 sentence narration",
-  "consequence": "one sentence, the immediate consequence for the situation",
-  "reactions": [{{"name": "...", "role": "...", "line": "..."}}]
+  "consequence": "one sentence, the immediate consequence",
+  "reactions": [{{"name": "...", "role": "...", "line": "..."}}],
+  "established": ["fact 1", "fact 2"]
 }}"""
 
     req = Request(system="Respond only with valid JSON. No fantasy language.", user=prompt)
@@ -104,7 +126,10 @@ JSON only:
             "narrative": f"The {card_name} card is played. The dice show {dice_value}.",
             "consequence": "The situation continues.",
             "reactions": [],
+            "established": [],
         }
+    if "established" not in parsed:
+        parsed["established"] = []
     return parsed
 
 
@@ -117,6 +142,7 @@ async def assess_arc(
     resolution_count: int,
     min_resolutions: int,
     register: str = "a deadpan documentary",
+    story_facts: list[str] | None = None,
 ) -> dict:
     forced = resolution_count >= min_resolutions * 2 + 2
     trajectory = " → ".join(result_history) if result_history else "(nothing resolved yet)"
@@ -132,13 +158,17 @@ async def assess_arc(
 
 Do NOT end it just because things are going well or badly. Keep going if it still has forward energy."""
 
+    facts_block = ""
+    if story_facts:
+        facts_block = "\nWHAT IS CURRENTLY TRUE:\n" + "\n".join(f"- {f}" for f in story_facts[-10:])
+
     prompt = f"""{_TONE}
 
 You are deciding when this situation ends.
 
 SITUATION: {quest_hook}
 COMPLICATION: {complication}
-
+{facts_block}
 WHAT ACTUALLY HAPPENED (in order):
 {story_so_far or "(nothing yet)"}
 
@@ -285,6 +315,7 @@ async def assess_scene(
     rounds: int,
     momentum: int,
     max_rounds: int = 4,
+    story_facts: list[str] | None = None,
 ) -> dict:
     if rounds < 1:
         force_rule = "Too early — always set resolved=false."
@@ -298,6 +329,10 @@ async def assess_scene(
 
 Do NOT end the scene just because things are going well or badly in general. End it when something that matters actually HAPPENED here."""
 
+    facts_block = ""
+    if story_facts:
+        facts_block = "\nWHAT IS CURRENTLY TRUE:\n" + "\n".join(f"- {f}" for f in story_facts[-10:])
+
     prompt = f"""{_TONE}
 
 You are the DM deciding whether this scene is finished.
@@ -306,7 +341,7 @@ LOCATION: {scene_name}
 GOAL HERE: {scene_goal}
 ROUNDS PLAYED HERE: {rounds}
 MOMENTUM: {momentum} (-10 = failing badly, +10 = succeeding)
-
+{facts_block}
 WHAT HAS HAPPENED AT THIS LOCATION:
 {scene_beats or "(Nothing yet — first round.)"}
 
