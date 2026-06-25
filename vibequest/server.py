@@ -9,6 +9,7 @@ from pathlib import Path
 
 from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from . import artel, llm
 from .engine import (
@@ -19,8 +20,11 @@ from .engine import (
     apply_card_effects,
     advance_window,
     deal_hand,
+    maybe_travel_event,
     new_game,
     roll_d20,
+    step_party,
+    sync_target,
 )
 
 log = logging.getLogger("vibequest")
@@ -53,9 +57,24 @@ def _state_snapshot(state: GameState) -> dict:
             "outcome": state.quest.outcome,
         },
         "party": [
-            {"id": m.id, "name": m.name, "role": m.role, "hp": m.hp, "status": m.status}
+            {
+                "id": m.id,
+                "name": m.name,
+                "role": m.role,
+                "hp": m.hp,
+                "status": m.status,
+                "sprite": m.sprite,
+            }
             for m in state.party
         ],
+        "world": state.world.to_dict() if state.world else None,
+        "pos": {
+            "x": state.lx,
+            "y": state.ly,
+            "facing": state.facing,
+            "target_idx": state.target_idx,
+            "rpos": state.rpos,
+        },
         "window": {
             "opened_at": state.window.opened_at,
             "closes_at": state.window.closes_at,
@@ -201,6 +220,34 @@ async def _start_new_game() -> None:
     await _broadcast({"type": "new_quest", "state": _state_snapshot(_state)})
 
 
+def _pos_msg(state: GameState) -> dict:
+    return {
+        "type": "move",
+        "pos": {
+            "x": state.lx,
+            "y": state.ly,
+            "facing": state.facing,
+            "target_idx": state.target_idx,
+            "rpos": state.rpos,
+        },
+    }
+
+
+async def _move_loop() -> None:
+    while True:
+        await asyncio.sleep(0.9)
+        state = _state
+        if state is None or not _clients or state.phase == "complete":
+            continue
+        sync_target(state)
+        event = maybe_travel_event(state, _rng)
+        if step_party(state):
+            await _broadcast(_pos_msg(state))
+        if event:
+            state.log_event("travel", event)
+            await _broadcast({"type": "travel_event", "text": event})
+
+
 async def _window_loop() -> None:
     global _state
     while True:
@@ -224,6 +271,13 @@ def create_app() -> FastAPI:
         global _state
         _state = new_game(_rng)
         asyncio.create_task(_window_loop())
+        asyncio.create_task(_move_loop())
+
+    app.mount("/assets", StaticFiles(directory=STATIC / "assets"), name="assets")
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon() -> FileResponse:
+        return FileResponse(STATIC / "favicon.ico")
 
     @app.get("/")
     async def index() -> FileResponse:

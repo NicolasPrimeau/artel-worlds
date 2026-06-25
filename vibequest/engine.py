@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from .world import WorldMap, facing_from_delta, generate_world
+
 # VibeQuest — a shared multiplayer DnD world where players collectively ARE the Dungeon Master.
 # AI agents are the party. Players play cards that resolve the quest. Cards batch in time windows,
 # resolve in random order, and the party reacts in character. One global instance, drop in anytime.
@@ -410,6 +412,7 @@ class PartyMember:
     personality: str
     hp: int = 20
     status: str = "ready"
+    sprite: int = 1
 
 
 @dataclass
@@ -459,6 +462,12 @@ class GameState:
     party: list[PartyMember]
     quest: QuestState
     window: WindowState
+    world: WorldMap | None = None
+    lx: int = 0
+    ly: int = 0
+    facing: str = "up"
+    rpos: int = 0
+    target_idx: int = 0
     log: list[dict[str, Any]] = field(default_factory=list)
     tick: int = 0
     phase: str = "active"  # "intro" | "active" | "resolving" | "complete"
@@ -482,14 +491,16 @@ def _fill_template(template: dict, rng: random.Random) -> tuple[str, str]:
 
 def _make_party(rng: random.Random, size: int = 4) -> list[PartyMember]:
     archetypes = rng.sample(PARTY_ARCHETYPES, min(size, len(PARTY_ARCHETYPES)))
+    sprites = rng.sample(range(1, 11), min(size, 10))
     members = []
-    for arch in archetypes:
+    for i, arch in enumerate(archetypes):
         members.append(
             PartyMember(
                 id=str(uuid.uuid4())[:8],
                 name=rng.choice(arch["name_pool"]),
                 role=arch["role"],
                 personality=arch["personality"],
+                sprite=sprites[i],
             )
         )
     return members
@@ -523,10 +534,65 @@ def new_game(rng: random.Random | None = None) -> GameState:
     quest = _make_quest(rng)
     window = WindowState(opened_at=now, closes_at=now + CARD_WINDOW)
     run_id = str(uuid.uuid4())[:8]
-    state = GameState(run_id=run_id, party=party, quest=quest, window=window)
+    world = generate_world(rng, step_count=len(quest.steps))
+    state = GameState(run_id=run_id, party=party, quest=quest, window=window, world=world)
+    state.lx, state.ly = world.route[0]
+    state.facing = "up"
+    state.rpos = 0
+    state.target_idx = 0
     state.log_event("quest_start", quest.hook)
     state.log_event("complication", quest.complication)
     return state
+
+
+def sync_target(state: GameState) -> None:
+    if state.world is None:
+        return
+    # walk toward the NEXT unresolved station; pause there to resolve the situation
+    state.target_idx = min(len(state.quest.completed_steps) + 1, len(state.world.waypoints) - 1)
+
+
+def at_station(state: GameState) -> bool:
+    if state.world is None or not state.world.wp_route_idx:
+        return True
+    boundary = state.world.wp_route_idx[min(state.target_idx, len(state.world.wp_route_idx) - 1)]
+    return state.rpos >= boundary
+
+
+TRAVEL_EVENTS = [
+    "A vending machine hums ominously in the distance. The party does not speak of it.",
+    "They pass a flickering fluorescent light. It is taken as an omen.",
+    "Someone finds a stray paperclip. It is pocketed with great ceremony.",
+    "A lone office plant watches them go. It will remember this.",
+    "The faint smell of someone's reheated fish lunch tests their resolve.",
+    "An abandoned mug of cold coffee marks a fallen adventurer's last stand.",
+    "A motivational poster insists they can do it. They remain unconvinced.",
+    "The carpet changes pattern. Clearly, they have crossed into a new realm.",
+    "A printer wails somewhere far off, out of toner and out of hope.",
+    "They step over a suspicious stapler. No one dares to claim it.",
+]
+
+
+def maybe_travel_event(state: GameState, rng: random.Random) -> str | None:
+    if at_station(state):
+        return None
+    if rng.random() > 0.10:
+        return None
+    return rng.choice(TRAVEL_EVENTS)
+
+
+def step_party(state: GameState) -> bool:
+    world = state.world
+    if world is None or not world.route:
+        return False
+    allowed = world.wp_route_idx[min(state.target_idx, len(world.wp_route_idx) - 1)]
+    if state.rpos >= allowed:
+        return False
+    nx, ny = world.route[state.rpos + 1]
+    state.facing = facing_from_delta(nx - state.lx, ny - state.ly)
+    state.lx, state.ly = nx, ny
+    state.rpos += 1
+    return True
 
 
 def deal_hand(rng: random.Random, size: int = 5) -> list[CardDef]:

@@ -1,0 +1,10 @@
+VibeQuest visual assets
+=======================
+
+Character sprites, shadow, and environment/prop tilesets:
+  Ninja Adventure Asset Pack by pixel-boy (Pierre Vigier)
+  https://pixel-boy.itch.io/ninja-adventure-asset-pack
+  License: CC0 1.0 Universal (Public Domain). Attribution appreciated, not required.
+
+ground_tiles.png:
+  Original, generated for VibeQuest (Wes Anderson pastel palette).
