@@ -37,12 +37,6 @@
   #titlecard .obj.done .t{text-decoration:line-through;opacity:.6}
   #titlecard .obj.done .box{background:var(--sage);color:var(--ink)}
   #titlecard .obj.active .box{border-color:var(--rose2)}
-  #meters{display:flex;gap:clamp(4px,1.6vw,8px);align-items:center;flex-wrap:wrap}
-  .chip{background:var(--cream2);border:1.5px solid var(--ink);border-radius:2px;padding:3px clamp(5px,1.6vw,8px);font-size:clamp(8px,2.2vw,10px);letter-spacing:.1em;text-transform:uppercase;display:flex;align-items:center;gap:5px}
-  .bar{width:clamp(36px,10vw,56px);height:7px;border:1.5px solid var(--ink);border-radius:2px;overflow:hidden;background:var(--cream)}
-  .bar > i{display:block;height:100%;width:50%}
-  .bar.mom > i{background:var(--sage2)}
-  .bar.ten > i{background:var(--rose2)}
 
   /* speech bubbles over the party (show, don't tell) */
   #bubbles{top:0;left:0;right:0;bottom:0;pointer-events:none;overflow:hidden}
@@ -134,11 +128,6 @@
     <div class="obj-current" id="qobj"></div>
     <div class="title" id="qtitle">—</div>
     <div class="obj-list" id="objectives"></div>
-  </div>
-  <div id="meters">
-    <div class="chip">Mom <span class="bar mom"><i id="mom"></i></span></div>
-    <div class="chip">Ten <span class="bar ten"><i id="ten"></i></span></div>
-    <div class="chip">◔ <span id="viewers">0</span></div>
   </div>
 </div>
 <div id="bubbles" class="ui"></div>
@@ -441,9 +430,6 @@ function applyState(snap){
 function setHud(snap){
   const q=snap.quest;
   document.getElementById("qtitle").textContent=q.title||"VibeQuest";
-  document.getElementById("mom").style.width=((q.momentum+10)/20*100)+"%";
-  document.getElementById("ten").style.width=(q.tension/10*100)+"%";
-  document.getElementById("viewers").textContent=snap.viewers||0;
   const activeObj=(q.objectives||[])[q.resolved||0];
   document.getElementById("qobj").textContent=activeObj?activeObj.text:"";
   renderObjectives(q.objectives, q.resolved||0);
