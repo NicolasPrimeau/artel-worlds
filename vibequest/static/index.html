@@ -55,35 +55,44 @@
     background:rgba(244,236,214,.72);padding:3px 12px;border-radius:4px;opacity:0;transition:opacity .6s;white-space:nowrap}
   #caption.show{opacity:1}
 
-  /* fan hand — cards anchored at bottom-center, fanned out via JS */
+  /* fan hand */
   #hand{position:fixed;bottom:calc(8px + env(safe-area-inset-bottom));left:50%;width:0;height:0;pointer-events:none;z-index:10}
   .card{
     position:absolute;bottom:0;left:0;
-    width:clamp(88px,26vw,110px);min-height:clamp(124px,36vw,156px);height:auto;
+    width:clamp(80px,22vw,100px);min-height:clamp(112px,32vw,144px);height:auto;
     border:2px solid var(--ink);border-radius:6px;
-    background:var(--cream2);padding:clamp(5px,1.6vw,8px) clamp(8px,2.4vw,12px);
+    background:var(--cream2);padding:clamp(5px,1.4vw,7px) clamp(7px,2vw,10px);
     display:flex;flex-direction:column;gap:3px;
     box-shadow:3px 4px 0 rgba(84,79,87,.18);
     transform-origin:50% 130%;
     transition:transform .18s ease-out, box-shadow .18s, opacity .18s;
     pointer-events:auto;cursor:pointer;user-select:none;touch-action:none;
   }
-  .card .ct{font-size:clamp(7px,1.9vw,9px);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:700}
-  .card .cn{font-size:clamp(12px,3.5vw,15px);font-weight:700;line-height:1.15;font-family:"Cormorant Garamond",serif;letter-spacing:.02em}
-  .card .cd{font-size:clamp(8px,2.1vw,9.5px);color:var(--ink);line-height:1.4;flex:none}
+  .card .ct{font-size:clamp(6px,1.7vw,8px);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:700}
+  .card .cn{font-size:clamp(11px,3.2vw,14px);font-weight:700;line-height:1.15;font-family:"Cormorant Garamond",serif;letter-spacing:.02em}
+  .card .cd{font-size:clamp(7px,1.9vw,9px);color:var(--ink);line-height:1.4;flex:none}
   .card.accumulate{background:#eef2e6}.card.action{background:#fbf0e6}
   .card.chaos{background:#f6e7ea}.card.tweak{background:#ece9f2}
   .card.played{opacity:0;pointer-events:none}
-  /* played pile — bottom-left, out of the way */
-  #pile{position:fixed;bottom:calc(8px + env(safe-area-inset-bottom));right:12px;
-    width:clamp(68px,18vw,82px);height:clamp(90px,24vw,108px);pointer-events:auto;cursor:pointer;z-index:11;overflow:visible}
+  /* draw pile — bottom-left, above hand */
+  #drawpile{position:fixed;left:12px;bottom:clamp(156px,44vw,196px);
+    width:clamp(60px,16vw,76px);height:clamp(80px,22vw,100px);z-index:11;cursor:default}
+  .draw-back{position:absolute;inset:0;background:var(--ink);border:2px solid var(--ink);border-radius:6px;box-shadow:2px 3px 0 rgba(84,79,87,.3)}
+  .draw-back::after{content:"";position:absolute;inset:6px;border:1px solid rgba(255,255,255,.15);border-radius:3px}
+  .draw-back.s1{transform:translate(-2px,-2px)}
+  .draw-back.s2{transform:translate(-4px,-4px)}
+  #drawpile .pile-lbl{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:7px;letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);font-family:"Courier Prime",monospace;white-space:nowrap}
+  /* played pile — bottom-right, above hand */
+  #pile{position:fixed;right:12px;bottom:clamp(156px,44vw,196px);
+    width:clamp(60px,16vw,76px);height:clamp(80px,22vw,100px);pointer-events:auto;cursor:pointer;z-index:11;overflow:visible}
   .pile-card{position:absolute;inset:0;border:2px solid var(--ink);border-radius:6px;background:var(--cream);
-    box-shadow:2px 3px 0 rgba(84,79,87,.14);display:flex;flex-direction:column;gap:2px;padding:clamp(5px,1.6vw,7px) clamp(7px,2vw,9px)}
-  .pile-card .ct{font-size:clamp(6px,1.7vw,8px);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:700}
-  .pile-card .cn{font-size:clamp(10px,2.8vw,12px);font-weight:700;line-height:1.15;font-family:"Cormorant Garamond",serif}
-  .pile-card .cd{font-size:clamp(7px,1.8vw,8.5px);color:var(--ink);line-height:1.3;flex:none;overflow:hidden}
+    box-shadow:2px 3px 0 rgba(84,79,87,.14);display:flex;flex-direction:column;gap:2px;padding:clamp(4px,1.4vw,6px) clamp(6px,1.8vw,8px)}
+  .pile-card .ct{font-size:clamp(5px,1.5vw,7px);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:700}
+  .pile-card .cn{font-size:clamp(9px,2.5vw,11px);font-weight:700;line-height:1.15;font-family:"Cormorant Garamond",serif}
+  .pile-card .cd{font-size:clamp(6px,1.6vw,8px);color:var(--ink);line-height:1.3;flex:none;overflow:hidden}
   .pile-card.accumulate{background:#eef2e6}.pile-card.action{background:#fbf0e6}
   .pile-card.chaos{background:#f6e7ea}.pile-card.tweak{background:#ece9f2}
+  @keyframes deal-in{from{opacity:0;transform:var(--deal-start)}to{opacity:1;transform:var(--deal-end)}}
   /* card detail overlay */
   .card-detail-overlay{position:fixed;inset:0;z-index:800;display:flex;align-items:center;justify-content:center;background:rgba(28,26,30,.52)}
   .card-detail-overlay .card{position:relative;width:min(250px,72vw);min-height:0;height:auto;padding:18px 20px;transform:rotate(-2deg) !important;box-shadow:0 20px 60px rgba(0,0,0,.4);cursor:default;pointer-events:none;transition:none}
@@ -179,6 +188,7 @@
   </div>
 </div>
 
+<div id="drawpile" class="ui"></div>
 <div id="hand" class="ui"></div>
 <div id="pile" class="ui"></div>
 
@@ -318,7 +328,7 @@ const WALK_SPEED = 1.1;   // route tiles per second
 const SPACING = 1.25;     // route-tile gap between followers
 const playerId = (()=>{ let p=localStorage.getItem("vq_pid"); if(!p){p="p"+Math.random().toString(36).slice(2,8);localStorage.setItem("vq_pid",p);} return p; })();
 
-let scene=null, world=null, party=[], npcs=[], built=null, pendingState=null;
+let scene=null, world=null, character=null, npcs=[], built=null, pendingState=null;
 let routeArr=[], wpIdx=[], leaderPos=0, targetIdx=0;
 let currentHeading="", captionVisible=false;
 
@@ -366,23 +376,20 @@ class World extends Phaser.Scene{
     if(pendingState){ applyState(pendingState); pendingState=null; }
   }
   update(_,dt){
-    if(!party.length || !routeArr.length) return;
+    if(!character || !routeArr.length) return;
     const allowed = wpIdx.length ? wpIdx[Math.min(targetIdx, wpIdx.length-1)] : 0;
     const moving = leaderPos < allowed - 0.001;
     if(moving) leaderPos = Math.min(allowed, leaderPos + WALK_SPEED*(dt/1000));
-    for(let i=0;i<party.length;i++){
-      const m=party[i];
-      const rp = Math.max(0, leaderPos - i*SPACING);
-      const p = routeXY(rp);
-      m.spr.x=p.x; m.spr.y=p.y;
-      m.shadow.x=p.x; m.shadow.y=p.y+6;
-      m.spr.setDepth(1000+p.y);
-      if(moving && (p.dx||p.dy)){
-        const dir = Math.abs(p.dx)>Math.abs(p.dy) ? (p.dx>0?"right":"left") : (p.dy>0?"down":"up");
-        if(!m.moving || m.dir!==dir){ m.dir=dir; m.spr.play(`h${m.sprite}-${dir}`,true); }
-        m.moving=true;
-      } else if(m.moving){ m.moving=false; idle(m); }
-    }
+    const m=character;
+    const p = routeXY(leaderPos);
+    m.spr.x=p.x; m.spr.y=p.y;
+    m.shadow.x=p.x; m.shadow.y=p.y+6;
+    m.spr.setDepth(1000+p.y);
+    if(moving && (p.dx||p.dy)){
+      const dir = Math.abs(p.dx)>Math.abs(p.dy) ? (p.dx>0?"right":"left") : (p.dy>0?"down":"up");
+      if(!m.moving || m.dir!==dir){ m.dir=dir; m.spr.play(`h${m.sprite}-${dir}`,true); }
+      m.moving=true;
+    } else if(m.moving){ m.moving=false; idle(m); }
     updateBubbles();
     updateCaption(moving);
   }
@@ -439,22 +446,21 @@ function buildWorld(W){
   scene.cameras.main.setZoom(viewZoom());
 }
 
-function buildParty(snap){
-  for(const m of party){ m.spr.destroy(); m.shadow.destroy(); }
-  party=[];
+function buildCharacter(snap){
+  if(character){ character.spr.destroy(); character.shadow.destroy(); }
+  character=null;
   routeArr=snap.world.route||[]; wpIdx=snap.world.wp_route_idx||[];
   leaderPos=snap.pos.rpos||0; targetIdx=snap.pos.target_idx||0;
-  for(let i=0;i<snap.party.length;i++){
-    const pm=snap.party[i];
-    const p=routeXY(Math.max(0,leaderPos-i*SPACING));
-    const shadow=scene.add.image(p.x,p.y+6,"shadow").setDepth(900).setAlpha(.5).setScale(.9);
-    const spr=scene.add.sprite(p.x,p.y,"hero"+pm.sprite).setDepth(1000);
-    const m={spr,shadow,sprite:pm.sprite,id:pm.id,name:pm.name,role:pm.role,status:pm.status||"ready",dir:snap.pos.facing,moving:false,lead:i===0};
-    spr.setInteractive({useHandCursor:true});
-    spr.on("pointerup",()=>showMemberDetail(pm));
-    idle(m); party.push(m);
-  }
-  scene.cameras.main.startFollow(party[0].spr,true,0.09,0.09);
+  const pm=snap.character; if(!pm) return;
+  const p=routeXY(leaderPos);
+  const shadow=scene.add.image(p.x,p.y+6,"shadow").setDepth(899).setAlpha(.5).setScale(1.1);
+  const spr=scene.add.sprite(p.x,p.y,"hero"+pm.sprite).setDepth(1000+p.y);
+  spr.setFrame(DIR_COL["down"]);
+  spr.setInteractive({useHandCursor:true});
+  spr.on("pointerup",()=>showMemberDetail(pm));
+  const m={spr,shadow,id:pm.id,name:pm.name,role:pm.role,sprite:pm.sprite,status:pm.status,moving:false,dir:"down"};
+  idle(m); character=m;
+  scene.cameras.main.startFollow(spr,true,0.09,0.09);
 }
 
 function buildNPCs(snap){
@@ -499,7 +505,7 @@ function showMemberDetail(pm){
 }
 
 function onMove(pos){
-  if(!party.length) return;
+  if(!character) return;
   targetIdx = pos.target_idx;
   if(pos.rpos!=null && pos.rpos > leaderPos+2) leaderPos = pos.rpos; // resync if server far ahead
 }
@@ -509,7 +515,7 @@ function applyState(snap){
   const W=snap.world;
   if(W && built!==snap.run_id){
     world=W; built=snap.run_id;
-    buildWorld(W); buildParty(snap); buildNPCs(snap);
+    buildWorld(W); buildCharacter(snap); buildNPCs(snap);
     clearBubbles();
   }
   setHud(snap);
@@ -536,33 +542,28 @@ function setHud(snap){
       ol.appendChild(li);
     });
   }
-  updatePartyStatus(snap.party||[]);
+  updateCharacterStatus(snap.character);
 }
 
-function updatePartyStatus(members){
-  for(const pm of members){
-    const m=party.find(p=>p.id===pm.id);
-    if(!m) continue;
-    if(pm.status==="lost"){
-      m.spr.setTint(0xcc4444).setAlpha(0.38);
-      m.shadow.setAlpha(0.12);
-    } else if(pm.status==="rattled"){
-      m.spr.setTint(0xd4a843).setAlpha(0.78);
-      m.shadow.setAlpha(0.35);
-    } else {
-      m.spr.clearTint().setAlpha(1);
-      m.shadow.setAlpha(0.5);
-    }
-    m.status=pm.status;
+function updateCharacterStatus(pm){
+  if(!character||!pm) return;
+  if(pm.status==="lost"){
+    character.spr.setTint(0xcc4444).setAlpha(0.38);
+    character.shadow.setAlpha(0.12);
+  } else if(pm.status==="rattled"){
+    character.spr.setTint(0xd4a843).setAlpha(0.78);
+    character.shadow.setAlpha(0.35);
+  } else {
+    character.spr.clearTint().setAlpha(1);
+    character.shadow.setAlpha(0.5);
   }
+  character.status=pm.status;
 }
 
 
 // ---- speech bubbles ----
 const bubbles=[];
-function memberFor(name, role){
-  return party.find(m=>m.name===name) || party.find(m=>m.role===role) || party[0];
-}
+function memberFor(name, role){ return character; }
 function speak(member, name, text, dur){
   if(!member||!text) return;
   for(const o of bubbles){ if(o.member===member) o.until=0; }
@@ -580,10 +581,9 @@ function updateBubbles(){
 }
 function clearBubbles(){ for(const b of bubbles) b.el.remove(); bubbles.length=0; }
 function showReactions(rs){
-  if(!rs||!rs.length||!party.length) return;
-  const ch=party[0];
-  const r=rs.find(r=>r.name===ch.name||r.role===ch.role)||rs[0];
-  speak(ch,ch.name,r.line);
+  if(!rs||!rs.length||!character) return;
+  const r=rs.find(r=>r.name===character.name||r.role===character.role)||rs[0];
+  speak(character,character.name,r.line);
 }
 let toastTimer=null;
 function toast(text){
@@ -613,9 +613,25 @@ const PILE_ROTS=[3,-5,7,-2,8,-6,4,-8,2,-4];
 let pileCards=[];
 let selectedCard=null;
 
-function cardTransform(t,drop){
-  const rot=t*9; const tx=t*70; const ty=drop?Math.abs(t)*14:Math.abs(t)*14-32;
+function cardTransform(t,drop,step){
+  const s=step??55; const rot=t*8; const tx=t*s; const ty=drop?Math.abs(t)*12:Math.abs(t)*12-30;
   return `translateX(calc(-50% + ${tx}px)) translateY(${ty}px) rotate(${rot}deg)`;
+}
+
+function fanStep(n){
+  const available=window.innerWidth*0.5 - 80;
+  return n>1 ? Math.min(55, available/(n-1)*0.85) : 0;
+}
+
+function renderDrawPile(count){
+  const dp=document.getElementById("drawpile"); dp.innerHTML="";
+  const lbl=document.createElement("div"); lbl.className="pile-lbl";
+  lbl.textContent="draw"; dp.appendChild(lbl);
+  const layers=Math.min(3,count||1);
+  for(let i=layers-1;i>=0;i--){
+    const b=document.createElement("div"); b.className="draw-back"+(i>0?" s"+i:"");
+    dp.appendChild(b);
+  }
 }
 
 function showCardDetail(c){
@@ -629,23 +645,30 @@ function showCardDetail(c){
 
 function renderHand(cards){
   pileCards=[]; renderPile(); selectedCard=null;
+  renderDrawPile(cards.length);
   const h=document.getElementById("hand"); h.innerHTML="";
-  const n=cards.length;
+  const n=cards.length; if(!n) return;
+  const step=fanStep(n);
+  const dp=document.getElementById("drawpile").getBoundingClientRect();
+  const dpCx=dp.left+dp.width/2; const dpCy=dp.top+dp.height/2;
+  const hAnchorX=window.innerWidth/2; const hAnchorY=window.innerHeight-(8+parseInt(getComputedStyle(document.documentElement).getPropertyValue("--sai")||"0"));
+
   for(let i=0;i<n;i++){
     const c=cards[i];
     const t=n>1?(i/(n-1))*2-1:0;
     const defZ=n-Math.round(Math.abs(i-(n-1)/2)*2);
     const el=document.createElement("div"); el.className="card "+c.type;
     el.innerHTML=`<div class="ct">${c.type}</div><div class="cn">${c.name}</div><div class="cd">${c.description}</div>`;
-    el.style.transform=cardTransform(t,true);
+    el.style.opacity="0";
+    el.style.transform=cardTransform(t,true,step);
     el.style.zIndex=defZ;
 
     let holdTimer=null, ptStart=null, dragging=false;
 
-    const raise=()=>{ el.style.transform=cardTransform(t,false); el.style.boxShadow="0 12px 24px rgba(84,79,87,.28)"; el.style.zIndex=100; };
-    const lower=()=>{ if(selectedCard===el)return; el.style.transform=cardTransform(t,true); el.style.boxShadow=""; el.style.zIndex=defZ; };
-    const deselect=()=>{ if(selectedCard===el)selectedCard=null; el.style.transform=cardTransform(t,true); el.style.boxShadow=""; el.style.zIndex=defZ; };
-    el._deselect=deselect;
+    const raise=()=>{ el.style.transform=cardTransform(t,false,step); el.style.boxShadow="0 12px 24px rgba(84,79,87,.28)"; el.style.zIndex=100; };
+    const lower=()=>{ if(selectedCard===el)return; el.style.transform=cardTransform(t,true,step); el.style.boxShadow=""; el.style.zIndex=defZ; };
+    const deselect=()=>{ if(selectedCard===el)selectedCard=null; el.style.transform=cardTransform(t,true,step); el.style.boxShadow=""; el.style.zIndex=defZ; };
+    el._deselect=deselect; el._step=step; el._t=t; el._defZ=defZ;
 
     el.addEventListener("mouseenter",()=>{ if(el.classList.contains("played")||dragging)return; raise(); });
     el.addEventListener("mouseleave",()=>{ if(el.classList.contains("played")||dragging)return; lower(); });
@@ -666,7 +689,7 @@ function renderHand(cards){
         el.style.transition="none"; el.style.position="fixed";
         el.style.left=r.left+"px"; el.style.top=r.top+"px";
         el.style.width=r.width+"px"; el.style.height=r.height+"px";
-        el.style.margin="0"; el.style.transform=`rotate(${t*9}deg)`;
+        el.style.margin="0"; el.style.transform=`rotate(${t*8}deg)`;
         el.style.zIndex="300"; el.style.boxShadow="0 16px 32px rgba(84,79,87,.4)"; el.style.opacity=".92";
       }
       if(dragging){
@@ -695,7 +718,7 @@ function renderHand(cards){
       if(dragging){
         el.style.position=""; el.style.left=""; el.style.top=""; el.style.width=""; el.style.height="";
         el.style.margin=""; el.style.opacity=""; el.style.transition="";
-        el.style.transform=cardTransform(t,selectedCard===el?false:true);
+        el.style.transform=cardTransform(t,selectedCard===el?false:true,step);
         el.style.boxShadow=selectedCard===el?"0 12px 24px rgba(84,79,87,.28)":"";
         el.style.zIndex=selectedCard===el?100:defZ;
       }
@@ -703,6 +726,19 @@ function renderHand(cards){
     });
 
     h.appendChild(el);
+
+    // Deal animation: fly from draw pile position
+    const startX=dpCx-hAnchorX; const startY=dpCy-hAnchorY;
+    const endTransform=cardTransform(t,true,step);
+    setTimeout(()=>{
+      el.style.transition="none";
+      el.style.transform=`translateX(calc(-50% + ${startX}px)) translateY(${startY}px) rotate(-8deg) scale(.8)`;
+      el.style.opacity="1";
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        el.style.transition="transform .28s cubic-bezier(.25,.8,.25,1)";
+        el.style.transform=endTransform;
+      }));
+    }, i*75);
   }
 }
 
@@ -731,7 +767,7 @@ function renderPile(){
   const pile=document.getElementById("pile"); pile.innerHTML="";
   if(!pileCards.length)return;
   const lbl=document.createElement("div");
-  lbl.style.cssText="position:absolute;top:-15px;left:2px;font-size:7px;letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);font-family:'Courier Prime',monospace;white-space:nowrap";
+  lbl.style.cssText="position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:7px;letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);font-family:'Courier Prime',monospace;white-space:nowrap";
   lbl.textContent="played"; pile.appendChild(lbl);
   for(let i=0;i<pileCards.length;i++){
     const c=pileCards[i];
@@ -780,12 +816,12 @@ function connect(){
         break;
       }
       case "hand": renderHand(m.cards); break;
-      case "window_closing": pileCards=[]; renderPile(); break;
+      case "window_closing": pileCards=[]; renderPile(); renderDrawPile(0); break;
       case "move": onMove(m.pos); break;
       case "scene": applyState(m.state);
         if(m.scene&&m.scene.opening){ const mem=memberFor(null,m.scene.speaker); speak(mem,mem&&mem.name,m.scene.opening,5200); }
         break;
-      case "travel_event": { const mem=party[0]||null; speak(mem,mem&&mem.name,m.text,4200); break; }
+      case "travel_event": { speak(character,character&&character.name,m.text,4200); break; }
       case "dice_roll": showDice(m); break;
       case "card_resolved": {
         applyState(m.state);

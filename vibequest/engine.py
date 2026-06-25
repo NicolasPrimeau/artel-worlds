@@ -496,7 +496,7 @@ class WindowState:
 @dataclass
 class GameState:
     run_id: str
-    party: list[PartyMember]
+    character: PartyMember
     quest: QuestState
     window: WindowState
     world: WorldMap | None = None
@@ -526,21 +526,16 @@ def _fill_template(template: dict, rng: random.Random) -> tuple[str, str]:
     return hook, complication
 
 
-def _make_party(rng: random.Random, size: int = 1) -> list[PartyMember]:
-    archetypes = rng.sample(PARTY_ARCHETYPES, min(size, len(PARTY_ARCHETYPES)))
-    sprites = rng.sample(range(1, 11), min(size, 10))
-    members = []
-    for i, arch in enumerate(archetypes):
-        members.append(
-            PartyMember(
-                id=str(uuid.uuid4())[:8],
-                name=rng.choice(arch["name_pool"]),
-                role=arch["role"],
-                personality=arch["personality"],
-                sprite=sprites[i],
-            )
-        )
-    return members
+def _make_character(rng: random.Random) -> PartyMember:
+    arch = rng.choice(PARTY_ARCHETYPES)
+    sprite = rng.randint(1, 10)
+    return PartyMember(
+        id=str(uuid.uuid4())[:8],
+        name=rng.choice(arch["name_pool"]),
+        role=arch["role"],
+        personality=arch["personality"],
+        sprite=sprite,
+    )
 
 
 def _make_quest(rng: random.Random) -> QuestState:
@@ -560,13 +555,13 @@ def _make_quest(rng: random.Random) -> QuestState:
 def new_game(rng: random.Random | None = None) -> GameState:
     rng = rng or random.Random()
     now = time.time()
-    party = _make_party(rng)
+    character = _make_character(rng)
     quest = _make_quest(rng)
     window = WindowState(opened_at=now, closes_at=now + CARD_WINDOW)
     run_id = str(uuid.uuid4())[:8]
     theme = pick_theme(quest.hook, quest.register)
     world = generate_world(rng, theme=theme, step_count=MAX_RESOLUTIONS)
-    state = GameState(run_id=run_id, party=party, quest=quest, window=window, world=world)
+    state = GameState(run_id=run_id, character=character, quest=quest, window=window, world=world)
     state.lx, state.ly = world.route[0]
     state.facing = "up"
     state.rpos = 0
@@ -690,10 +685,9 @@ def classify_result(resolutions: list[CardResolution]) -> str:
 
 
 def apply_disaster(state: GameState, rng: random.Random) -> "PartyMember | None":
-    alive = [m for m in state.party if m.status != "lost"]
-    if not alive:
+    ch = state.character
+    if ch.status == "lost":
         return None
-    victim = rng.choice(alive)
-    victim.hp = max(0, victim.hp - 5)
-    victim.status = "lost" if victim.hp <= 0 else "rattled"
-    return victim
+    ch.hp = max(0, ch.hp - 5)
+    ch.status = "lost" if ch.hp <= 0 else "rattled"
+    return ch

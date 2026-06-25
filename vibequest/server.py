@@ -42,8 +42,9 @@ _lock = asyncio.Lock()
 _travel_processed: set[str] = set()
 
 
-def _party_summary(state: GameState) -> str:
-    return ", ".join(f"{m.name} the {m.role}" for m in state.party)
+def _character_desc(state: GameState) -> str:
+    c = state.character
+    return f"{c.name} the {c.role}"
 
 
 def _story_so_far(state: GameState) -> str:
@@ -77,17 +78,15 @@ def _state_snapshot(state: GameState, include_world: bool = True) -> dict:
             "register": state.quest.register,
             "outcome": state.quest.outcome,
         },
-        "party": [
-            {
-                "id": m.id,
-                "name": m.name,
-                "role": m.role,
-                "hp": m.hp,
-                "status": m.status,
-                "sprite": m.sprite,
-            }
-            for m in state.party
-        ],
+        "character": {
+            "id": state.character.id,
+            "name": state.character.name,
+            "role": state.character.role,
+            "personality": state.character.personality,
+            "hp": state.character.hp,
+            "status": state.character.status,
+            "sprite": state.character.sprite,
+        },
         "world": (state.world.to_dict() if state.world else None) if include_world else None,
         "pos": {
             "x": state.lx,
@@ -167,7 +166,7 @@ async def _resolve_window(state: GameState) -> None:
                 dice_label=dice_result.value,
                 quest_hook=state.quest.hook,
                 complication=state.quest.complication,
-                party_summary=_party_summary(state),
+                party_summary=_character_desc(state),
                 momentum=state.quest.momentum,
                 memory_context=memory_ctx,
                 story_so_far=_story_so_far(state),
@@ -221,7 +220,7 @@ async def _resolve_window(state: GameState) -> None:
             status_word = "lost" if victim.status == "lost" else "rattled"
             state.log_event(
                 "disaster",
-                f"{victim.name} the {victim.role} is {status_word}.",
+                f"{victim.name} is {status_word}.",
                 {"victim": victim.id, "status": victim.status},
             )
 
@@ -273,7 +272,7 @@ async def _end_quest(state: GameState) -> None:
             quest_hook=state.quest.hook,
             outcome=state.quest.outcome or "unclear",
             momentum=state.quest.momentum,
-            party_summary=_party_summary(state),
+            party_summary=_character_desc(state),
         )
     state.log_event("quest_end", closing or f"The quest concludes. Outcome: {state.quest.outcome}.")
     await _broadcast(
@@ -331,7 +330,7 @@ async def _start_new_game() -> None:
             llm.narrate_quest_start(
                 quest_hook=_state.quest.hook,
                 complication=_state.quest.complication,
-                party_summary=_party_summary(_state),
+                party_summary=_character_desc(_state),
             ),
             llm.generate_objectives(
                 quest_hook=_state.quest.hook,
@@ -350,8 +349,7 @@ async def _start_new_game() -> None:
         if isinstance(objectives, list):
             _state.quest.objectives = objectives
         if isinstance(npcs_raw, list):
-            party_sprites = {m.sprite for m in _state.party}
-            available = [s for s in range(1, 11) if s not in party_sprites]
+            available = [s for s in range(1, 11) if s != _state.character.sprite]
             npcs = []
             for i, nd in enumerate(npcs_raw):
                 if not isinstance(nd, dict):
@@ -473,7 +471,7 @@ def create_app() -> FastAPI:
                     if _state
                     else None
                 ),
-                "party_size": len(_state.party) if _state else 0,
+                "party_size": 1,
                 "spend": round(spend.get("usd", 0.0), 5),
                 "spend_days": dict(spend.get("days", {})),
                 "calls": spend.get("calls", 0),
