@@ -85,6 +85,55 @@ Respond as JSON:
     return parsed
 
 
+async def generate_scene(
+    quest_hook: str,
+    complication: str,
+    party_summary: str,
+    story_so_far: str,
+    prior_result: str,
+    momentum: int,
+    tension: int,
+    scene_number: int,
+    max_scenes: int,
+) -> dict:
+    first = scene_number <= 1
+    where = "OPENING SCENE" if first else f"SCENE {scene_number} of at most {max_scenes}"
+    cont = (
+        "This is the very first situation the party encounters."
+        if first
+        else f"""STORY SO FAR: {story_so_far}
+HOW THE LAST SCENE RESOLVED: {prior_result} (triumph = went well, setback = went badly, mixed = unclear, uneventful = nothing decisive). The NEXT situation must follow believably from this result — a triumph opens a path, a setback adds a complication."""
+    )
+    finale_rule = f"If the party has plausibly reached the objective (especially after a triumph) OR has clearly failed, set finale=true and make this the climactic confrontation. You MUST set finale=true if scene_number is {max_scenes}."
+    prompt = f"""You are the DM for VibeQuest — a deadpan Wes Anderson-style DnD world where mundane office quests are treated with total epic seriousness.
+
+QUEST: {quest_hook}
+COMPLICATION: {complication}
+PARTY: {party_summary}
+MOMENTUM: {momentum} (negative = going badly)  TENSION: {tension}
+{where}
+{cont}
+
+Invent the NEXT situation the party walks into — a fresh, specific, slightly absurd obstacle or encounter. Do not resolve it; just set the scene. {finale_rule}
+
+Respond ONLY as JSON:
+{{
+  "title": "3-5 word scene title",
+  "description": "1-2 deadpan sentences describing the situation the party now faces",
+  "finale": false
+}}"""
+    req = Request(
+        system="You are a deadpan DM generating the next scene. Respond only with valid JSON.",
+        user=prompt,
+    )
+    raw = await ROUTER.complete(req)
+    parsed = parse_json(raw)
+    if not parsed or "description" not in parsed:
+        return {}
+    parsed["finale"] = bool(parsed.get("finale")) or scene_number >= max_scenes
+    return parsed
+
+
 async def narrate_quest_start(quest_hook: str, complication: str, party_summary: str) -> str:
     prompt = f"""You are the narrator for VibeQuest — a deadpan Wes Anderson-style DnD world.
 A new quest begins. Write a dramatic 2-sentence opening narration. Treat the mundane situation with complete seriousness.

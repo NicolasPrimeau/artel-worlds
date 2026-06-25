@@ -14,15 +14,23 @@ from fastapi.staticfiles import StaticFiles
 from . import artel, llm
 from .engine import (
     CARD_BY_ID,
+    MAX_SCENES,
     CardResolution,
     GameState,
     PlayedCard,
+    Scene,
     apply_card_effects,
     advance_window,
+    at_station,
+    classify_result,
+    current_scene,
     deal_hand,
+    fallback_scene,
     maybe_travel_event,
     new_game,
+    resolve_scene,
     roll_d20,
+    scene_conclusion,
     step_party,
     sync_target,
 )
@@ -40,6 +48,50 @@ def _party_summary(state: GameState) -> str:
     return ", ".join(f"{m.name} the {m.role}" for m in state.party)
 
 
+def _scene_dict(state: GameState) -> dict | None:
+    scenes = state.quest.scenes
+    if not scenes:
+        return None
+    idx = min(state.quest.resolved, len(scenes) - 1)
+    s = scenes[idx]
+    return {"title": s.title, "description": s.description, "finale": s.finale}
+
+
+async def _ensure_scene(state: GameState, idx: int) -> Scene | None:
+    quest = state.quest
+    if idx < len(quest.scenes):
+        return quest.scenes[idx]
+    prior = quest.scenes[-1] if quest.scenes else None
+    story = "; ".join(f"{s.title} ({s.result})" for s in quest.scenes) or "(just beginning)"
+    scene_number = idx + 1
+    data: dict = {}
+    if llm.enabled():
+        try:
+            data = await llm.generate_scene(
+                quest_hook=quest.hook,
+                complication=quest.complication,
+                party_summary=_party_summary(state),
+                story_so_far=story,
+                prior_result=prior.result if prior else "",
+                momentum=quest.momentum,
+                tension=quest.tension,
+                scene_number=scene_number,
+                max_scenes=MAX_SCENES,
+            )
+        except Exception:
+            data = {}
+    if data and data.get("description"):
+        scene = Scene(
+            title=data.get("title") or f"Scene {scene_number}",
+            description=data["description"],
+            finale=bool(data.get("finale")),
+        )
+    else:
+        scene = fallback_scene(state, prior, prior.result if prior else "", scene_number, _rng)
+    quest.scenes.append(scene)
+    return scene
+
+
 def _state_snapshot(state: GameState) -> dict:
     return {
         "run_id": state.run_id,
@@ -50,8 +102,10 @@ def _state_snapshot(state: GameState) -> dict:
             "title": state.quest.title,
             "hook": state.quest.hook,
             "complication": state.quest.complication,
-            "steps": state.quest.steps,
-            "completed_steps": state.quest.completed_steps,
+            "scene_number": state.quest.resolved + 1,
+            "resolved": state.quest.resolved,
+            "max_scenes": MAX_SCENES,
+            "scene": _scene_dict(state),
             "momentum": state.quest.momentum,
             "tension": state.quest.tension,
             "outcome": state.quest.outcome,
@@ -98,14 +152,12 @@ async def _broadcast(msg: dict) -> None:
 
 async def _resolve_window(state: GameState) -> None:
     played = advance_window(state, _rng)
-    if not played:
-        await _broadcast({"type": "window_empty"})
-        return
 
     state.window.resolving = True
     state.phase = "resolving"
-    await _broadcast({"type": "window_closing", "card_count": len(played)})
-    await asyncio.sleep(1.5)
+    if played:
+        await _broadcast({"type": "window_closing", "card_count": len(played)})
+        await asyncio.sleep(1.5)
 
     for played_card in played:
         card_def = CARD_BY_ID.get(played_card.card_id)
@@ -129,6 +181,12 @@ async def _resolve_window(state: GameState) -> None:
 
         result = {"narrative": card_def.description, "consequence": "", "reactions": []}
         if llm.enabled():
+            scene = current_scene(state)
+            complication = state.quest.complication
+            if scene:
+                complication = (
+                    f"{complication} CURRENT SITUATION: {scene.title} — {scene.description}"
+                )
             result = await llm.narrate_card(
                 card_name=card_def.name,
                 card_description=card_def.description,
@@ -136,7 +194,7 @@ async def _resolve_window(state: GameState) -> None:
                 dice_value=dice_value,
                 dice_label=dice_result.value,
                 quest_hook=state.quest.hook,
-                complication=state.quest.complication,
+                complication=complication,
                 party_summary=_party_summary(state),
                 momentum=state.quest.momentum,
                 memory_context=memory_ctx,
@@ -175,11 +233,32 @@ async def _resolve_window(state: GameState) -> None:
         await _broadcast({"type": "card_resolved", "state": _state_snapshot(state)})
         await asyncio.sleep(3.0)
 
+    result = classify_result(state.window.resolutions)
+    resolved = resolve_scene(state, result, "")
+    if resolved:
+        conclusion = scene_conclusion(resolved)
+        state.log_event("resolution", conclusion, {"card": resolved.title})
+        await _broadcast({"type": "card_resolved", "state": _state_snapshot(state)})
+        await asyncio.sleep(2.0)
+
     state.window.resolving = False
     state.phase = "active"
 
     if state.quest.outcome:
         await _end_quest(state)
+        return
+
+    # generate the NEXT scene now, while the party walks toward it
+    nxt = await _ensure_scene(state, state.quest.resolved)
+    if nxt:
+        await _broadcast(
+            {
+                "type": "scene",
+                "number": state.quest.resolved + 1,
+                "scene": {"title": nxt.title, "description": nxt.description, "finale": nxt.finale},
+                "state": _state_snapshot(state),
+            }
+        )
 
 
 async def _end_quest(state: GameState) -> None:
@@ -212,6 +291,7 @@ async def _start_new_game() -> None:
         )
     if opening:
         _state.log_event("opening", opening)
+    await _ensure_scene(_state, 0)
     if artel.enabled():
         await artel.write_memory(
             f"New VibeQuest begun: {_state.quest.hook} Complication: {_state.quest.complication}",
@@ -237,7 +317,7 @@ async def _move_loop() -> None:
     while True:
         await asyncio.sleep(0.9)
         state = _state
-        if state is None or not _clients or state.phase == "complete":
+        if state is None or not _clients or state.phase in ("resolving", "complete"):
             continue
         sync_target(state)
         event = maybe_travel_event(state, _rng)
@@ -256,10 +336,17 @@ async def _window_loop() -> None:
             continue
         if not _clients:
             continue
+        sync_target(_state)
+        if not at_station(_state):
+            continue  # still travelling — situations only resolve at a station
         now = time.time()
         if now >= _state.window.closes_at:
             async with _lock:
-                if now >= _state.window.closes_at and _state.phase == "active":
+                if (
+                    now >= _state.window.closes_at
+                    and _state.phase == "active"
+                    and at_station(_state)
+                ):
                     await _resolve_window(_state)
 
 
@@ -270,6 +357,7 @@ def create_app() -> FastAPI:
     async def startup() -> None:
         global _state
         _state = new_game(_rng)
+        await _ensure_scene(_state, 0)
         asyncio.create_task(_window_loop())
         asyncio.create_task(_move_loop())
 
@@ -302,8 +390,15 @@ def create_app() -> FastAPI:
                         "hook": _state.quest.hook,
                         "momentum": _state.quest.momentum,
                         "tension": _state.quest.tension,
-                        "steps_done": len(_state.quest.completed_steps),
-                        "steps_left": len(_state.quest.steps),
+                        "scene_number": _state.quest.resolved + 1,
+                        "scenes_resolved": _state.quest.resolved,
+                        "scene": (
+                            _state.quest.scenes[
+                                min(_state.quest.resolved, len(_state.quest.scenes) - 1)
+                            ].title
+                            if _state.quest.scenes
+                            else None
+                        ),
                         "outcome": _state.quest.outcome,
                     }
                     if _state

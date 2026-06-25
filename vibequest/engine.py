@@ -433,6 +433,19 @@ class CardResolution:
     consequence: str
 
 
+MAX_SCENES = 6
+
+
+@dataclass
+class Scene:
+    title: str
+    description: str
+    finale: bool = False
+    resolved: bool = False
+    result: str = ""  # triumph | mixed | setback | uneventful
+    summary: str = ""  # short how-it-went, for continuity
+
+
 @dataclass
 class QuestState:
     id: str
@@ -440,8 +453,8 @@ class QuestState:
     title: str
     hook: str
     complication: str
-    steps: list[str] = field(default_factory=list)
-    completed_steps: list[str] = field(default_factory=list)
+    scenes: list[Scene] = field(default_factory=list)
+    resolved: int = 0  # number of scenes resolved
     momentum: int = 0  # -10 to +10, accumulate cards shift this
     tension: int = 0  # 0 to 10, chaos cards raise this
     outcome: str | None = None  # "success" | "failure" | None
@@ -510,20 +523,12 @@ def _make_quest(rng: random.Random) -> QuestState:
     template = rng.choice(QUEST_TEMPLATES)
     hook, complication = _fill_template(template, rng)
     quest_id = str(uuid.uuid4())[:8]
-    steps = [
-        "Assess the situation",
-        "Overcome the first obstacle",
-        "Navigate the complication",
-        "Reach the objective",
-        "Resolve the outcome",
-    ]
     return QuestState(
         id=quest_id,
         template_id=template["id"],
         title=template["title"],
         hook=hook,
         complication=complication,
-        steps=steps,
     )
 
 
@@ -534,7 +539,7 @@ def new_game(rng: random.Random | None = None) -> GameState:
     quest = _make_quest(rng)
     window = WindowState(opened_at=now, closes_at=now + CARD_WINDOW)
     run_id = str(uuid.uuid4())[:8]
-    world = generate_world(rng, step_count=len(quest.steps))
+    world = generate_world(rng, step_count=MAX_SCENES)
     state = GameState(run_id=run_id, party=party, quest=quest, window=window, world=world)
     state.lx, state.ly = world.route[0]
     state.facing = "up"
@@ -549,7 +554,7 @@ def sync_target(state: GameState) -> None:
     if state.world is None:
         return
     # walk toward the NEXT unresolved station; pause there to resolve the situation
-    state.target_idx = min(len(state.quest.completed_steps) + 1, len(state.world.waypoints) - 1)
+    state.target_idx = min(state.quest.resolved + 1, len(state.world.waypoints) - 1)
 
 
 def at_station(state: GameState) -> bool:
@@ -632,8 +637,78 @@ def apply_card_effects(card_def: CardDef, dice: DiceResult, quest: QuestState) -
     elif card_def.type == CardType.CHAOS:
         quest.tension = min(10, quest.tension + 1)
     elif card_def.type == CardType.ACTION:
-        if dice in (DiceResult.HIGH, DiceResult.NAT_20) and quest.steps:
-            completed = quest.steps.pop(0)
-            quest.completed_steps.append(completed)
-    if not quest.steps:
+        delta = {
+            DiceResult.NAT_1: -2,
+            DiceResult.LOW: -1,
+            DiceResult.MID: 1,
+            DiceResult.HIGH: 2,
+            DiceResult.NAT_20: 3,
+        }
+        quest.momentum = max(-10, min(10, quest.momentum + delta[dice]))
+
+
+def classify_result(resolutions: list[CardResolution]) -> str:
+    if not resolutions:
+        return "uneventful"
+    highs = sum(1 for r in resolutions if r.dice_result in (DiceResult.HIGH, DiceResult.NAT_20))
+    lows = sum(1 for r in resolutions if r.dice_result in (DiceResult.LOW, DiceResult.NAT_1))
+    net = highs - lows
+    if net >= 1:
+        return "triumph"
+    if net <= -1:
+        return "setback"
+    return "mixed"
+
+
+def current_scene(state: GameState) -> Scene | None:
+    quest = state.quest
+    if quest.resolved < len(quest.scenes):
+        return quest.scenes[quest.resolved]
+    return None
+
+
+def resolve_scene(state: GameState, result: str, summary: str) -> Scene | None:
+    quest = state.quest
+    if quest.resolved >= len(quest.scenes):
+        return None
+    scene = quest.scenes[quest.resolved]
+    scene.resolved = True
+    scene.result = result
+    scene.summary = summary or scene.title
+    quest.resolved += 1
+    if scene.finale:
         quest.outcome = "success" if quest.momentum >= 0 else "failure"
+    return scene
+
+
+def scene_conclusion(scene: Scene) -> str:
+    by = {
+        "triumph": "and pull it off with unreasonable flair",
+        "mixed": "to mixed and confusing results",
+        "setback": "and make everything slightly worse",
+        "uneventful": "with quiet, procedural competence",
+    }.get(scene.result, "somehow")
+    return f"They get through {scene.title.lower()} {by}."
+
+
+_FALLBACK_SITUATIONS = [
+    ("A Locked Door", "The way forward is barred by a door of suspicious ordinariness."),
+    ("The Gatekeeper", "A bored functionary demands the correct, unknowable form."),
+    (
+        "A Suspicious Silence",
+        "Everything is too quiet. Someone has clearly rescheduled the ambush.",
+    ),
+    ("The Long Corridor", "An impossibly long hallway tests both patience and bladder."),
+    ("An Unhelpful Sign", "A sign points in four directions, all labelled 'Other'."),
+    ("The Final Obstacle", "The objective is in sight, guarded by one last petty inconvenience."),
+]
+
+
+def fallback_scene(
+    state: GameState, prior: Scene | None, result: str, scene_number: int, rng: random.Random
+) -> Scene:
+    finale = scene_number >= MAX_SCENES
+    title, desc = rng.choice(_FALLBACK_SITUATIONS)
+    if finale:
+        title, desc = "The Reckoning", "It all comes down to this absurd, decisive moment."
+    return Scene(title=title, description=desc, finale=finale)
