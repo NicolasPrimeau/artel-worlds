@@ -587,6 +587,7 @@ def create_app() -> FastAPI:
                 "spend": round(spend.get("usd", 0.0), 5),
                 "spend_days": dict(spend.get("days", {})),
                 "calls": spend.get("calls", 0),
+                "router": llm.ROUTER.metrics() if llm.enabled() else [],
                 "llm_enabled": llm.enabled(),
                 "artel_enabled": artel.enabled(),
             }

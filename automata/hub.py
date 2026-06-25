@@ -139,6 +139,7 @@ def _shape_vibequest(vq: dict, extra: dict) -> dict:
             "quest": vq.get("quest") or {},
             "party_size": vq.get("party_size"),
             "calls": vq.get("calls"),
+            "router": vq.get("router") or [],
         },
     }
 
