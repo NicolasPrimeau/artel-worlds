@@ -17,7 +17,7 @@ BLOCKING = {HEDGE, WATER}
 PATHLIKE = {PATH, PATH_LIGHT, LAVENDER}
 OUTDOOR_WALKABLE = {GRASS, SAND, PATH, PATH_LIGHT, LAVENDER, FLOOR}
 
-INDOOR_THEMES = {"office", "dark"}
+INDOOR_THEMES = {"office", "dark", "pub", "school", "grocery"}
 
 INDOOR_ROOM_NAMES: dict[str, list[str]] = {
     "office": [
@@ -39,6 +39,36 @@ INDOOR_ROOM_NAMES: dict[str, list[str]] = {
         "Sanctum",
         "Dungeon",
         "Antechamber",
+    ],
+    "pub": [
+        "Common Room",
+        "Private Booth",
+        "Kitchen",
+        "Cellar",
+        "Innkeeper's Den",
+        "Back Corridor",
+        "Vault",
+        "Storeroom",
+    ],
+    "school": [
+        "Classroom",
+        "Library",
+        "Cafeteria",
+        "Principal's Office",
+        "Science Lab",
+        "Gymnasium",
+        "Storage Room",
+        "Assembly Hall",
+    ],
+    "grocery": [
+        "Produce Section",
+        "Bakery",
+        "Deli Counter",
+        "Dairy Aisle",
+        "Checkout",
+        "Manager's Office",
+        "Stock Room",
+        "Loading Bay",
     ],
 }
 
@@ -219,6 +249,142 @@ _ZONE_DEF: dict[str, dict[str, tuple[int, int, int]]] = {
         "Dungeon": (PATH, 18, 10),
         "Antechamber": (PATH_LIGHT, 18, 10),
     },
+    "pub": {
+        "Common Room": (FLOOR, 22, 12),
+        "Private Booth": (LAVENDER, 16, 10),
+        "Kitchen": (PATH_LIGHT, 18, 10),
+        "Cellar": (PATH, 18, 10),
+        "Innkeeper's Den": (FLOOR, 16, 10),
+        "Back Corridor": (PATH, 14, 8),
+        "Vault": (PATH_LIGHT, 14, 8),
+        "Storeroom": (PATH, 16, 8),
+    },
+    "school": {
+        "Classroom": (FLOOR, 22, 12),
+        "Library": (LAVENDER, 22, 12),
+        "Cafeteria": (PATH_LIGHT, 20, 12),
+        "Principal's Office": (FLOOR, 16, 10),
+        "Science Lab": (PATH, 20, 10),
+        "Gymnasium": (PATH_LIGHT, 22, 12),
+        "Storage Room": (PATH, 14, 8),
+        "Assembly Hall": (LAVENDER, 22, 12),
+    },
+    "grocery": {
+        "Produce Section": (FLOOR, 22, 12),
+        "Bakery": (PATH_LIGHT, 18, 10),
+        "Deli Counter": (LAVENDER, 18, 10),
+        "Dairy Aisle": (PATH, 18, 12),
+        "Checkout": (FLOOR, 20, 10),
+        "Manager's Office": (FLOOR, 16, 10),
+        "Stock Room": (PATH, 16, 8),
+        "Loading Bay": (PATH_LIGHT, 18, 10),
+    },
+}
+
+_ZONE_ARCHETYPES: dict[str, str] = {
+    "Open Plan": "work_area",
+    "Conference Room": "meeting_space",
+    "Break Room": "lounge",
+    "Reception": "entrance",
+    "Print Bay": "equipment_bay",
+    "Manager's Office": "private_office",
+    "Server Room": "storage",
+    "Supply Closet": "storage",
+    "Hall": "thoroughfare",
+    "Crypt": "storage",
+    "Chamber": "shrine",
+    "Cellar": "storage",
+    "Vault": "storage",
+    "Sanctum": "shrine",
+    "Dungeon": "thoroughfare",
+    "Antechamber": "entrance",
+    "Common Room": "lounge",
+    "Private Booth": "meeting_space",
+    "Kitchen": "equipment_bay",
+    "Innkeeper's Den": "private_office",
+    "Back Corridor": "thoroughfare",
+    "Storeroom": "storage",
+    "Classroom": "work_area",
+    "Library": "meeting_space",
+    "Cafeteria": "lounge",
+    "Principal's Office": "private_office",
+    "Science Lab": "equipment_bay",
+    "Gymnasium": "thoroughfare",
+    "Storage Room": "storage",
+    "Assembly Hall": "shrine",
+    "Produce Section": "lounge",
+    "Bakery": "equipment_bay",
+    "Deli Counter": "entrance",
+    "Dairy Aisle": "thoroughfare",
+    "Checkout": "work_area",
+    "Stock Room": "storage",
+    "Loading Bay": "thoroughfare",
+}
+
+_ARCHETYPE_PROPS: dict[str, dict[str, list[str]]] = {
+    "work_area": {
+        "office": ["desk", "chair", "partition"],
+        "dark": ["rock", "rock", "topiary"],
+        "pub": ["desk", "chair", "chair"],
+        "school": ["desk", "chair", "whiteboard"],
+        "grocery": ["desk", "chair", "partition"],
+    },
+    "meeting_space": {
+        "office": ["desk", "chair", "whiteboard"],
+        "dark": ["topiary", "rock", "flower"],
+        "pub": ["chair", "chair", "desk"],
+        "school": ["desk", "chair", "whiteboard"],
+        "grocery": ["desk", "chair", "whiteboard"],
+    },
+    "lounge": {
+        "office": ["chair", "coffee", "plant_pot"],
+        "dark": ["topiary", "flower", "rock"],
+        "pub": ["chair", "coffee", "plant_pot"],
+        "school": ["chair", "plant_pot", "plant_pot"],
+        "grocery": ["plant_pot", "chair", "plant_pot"],
+    },
+    "entrance": {
+        "office": ["desk", "chair", "plant_pot"],
+        "dark": ["rock", "lamp", "topiary"],
+        "pub": ["desk", "chair", "plant_pot"],
+        "school": ["desk", "chair", "plant_pot"],
+        "grocery": ["desk", "chair", "plant_pot"],
+    },
+    "equipment_bay": {
+        "office": ["copier", "cabinet", "plant_pot"],
+        "dark": ["rock", "rock", "rock"],
+        "pub": ["coffee", "cabinet", "plant_pot"],
+        "school": ["cabinet", "desk", "plant_pot"],
+        "grocery": ["cabinet", "cabinet", "plant_pot"],
+    },
+    "private_office": {
+        "office": ["desk", "chair", "cabinet"],
+        "dark": ["rock", "cabinet", "topiary"],
+        "pub": ["desk", "chair", "plant_pot"],
+        "school": ["desk", "chair", "cabinet"],
+        "grocery": ["desk", "chair", "cabinet"],
+    },
+    "storage": {
+        "office": ["cabinet", "cabinet", "cabinet"],
+        "dark": ["rock", "cabinet", "rock"],
+        "pub": ["cabinet", "plant_pot", "cabinet"],
+        "school": ["cabinet", "cabinet", "desk"],
+        "grocery": ["cabinet", "cabinet", "cabinet"],
+    },
+    "shrine": {
+        "office": ["plant_pot", "whiteboard", "lamp"],
+        "dark": ["topiary", "flower", "rock"],
+        "pub": ["plant_pot", "lamp", "flower"],
+        "school": ["whiteboard", "plant_pot", "lamp"],
+        "grocery": ["plant_pot", "plant_pot", "lamp"],
+    },
+    "thoroughfare": {
+        "office": ["lamp", "plant_pot", "partition"],
+        "dark": ["rock", "topiary", "lamp"],
+        "pub": ["lamp", "plant_pot", "chair"],
+        "school": ["lamp", "plant_pot", "plant_pot"],
+        "grocery": ["plant_pot", "plant_pot", "lamp"],
+    },
 }
 
 
@@ -249,6 +415,35 @@ def pick_theme(hook: str, register: str = "") -> str:
         return "woods"
     if has("garage", "parking", "rooftop", "concrete", "basement", "level b", "loading dock"):
         return "concrete"
+    if has("pub", "inn", "bar", "alehouse", "barmaid", "innkeeper", "brew", "mead", "tavern"):
+        return "pub"
+    if has(
+        "school",
+        "classroom",
+        "teacher",
+        "student",
+        "academy",
+        "university",
+        "professor",
+        "homework",
+        "exam",
+        "library",
+    ):
+        return "school"
+    if has(
+        "grocery",
+        "supermarket",
+        "store",
+        "aisle",
+        "checkout",
+        "produce",
+        "deli",
+        "bakery",
+        "market",
+        "cart",
+        "shopping",
+    ):
+        return "grocery"
     if has(
         "account",
         "filing",
@@ -301,100 +496,92 @@ def _place_zone_props(
 
     p(cx, cy - 1, "lamp")
 
-    if name == "Open Plan":
+    archetype = _ZONE_ARCHETYPES.get(name, "thoroughfare")
+    pool = _ARCHETYPE_PROPS.get(archetype, {})
+    kinds = pool.get(theme) or pool.get("office") or ["rock"]
+    a, b, c = kinds[0], kinds[min(1, len(kinds) - 1)], kinds[min(2, len(kinds) - 1)]
+
+    if archetype == "work_area":
         for xi in range(ix0 + 1, ix1 - 1, 4):
-            p(xi, iy0 + 1, "desk")
-            p(xi, iy0 + 2, "chair")
-            p(xi, iy1 - 2, "desk")
-            p(xi, iy1 - 3, "chair")
+            p(xi, iy0 + 1, a)
+            p(xi, iy0 + 2, b)
+            p(xi, iy1 - 2, a)
+            p(xi, iy1 - 3, b)
         for xi in range(ix0 + 2, ix1 - 2, 6):
-            p(xi, cy, "partition")
+            p(xi, cy, c)
         p(ix0 + 1, iy0 + 1, "plant_pot")
         p(ix1 - 2, iy0 + 1, "plant_pot")
 
-    elif name == "Conference Room":
+    elif archetype == "meeting_space":
         for xi in range(ix0 + 2, ix1 - 1, 3):
-            p(xi, cy, "desk")
-            p(xi, cy - 1, "chair")
-            p(xi, cy + 1, "chair")
-        p(ix0 + 1, cy - 1, "chair")
-        p(ix0 + 1, cy + 1, "chair")
-        p(ix1 - 2, cy - 1, "chair")
-        p(ix1 - 2, cy + 1, "chair")
-        p(cx - 1, iy0 + 1, "whiteboard")
-        p(cx, iy0 + 1, "whiteboard")
+            p(xi, cy, a)
+            p(xi, cy - 1, b)
+            p(xi, cy + 1, b)
+        p(ix0 + 1, cy - 1, b)
+        p(ix0 + 1, cy + 1, b)
+        p(ix1 - 2, cy - 1, b)
+        p(ix1 - 2, cy + 1, b)
+        p(cx - 1, iy0 + 1, c)
+        p(cx, iy0 + 1, c)
 
-    elif name == "Break Room":
-        p(ix0 + 1, iy0 + 1, "coffee")
-        p(ix0 + 2, iy0 + 1, "coffee")
-        p(ix0 + 3, iy0 + 1, "coffee")
+    elif archetype == "lounge":
+        p(ix0 + 1, iy0 + 1, b)
+        p(ix0 + 2, iy0 + 1, b)
+        p(ix0 + 3, iy0 + 1, b)
         for dx, dy in [(-1, 0), (0, 0), (-1, 1), (0, 1)]:
-            p(cx + dx, cy + dy, "chair")
-        p(ix1 - 2, iy0 + 1, "plant_pot")
-        p(ix1 - 2, iy1 - 2, "plant_pot")
-        p(ix0 + 1, iy1 - 2, "plant_pot")
+            p(cx + dx, cy + dy, a)
+        p(ix1 - 2, iy0 + 1, c)
+        p(ix1 - 2, iy1 - 2, c)
+        p(ix0 + 1, iy1 - 2, c)
 
-    elif name == "Reception":
-        p(cx - 1, iy1 - 2, "desk")
-        p(cx, iy1 - 2, "desk")
-        p(cx - 1, iy1 - 3, "chair")
-        p(ix0 + 1, cy - 1, "chair")
-        p(ix0 + 1, cy, "chair")
-        p(ix0 + 1, cy + 1, "chair")
-        p(ix0 + 1, iy0 + 1, "plant_pot")
-        p(ix1 - 2, iy0 + 1, "plant_pot")
+    elif archetype == "entrance":
+        p(cx - 1, iy1 - 2, a)
+        p(cx, iy1 - 2, a)
+        p(cx - 1, iy1 - 3, b)
+        p(ix0 + 1, cy - 1, b)
+        p(ix0 + 1, cy, b)
+        p(ix0 + 1, cy + 1, b)
+        p(ix0 + 1, iy0 + 1, c)
+        p(ix1 - 2, iy0 + 1, c)
 
-    elif name == "Print Bay":
+    elif archetype == "equipment_bay":
         for xi in range(ix0 + 2, ix1 - 3, 5):
-            p(xi, cy, "copier")
-            p(xi + 1, cy, "copier")
+            p(xi, cy, a)
+            p(xi + 1, cy, a)
         for xi in range(ix0 + 1, ix1, 4):
-            p(xi, iy0 + 1, "cabinet")
-        p(ix1 - 2, iy1 - 2, "plant_pot")
+            p(xi, iy0 + 1, b)
+        p(ix1 - 2, iy1 - 2, c)
 
-    elif name == "Manager's Office":
-        p(cx - 1, iy0 + 2, "desk")
-        p(cx, iy0 + 2, "desk")
-        p(cx - 1, iy0 + 3, "chair")
-        p(cx - 2, cy, "chair")
-        p(cx + 1, cy, "chair")
-        p(ix1 - 2, iy0 + 1, "cabinet")
+    elif archetype == "private_office":
+        p(cx - 1, iy0 + 2, a)
+        p(cx, iy0 + 2, a)
+        p(cx - 1, iy0 + 3, b)
+        p(cx - 2, cy, b)
+        p(cx + 1, cy, b)
+        p(ix1 - 2, iy0 + 1, c)
         p(ix0 + 1, iy1 - 2, "plant_pot")
         p(ix1 - 2, iy1 - 2, "plant_pot")
 
-    elif name == "Server Room":
+    elif archetype == "storage":
         for yi in range(iy0 + 1, iy1 - 1, 3):
             for xi in range(ix0 + 1, ix1 - 1, 3):
-                p(xi, yi, "cabinet")
-                p(xi + 1, yi, "cabinet")
+                p(xi, yi, a)
+                p(xi + 1, yi, a)
 
-    elif name == "Supply Closet":
-        for xi in range(ix0 + 1, ix1 - 1, 2):
-            p(xi, iy0 + 1, "cabinet")
-            if iy0 + 2 < iy1 - 1:
-                p(xi, iy0 + 2, "cabinet")
-        for xi in range(ix0 + 1, ix1 - 1, 2):
-            p(xi, iy1 - 2, "cabinet")
-
-    elif theme == "dark":
-        kinds = INDOOR_ROOM_PROPS.get(theme, {}).get(name, ["rock"])
+    elif archetype == "shrine":
         for xi in range(ix0 + 1, ix1 - 1, 4):
-            p(xi, iy0 + 1, rng.choice(kinds))
-            p(xi, iy1 - 2, rng.choice(kinds))
-        for yi in range(iy0 + 2, iy1 - 1, 4):
-            p(ix0 + 1, yi, rng.choice(kinds))
-            p(ix1 - 2, yi, rng.choice(kinds))
-        for _ in range(3):
-            p(cx + rng.randint(-2, 2), cy + rng.randint(-1, 1), rng.choice(kinds))
+            p(xi, iy0 + 1, b)
+            p(xi, iy1 - 2, b)
+        for yi in range(iy0 + 2, iy1 - 1, 3):
+            p(ix0 + 1, yi, a)
+            p(ix1 - 2, yi, a)
+        p(cx - 1, cy, c)
+        p(cx, cy, c)
 
     else:
-        kinds = INDOOR_ROOM_PROPS.get(theme, {}).get(name, ["rock"])
-        for _ in range(6):
-            p(
-                rng.randint(ix0 + 1, max(ix0 + 1, ix1 - 2)),
-                rng.randint(iy0 + 1, max(iy0 + 1, iy1 - 2)),
-                rng.choice(kinds),
-            )
+        for xi in range(ix0 + 2, ix1 - 2, 5):
+            p(xi, iy0 + 1, rng.choice(kinds))
+            p(xi, iy1 - 2, rng.choice(kinds))
 
 
 def generate_indoor_world(
@@ -404,7 +591,9 @@ def generate_indoor_world(
     zone_def_map = _ZONE_DEF.get(theme, _ZONE_DEF["office"])
 
     n = min(len(zone_names), step_count + 1)
-    used_names = zone_names[:n]
+    shuffled = zone_names.copy()
+    rng.shuffle(shuffled)
+    used_names = shuffled[:n]
 
     LEFT_CX, RIGHT_CX = 16, 48
     ROW_PITCH = 18
