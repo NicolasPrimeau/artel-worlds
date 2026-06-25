@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from .world import WorldMap, facing_from_delta, generate_world
+from .world import WorldMap, facing_from_delta, generate_world, pick_theme
 
 # VibeQuest — a shared multiplayer DnD world where players collectively ARE the Dungeon Master.
 # AI agents are the party. Players play cards that resolve the quest. Cards batch in time windows,
@@ -559,7 +559,8 @@ def new_game(rng: random.Random | None = None) -> GameState:
     quest = _make_quest(rng)
     window = WindowState(opened_at=now, closes_at=now + CARD_WINDOW)
     run_id = str(uuid.uuid4())[:8]
-    world = generate_world(rng, step_count=MAX_SCENES)
+    theme = pick_theme(quest.hook, quest.register)
+    world = generate_world(rng, theme=theme, step_count=MAX_SCENES)
     state = GameState(run_id=run_id, party=party, quest=quest, window=window, world=world)
     state.lx, state.ly = world.route[0]
     state.facing = "up"

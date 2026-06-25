@@ -310,6 +310,7 @@ function buildWorld(W){
       rt.drawFrame("props",pf(c,r),fx,fy);
     }
   }
+  if(W.tint){ const t=parseInt(W.tint.slice(1),16); rt.setTint(t); }
   scene.rt=rt;
   scene.cameras.main.setBounds(0,0,W.w*TILE,W.h*TILE);
   scene.cameras.main.setZoom(viewZoom());

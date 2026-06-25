@@ -31,6 +31,8 @@ class WorldMap:
     waypoints: list[list[int]] = field(default_factory=list)
     route: list[list[int]] = field(default_factory=list)
     wp_route_idx: list[int] = field(default_factory=list)
+    theme: str = "garden"
+    tint: str = "#ffffff"
 
     def to_dict(self) -> dict:
         return {
@@ -41,6 +43,8 @@ class WorldMap:
             "waypoints": self.waypoints,
             "route": self.route,
             "wp_route_idx": self.wp_route_idx,
+            "theme": self.theme,
+            "tint": self.tint,
         }
 
 
@@ -65,7 +69,7 @@ def _bfs(
                 continue
             if (nx, ny) in prev:
                 continue
-            if tiles[_idx(world_w, nx, ny)] in BLOCKING:
+            if tiles[_idx(world_w, nx, ny)] not in PATHLIKE:
                 continue
             prev[(nx, ny)] = cur
             q.append((nx, ny))
@@ -80,12 +84,117 @@ def _bfs(
     return path
 
 
-def generate_world(rng: random.Random, step_count: int = 5) -> WorldMap:
-    w, h = 25, 44
-    cx = w // 2
-    tiles = [GRASS] * (w * h)
+# Each theme sets the ground base, whether ponds appear, a colour grade the client
+# multiplies over the world, and a weighted prop mix — so the map looks like the quest.
+THEMES = {
+    "woods": {
+        "base": GRASS,
+        "ponds": True,
+        "tint": "#e7f1dd",
+        "scatter": [
+            ("tree", 5),
+            ("tree2", 4),
+            ("bush", 3),
+            ("topiary", 1),
+            ("flower", 2),
+            ("rock", 1),
+        ],
+    },
+    "garden": {
+        "base": GRASS,
+        "ponds": True,
+        "tint": "#f7eee0",
+        "scatter": [("topiary", 4), ("flower", 5), ("bush", 3), ("tree", 2), ("rock", 1)],
+    },
+    "office": {
+        "base": FLOOR,
+        "ponds": False,
+        "tint": "#efe4cf",
+        "scatter": [("rock", 2), ("bush", 1), ("topiary", 1)],
+    },
+    "concrete": {
+        "base": SAND,
+        "ponds": False,
+        "tint": "#e2dfd5",
+        "scatter": [("rock", 5), ("bush", 1)],
+    },
+    "dark": {
+        "base": GRASS,
+        "ponds": True,
+        "tint": "#9098b8",
+        "scatter": [("tree", 4), ("rock", 3), ("bush", 1), ("topiary", 1)],
+    },
+}
 
-    # border hedge ring
+
+def pick_theme(hook: str, register: str = "") -> str:
+    h = f"{hook} {register}".lower()
+
+    def has(*ks: str) -> bool:
+        return any(k in h for k in ks)
+
+    if has(
+        "haunt",
+        "dragon",
+        "lair",
+        "dungeon",
+        "ghost",
+        "gothic",
+        "horror",
+        "crypt",
+        "noir",
+        "war",
+        "espionage",
+        "spy",
+        "disaster",
+        "crime",
+    ):
+        return "dark"
+    if has("forest", "enchant", "woods", "plant", "nature", "fairy", "rooftop garden"):
+        return "woods"
+    if has("garage", "parking", "rooftop", "concrete", "basement", "level b", "loading dock"):
+        return "concrete"
+    if has(
+        "account",
+        "filing",
+        "cabinet",
+        "desk",
+        "report",
+        "tps",
+        "office",
+        "cubicle",
+        "supply",
+        "drive",
+        "slack",
+        "calendar",
+        "spreadsheet",
+        "break room",
+        "microwave",
+        "mug",
+        "printer",
+        "conference",
+        "meeting",
+        "scissors",
+        "stapler",
+    ):
+        return "office"
+    return "garden"
+
+
+def _carve(tiles: list[int], w: int, h: int, x: int, y: int, tile: int = PATH) -> None:
+    for dx in range(2):
+        for dy in range(2):
+            nx, ny = x + dx, y + dy
+            if 0 < nx < w - 1 and 0 < ny < h - 1:
+                tiles[_idx(w, nx, ny)] = tile
+
+
+def generate_world(rng: random.Random, theme: str = "garden", step_count: int = 6) -> WorldMap:
+    th = THEMES.get(theme, THEMES["garden"])
+    base = th["base"]
+    w, h = 40, 60
+    tiles = [base] * (w * h)
+
     for x in range(w):
         tiles[_idx(w, x, 0)] = HEDGE
         tiles[_idx(w, x, h - 1)] = HEDGE
@@ -93,49 +202,90 @@ def generate_world(rng: random.Random, step_count: int = 5) -> WorldMap:
         tiles[_idx(w, 0, y)] = HEDGE
         tiles[_idx(w, w - 1, y)] = HEDGE
 
-    # central avenue (3 wide) of pale path
-    for y in range(1, h - 1):
-        for dx in (-1, 0, 1):
-            tiles[_idx(w, cx + dx, y)] = PATH
-
-    props: list[dict] = []
-    waypoints: list[list[int]] = []
-
-    # one station per step plus the start, spaced up the avenue from the bottom
+    # winding waypoints from bottom to top, x meandering across the open space
     n = step_count + 1
-    top, bottom = 4, h - 5
+    margin = 6
+    waypoints: list[list[int]] = []
+    cur_x = w // 2
     for i in range(n):
         t = i / (n - 1)
-        y = round(bottom - t * (bottom - top))
-        waypoints.append([cx, y])
-        # 3x3 lavender plaza marking the station
+        y = round((h - margin) - t * (h - 2 * margin))
+        if i == 0:
+            x = w // 2
+        else:
+            cur_x += rng.choice((-1, 1)) * rng.randint(7, 13)
+            cur_x = max(margin, min(w - margin - 2, cur_x))
+            x = cur_x
+        waypoints.append([x, y])
+
+    # carve a winding 2-wide path (L-shaped legs) connecting the waypoints
+    for i in range(1, n):
+        ax, ay = waypoints[i - 1]
+        bx, by = waypoints[i]
+        for x in range(min(ax, bx), max(ax, bx) + 1):
+            _carve(tiles, w, h, x, ay)
+        for y in range(min(ay, by), max(ay, by) + 1):
+            _carve(tiles, w, h, bx, y)
+
+    props: list[dict] = []
+    occupied: set[tuple[int, int]] = set()
+    for wp in waypoints:
+        x, y = wp
         for ddx in (-1, 0, 1):
             for ddy in (-1, 0, 1):
-                tiles[_idx(w, cx + ddx, y + ddy)] = PATH_LIGHT
-        tiles[_idx(w, cx, y)] = LAVENDER
-        props.append({"x": cx, "y": y - 1, "kind": "lamp"})
+                nx, ny = x + ddx, y + ddy
+                if 0 < nx < w - 1 and 0 < ny < h - 1:
+                    tiles[_idx(w, nx, ny)] = PATH_LIGHT
+                    occupied.add((nx, ny))
+        tiles[_idx(w, x, y)] = LAVENDER
+        props.append({"x": x, "y": y - 1, "kind": "lamp"})
+        occupied.add((x, y - 1))
 
-    # symmetric flanking trees along the avenue + scattered bushes (mirrored)
-    for y in range(3, h - 3, 4):
-        if tiles[_idx(w, cx - 4, y)] == GRASS:
-            props.append({"x": cx - 4, "y": y, "kind": "tree"})
-        if tiles[_idx(w, cx + 3, y)] == GRASS:
-            props.append({"x": cx + 3, "y": y, "kind": "tree"})
-    for _ in range(14):
-        side = rng.choice((-1, 1))
-        bx = cx + side * rng.randint(3, w // 2 - 2)
-        by = rng.randint(2, h - 3)
-        if 0 < bx < w - 1 and tiles[_idx(w, bx, by)] == GRASS:
-            props.append({"x": bx, "y": by, "kind": "bush"})
+    def is_base(x: int, y: int) -> bool:
+        return 0 < x < w - 1 and 0 < y < h - 1 and tiles[_idx(w, x, y)] == base
 
-    # a small mirrored pond near the middle, framed off the avenue
-    pond_y = h // 2
-    for px in range(cx + 5, cx + 8):
-        for py in range(pond_y - 1, pond_y + 2):
-            if 0 < px < w - 1 and tiles[_idx(w, px, py)] == GRASS:
-                tiles[_idx(w, px, py)] = WATER
+    def block_base(x: int, y: int) -> bool:
+        return all(is_base(x + dx, y + dy) for dx in range(2) for dy in range(2))
 
-    # full walking route, station to station
+    # ponds, framed by sand
+    if th["ponds"]:
+        for _ in range(5):
+            px, py = rng.randint(3, w - 5), rng.randint(3, h - 5)
+            if not block_base(px, py) or not block_base(px + 1, py + 1):
+                continue
+            for dx in range(3):
+                for dy in range(3):
+                    if is_base(px + dx, py + dy):
+                        tiles[_idx(w, px + dx, py + dy)] = WATER
+
+    # dense, theme-weighted decoration scattered across the open ground (clustered)
+    weighted: list[str] = []
+    for kind, weight in th["scatter"]:
+        weighted += [kind] * weight
+
+    def place(x: int, y: int, kind: str, footprint: int = 1) -> None:
+        if (x, y) in occupied:
+            return
+        ok = block_base(x, y) if footprint == 2 else is_base(x, y)
+        if not ok:
+            return
+        props.append({"x": x, "y": y, "kind": kind})
+        occupied.add((x, y))
+
+    # groves: clusters of the heavier scatter kinds
+    for _ in range(20):
+        gx, gy = rng.randint(2, w - 3), rng.randint(2, h - 3)
+        kind = rng.choice(weighted)
+        fp = 2 if kind in ("tree", "tree2") else 1
+        for _ in range(rng.randint(2, 5)):
+            place(gx + rng.randint(-2, 2), gy + rng.randint(-2, 2), kind, fp)
+    # broad scatter to fill the rest
+    for _ in range(220):
+        x, y = rng.randint(2, w - 2), rng.randint(2, h - 2)
+        kind = rng.choice(weighted)
+        place(x, y, kind, 2 if kind in ("tree", "tree2") else 1)
+
+    # walking route along the carved path, station to station
     route: list[list[int]] = []
     wp_route_idx: list[int] = []
     for i, wp in enumerate(waypoints):
@@ -155,6 +305,8 @@ def generate_world(rng: random.Random, step_count: int = 5) -> WorldMap:
         waypoints=waypoints,
         route=route,
         wp_route_idx=wp_route_idx,
+        theme=theme,
+        tint=th["tint"],
     )
 
 

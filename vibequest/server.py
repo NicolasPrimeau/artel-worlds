@@ -93,7 +93,7 @@ async def _ensure_scene(state: GameState, idx: int) -> Scene | None:
     return scene
 
 
-def _state_snapshot(state: GameState) -> dict:
+def _state_snapshot(state: GameState, include_world: bool = True) -> dict:
     return {
         "run_id": state.run_id,
         "phase": state.phase,
@@ -122,7 +122,7 @@ def _state_snapshot(state: GameState) -> dict:
             }
             for m in state.party
         ],
-        "world": state.world.to_dict() if state.world else None,
+        "world": (state.world.to_dict() if state.world else None) if include_world else None,
         "pos": {
             "x": state.lx,
             "y": state.ly,
@@ -232,7 +232,9 @@ async def _resolve_window(state: GameState) -> None:
                 tags=["vibequest", "resolution", card_def.type.value],
             )
 
-        await _broadcast({"type": "card_resolved", "state": _state_snapshot(state)})
+        await _broadcast(
+            {"type": "card_resolved", "state": _state_snapshot(state, include_world=False)}
+        )
         await asyncio.sleep(3.0)
 
     result = classify_result(state.window.resolutions)
@@ -240,7 +242,9 @@ async def _resolve_window(state: GameState) -> None:
     if resolved:
         conclusion = scene_conclusion(resolved)
         state.log_event("resolution", conclusion, {"card": resolved.title})
-        await _broadcast({"type": "card_resolved", "state": _state_snapshot(state)})
+        await _broadcast(
+            {"type": "card_resolved", "state": _state_snapshot(state, include_world=False)}
+        )
         await asyncio.sleep(2.0)
 
     state.window.resolving = False
@@ -275,7 +279,11 @@ async def _end_quest(state: GameState) -> None:
         )
     state.log_event("quest_end", closing or f"The quest concludes. Outcome: {state.quest.outcome}.")
     await _broadcast(
-        {"type": "quest_complete", "outcome": state.quest.outcome, "state": _state_snapshot(state)}
+        {
+            "type": "quest_complete",
+            "outcome": state.quest.outcome,
+            "state": _state_snapshot(state, include_world=False),
+        }
     )
     await asyncio.sleep(12.0)
     await _start_new_game()
