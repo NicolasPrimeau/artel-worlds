@@ -147,6 +147,8 @@ def head_front(draw, ox, oy, cfg):
     px(draw, ox, oy, 9, face_top + 1, E)  # right eye
     row(draw, ox, oy, face_top + 2, 5, 10, S)  # lower face
     row(draw, ox, oy, face_top + 3, 5, 10, S)  # chin
+    if not long:
+        row(draw, ox, oy, 8, 6, 9, S)  # neck — bridges gap to collar for short hair
 
 
 def body_front(draw, ox, oy, cfg, frame):
@@ -347,11 +349,11 @@ def draw_tile(draw, col, row_idx, cfg):
         body_back(draw, ox, oy, cfg, frame)
         legs_back(draw, ox, oy, cfg, frame)
     elif col == 2:
-        head_left(draw, ox, oy, cfg)
+        head_right(draw, ox, oy, cfg)  # head_right has face on left side = walking left
         body_left(draw, ox, oy, cfg, frame)
         legs_left(draw, ox, oy, cfg, frame)
     elif col == 3:
-        head_right(draw, ox, oy, cfg)
+        head_left(draw, ox, oy, cfg)  # head_left has face on right side = walking right
         body_right(draw, ox, oy, cfg, frame)
         legs_right(draw, ox, oy, cfg, frame)
 

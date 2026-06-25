@@ -28,26 +28,27 @@
   .ui{position:fixed;z-index:10;pointer-events:none}
 
   /* ── unified quest panel (top-left) ── */
-  #hud{top:calc(8px + env(safe-area-inset-top));left:10px;display:flex;flex-direction:column;gap:4px;max-width:min(66vw,280px)}
+  #hud{top:calc(8px + env(safe-area-inset-top));left:10px;display:flex;flex-direction:column;gap:4px;max-width:min(52vw,210px)}
   #titlecard{
-    pointer-events:none;background:var(--cream);border:2px solid var(--ink);border-radius:3px;
-    padding:clamp(5px,1.6vw,8px) clamp(10px,3vw,14px);box-shadow:3px 3px 0 rgba(26,20,40,.18);
+    pointer-events:none;background:rgba(244,232,208,.68);border:1px solid rgba(26,20,40,.45);border-radius:3px;
+    padding:clamp(4px,1.2vw,6px) clamp(8px,2.4vw,11px);box-shadow:2px 2px 0 rgba(26,20,40,.10);
+    backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);
   }
-  #titlecard .label{font-size:clamp(7px,2vw,9px);letter-spacing:.4em;text-transform:uppercase;color:var(--rose2);padding-left:.2em}
-  #titlecard .title{font-size:clamp(13px,4vw,18px);font-weight:700;letter-spacing:.05em;text-transform:uppercase;line-height:1.08;border-top:1px solid rgba(26,20,40,.15);padding-top:4px;margin-top:1px}
-  #titlecard .hook{font-size:clamp(9px,2.5vw,11px);color:var(--ink2);font-style:italic;margin-top:3px;line-height:1.4;font-family:"Cormorant Garamond",serif;opacity:.8}
-  #titlecard .objectives{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:3px;border-top:1px solid rgba(26,20,40,.1);padding-top:5px}
-  #titlecard .objectives li{font-size:clamp(8px,2.2vw,10px);color:var(--ink2);display:flex;align-items:baseline;gap:5px;letter-spacing:.01em;line-height:1.3}
-  #titlecard .objectives li .ob{flex-shrink:0;font-size:9px;color:var(--rose2);line-height:1}
-  #titlecard .objectives li.done{opacity:.45;text-decoration:line-through}
+  #titlecard .label{font-size:clamp(6px,1.7vw,8px);letter-spacing:.4em;text-transform:uppercase;color:var(--rose2);padding-left:.2em}
+  #titlecard .title{font-size:clamp(11px,3.2vw,14px);font-weight:700;letter-spacing:.05em;text-transform:uppercase;line-height:1.08;border-top:1px solid rgba(26,20,40,.12);padding-top:3px;margin-top:1px}
+  #titlecard .hook{font-size:clamp(8px,2.1vw,10px);color:var(--ink2);font-style:italic;margin-top:2px;line-height:1.35;font-family:"Cormorant Garamond",serif;opacity:.8}
+  #titlecard .objectives{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column;gap:2px;border-top:1px solid rgba(26,20,40,.09);padding-top:4px}
+  #titlecard .objectives li{font-size:clamp(7px,1.9vw,9px);color:var(--ink2);display:flex;align-items:baseline;gap:4px;letter-spacing:.01em;line-height:1.25}
+  #titlecard .objectives li .ob{flex-shrink:0;font-size:8px;color:var(--rose2);line-height:1}
+  #titlecard .objectives li.done{opacity:.4;text-decoration:line-through}
   #titlecard .objectives li.done .ob{color:var(--ink2)}
 
   /* speech bubble — fixed above character (camera follows, so character ≈ center) */
   #bubbles{pointer-events:none}
-  .bubble{position:fixed;bottom:57%;left:50%;transform:translateX(-50%);max-width:170px;background:var(--cream2);border:2px solid var(--ink);border-radius:8px;
-    padding:5px 9px;font-family:"Cormorant Garamond",serif;font-size:15px;line-height:1.25;color:var(--ink);box-shadow:2px 2px 0 rgba(26,20,40,.2);
-    white-space:normal;text-align:center;animation:pop .16s ease-out;z-index:300;pointer-events:none}
-  .bubble .nm{display:block;font-family:"Courier Prime",monospace;font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--rose2);margin-bottom:1px}
+  .bubble{position:fixed;bottom:60%;left:50%;transform:translateX(-50%);max-width:140px;background:rgba(253,244,226,.78);border:1px solid rgba(26,20,40,.5);border-radius:6px;
+    padding:4px 8px;font-family:"Cormorant Garamond",serif;font-size:13px;line-height:1.2;color:var(--ink);box-shadow:1px 2px 0 rgba(26,20,40,.12);
+    white-space:normal;text-align:center;animation:pop .16s ease-out;z-index:300;pointer-events:none;backdrop-filter:blur(1px);-webkit-backdrop-filter:blur(1px)}
+  .bubble .nm{display:block;font-family:"Courier Prime",monospace;font-size:7px;letter-spacing:.14em;text-transform:uppercase;color:var(--rose2);margin-bottom:1px}
   @keyframes pop{from{opacity:0;transform:translateX(-50%) scale(.85)}to{opacity:1;transform:translateX(-50%) scale(1)}}
 
   /* tiny ambient caption (travel beats, scene conclusions) */
