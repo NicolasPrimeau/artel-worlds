@@ -67,13 +67,22 @@ async def write_memory(content: str, tags: list[str] | None = None) -> None:
         log.debug("memory write failed: %s", exc)
 
 
-async def create_task(title: str, description: str) -> str | None:
+async def create_task(
+    title: str,
+    description: str = "",
+    tags: list[str] | None = None,
+) -> str | None:
     if not enabled():
         return None
     try:
         r = await _client().post(
             f"{ARTEL_URL}/tasks",
-            json={"title": title, "description": description, "project": PROJECT},
+            json={
+                "title": title,
+                "description": description,
+                "project": PROJECT,
+                "tags": tags or [],
+            },
             headers=_headers(),
         )
         if r.status_code == 200:
@@ -81,6 +90,19 @@ async def create_task(title: str, description: str) -> str | None:
     except Exception as exc:
         log.debug("task create failed: %s", exc)
     return None
+
+
+async def claim_task(task_id: str) -> None:
+    if not enabled():
+        return
+    try:
+        await _client().post(
+            f"{ARTEL_URL}/tasks/{task_id}/claim",
+            json={},
+            headers=_headers(),
+        )
+    except Exception as exc:
+        log.debug("task claim failed: %s", exc)
 
 
 async def complete_task(task_id: str, outcome: str) -> None:
@@ -94,6 +116,35 @@ async def complete_task(task_id: str, outcome: str) -> None:
         )
     except Exception as exc:
         log.debug("task complete failed: %s", exc)
+
+
+async def fail_task(task_id: str, outcome: str) -> None:
+    if not enabled():
+        return
+    try:
+        await _client().post(
+            f"{ARTEL_URL}/tasks/{task_id}/fail",
+            json={"outcome": outcome},
+            headers=_headers(),
+        )
+    except Exception as exc:
+        log.debug("task fail failed: %s", exc)
+
+
+async def list_tasks(run_id: str) -> list[dict]:
+    if not enabled():
+        return []
+    try:
+        r = await _client().get(
+            f"{ARTEL_URL}/tasks",
+            params={"project": PROJECT, "tag": f"run:{run_id}"},
+            headers=_headers(),
+        )
+        if r.status_code == 200:
+            return r.json()
+    except Exception as exc:
+        log.debug("task list failed: %s", exc)
+    return []
 
 
 async def send_message(from_agent: str, to_agent: str, content: str) -> None:

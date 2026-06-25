@@ -448,6 +448,7 @@ class Scene:
     result: str = ""
     summary: str = ""
     next_heading: str = ""
+    task_id: str = ""
 
 
 REGISTERS = [
@@ -525,7 +526,7 @@ def _fill_template(template: dict, rng: random.Random) -> tuple[str, str]:
     return hook, complication
 
 
-def _make_party(rng: random.Random, size: int = 4) -> list[PartyMember]:
+def _make_party(rng: random.Random, size: int = 1) -> list[PartyMember]:
     archetypes = rng.sample(PARTY_ARCHETYPES, min(size, len(PARTY_ARCHETYPES)))
     sprites = rng.sample(range(1, 11), min(size, 10))
     members = []

@@ -68,7 +68,14 @@ def _scene_dict(state: GameState) -> dict | None:
 def _objectives(state: GameState) -> list[dict]:
     out = []
     for i, s in enumerate(state.quest.scenes):
-        out.append({"text": s.objective or s.title, "done": i < state.quest.resolved})
+        out.append(
+            {
+                "text": s.objective or s.title,
+                "done": i < state.quest.resolved,
+                "task_id": s.task_id,
+                "result": s.result if s.resolved else "",
+            }
+        )
     return out
 
 
@@ -109,6 +116,14 @@ async def _ensure_scene(state: GameState, idx: int) -> Scene | None:
     else:
         scene = fallback_scene(state, prior, prior.result if prior else "", scene_number, _rng)
     quest.scenes.append(scene)
+    if artel.enabled():
+        task_id = await artel.create_task(
+            title=scene.objective or scene.title,
+            description=f"Quest: {quest.hook}\nScene {scene_number}: {scene.title}",
+            tags=["vibequest", f"run:{state.run_id}"],
+        )
+        if task_id:
+            scene.task_id = task_id
     return scene
 
 
@@ -272,6 +287,12 @@ async def _resolve_window(state: GameState) -> None:
     if resolved:
         conclusion = scene_conclusion(resolved)
         state.log_event("resolution", conclusion, {"card": resolved.title})
+        if artel.enabled() and resolved.task_id:
+            await artel.claim_task(resolved.task_id)
+            if result == "disaster":
+                await artel.fail_task(resolved.task_id, conclusion)
+            else:
+                await artel.complete_task(resolved.task_id, conclusion)
         await _broadcast(
             {
                 "type": "card_resolved",
