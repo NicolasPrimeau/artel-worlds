@@ -313,6 +313,7 @@ function pf(col,row){ return row*PROP_COLS+col; }
 class World extends Phaser.Scene{
   preload(){
     this.load.spritesheet("ground","assets/ground_tiles.png",{frameWidth:TILE,frameHeight:TILE});
+    this.load.spritesheet("interior","assets/tiles_interior.png",{frameWidth:TILE,frameHeight:TILE});
     this.load.spritesheet("props","assets/props_village.png",{frameWidth:TILE,frameHeight:TILE});
     this.load.image("shadow","assets/shadow.png");
     for(let i=1;i<=10;i++){
@@ -383,8 +384,12 @@ function idle(m){
 function buildWorld(W){
   if(scene.rt) scene.rt.destroy();
   const rt=scene.add.renderTexture(0,0,W.w*TILE,W.h*TILE).setOrigin(0,0).setDepth(0);
+  const tileset=W.tileset||"ground";
+  const tileFrames=W.tile_frames||{};
   for(let y=0;y<W.h;y++)for(let x=0;x<W.w;x++){
-    rt.drawFrame("ground",W.tiles[y*W.w+x],x*TILE,y*TILE);
+    const tid=W.tiles[y*W.w+x];
+    const frame=tileFrames[String(tid)]!==undefined?tileFrames[String(tid)]:tid;
+    rt.drawFrame(tileset,frame,x*TILE,y*TILE);
   }
   for(const p of W.props){
     const def=PROP[p.kind]; if(!def) continue;
