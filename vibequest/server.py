@@ -15,7 +15,10 @@ from . import artel, llm
 from .engine import (
     CARD_BY_ID,
     MIN_RESOLUTIONS,
+    MAX_SCENE_ROUNDS,
     CardResolution,
+    CardType,
+    DiceResult,
     GameState,
     NPC,
     PlayedCard,
@@ -49,6 +52,27 @@ def _character_desc(state: GameState) -> str:
 
 def _story_so_far(state: GameState) -> str:
     return " | ".join(state.quest.beats[-8:]) or "(just beginning)"
+
+
+def _scene_name(state: GameState) -> str:
+    if state.world and state.world.waypoint_names:
+        idx = min(state.target_idx, len(state.world.waypoint_names) - 1)
+        return state.world.waypoint_names[idx]
+    return f"Location {state.target_idx + 1}"
+
+
+def _scene_goal(state: GameState) -> str:
+    obj = state.quest.objectives
+    idx = state.quest.resolution_count
+    return obj[idx] if obj and idx < len(obj) else state.quest.hook
+
+
+def _scene_beats(state: GameState) -> str:
+    start = state.quest.scene_beat_start
+    recent = state.quest.beats[start:]
+    if not recent:
+        return "(nothing yet — first round)"
+    return "\n".join(f"Round {i + 1}: {b}" for i, b in enumerate(recent))
 
 
 def _state_snapshot(state: GameState, include_world: bool = True) -> dict:
@@ -240,9 +264,6 @@ async def _resolve_window(state: GameState) -> None:
         except Exception:
             pass
 
-    state.quest.resolution_count += 1
-    sync_target(state)
-
     if arc.get("finale"):
         state.quest.outcome = arc.get("outcome") or (
             "success" if state.quest.momentum >= 0 else "failure"
@@ -250,6 +271,35 @@ async def _resolve_window(state: GameState) -> None:
         if arc.get("closing_beat"):
             state.quest.beats.append(arc["closing_beat"])
             state.log_event("closing_beat", arc["closing_beat"])
+        state.quest.resolution_count += 1
+        sync_target(state)
+    else:
+        scene = {"resolved": True, "dm_note": ""}
+        if llm.enabled():
+            try:
+                scene = await llm.assess_scene(
+                    scene_name=_scene_name(state),
+                    scene_goal=_scene_goal(state),
+                    scene_beats=_scene_beats(state),
+                    rounds=state.quest.scene_rounds,
+                    momentum=state.quest.momentum,
+                    max_rounds=MAX_SCENE_ROUNDS,
+                )
+            except Exception:
+                pass
+
+        force = state.quest.scene_rounds >= MAX_SCENE_ROUNDS
+        if scene.get("resolved") or force:
+            if scene.get("dm_note"):
+                state.log_event("scene_resolved", scene["dm_note"])
+            state.quest.resolution_count += 1
+            state.quest.scene_beat_start = len(state.quest.beats)
+            state.quest.scene_rounds = 0
+            sync_target(state)
+        else:
+            state.quest.scene_rounds += 1
+            if scene.get("dm_note"):
+                state.log_event("scene_continues", scene["dm_note"])
 
     await _broadcast(
         {"type": "card_resolved", "state": _state_snapshot(state, include_world=False)}
@@ -302,22 +352,43 @@ async def _travel_card_loop() -> None:
         card_def = CARD_BY_ID.get(card.card_id)
         if not card_def:
             continue
+        dice_value, dice_result = roll_d20(_rng)
+        apply_card_effects(card_def, dice_result, state.quest)
+        is_chaos_hit = card_def.type == CardType.CHAOS and dice_result in (
+            DiceResult.HIGH,
+            DiceResult.NAT_20,
+        )
         event = ""
         if llm.enabled():
             try:
-                event = await llm.narrate_travel_card(
-                    card_name=card_def.name,
-                    card_type=card_def.type.value,
-                    quest_hook=state.quest.hook,
-                    story_so_far=" | ".join(state.quest.beats[-4:]),
-                )
+                if is_chaos_hit:
+                    event = await llm.narrate_chaos_interrupt(
+                        card_name=card_def.name,
+                        card_description=card_def.description,
+                        quest_hook=state.quest.hook,
+                        story_so_far=_story_so_far(state),
+                        dice_value=dice_value,
+                    )
+                else:
+                    event = await llm.narrate_travel_card(
+                        card_name=card_def.name,
+                        card_type=card_def.type.value,
+                        quest_hook=state.quest.hook,
+                        story_so_far=_story_so_far(state),
+                        dice_value=dice_value,
+                        dice_label=dice_result.value,
+                    )
             except Exception:
                 pass
         if not event:
-            event = f"Something shifts. {card_def.name}."
+            event = f"{'Something goes wrong.' if dice_value <= 6 else 'Something happens.'} {card_def.name}."
         state.quest.beats.append(event)
-        state.log_event("travel_card", event, {"card": card_def.name})
-        await _broadcast({"type": "travel_event", "text": event})
+        state.log_event(
+            "chaos_interrupt" if is_chaos_hit else "travel_card",
+            event,
+            {"card": card_def.name, "dice": dice_value},
+        )
+        await _broadcast({"type": "travel_event", "text": event, "chaos": is_chaos_hit})
 
 
 async def _start_new_game() -> None:

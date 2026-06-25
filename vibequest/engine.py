@@ -401,6 +401,7 @@ class CardResolution:
 
 MIN_RESOLUTIONS = 3
 MAX_RESOLUTIONS = 8
+MAX_SCENE_ROUNDS = 4
 
 
 REGISTERS = [
@@ -437,6 +438,8 @@ class QuestState:
     momentum: int = 0
     tension: int = 0
     outcome: str | None = None
+    scene_rounds: int = 0
+    scene_beat_start: int = 0
 
 
 @dataclass

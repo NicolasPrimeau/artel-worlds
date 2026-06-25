@@ -202,19 +202,49 @@ Under 50 words. No em dashes."""
 
 
 async def narrate_travel_card(
-    card_name: str, card_type: str, quest_hook: str, story_so_far: str
+    card_name: str,
+    card_type: str,
+    quest_hook: str,
+    story_so_far: str,
+    dice_value: int = 10,
+    dice_label: str = "mid",
 ) -> str:
+    outcome = (
+        "something works out slightly better than expected"
+        if dice_value >= 14
+        else ("something goes mildly wrong" if dice_value <= 6 else "something happens, neutrally")
+    )
     prompt = f"""{_TONE}
 
-Someone played a card while the group was mid-transit — walking between places.
-Something happens immediately because of it. Not a big event. Just something.
+Someone played a card while in transit between locations. Something happens right now, mid-walk, because of it.
 
 SITUATION: {quest_hook}
 WHAT HAS HAPPENED: {story_so_far or "Nothing yet."}
 CARD: {card_name} ({card_type})
+DICE: {dice_value}/20 ({dice_label}) — {outcome}
 
-One sentence. Something that happens right now, during the walk.
-Under 20 words. Mundane. Nobody says it's strange. It just happens."""
+One sentence. Under 20 words. Mundane. Nobody acknowledges it's strange."""
+    req = Request(system="Respond in one sentence only. No fantasy language.", user=prompt)
+    return await ROUTER.complete(req)
+
+
+async def narrate_chaos_interrupt(
+    card_name: str,
+    card_description: str,
+    quest_hook: str,
+    story_so_far: str,
+    dice_value: int,
+) -> str:
+    prompt = f"""{_TONE}
+
+A chaos card just fired during transit with a very high roll. Something unexpected happens RIGHT NOW — mid-walk, no warning.
+
+SITUATION: {quest_hook}
+WHAT HAS HAPPENED: {story_so_far or "Nothing yet."}
+CARD: {card_name} — {card_description}
+DICE: {dice_value}/20 — this was powerful. Something specific and wrong happens.
+
+One sentence. Under 25 words. Delivered completely matter-of-factly, like it's a normal Tuesday."""
     req = Request(system="Respond in one sentence only. No fantasy language.", user=prompt)
     return await ROUTER.complete(req)
 
@@ -246,6 +276,54 @@ JSON only: {{"npcs": [{{"name": "First Last", "role": "Job Title", "personality"
     if parsed and isinstance(parsed.get("npcs"), list):
         return [n for n in parsed["npcs"][:4] if isinstance(n, dict)]
     return []
+
+
+async def assess_scene(
+    scene_name: str,
+    scene_goal: str,
+    scene_beats: str,
+    rounds: int,
+    momentum: int,
+    max_rounds: int = 4,
+) -> dict:
+    if rounds < 1:
+        force_rule = "Too early — always set resolved=false."
+    elif rounds >= max_rounds:
+        force_rule = "This scene has gone on long enough — always set resolved=true."
+    else:
+        force_rule = """Set resolved=true ONLY if one of these is true:
+- The goal was meaningfully addressed: clear progress made, OR decisively failed
+- A natural dramatic peak was reached: setup → complication → outcome has a shape
+- The scene has a clear closing beat and continuing would repeat ground already covered
+
+Do NOT end the scene just because things are going well or badly in general. End it when something that matters actually HAPPENED here."""
+
+    prompt = f"""{_TONE}
+
+You are the DM deciding whether this scene is finished.
+
+LOCATION: {scene_name}
+GOAL HERE: {scene_goal}
+ROUNDS PLAYED HERE: {rounds}
+MOMENTUM: {momentum} (-10 = failing badly, +10 = succeeding)
+
+WHAT HAS HAPPENED AT THIS LOCATION:
+{scene_beats or "(Nothing yet — first round.)"}
+
+{force_rule}
+
+JSON only:
+{{
+  "resolved": false,
+  "dm_note": "one sentence: why the scene ends or why it continues"
+}}"""
+    req = Request(system="Respond only with valid JSON.", user=prompt)
+    raw = await ROUTER.complete(req)
+    parsed = parse_json(raw)
+    if not parsed:
+        return {"resolved": rounds >= max_rounds, "dm_note": ""}
+    parsed["resolved"] = bool(parsed.get("resolved")) or rounds >= max_rounds
+    return parsed
 
 
 async def generate_objectives(quest_hook: str, complication: str) -> list[str]:
