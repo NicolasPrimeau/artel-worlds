@@ -35,15 +35,13 @@
   #titlecard .objectives li.done{opacity:.45;text-decoration:line-through}
   #titlecard .objectives li.done .ob{color:var(--ink2)}
 
-  /* speech bubbles over the party (show, don't tell) */
-  #bubbles{top:0;left:0;right:0;bottom:0;pointer-events:none;overflow:hidden}
-  .bubble{position:absolute;transform:translate(-50%,-100%);max-width:170px;background:var(--cream2);border:2px solid var(--ink);border-radius:8px;
+  /* speech bubble — fixed above character (camera follows, so character ≈ center) */
+  #bubbles{pointer-events:none}
+  .bubble{position:fixed;bottom:57%;left:50%;transform:translateX(-50%);max-width:170px;background:var(--cream2);border:2px solid var(--ink);border-radius:8px;
     padding:5px 9px;font-family:"Cormorant Garamond",serif;font-size:15px;line-height:1.25;color:var(--ink);box-shadow:2px 2px 0 rgba(84,79,87,.2);
-    white-space:normal;text-align:center;animation:pop .16s ease-out}
+    white-space:normal;text-align:center;animation:pop .16s ease-out;z-index:300;pointer-events:none}
   .bubble .nm{display:block;font-family:"Courier Prime",monospace;font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--rose2);margin-bottom:1px}
-  .bubble::after{content:"";position:absolute;left:50%;bottom:-8px;transform:translateX(-50%);border:6px solid transparent;border-top-color:var(--ink)}
-  .bubble::before{content:"";position:absolute;left:50%;bottom:-5px;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--cream2);z-index:1}
-  @keyframes pop{from{transform:translate(-50%,-100%) scale(.7);opacity:0}to{transform:translate(-50%,-100%) scale(1);opacity:1}}
+  @keyframes pop{from{opacity:0;transform:translateX(-50%) scale(.85)}to{opacity:1;transform:translateX(-50%) scale(1)}}
 
   /* tiny ambient caption (travel beats, scene conclusions) */
   #toast{bottom:calc(120px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);max-width:90vw;text-align:center;
@@ -574,20 +572,18 @@ function speak(member, name, text, dur){
   bubbles.push({el,member,until:performance.now()+(dur||4600)});
 }
 function updateBubbles(){
-  if(!scene) return;
-  const cam=scene.cameras.main, now=performance.now(), wv=cam.worldView;
+  const now=performance.now();
   for(let i=bubbles.length-1;i>=0;i--){
     const b=bubbles[i];
-    if(now>b.until){ b.el.remove(); bubbles.splice(i,1); continue; }
-    const sx=(b.member.spr.x-wv.x)*cam.zoom, sy=(b.member.spr.y-wv.y)*cam.zoom;
-    b.el.style.left=sx+"px"; b.el.style.top=(sy-12*cam.zoom)+"px";
+    if(now>b.until){ b.el.remove(); bubbles.splice(i,1); }
   }
 }
 function clearBubbles(){ for(const b of bubbles) b.el.remove(); bubbles.length=0; }
 function showReactions(rs){
-  let d=0;
-  for(const r of rs||[]){ const m=memberFor(r.name,r.role); const line=r.line;
-    setTimeout(()=>speak(m,r.name,line),d); d+=1300; }
+  if(!rs||!rs.length||!party.length) return;
+  const ch=party[0];
+  const r=rs.find(r=>r.name===ch.name||r.role===ch.role)||rs[0];
+  speak(ch,ch.name,r.line);
 }
 let toastTimer=null;
 function toast(text){
@@ -789,7 +785,7 @@ function connect(){
       case "scene": applyState(m.state);
         if(m.scene&&m.scene.opening){ const mem=memberFor(null,m.scene.speaker); speak(mem,mem&&mem.name,m.scene.opening,5200); }
         break;
-      case "travel_event": { const mem=party.length?party[Math.floor(Math.random()*party.length)]:null; speak(mem,mem&&mem.name,m.text,4200); break; }
+      case "travel_event": { const mem=party[0]||null; speak(mem,mem&&mem.name,m.text,4200); break; }
       case "dice_roll": showDice(m); break;
       case "card_resolved": {
         applyState(m.state);
