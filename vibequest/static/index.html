@@ -56,11 +56,12 @@
     background:rgba(244,236,214,.86);padding:4px 14px;border-radius:4px;opacity:0;transition:opacity .4s}
   #toast.show{opacity:1}
 
-  /* heading caption shown while party walks between stations */
+  /* room label — shows destination while moving, current room at rest */
   #caption{bottom:calc(148px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);max-width:80vw;text-align:center;
-    font-family:"Cormorant Garamond",serif;font-style:italic;font-size:clamp(11px,3vw,14px);color:var(--ink2);
-    background:rgba(244,236,214,.72);padding:3px 12px;border-radius:4px;opacity:0;transition:opacity .6s;white-space:nowrap}
+    font-family:"Courier Prime",monospace;font-size:clamp(8px,2.2vw,10px);letter-spacing:.3em;text-transform:uppercase;color:var(--ink2);
+    background:rgba(196,174,136,.55);padding:3px 10px;border-radius:2px;opacity:0;transition:opacity .5s;white-space:nowrap;pointer-events:none}
   #caption.show{opacity:1}
+  #caption.at-rest{color:var(--ink);background:rgba(196,174,136,.72);letter-spacing:.35em}
 
   /* fan hand */
   #hand{position:fixed;bottom:calc(8px + env(safe-area-inset-bottom));left:50%;width:0;height:0;pointer-events:none;z-index:10}
@@ -337,18 +338,26 @@ const playerId = (()=>{ let p=localStorage.getItem("vq_pid"); if(!p){p="p"+Math.
 
 let scene=null, world=null, character=null, npcs=[], built=null, pendingState=null;
 let routeArr=[], wpIdx=[], leaderPos=0, targetIdx=0;
-let currentHeading="", captionVisible=false;
+let currentHeading="", captionVisible=false, waypointNames=[], lastCaptionIdx=-1;
 
-function setCaption(text){
-  currentHeading=text||"";
-}
+function setCaption(text){ currentHeading=text||""; }
+
 function updateCaption(moving){
   const el=document.getElementById("caption");
   if(!el) return;
-  const want=moving && !!currentHeading;
-  if(want && !captionVisible){ el.textContent=currentHeading; el.classList.add("show"); captionVisible=true; }
-  else if(!want && captionVisible){ el.classList.remove("show"); captionVisible=false; }
-  else if(want && el.textContent!==currentHeading){ el.textContent=currentHeading; }
+  const roomName=waypointNames[targetIdx]||"";
+  if(moving){
+    const txt=currentHeading||roomName;
+    el.classList.remove("at-rest");
+    if(!captionVisible||el.textContent!==txt){ el.textContent=txt; el.classList.add("show"); captionVisible=true; }
+  } else {
+    if(roomName){
+      el.classList.add("at-rest");
+      if(!captionVisible||el.textContent!==roomName||lastCaptionIdx!==targetIdx){
+        el.textContent=roomName; el.classList.add("show"); captionVisible=true; lastCaptionIdx=targetIdx;
+      }
+    } else if(captionVisible){ el.classList.remove("show","at-rest"); captionVisible=false; }
+  }
 }
 
 function pf(col,row){ return row*PROP_COLS+col; }
@@ -522,6 +531,7 @@ function applyState(snap){
   const W=snap.world;
   if(W && built!==snap.run_id){
     world=W; built=snap.run_id;
+    waypointNames=W.waypoint_names||[];
     buildWorld(W); buildCharacter(snap); buildNPCs(snap);
     clearBubbles();
   }

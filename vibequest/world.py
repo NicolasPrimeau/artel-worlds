@@ -121,6 +121,7 @@ class WorldMap:
     tiles: list[int]
     props: list[dict] = field(default_factory=list)
     waypoints: list[list[int]] = field(default_factory=list)
+    waypoint_names: list[str] = field(default_factory=list)
     route: list[list[int]] = field(default_factory=list)
     wp_route_idx: list[int] = field(default_factory=list)
     theme: str = "garden"
@@ -135,6 +136,7 @@ class WorldMap:
             "tiles": self.tiles,
             "props": self.props,
             "waypoints": self.waypoints,
+            "waypoint_names": self.waypoint_names,
             "route": self.route,
             "wp_route_idx": self.wp_route_idx,
             "theme": self.theme,
@@ -733,6 +735,7 @@ def generate_indoor_world(
         tiles=tiles,
         props=props,
         waypoints=waypoints,
+        waypoint_names=used_names,
         route=route,
         wp_route_idx=wp_route_idx,
         theme=theme,
