@@ -15,16 +15,20 @@ CHARACTERS = [
         "shoe": (35, 22, 8),
         "tie": (140, 25, 25),
         "long": False,
+        "female": False,
+        "skirt": None,
     },
     {
         "name": "hero_02",
         "skin": (210, 168, 120),
         "hair": (85, 48, 12),
-        "shirt": (60, 60, 60),
-        "pants": (45, 45, 55),
+        "shirt": (92, 42, 58),
+        "pants": (38, 30, 48),
         "shoe": (22, 14, 5),
         "tie": None,
         "long": True,
+        "female": True,
+        "skirt": (148, 88, 118),
     },
     {
         "name": "hero_03",
@@ -35,26 +39,32 @@ CHARACTERS = [
         "shoe": (18, 10, 4),
         "tie": None,
         "long": False,
+        "female": False,
+        "skirt": None,
     },
     {
         "name": "hero_04",
         "skin": (100, 62, 32),
         "hair": (22, 15, 5),
-        "shirt": (52, 72, 42),
-        "pants": (38, 28, 18),
+        "shirt": (42, 72, 62),
+        "pants": (28, 22, 48),
         "shoe": (22, 14, 5),
-        "tie": (90, 65, 18),
+        "tie": None,
         "long": False,
+        "female": True,
+        "skirt": None,
     },
     {
         "name": "hero_05",
         "skin": (242, 200, 158),
         "hair": (182, 142, 95),
-        "shirt": (72, 92, 122),
+        "shirt": (52, 88, 72),
         "pants": (30, 30, 52),
         "shoe": (28, 18, 8),
-        "tie": (108, 32, 52),
+        "tie": None,
         "long": True,
+        "female": True,
+        "skirt": (68, 115, 92),
     },
     {
         "name": "hero_06",
@@ -65,6 +75,8 @@ CHARACTERS = [
         "shoe": (18, 12, 4),
         "tie": None,
         "long": False,
+        "female": False,
+        "skirt": None,
     },
     {
         "name": "hero_07",
@@ -73,8 +85,10 @@ CHARACTERS = [
         "shirt": (62, 42, 28),
         "pants": (38, 28, 16),
         "shoe": (18, 10, 4),
-        "tie": (42, 62, 82),
+        "tie": None,
         "long": True,
+        "female": True,
+        "skirt": None,
     },
     {
         "name": "hero_08",
@@ -85,6 +99,8 @@ CHARACTERS = [
         "shoe": (14, 8, 2),
         "tie": (155, 52, 22),
         "long": False,
+        "female": False,
+        "skirt": None,
     },
     {
         "name": "hero_09",
@@ -95,6 +111,8 @@ CHARACTERS = [
         "shoe": (30, 20, 10),
         "tie": None,
         "long": True,
+        "female": True,
+        "skirt": (72, 62, 108),
     },
     {
         "name": "hero_10",
@@ -105,6 +123,8 @@ CHARACTERS = [
         "shoe": (18, 10, 4),
         "tie": (85, 22, 42),
         "long": False,
+        "female": False,
+        "skirt": None,
     },
 ]
 
@@ -154,48 +174,64 @@ def head_front(draw, ox, oy, cfg):
 def body_front(draw, ox, oy, cfg, frame):
     T, P = cfg["shirt"], cfg["pants"]
     Ti = cfg["tie"]
-    # collar
-    row(draw, ox, oy, 9, 5, 10, T)
-    # shirt
-    for y in range(10, 13):
-        row(draw, ox, oy, y, 4, 11, T)
-    # shoulders wider
-    px(draw, ox, oy, 3, 10, T)
-    px(draw, ox, oy, 12, 10, T)
-    # belt/hips
-    row(draw, ox, oy, 13, 4, 11, P)
-    # tie (center, down-facing)
-    if Ti:
-        px(draw, ox, oy, 8, 10, Ti)
-        px(draw, ox, oy, 8, 11, Ti)
-        px(draw, ox, oy, 7, 11, Ti)
-        px(draw, ox, oy, 8, 12, Ti)
+    female = cfg.get("female", False)
+    SK = cfg.get("skirt")
+    if female:
+        row(draw, ox, oy, 9, 6, 9, T)
+        row(draw, ox, oy, 10, 5, 10, T)
+        row(draw, ox, oy, 11, 5, 10, T)
+        row(draw, ox, oy, 12, 4, 11, T)
+        row(draw, ox, oy, 13, 4, 11, SK if SK else P)
+    else:
+        row(draw, ox, oy, 9, 5, 10, T)
+        for y in range(10, 13):
+            row(draw, ox, oy, y, 4, 11, T)
+        px(draw, ox, oy, 3, 10, T)
+        px(draw, ox, oy, 12, 10, T)
+        row(draw, ox, oy, 13, 4, 11, P)
+        if Ti:
+            px(draw, ox, oy, 8, 10, Ti)
+            px(draw, ox, oy, 8, 11, Ti)
+            px(draw, ox, oy, 7, 11, Ti)
+            px(draw, ox, oy, 8, 12, Ti)
 
 
 def legs_front(draw, ox, oy, cfg, frame):
     P, S = cfg["pants"], cfg["shoe"]
-    # leg configs per frame: (left_x, right_x, left_extend, right_extend)
-    configs = [
-        (5, 9, 0, 0),  # frame 0: neutral
-        (4, 10, 1, 0),  # frame 1: left forward
-        (6, 8, 0, 0),  # frame 2: crossing
-        (4, 10, 0, 1),  # frame 3: right forward
-    ]
-    lx, rx, le, re = configs[frame % 4]
-    for y in range(14, 15):
-        px(draw, ox, oy, lx, y, P)
-        px(draw, ox, oy, lx + 1, y, P)
-        px(draw, ox, oy, rx, y, P)
-        px(draw, ox, oy, rx + 1, y, P)
-    # shoe row
-    px(draw, ox, oy, lx, 15, S)
-    px(draw, ox, oy, lx + 1, 15, S)
-    if le:
-        px(draw, ox, oy, lx - 1, 15, S)
-    px(draw, ox, oy, rx, 15, S)
-    px(draw, ox, oy, rx + 1, 15, S)
-    if re:
-        px(draw, ox, oy, rx + 2, 15, S)
+    SK = cfg.get("skirt")
+    female = cfg.get("female", False)
+    if female and SK:
+        row(draw, ox, oy, 14, 4, 11, SK)
+        if frame == 1:
+            row(draw, ox, oy, 15, 4, 5, S)
+            row(draw, ox, oy, 15, 9, 10, S)
+        elif frame == 3:
+            row(draw, ox, oy, 15, 5, 6, S)
+            row(draw, ox, oy, 15, 10, 11, S)
+        else:
+            row(draw, ox, oy, 15, 5, 6, S)
+            row(draw, ox, oy, 15, 9, 10, S)
+    else:
+        configs = [
+            (5, 9, 0, 0),
+            (4, 10, 1, 0),
+            (6, 8, 0, 0),
+            (4, 10, 0, 1),
+        ]
+        lx, rx, le, re = configs[frame % 4]
+        for y in range(14, 15):
+            px(draw, ox, oy, lx, y, P)
+            px(draw, ox, oy, lx + 1, y, P)
+            px(draw, ox, oy, rx, y, P)
+            px(draw, ox, oy, rx + 1, y, P)
+        px(draw, ox, oy, lx, 15, S)
+        px(draw, ox, oy, lx + 1, 15, S)
+        if le:
+            px(draw, ox, oy, lx - 1, 15, S)
+        px(draw, ox, oy, rx, 15, S)
+        px(draw, ox, oy, rx + 1, 15, S)
+        if re:
+            px(draw, ox, oy, rx + 2, 15, S)
 
 
 # ── Back (facing up, col 1) ───────────────────────────────────────────────────
@@ -223,13 +259,21 @@ def head_back(draw, ox, oy, cfg):
 
 
 def body_back(draw, ox, oy, cfg, frame):
-    T = cfg["shirt"]
-    # back of shirt (no tie, wider)
-    row(draw, ox, oy, 9, 5, 10, T)
-    px(draw, ox, oy, 3, 9, T)
-    px(draw, ox, oy, 12, 9, T)
-    for y in range(10, 14):
-        row(draw, ox, oy, y, 4, 11, T)
+    T, P = cfg["shirt"], cfg["pants"]
+    female = cfg.get("female", False)
+    SK = cfg.get("skirt")
+    if female:
+        row(draw, ox, oy, 9, 6, 9, T)
+        row(draw, ox, oy, 10, 5, 10, T)
+        row(draw, ox, oy, 11, 5, 10, T)
+        row(draw, ox, oy, 12, 4, 11, T)
+        row(draw, ox, oy, 13, 4, 11, SK if SK else P)
+    else:
+        row(draw, ox, oy, 9, 5, 10, T)
+        px(draw, ox, oy, 3, 9, T)
+        px(draw, ox, oy, 12, 9, T)
+        for y in range(10, 14):
+            row(draw, ox, oy, y, 4, 11, T)
 
 
 def legs_back(draw, ox, oy, cfg, frame):
@@ -268,27 +312,34 @@ def body_left(draw, ox, oy, cfg, frame):
 
 def legs_left(draw, ox, oy, cfg, frame):
     P, S = cfg["pants"], cfg["shoe"]
-    # Side-view legs: front and back leg
-    # frame 0/2: neutral stacked
-    # frame 1: front (right, toward left) forward
-    # frame 3: back (left) forward
-    if frame % 2 == 0:
+    SK = cfg.get("skirt")
+    female = cfg.get("female", False)
+    if female and SK:
+        row(draw, ox, oy, 14, 5, 10, SK)
+        if frame == 1:
+            row(draw, ox, oy, 15, 4, 7, S)
+            row(draw, ox, oy, 15, 9, 10, S)
+        elif frame == 3:
+            row(draw, ox, oy, 15, 9, 11, S)
+            row(draw, ox, oy, 15, 5, 7, S)
+        else:
+            row(draw, ox, oy, 15, 6, 9, S)
+    elif frame % 2 == 0:
         for y in range(14, 15):
             row(draw, ox, oy, y, 6, 9, P)
         row(draw, ox, oy, 15, 6, 9, S)
     elif frame == 1:
-        # front leg steps left (lower x)
-        for y in range(14, 15):
-            row(draw, ox, oy, y, 5, 8, P)  # front
-            row(draw, ox, oy, y, 9, 10, P)  # back
-        row(draw, ox, oy, 15, 4, 7, S)  # front shoe
-        row(draw, ox, oy, 15, 9, 10, S)  # back shoe
-    else:  # frame 3
         for y in range(14, 15):
             row(draw, ox, oy, y, 5, 8, P)
             row(draw, ox, oy, y, 9, 10, P)
-        row(draw, ox, oy, 15, 9, 11, S)  # front shoe (right = back direction)
-        row(draw, ox, oy, 15, 5, 7, S)  # back shoe
+        row(draw, ox, oy, 15, 4, 7, S)
+        row(draw, ox, oy, 15, 9, 10, S)
+    else:
+        for y in range(14, 15):
+            row(draw, ox, oy, y, 5, 8, P)
+            row(draw, ox, oy, y, 9, 10, P)
+        row(draw, ox, oy, 15, 9, 11, S)
+        row(draw, ox, oy, 15, 5, 7, S)
 
 
 # ── Right profile (col 3): mirror of left ─────────────────────────────────────
@@ -314,7 +365,19 @@ def body_right(draw, ox, oy, cfg, frame):
 
 def legs_right(draw, ox, oy, cfg, frame):
     P, S = cfg["pants"], cfg["shoe"]
-    if frame % 2 == 0:
+    SK = cfg.get("skirt")
+    female = cfg.get("female", False)
+    if female and SK:
+        row(draw, ox, oy, 14, 5, 10, SK)
+        if frame == 1:
+            row(draw, ox, oy, 15, 8, 11, S)
+            row(draw, ox, oy, 15, 5, 6, S)
+        elif frame == 3:
+            row(draw, ox, oy, 15, 5, 7, S)
+            row(draw, ox, oy, 15, 9, 10, S)
+        else:
+            row(draw, ox, oy, 15, 6, 9, S)
+    elif frame % 2 == 0:
         for y in range(14, 15):
             row(draw, ox, oy, y, 6, 9, P)
         row(draw, ox, oy, 15, 6, 9, S)
