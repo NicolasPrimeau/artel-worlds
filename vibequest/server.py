@@ -58,6 +58,7 @@ def _state_snapshot(state: GameState, include_world: bool = True) -> dict:
             "title": state.quest.title,
             "hook": state.quest.hook,
             "complication": state.quest.complication,
+            "objectives": state.quest.objectives,
             "beats": state.quest.beats[-4:],
             "resolution_count": state.quest.resolution_count,
             "register": state.quest.register,
@@ -264,15 +265,23 @@ async def _end_quest(state: GameState) -> None:
 async def _start_new_game() -> None:
     global _state
     _state = new_game(_rng)
-    opening = ""
     if llm.enabled():
-        opening = await llm.narrate_quest_start(
-            quest_hook=_state.quest.hook,
-            complication=_state.quest.complication,
-            party_summary=_party_summary(_state),
+        opening, objectives = await asyncio.gather(
+            llm.narrate_quest_start(
+                quest_hook=_state.quest.hook,
+                complication=_state.quest.complication,
+                party_summary=_party_summary(_state),
+            ),
+            llm.generate_objectives(
+                quest_hook=_state.quest.hook,
+                complication=_state.quest.complication,
+            ),
+            return_exceptions=True,
         )
-    if opening:
-        _state.log_event("opening", opening)
+        if isinstance(opening, str) and opening:
+            _state.log_event("opening", opening)
+        if isinstance(objectives, list):
+            _state.quest.objectives = objectives
     if artel.enabled():
         await artel.write_memory(
             f"New VibeQuest begun: {_state.quest.hook} Complication: {_state.quest.complication}",

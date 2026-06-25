@@ -31,6 +31,17 @@ ROUTER = Router(
 
 SPEND = ROUTER.spend
 
+_TONE = """TONE RULES — read carefully and do not violate them:
+The setting is a real, modern, mundane environment (an office, a pub, a school, a grocery store).
+The situation keeps escalating — things get increasingly strange and wrong — but no character ever acknowledges this.
+Everyone keeps trying to complete the task as if everything is fine.
+The humor is entirely in that gap. It is like Mother! or Beau is Afraid: fever-dream wrongness delivered in a completely normal voice.
+
+Language must be casual modern workplace English:
+- Use words like: follow up, circle back, escalate, flag, loop in, touch base, per my last email, outside my scope, action item, bandwidth
+- Never use: brave, quest, realm, dungeon, adventurer, slay, arcane, mystical, enchanted, champion, valor, ancient, legendary, or any fantasy vocabulary
+- Reactions from people sound like real coworkers: tired, slightly passive-aggressive, very focused on the wrong detail, not noticing the big thing happening around them"""
+
 
 def enabled() -> bool:
     return ROUTER.enabled()
@@ -50,45 +61,46 @@ async def narrate_card(
     story_so_far: str = "",
     register: str = "a deadpan documentary",
 ) -> dict:
-    crit = ""
     if dice_value == 20:
-        crit = "This is a NATURAL 20 — a critical success. Something goes spectacularly, memorably right."
+        crit = "Critical: something goes spectacularly right, in a way that makes total sense in context but shouldn't."
     elif dice_value == 1:
-        crit = "This is a NATURAL 1 — a critical failure. Something goes genuinely, hilariously wrong with real consequences."
-    story_block = f"STORY SO FAR: {story_so_far}" if story_so_far else ""
-    prompt = f"""You are the DM for VibeQuest, where a mundane office errand is treated with total epic seriousness, played in the key of {register}.
-The party is on a quest. Players just played a card; resolve it.
+        crit = "Critical: something goes genuinely, quietly wrong — not dramatic, just wrong in a way that will matter."
+    else:
+        crit = ""
+    story_block = f"WHAT HAS HAPPENED SO FAR: {story_so_far}" if story_so_far else ""
+    prompt = f"""{_TONE}
 
-QUEST: {quest_hook}
+SITUATION: {quest_hook}
 COMPLICATION: {complication}
-PARTY: {party_summary}
-MOMENTUM: {momentum} (negative = going badly, positive = going well)
+PEOPLE: {party_summary}
+MORALE: {momentum} (negative = things are going badly, positive = going well — let this show in tone, not in explicit statement)
 {story_block}
-MEMORY CONTEXT: {memory_context or "No prior context."}
+CONTEXT: {memory_context or "None."}
 
 CARD PLAYED: {card_name} ({card_type})
 CARD EFFECT: {card_description}
-DICE ROLL: {dice_value}/20 ({dice_label}). {crit}
+DICE: {dice_value}/20 ({dice_label}). {crit}
 
-Resolve this card in 2-3 sentences, in the register of {register}. Let the dice steer the outcome. Be specific to this quest; the party takes absurd things completely seriously.
-Then write one reaction line per party member (max 15 words each, in character).
+Narrate what happens in 2-3 sentences. Narrative register: {register}.
+The dice result steers the outcome — a high roll means something works, a low roll means it doesn't, but always in a mundane, slightly wrong way.
+Be specific to this situation. Stay grounded. No fantasy language.
 
-Respond as JSON:
+Then write one reaction line per person — max 12 words each, sounds like a real coworker, slightly off.
+
+JSON only:
 {{
-  "narrative": "2-3 sentence narration of what happens",
-  "consequence": "one sentence on the immediate consequence for the quest",
+  "narrative": "2-3 sentence narration",
+  "consequence": "one sentence, the immediate consequence for the situation",
   "reactions": [{{"name": "...", "role": "...", "line": "..."}}]
 }}"""
 
-    req = Request(
-        system="You are a deadpan DM narrator. Respond only with valid JSON.", user=prompt
-    )
+    req = Request(system="Respond only with valid JSON. No fantasy language.", user=prompt)
     raw = await ROUTER.complete(req)
     parsed = parse_json(raw)
     if not parsed or "narrative" not in parsed:
         return {
-            "narrative": f"The {card_name} card takes effect. The dice rolled {dice_value}.",
-            "consequence": "The quest continues.",
+            "narrative": f"The {card_name} card is played. The dice show {dice_value}.",
+            "consequence": "The situation continues.",
             "reactions": [],
         }
     return parsed
@@ -105,45 +117,44 @@ async def assess_arc(
     register: str = "a deadpan documentary",
 ) -> dict:
     forced = resolution_count >= min_resolutions * 2 + 2
-    trajectory = " → ".join(result_history) if result_history else "(no windows resolved yet)"
+    trajectory = " → ".join(result_history) if result_history else "(nothing resolved yet)"
     if forced:
-        finale_rule = (
-            "The quest has gone on long enough — you MUST set finale=true and write a closing beat."
-        )
+        finale_rule = "It has gone on long enough — set finale=true and write a closing beat."
     elif resolution_count < min_resolutions:
-        finale_rule = "It is too early to end — set finale=false."
+        finale_rule = "Too early to end — set finale=false."
     else:
-        finale_rule = """Decide if the story is done. End it ONLY if one of these is true:
-- The quest object/goal has been conclusively reached or conclusively lost (not just going well/badly — actually resolved)
-- A dramatic climax just landed and continuing would deflate it
-- The arc has a clear emotional shape: setup → complication → turning point → resolution
+        finale_rule = """End the story ONLY if one of these is true:
+- The original task has been conclusively completed or conclusively failed (not just going well — actually done)
+- A climax just landed and continuing would deflate it
+- The arc has a clear shape: setup → escalation → breaking point → resolution
 
-Do NOT end it just because things are going well or badly. Keep going if the story still has forward momentum."""
+Do NOT end it just because things are going well or badly. Keep going if it still has forward energy."""
 
-    prompt = f"""You are the story editor for VibeQuest, played in the key of {register}.
-A mundane office quest is being treated with total epic seriousness. You decide when the story ends.
+    prompt = f"""{_TONE}
 
-QUEST: {quest_hook}
+You are deciding when this situation ends.
+
+SITUATION: {quest_hook}
 COMPLICATION: {complication}
 
-WHAT ACTUALLY HAPPENED (narrative consequences, in order):
+WHAT ACTUALLY HAPPENED (in order):
 {story_so_far or "(nothing yet)"}
 
-WINDOW RESULTS TRAJECTORY: {trajectory}
-MOMENTUM: {momentum} (-10 = total failure, +10 = glorious success)
+TRAJECTORY: {trajectory}
+MORALE: {momentum} (-10 = total failure, +10 = success)
 
 {finale_rule}
 
-If finale=true: write one closing beat sentence (what just resolved, in past tense, max 15 words). Set outcome based on whether the quest goal was met.
+If finale=true: write one closing beat sentence (past tense, max 15 words, mundane register). Set outcome based on whether the task was actually completed.
 If finale=false: return only finale=false.
 
-Respond as JSON:
+JSON only:
 {{
   "finale": false,
   "outcome": "success" or "failure",
   "closing_beat": "one sentence"
 }}"""
-    req = Request(system="You are a story editor. Respond only with valid JSON.", user=prompt)
+    req = Request(system="Respond only with valid JSON.", user=prompt)
     raw = await ROUTER.complete(req)
     parsed = parse_json(raw)
     if not parsed:
@@ -155,29 +166,53 @@ Respond as JSON:
 
 
 async def narrate_quest_start(quest_hook: str, complication: str, party_summary: str) -> str:
-    prompt = f"""You are the narrator for VibeQuest — a deadpan Wes Anderson-style DnD world.
-A new quest begins. Write a dramatic 2-sentence opening narration. Treat the mundane situation with complete seriousness.
+    prompt = f"""{_TONE}
 
-QUEST: {quest_hook}
+A new situation is beginning. Write a 2-sentence opening.
+The first sentence establishes the ordinary task. The second introduces the first hint that something is already slightly off — but stated as if it's completely normal.
+
+SITUATION: {quest_hook}
 COMPLICATION: {complication}
-PARTY: {party_summary}
+PEOPLE: {party_summary}
 
-Be deadpan. Do not use em dashes. Keep it under 60 words."""
+Under 50 words. No em dashes. Modern, flat, casual tone. No fantasy words."""
 
-    req = Request(system="You are a deadpan DM narrator.", user=prompt)
+    req = Request(system="Respond in plain prose. No fantasy language.", user=prompt)
     return await ROUTER.complete(req)
 
 
 async def narrate_quest_end(
     quest_hook: str, outcome: str, momentum: int, party_summary: str
 ) -> str:
-    prompt = f"""You are the narrator for VibeQuest.
-The quest has ended. Write a 2-sentence closing narration. Outcome: {outcome}. Momentum: {momentum}.
+    prompt = f"""{_TONE}
 
-QUEST: {quest_hook}
-PARTY: {party_summary}
+The situation has ended. Write a 2-sentence closing statement.
+Deliver it like a memo or a debrief. Outcome: {outcome}. Morale: {momentum}.
+Whether it went well or badly, report it with the same flat administrative tone.
 
-Deadpan tone. Whether success or failure, the party reports it with equal formality."""
+SITUATION: {quest_hook}
+PEOPLE: {party_summary}
 
-    req = Request(system="You are a deadpan DM narrator.", user=prompt)
+Under 50 words. No em dashes."""
+
+    req = Request(system="Respond in plain prose. No fantasy language.", user=prompt)
     return await ROUTER.complete(req)
+
+
+async def generate_objectives(quest_hook: str, complication: str) -> list[str]:
+    prompt = f"""{_TONE}
+
+Write exactly 3 objectives for this situation as a to-do list. Each under 8 words.
+They should read like items on a real task list — specific, mundane, slightly wrong.
+They should escalate: the first is a normal step, the second is where it starts to get complicated, the third is the thing that needs to actually happen to resolve it.
+
+SITUATION: {quest_hook}
+COMPLICATION: {complication}
+
+JSON only: {{"objectives": ["...", "...", "..."]}}"""
+    req = Request(system="Respond only with valid JSON.", user=prompt)
+    raw = await ROUTER.complete(req)
+    parsed = parse_json(raw)
+    if parsed and isinstance(parsed.get("objectives"), list):
+        return [str(o) for o in parsed["objectives"][:3]]
+    return []

@@ -27,7 +27,13 @@
     padding:clamp(5px,1.6vw,8px) clamp(10px,3vw,14px);box-shadow:3px 3px 0 rgba(84,79,87,.18);
   }
   #titlecard .label{font-size:clamp(7px,2vw,9px);letter-spacing:.4em;text-transform:uppercase;color:var(--rose2);padding-left:.2em}
-#titlecard .title{font-size:clamp(13px,4vw,18px);font-weight:700;letter-spacing:.05em;text-transform:uppercase;line-height:1.08;border-top:1px solid rgba(84,79,87,.15);padding-top:4px;margin-top:1px}
+  #titlecard .title{font-size:clamp(13px,4vw,18px);font-weight:700;letter-spacing:.05em;text-transform:uppercase;line-height:1.08;border-top:1px solid rgba(84,79,87,.15);padding-top:4px;margin-top:1px}
+  #titlecard .hook{font-size:clamp(9px,2.5vw,11px);color:var(--ink2);font-style:italic;margin-top:3px;line-height:1.4;font-family:"Cormorant Garamond",serif;opacity:.8}
+  #titlecard .objectives{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:3px;border-top:1px solid rgba(84,79,87,.1);padding-top:5px}
+  #titlecard .objectives li{font-size:clamp(8px,2.2vw,10px);color:var(--ink2);display:flex;align-items:baseline;gap:5px;letter-spacing:.01em;line-height:1.3}
+  #titlecard .objectives li .ob{flex-shrink:0;font-size:9px;color:var(--rose2);line-height:1}
+  #titlecard .objectives li.done{opacity:.45;text-decoration:line-through}
+  #titlecard .objectives li.done .ob{color:var(--ink2)}
 
   /* speech bubbles over the party (show, don't tell) */
   #bubbles{top:0;left:0;right:0;bottom:0;pointer-events:none;overflow:hidden}
@@ -129,6 +135,8 @@
   <div id="titlecard">
     <div class="label">VibeQuest</div>
     <div class="title" id="qtitle">—</div>
+    <div class="hook" id="qhook"></div>
+    <ul class="objectives" id="qobjectives"></ul>
   </div>
 </div>
 <div id="bubbles" class="ui"></div>
@@ -432,6 +440,24 @@ function applyState(snap){
 function setHud(snap){
   const q=snap.quest;
   document.getElementById("qtitle").textContent=q.title||"VibeQuest";
+  document.getElementById("qhook").textContent=q.hook||"";
+
+  const ol=document.getElementById("qobjectives");
+  ol.innerHTML="";
+  const objs=q.objectives||[];
+  if(objs.length){
+    const done=q.outcome?objs.length:Math.floor((q.resolution_count||0)/2);
+    objs.forEach((obj,i)=>{
+      const li=document.createElement("li");
+      const box=document.createElement("span");
+      box.className="ob";
+      box.textContent=i<done?"✓":"□";
+      li.appendChild(box);
+      li.appendChild(document.createTextNode(obj));
+      if(i<done) li.classList.add("done");
+      ol.appendChild(li);
+    });
+  }
   updatePartyStatus(snap.party||[]);
 }
 

@@ -463,8 +463,9 @@ class QuestState:
     hook: str
     complication: str
     register: str = "a deadpan documentary"
-    beats: list[str] = field(default_factory=list)  # narrative consequences, one per card
-    result_history: list[str] = field(default_factory=list)  # window results: triumph/disaster/…
+    beats: list[str] = field(default_factory=list)
+    result_history: list[str] = field(default_factory=list)
+    objectives: list[str] = field(default_factory=list)
     resolution_count: int = 0
     momentum: int = 0
     tension: int = 0
