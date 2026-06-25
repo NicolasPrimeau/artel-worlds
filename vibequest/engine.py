@@ -446,6 +446,24 @@ class Scene:
     summary: str = ""  # short how-it-went, for continuity
 
 
+REGISTERS = [
+    "a tense heist thriller",
+    "gothic horror",
+    "a slow-burn romance",
+    "hardboiled noir detective",
+    "a deadpan nature documentary",
+    "high courtroom drama",
+    "Cold War spy espionage",
+    "a sweeping disaster epic",
+    "a grim fairy tale",
+    "an overwrought war film",
+    "a cutthroat cooking competition",
+    "a haunted-house ghost story",
+    "a sports underdog story",
+    "a prestige-TV crime saga",
+]
+
+
 @dataclass
 class QuestState:
     id: str
@@ -453,6 +471,7 @@ class QuestState:
     title: str
     hook: str
     complication: str
+    register: str = "a deadpan documentary"
     scenes: list[Scene] = field(default_factory=list)
     resolved: int = 0  # number of scenes resolved
     momentum: int = 0  # -10 to +10, accumulate cards shift this
@@ -529,6 +548,7 @@ def _make_quest(rng: random.Random) -> QuestState:
         title=template["title"],
         hook=hook,
         complication=complication,
+        register=rng.choice(REGISTERS),
     )
 
 
@@ -624,34 +644,38 @@ def advance_window(state: GameState, rng: random.Random) -> list[PlayedCard]:
     return played
 
 
+# Dice mostly steer the LLM; crits are the real mechanical swings.
+_DELTA = {
+    DiceResult.NAT_1: -5,
+    DiceResult.LOW: -1,
+    DiceResult.MID: 1,
+    DiceResult.HIGH: 1,
+    DiceResult.NAT_20: 5,
+}
+
+
 def apply_card_effects(card_def: CardDef, dice: DiceResult, quest: QuestState) -> None:
-    if card_def.type == CardType.ACCUMULATE:
-        delta = {
-            DiceResult.NAT_1: -2,
-            DiceResult.LOW: -1,
-            DiceResult.MID: 1,
-            DiceResult.HIGH: 2,
-            DiceResult.NAT_20: 3,
-        }
-        quest.momentum = max(-10, min(10, quest.momentum + delta[dice]))
+    if card_def.type in (CardType.ACCUMULATE, CardType.ACTION):
+        quest.momentum = max(-10, min(10, quest.momentum + _DELTA[dice]))
     elif card_def.type == CardType.CHAOS:
+        quest.tension = min(10, quest.tension + (2 if dice == DiceResult.NAT_1 else 1))
+    if dice == DiceResult.NAT_1:
         quest.tension = min(10, quest.tension + 1)
-    elif card_def.type == CardType.ACTION:
-        delta = {
-            DiceResult.NAT_1: -2,
-            DiceResult.LOW: -1,
-            DiceResult.MID: 1,
-            DiceResult.HIGH: 2,
-            DiceResult.NAT_20: 3,
-        }
-        quest.momentum = max(-10, min(10, quest.momentum + delta[dice]))
 
 
 def classify_result(resolutions: list[CardResolution]) -> str:
     if not resolutions:
         return "uneventful"
-    highs = sum(1 for r in resolutions if r.dice_result in (DiceResult.HIGH, DiceResult.NAT_20))
-    lows = sum(1 for r in resolutions if r.dice_result in (DiceResult.LOW, DiceResult.NAT_1))
+    crit_hi = any(r.dice_result == DiceResult.NAT_20 for r in resolutions)
+    crit_lo = any(r.dice_result == DiceResult.NAT_1 for r in resolutions)
+    if crit_hi and crit_lo:
+        return "chaotic"
+    if crit_hi:
+        return "breakthrough"
+    if crit_lo:
+        return "disaster"
+    highs = sum(1 for r in resolutions if r.dice_result == DiceResult.HIGH)
+    lows = sum(1 for r in resolutions if r.dice_result == DiceResult.LOW)
     net = highs - lows
     if net >= 1:
         return "triumph"
@@ -683,9 +707,12 @@ def resolve_scene(state: GameState, result: str, summary: str) -> Scene | None:
 
 def scene_conclusion(scene: Scene) -> str:
     by = {
+        "breakthrough": "and somehow pull off a genuine, glorious miracle",
         "triumph": "and pull it off with unreasonable flair",
         "mixed": "to mixed and confusing results",
+        "chaotic": "and trigger total, spectacular chaos",
         "setback": "and make everything slightly worse",
+        "disaster": "and turn it into an unmitigated catastrophe",
         "uneventful": "with quiet, procedural competence",
     }.get(scene.result, "somehow")
     return f"They get through {scene.title.lower()} {by}."

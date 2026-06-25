@@ -71,6 +71,7 @@ async def _ensure_scene(state: GameState, idx: int) -> Scene | None:
                 quest_hook=quest.hook,
                 complication=quest.complication,
                 party_summary=_party_summary(state),
+                register=quest.register,
                 story_so_far=story,
                 prior_result=prior.result if prior else "",
                 momentum=quest.momentum,
@@ -198,6 +199,7 @@ async def _resolve_window(state: GameState) -> None:
                 party_summary=_party_summary(state),
                 momentum=state.quest.momentum,
                 memory_context=memory_ctx,
+                register=state.quest.register,
             )
 
         apply_card_effects(card_def, dice_result, state.quest)

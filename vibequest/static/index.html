@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>VibeQuest</title>
 <link rel="icon" type="image/x-icon" href="/favicon.ico" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -20,48 +20,54 @@
   .serif{font-family:"Cormorant Garamond",serif}
   .ui{position:fixed;z-index:10;pointer-events:none}
 
-  /* top title card */
-  #hud{top:14px;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:8px}
+  /* ── top HUD (mobile-first, scales up via clamp) ── */
+  #hud{top:calc(8px + env(safe-area-inset-top));left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:5px;padding:0 8px}
   #titlecard{
     pointer-events:none;background:var(--cream);border:2px solid var(--ink);border-radius:3px;
-    padding:7px 26px;text-align:center;box-shadow:4px 4px 0 rgba(84,79,87,.18);max-width:88vw;
+    padding:clamp(4px,1.4vw,7px) clamp(14px,5vw,26px);text-align:center;box-shadow:3px 3px 0 rgba(84,79,87,.18);max-width:94vw;
   }
-  #titlecard .label{font-size:10px;letter-spacing:.5em;text-transform:uppercase;color:var(--rose2);padding-left:.5em}
-  #titlecard .title{font-size:24px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;line-height:1.1}
-  #titlecard .hook{color:var(--ink2);margin-top:3px;font-style:italic;font-family:"Cormorant Garamond",serif;font-size:15px}
-  #meters{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center}
-  .chip{background:var(--cream2);border:1.5px solid var(--ink);border-radius:2px;padding:3px 9px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;display:flex;align-items:center;gap:6px}
-  .bar{width:64px;height:7px;border:1.5px solid var(--ink);border-radius:2px;overflow:hidden;background:var(--cream)}
+  #titlecard .label{font-size:clamp(7px,2.2vw,10px);letter-spacing:.4em;text-transform:uppercase;color:var(--rose2);padding-left:.4em}
+  #titlecard .title{font-size:clamp(15px,5vw,24px);font-weight:700;letter-spacing:.05em;text-transform:uppercase;line-height:1.08}
+  #titlecard .hook{color:var(--ink2);margin-top:2px;font-style:italic;font-family:"Cormorant Garamond",serif;font-size:clamp(11px,3.2vw,15px);
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:90vw}
+  #meters{display:flex;gap:clamp(4px,1.6vw,10px);align-items:center;flex-wrap:wrap;justify-content:center}
+  .chip{background:var(--cream2);border:1.5px solid var(--ink);border-radius:2px;padding:3px clamp(6px,2vw,9px);font-size:clamp(8px,2.3vw,10px);letter-spacing:.1em;text-transform:uppercase;display:flex;align-items:center;gap:5px}
+  .bar{width:clamp(40px,11vw,64px);height:7px;border:1.5px solid var(--ink);border-radius:2px;overflow:hidden;background:var(--cream)}
   .bar > i{display:block;height:100%;width:50%}
   .bar.mom > i{background:var(--sage2)}
   .bar.ten > i{background:var(--rose2)}
-  #scenebar{margin-top:4px;background:var(--cream);border:1.5px solid var(--ink);border-radius:3px;padding:6px 16px;max-width:560px;text-align:center;box-shadow:3px 3px 0 rgba(84,79,87,.14)}
+  #scenebar{margin-top:2px;background:var(--cream);border:1.5px solid var(--ink);border-radius:3px;padding:clamp(5px,1.6vw,6px) clamp(12px,4vw,18px);max-width:min(94vw,560px);text-align:center;box-shadow:3px 3px 0 rgba(84,79,87,.14)}
   #scenebar.finale{background:#f6e7ea;border-color:var(--rose2)}
-  #scenebar .st{font-size:17px;font-weight:700;letter-spacing:.02em}
-  #scenebar .sd{font-size:11px;color:var(--ink2);margin-top:2px;line-height:1.3}
+  #scenebar .st{font-size:clamp(13px,4.2vw,17px);font-weight:700;letter-spacing:.02em}
+  #scenebar .sd{font-size:clamp(10px,3vw,11px);color:var(--ink2);margin-top:2px;line-height:1.3;
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 
-  /* dialog box */
+  /* dialog box (sits above the card hand) */
   #dialog{
-    bottom:128px;left:50%;transform:translateX(-50%);width:min(640px,92vw);
+    bottom:calc(118px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(640px,94vw);
     background:var(--cream);border:2px solid var(--ink);border-radius:4px;
-    box-shadow:5px 5px 0 rgba(84,79,87,.18);padding:14px 18px 16px;opacity:0;transition:opacity .35s;
+    box-shadow:4px 4px 0 rgba(84,79,87,.18);padding:clamp(10px,3vw,14px) clamp(12px,4vw,18px);opacity:0;transition:opacity .35s;
   }
   #dialog.show{opacity:1}
-  #dialog .who{font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:var(--rose2);margin-bottom:5px}
-  #dialog .say{font-family:"Cormorant Garamond",serif;font-size:19px;line-height:1.35;color:var(--ink)}
-  #dialog .conseq{margin-top:7px;font-size:11px;color:var(--sage2);font-style:italic}
+  #dialog .who{font-size:clamp(9px,2.4vw,10px);letter-spacing:.26em;text-transform:uppercase;color:var(--rose2);margin-bottom:4px}
+  #dialog .say{font-family:"Cormorant Garamond",serif;font-size:clamp(15px,4.4vw,19px);line-height:1.32;color:var(--ink);
+    display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+  #dialog .conseq{margin-top:6px;font-size:clamp(10px,2.8vw,11px);color:var(--sage2);font-style:italic}
 
-  /* card hand */
-  #hand{bottom:14px;left:0;right:0;display:flex;gap:8px;justify-content:center;align-items:flex-end;pointer-events:none;padding:0 8px;flex-wrap:nowrap;overflow-x:auto}
+  /* card hand — horizontal scroll strip on mobile, centered on desktop */
+  #hand{bottom:calc(8px + env(safe-area-inset-bottom));left:0;right:0;display:flex;gap:clamp(6px,2vw,8px);justify-content:flex-start;align-items:flex-end;
+    pointer-events:auto;padding:4px clamp(8px,3vw,16px);flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  #hand::-webkit-scrollbar{display:none}
   .card{
-    pointer-events:auto;cursor:pointer;width:96px;min-width:96px;height:118px;border:2px solid var(--ink);border-radius:5px;
-    background:var(--cream2);padding:7px;display:flex;flex-direction:column;gap:3px;
+    pointer-events:auto;cursor:pointer;flex:0 0 auto;width:clamp(76px,23vw,96px);height:clamp(98px,29vw,118px);border:2px solid var(--ink);border-radius:5px;
+    background:var(--cream2);padding:clamp(5px,1.8vw,7px);display:flex;flex-direction:column;gap:3px;scroll-snap-align:center;
     box-shadow:3px 3px 0 rgba(84,79,87,.16);transition:transform .12s, box-shadow .12s;position:relative;
   }
-  .card:hover{transform:translateY(-10px);box-shadow:5px 7px 0 rgba(84,79,87,.22)}
-  .card .ct{font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink2)}
-  .card .cn{font-size:11px;font-weight:700;line-height:1.1}
-  .card .cd{font-size:9px;color:var(--ink2);line-height:1.2;flex:1;overflow:hidden}
+  .card:active{transform:translateY(-6px)}
+  @media (hover:hover){ .card:hover{transform:translateY(-10px);box-shadow:5px 7px 0 rgba(84,79,87,.22)} }
+  .card .ct{font-size:clamp(7px,2vw,8px);letter-spacing:.16em;text-transform:uppercase;color:var(--ink2)}
+  .card .cn{font-size:clamp(10px,2.9vw,11px);font-weight:700;line-height:1.1}
+  .card .cd{font-size:clamp(8px,2.4vw,9px);color:var(--ink2);line-height:1.2;flex:1;overflow:hidden}
   .card.accumulate{background:#eef2e6}.card.action{background:#fbf0e6}
   .card.chaos{background:#f6e7ea}.card.tweak{background:#ece9f2}
   .card.played{opacity:.4;pointer-events:none;transform:none}
@@ -69,20 +75,20 @@
   /* dice overlay */
   #dice{top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .25s}
   #dice.show{opacity:1}
-  #dice .d20{width:150px;height:150px;background:var(--cream);border:3px solid var(--ink);border-radius:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:7px 7px 0 rgba(84,79,87,.2);transform:rotate(-6deg)}
-  #dice .num{font-size:62px;font-weight:700;line-height:1}
-  #dice .lab{font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);margin-top:4px}
-  #dice .cardname{font-size:11px;color:var(--ink2);margin-top:6px;max-width:130px;text-align:center}
+  #dice .d20{width:clamp(120px,34vw,150px);height:clamp(120px,34vw,150px);background:var(--cream);border:3px solid var(--ink);border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:6px 6px 0 rgba(84,79,87,.2);transform:rotate(-6deg)}
+  #dice .num{font-size:clamp(46px,13vw,62px);font-weight:700;line-height:1}
+  #dice .lab{font-size:clamp(10px,2.8vw,11px);letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);margin-top:4px}
+  #dice .cardname{font-size:clamp(10px,2.8vw,11px);color:var(--ink2);margin-top:6px;max-width:130px;text-align:center}
 
   /* chapter intro */
-  #chapter{top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .5s;pointer-events:none}
+  #chapter{top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .5s;pointer-events:none;padding:0 16px}
   #chapter.show{opacity:1;background:rgba(223,215,196,.55)}
-  #chapter .inner{background:var(--cream);border:2px solid var(--ink);border-radius:4px;padding:26px 40px;text-align:center;box-shadow:7px 7px 0 rgba(84,79,87,.2);max-width:80vw}
-  #chapter .ch{font-size:11px;letter-spacing:.5em;text-transform:uppercase;color:var(--rose2)}
-  #chapter .ti{font-family:"Cormorant Garamond",serif;font-size:34px;font-weight:700;margin:8px 0;letter-spacing:.04em}
-  #chapter .hk{font-family:"Cormorant Garamond",serif;font-size:18px;font-style:italic;color:var(--ink2)}
+  #chapter .inner{background:var(--cream);border:2px solid var(--ink);border-radius:4px;padding:clamp(18px,5vw,26px) clamp(22px,7vw,40px);text-align:center;box-shadow:6px 6px 0 rgba(84,79,87,.2);max-width:90vw}
+  #chapter .ch{font-size:clamp(10px,2.8vw,11px);letter-spacing:.5em;text-transform:uppercase;color:var(--rose2)}
+  #chapter .ti{font-family:"Cormorant Garamond",serif;font-size:clamp(24px,7vw,34px);font-weight:700;margin:8px 0;letter-spacing:.04em}
+  #chapter .hk{font-family:"Cormorant Garamond",serif;font-size:clamp(15px,4.4vw,18px);font-style:italic;color:var(--ink2)}
 
-  #conn{top:10px;right:12px;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink2);background:var(--cream);border:1.5px solid var(--ink);padding:2px 8px;border-radius:2px}
+  #conn{top:calc(8px + env(safe-area-inset-top));right:10px;font-size:clamp(8px,2.2vw,10px);letter-spacing:.2em;text-transform:uppercase;color:var(--ink2);background:var(--cream);border:1.5px solid var(--ink);padding:2px 8px;border-radius:2px}
 </style>
 </head>
 <body>
@@ -129,14 +135,47 @@
 <div id="hand" class="ui"></div>
 
 <script>
-const TILE = 16, ZOOM = 3;
+const TILE = 16;
+// camera zoom: ~2 on phones (more world in frame), 3 on desktop. Integer for crisp pixels.
+function viewZoom(){ return Math.max(2, Math.min(4, Math.round(window.innerWidth/440))); }
 // Ninja Adventure sheet: 4 columns = directions, 7 rows = frames. Walk = rows 0-3 of a column.
 const DIR_COL = { down:0, up:1, right:2, left:3 };
 const PROP = {
-  tree:  { frames:[[0,6],[1,6],[0,7],[1,7]], ox:-8, oy:-16 },
-  bush:  { frames:[[3,3]], ox:0, oy:0 },
+  tree:    { frames:[[0,6],[1,6],[0,7],[1,7]], ox:-8, oy:-16 },
+  tree2:   { frames:[[2,6],[3,6],[2,7],[3,7]], ox:-8, oy:-16 },
+  bush:    { frames:[[3,3]], ox:0, oy:0 },
+  topiary: { tex:"topiary", ox:-2, oy:-8 },
+  flower:  { tex:"flowertuft", ox:0, oy:0 },
+  rock:    { tex:"rock", ox:0, oy:2 },
+  lamp:    { tex:"flag", ox:-2, oy:-8 },
 };
 const PROP_COLS = 20;
+
+function makeProps(s){
+  // station flag
+  let g=s.add.graphics();
+  g.fillStyle(0x544f57,1); g.fillRect(7,2,2,22);
+  g.fillStyle(0xe3c8c6,1); g.fillTriangle(9,3,9,12,18,7);
+  g.generateTexture("flag",20,24); g.destroy();
+  // pastel topiary (sage ball on a trunk)
+  g=s.add.graphics();
+  g.fillStyle(0x6f6a55,1); g.fillRect(9,18,3,4);
+  g.fillStyle(0x8aa37c,1); g.fillCircle(10,11,9);
+  g.fillStyle(0xa8bf98,1); g.fillCircle(8,9,5);
+  g.generateTexture("topiary",20,24); g.destroy();
+  // flower tuft (dots of rose/gold/lavender on a green base)
+  g=s.add.graphics();
+  g.fillStyle(0x9fb38d,1); g.fillEllipse(8,12,14,7);
+  const cols=[0xe3c8c6,0xe2cea0,0xc8bfd6,0xd4a8a4];
+  const pts=[[4,9],[8,7],[12,9],[6,12],[10,12]];
+  pts.forEach((p,i)=>{ g.fillStyle(cols[i%cols.length],1); g.fillCircle(p[0],p[1],2); });
+  g.generateTexture("flowertuft",16,16); g.destroy();
+  // soft rock
+  g=s.add.graphics();
+  g.fillStyle(0xb7b2b8,1); g.fillEllipse(8,8,13,9);
+  g.fillStyle(0xcfcbd0,1); g.fillEllipse(6,6,6,4);
+  g.generateTexture("rock",16,14); g.destroy();
+}
 const WALK_SPEED = 1.1;   // route tiles per second
 const SPACING = 1.25;     // route-tile gap between followers
 const playerId = (()=>{ let p=localStorage.getItem("vq_pid"); if(!p){p="p"+Math.random().toString(36).slice(2,8);localStorage.setItem("vq_pid",p);} return p; })();
@@ -159,11 +198,8 @@ class World extends Phaser.Scene{
   create(){
     scene=this;
     this.cameras.main.setBackgroundColor("#cdd8c6");
-    // pastel flag texture for station markers
-    const g=this.add.graphics();
-    g.fillStyle(0x544f57,1); g.fillRect(7,2,2,22);
-    g.fillStyle(0xe3c8c6,1); g.fillTriangle(9,3,9,12,18,7);
-    g.generateTexture("flag",20,24); g.destroy();
+    makeProps(this);
+    this.scale.on("resize", ()=>{ if(world) this.cameras.main.setZoom(viewZoom()); });
     // anims for each hero
     for(let i=1;i<=10;i++){
       for(const dir in DIR_COL){
@@ -224,18 +260,19 @@ function buildWorld(W){
     rt.drawFrame("ground",W.tiles[y*W.w+x],x*TILE,y*TILE);
   }
   for(const p of W.props){
-    if(p.kind==="lamp"){ rt.draw("flag",p.x*TILE-2,p.y*TILE-8); continue; }
     const def=PROP[p.kind]; if(!def) continue;
+    const ox=def.ox||0, oy=def.oy||0;
+    if(def.tex){ rt.draw(def.tex, p.x*TILE+ox, p.y*TILE+oy); continue; }
     const b=def.frames[0];
     for(const [c,r] of def.frames){
-      const fx=p.x*TILE+def.ox+(c-b[0])*TILE;
-      const fy=p.y*TILE+def.oy+(r-b[1])*TILE;
+      const fx=p.x*TILE+ox+(c-b[0])*TILE;
+      const fy=p.y*TILE+oy+(r-b[1])*TILE;
       rt.drawFrame("props",pf(c,r),fx,fy);
     }
   }
   scene.rt=rt;
   scene.cameras.main.setBounds(0,0,W.w*TILE,W.h*TILE);
-  scene.cameras.main.setZoom(ZOOM);
+  scene.cameras.main.setZoom(viewZoom());
 }
 
 function buildParty(snap){
