@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from .world import WorldMap, facing_from_delta, generate_world, pick_theme
+from .world import WorldMap, facing_from_delta, generate_world
 
 # VibeQuest — a shared multiplayer DnD world where players collectively ARE the Dungeon Master.
 # AI agents are the party. Players play cards that resolve the quest. Cards batch in time windows,
@@ -20,165 +20,115 @@ from .world import WorldMap, facing_from_delta, generate_world, pick_theme
 
 CARD_WINDOW = 30.0  # seconds per card window
 
-# ── Quest templates ────────────────────────────────────────────────────────────────────────────────
-# Each template is a recognizable situation treated as an epic DnD quest. The slots are filled
-# randomly at quest start, producing infinite variety from finite archetypes.
+# ── Quest categories ───────────────────────────────────────────────────────────────────────────────
+# A category fixes the world theme and provides a curated task + complication pool.
+# The LLM constructs the narrative JIT as cards are played — only the starting situation is fixed.
+# Future categories: grocery, commute, school, airport, etc.
 
-ITEMS = [
-    "the stapler",
-    "Gerald's emotional support water bottle",
-    "the Wi-Fi password",
-    "a single AirPod",
-    "the good scissors",
-    "a parking validation stamp",
-    "last quarter's TPS reports",
-    "the aux cable",
-    "someone's phone charger",
-    "the spare key",
-    "a very important sticky note",
-    "the office plant (Frank)",
-    "the last clean mug",
-    "the conference room booking",
-]
-
-LOCATIONS = [
-    "the enchanted forest (second floor, past the printer)",
-    "accounting",
-    "the dragon's second lair",
-    "the break room microwave dimension",
-    "a locked filing cabinet",
-    "the parking garage level B",
-    "the realm beyond the supply closet",
-    "a suspiciously enthusiastic Slack channel",
-    "the building's rooftop",
-    "a forgotten shared drive folder",
-    "the CEO's assistant's desk",
-    "the haunted meeting room (the one with the broken AC)",
-]
-
-DEADLINES = [
-    "the 3pm standup",
-    "Dave notices it's missing",
-    "the quarterly review",
-    "end of business",
-    "someone emails about it",
-    "the all-hands",
-    "the fire drill",
-    "anyone else arrives Monday morning",
-    "the auditors get here",
-    "lunch",
-]
-
-COMPLICATIONS = [
-    "the elevator is out of service",
-    "there is a mandatory training happening in the way",
-    "someone is already looking for the same thing",
-    "the lights on that floor are motion-activated and very dramatic",
-    "there is a very long queue",
-    "a passive-aggressive note has been left at the scene",
-    "a senior stakeholder is involved somehow",
-    "the item may have been moved twice already",
-    "it is unclear who is actually responsible for this",
-    "building security has opinions",
-]
-
-QUEST_TEMPLATES = [
-    {
-        "id": "retrieve",
-        "title": "The Retrieval",
-        "title_template": "Missing: {item}",
-        "hook": "Someone needs to retrieve {item} from {location} before {deadline}.",
-        "complication": "{complication}.",
-        "slots": {
-            "item": ITEMS,
-            "location": LOCATIONS,
-            "deadline": DEADLINES,
-            "complication": COMPLICATIONS,
-        },
+QUEST_CATEGORIES: dict[str, dict] = {
+    "office": {
+        "theme": "office",
+        "tasks": [
+            {
+                "title": "Q3 Expense Report",
+                "hook": "Someone needs to submit the Q3 expense report before the finance system locks at 5pm.",
+            },
+            {
+                "title": "Fix The Printer",
+                "hook": "The printer on the third floor has stopped working. It needs to be running before the 2pm presentation.",
+            },
+            {
+                "title": "The Missing Key Fob",
+                "hook": "Someone's access key fob stopped working and they can't get into the building. Needs to be resolved before their shift ends.",
+            },
+            {
+                "title": "Coffee Pod Situation",
+                "hook": "Someone used the last coffee pod and didn't reorder. This needs to be addressed before the 9am stand-up.",
+            },
+            {
+                "title": "Room Double-Booking",
+                "hook": "The main conference room is double-booked for Thursday. Someone needs to sort this out before people start arriving.",
+            },
+            {
+                "title": "The Unsigned NDA",
+                "hook": "A contractor started today without signing the NDA. Legal needs it signed before end of day.",
+            },
+            {
+                "title": "Laptop Recovery",
+                "hook": "An ex-employee still has a company laptop. IT needs it back before the asset audit tomorrow.",
+            },
+            {
+                "title": "The Fish Incident",
+                "hook": "Someone microwaved fish in the break room and the smell is spreading to the open plan. This has to stop.",
+            },
+            {
+                "title": "All-Hands Deck",
+                "hook": "The all-hands presentation is in two hours and slides are still missing from three departments.",
+            },
+            {
+                "title": "New Hire Setup",
+                "hook": "A new hire started today with no desk, no computer, and no system access. Someone needs to fix this.",
+            },
+            {
+                "title": "The IT Ticket",
+                "hook": "An IT support ticket has been open for three weeks with no update. Someone needs to get it resolved before the end of the quarter.",
+            },
+            {
+                "title": "Catering Mix-Up",
+                "hook": "The catering order for tomorrow's client lunch was placed at the wrong branch. Someone needs to sort this out today.",
+            },
+            {
+                "title": "Form 2309-B",
+                "hook": "A form needs three signatures before it can be processed. Two of the signatories are in different buildings and one is not responding.",
+            },
+            {
+                "title": "The Projector",
+                "hook": "The projector in the small meeting room won't connect to any laptop. A client presentation starts in 20 minutes.",
+            },
+            {
+                "title": "Parking Situation",
+                "hook": "A VIP visitor is arriving in an hour and nobody arranged parking. The visitor is already on their way.",
+            },
+            {
+                "title": "The Good Stapler",
+                "hook": "Someone's good stapler has gone missing from their desk. They have asked for help recovering it. The regular staplers are not acceptable.",
+            },
+            {
+                "title": "The Vending Machine",
+                "hook": "The vending machine took someone's money and dispensed nothing. Three other people have also lost money. Someone needs to get to the bottom of this.",
+            },
+            {
+                "title": "Birthday Logistics",
+                "hook": "It is someone's birthday. A cake was ordered to the wrong address. The birthday person arrives in 45 minutes.",
+            },
+            {
+                "title": "The Thermostat Dispute",
+                "hook": "Two teams on the same floor are in a cold war over the office thermostat. Someone needs to mediate before it escalates to HR.",
+            },
+            {
+                "title": "The Offboarding",
+                "hook": "Someone is leaving at end of day and needs to be formally offboarded. Nobody owns this process and nothing has been started.",
+            },
+        ],
+        "complications": [
+            "Half the relevant people are in back-to-back meetings until 4pm.",
+            "The system has been having intermittent outages all morning.",
+            "The elevator to the relevant floor is out of service.",
+            "Nobody seems to know who is actually responsible for this.",
+            "There is a conflicting urgent priority from a different team.",
+            "The person who normally handles this is out sick today.",
+            "The deadline was moved up by two hours without notice.",
+            "Someone already tried to fix this earlier and made it slightly worse.",
+            "A new policy was announced this morning that changes how this should be handled.",
+            "The approval chain requires someone who is currently unreachable.",
+            "There is a mandatory compliance training that everyone must attend this afternoon.",
+            "A vendor has been on hold for 40 minutes.",
+            "The relevant documentation is in a shared drive that nobody has access to.",
+            "Building security has flagged something unrelated but is now involved.",
+            "There is loud construction noise on the relevant floor.",
+        ],
     },
-    {
-        "id": "escort",
-        "title": "The Escort",
-        "title_template": "Re: {npc}",
-        "hook": "Someone needs to safely get {npc} from {location} to {destination} before {deadline}.",
-        "complication": "{complication}.",
-        "slots": {
-            "npc": [
-                "Gerald from IT",
-                "the new intern",
-                "a very important plant",
-                "the visiting consultant",
-                "someone's mother who stopped by",
-                "the fire safety officer",
-            ],
-            "location": LOCATIONS,
-            "destination": [
-                "the exit",
-                "the correct floor",
-                "the parking lot",
-                "the boardroom",
-                "a taxi",
-                "anywhere that isn't here",
-            ],
-            "deadline": DEADLINES,
-            "complication": COMPLICATIONS,
-        },
-    },
-    {
-        "id": "negotiation",
-        "title": "The Negotiation",
-        "title_template": "Re: {demand}",
-        "hook": "Someone needs to convince {npc} to {demand} before {deadline}.",
-        "complication": "{complication}.",
-        "slots": {
-            "npc": [
-                "the building manager",
-                "a very stubborn vendor",
-                "the IT department",
-                "facilities",
-                "HR",
-                "the person who controls the thermostat",
-                "whoever owns this calendar invite",
-            ],
-            "demand": [
-                "approve the budget",
-                "fix the printer",
-                "move the meeting",
-                "extend the deadline",
-                "let the party through",
-                "acknowledge the email",
-                "read the document",
-            ],
-            "deadline": DEADLINES,
-            "complication": COMPLICATIONS,
-        },
-    },
-    {
-        "id": "investigation",
-        "title": "The Investigation",
-        "title_template": "Incident: {location}",
-        "hook": "Something has gone missing from {location}. Someone needs to figure out what happened before {deadline}.",
-        "complication": "{complication}.",
-        "slots": {
-            "location": LOCATIONS,
-            "deadline": DEADLINES,
-            "complication": COMPLICATIONS,
-        },
-    },
-    {
-        "id": "delivery",
-        "title": "The Delivery",
-        "title_template": "Deliver: {item}",
-        "hook": "Someone needs to get {item} to {location} before {deadline}. It must arrive intact.",
-        "complication": "{complication}.",
-        "slots": {
-            "item": ITEMS,
-            "location": LOCATIONS,
-            "deadline": DEADLINES,
-            "complication": COMPLICATIONS,
-        },
-    },
-]
+}
 
 # ── Party archetypes ───────────────────────────────────────────────────────────────────────────────
 
@@ -521,18 +471,6 @@ class GameState:
             self.log = self.log[-200:]
 
 
-def _fill_template(template: dict, rng: random.Random) -> tuple[str, str, str]:
-    slots = template["slots"]
-    filled: dict[str, str] = {}
-    for key, pool in slots.items():
-        filled[key] = rng.choice(pool)
-    hook = template["hook"].format(**filled)
-    complication = template.get("complication", "").format(**filled)
-    title_tpl = template.get("title_template", template["title"])
-    title = title_tpl.format(**filled).title()
-    return hook, complication, title
-
-
 def _make_character(rng: random.Random) -> PartyMember:
     arch = rng.choice(PARTY_ARCHETYPES)
     sprite = rng.randint(1, 10)
@@ -545,28 +483,30 @@ def _make_character(rng: random.Random) -> PartyMember:
     )
 
 
-def _make_quest(rng: random.Random) -> QuestState:
-    template = rng.choice(QUEST_TEMPLATES)
-    hook, complication, title = _fill_template(template, rng)
+def _make_quest(rng: random.Random) -> tuple[QuestState, str]:
+    cat_name = rng.choice(list(QUEST_CATEGORIES.keys()))
+    cat = QUEST_CATEGORIES[cat_name]
+    task = rng.choice(cat["tasks"])
+    complication = rng.choice(cat["complications"])
     quest_id = str(uuid.uuid4())[:8]
-    return QuestState(
+    quest = QuestState(
         id=quest_id,
-        template_id=template["id"],
-        title=title,
-        hook=hook,
+        template_id=cat_name,
+        title=task["title"],
+        hook=task["hook"],
         complication=complication,
         register=rng.choice(REGISTERS),
     )
+    return quest, cat["theme"]
 
 
 def new_game(rng: random.Random | None = None) -> GameState:
     rng = rng or random.Random()
     now = time.time()
     character = _make_character(rng)
-    quest = _make_quest(rng)
+    quest, theme = _make_quest(rng)
     window = WindowState(opened_at=now, closes_at=now + CARD_WINDOW)
     run_id = str(uuid.uuid4())[:8]
-    theme = pick_theme(quest.hook, quest.register)
     world = generate_world(rng, theme=theme, step_count=MAX_RESOLUTIONS)
     state = GameState(run_id=run_id, character=character, quest=quest, window=window, world=world)
     state.lx, state.ly = world.route[0]
