@@ -630,98 +630,56 @@ def generate_indoor_world(
     rng.shuffle(shuffled)
     used_names = shuffled[:n]
 
-    LEFT_CX, RIGHT_CX = 16, 48
-    ROW_PITCH = 18
-    MARGIN = 6
-    n_rows = (n + 1) // 2
+    n_upper = (n + 1) // 2
+    n_lower = n // 2
+
+    ROOM_INT_H = 9
+    CORRIDOR_H = 3
+
+    upper_bot = ROOM_INT_H + 1
+    corr_y0 = upper_bot + 1
+    corr_y1 = corr_y0 + CORRIDOR_H
+    lower_top = corr_y1
+    lower_bot = lower_top + ROOM_INT_H + 1
 
     w = 64
-    h = n_rows * ROW_PITCH + MARGIN * 2
+    h = (lower_bot + 1) if n_lower > 0 else (upper_bot + 1)
     tiles = [HEDGE] * (w * h)
+
+    if n_lower > 0:
+        for y in range(corr_y0, corr_y1):
+            for x in range(1, w - 1):
+                tiles[_idx(w, x, y)] = PATH
 
     room_data: list[tuple[int, int, str, int, int, int]] = []
     waypoints: list[list[int]] = []
-    for i in range(n):
-        row = i // 2
-        col = i % 2
-        cx = LEFT_CX if col == 0 else RIGHT_CX
-        cy = h - MARGIN - ROW_PITCH // 2 - row * ROW_PITCH
-        name = used_names[i]
-        fl, rw_r, rh_r = zone_def_map.get(name, (FLOOR, 18, 10))
-        rh_r = min(rh_r, ROW_PITCH - 6)
-        room_data.append((cx, cy, name, fl, rw_r, rh_r))
-        waypoints.append([cx, cy])
 
-    for cx, cy, _name, fl, rw_r, rh_r in room_data:
-        hw, hh = rw_r // 2, rh_r // 2
-        for y in range(cy - hh + 1, cy + hh):
-            for x in range(cx - hw + 1, cx + hw):
-                if 0 <= x < w and 0 <= y < h:
-                    tiles[_idx(w, x, y)] = fl
-        for x in range(cx - hw, cx + hw + 1):
-            for bdy in (cy - hh, cy + hh):
-                if 0 <= x < w and 0 <= bdy < h:
-                    tiles[_idx(w, x, bdy)] = HEDGE
-        for y in range(cy - hh, cy + hh + 1):
-            for bdx in (cx - hw, cx + hw):
-                if 0 <= bdx < w and 0 <= y < h:
-                    tiles[_idx(w, bdx, y)] = HEDGE
+    def add_room(sx0: int, sx1: int, y_top: int, y_bot: int, door_y: int, name: str) -> tuple:
+        fl, _, _ = zone_def_map.get(name, (FLOOR, 18, 10))
+        cx = (sx0 + sx1) // 2
+        cy = (y_top + y_bot) // 2
+        for y in range(y_top + 1, y_bot):
+            for x in range(sx0 + 1, sx1):
+                tiles[_idx(w, x, y)] = fl
+        for dx in (-1, 0, 1):
+            nx = cx + dx
+            if sx0 < nx < sx1 and 0 <= door_y < h:
+                tiles[_idx(w, nx, door_y)] = fl
+        return (cx, cy, name, fl, sx1 - sx0, y_bot - y_top)
 
-    for row in range(n_rows - 1):
-        lower_cy = h - MARGIN - ROW_PITCH // 2 - row * ROW_PITCH
-        upper_cy = lower_cy - ROW_PITCH
-        lower_rooms = [rd for rd in room_data if rd[1] == lower_cy]
-        upper_rooms = [rd for rd in room_data if rd[1] == upper_cy]
-        if not lower_rooms or not upper_rooms:
-            continue
-        max_rh_lower = max(rd[5] for rd in lower_rooms)
-        max_rh_upper = max(rd[5] for rd in upper_rooms)
-        gap_top = upper_cy + max_rh_upper // 2 + 1
-        gap_bot = lower_cy - max_rh_lower // 2 - 1
-        for y in range(gap_top, gap_bot + 1):
-            for x in range(2, w - 2):
-                tiles[_idx(w, x, y)] = PATH
+    for i in range(n_upper):
+        sx0 = i * w // n_upper
+        sx1 = (i + 1) * w // n_upper
+        rd = add_room(sx0, sx1, 0, upper_bot, upper_bot, used_names[i])
+        room_data.append(rd)
+        waypoints.append([rd[0], rd[1]])
 
-    for i in range(0, n - 1, 2):
-        if i + 1 >= n:
-            break
-        lcx, lcy, _ln, _lfl, lrw, _lrh = room_data[i]
-        rcx, rcy, _rn, _rfl, rrw, _rrh = room_data[i + 1]
-        lwall = lcx + lrw // 2
-        rwall = rcx - rrw // 2
-        for x in range(lwall + 1, rwall):
-            for dy in range(-1, 2):
-                ny = lcy + dy
-                if 0 <= x < w and 0 <= ny < h:
-                    tiles[_idx(w, x, ny)] = PATH
-
-    for i, (cx, cy, _name, fl, rw_r, rh_r) in enumerate(room_data):
-        row = i // 2
-        col = i % 2
-        hw, hh = rw_r // 2, rh_r // 2
-        if row < n_rows - 1:
-            for dx in range(-1, 2):
-                if 0 <= cx + dx < w and 0 <= cy - hh < h:
-                    tiles[_idx(w, cx + dx, cy - hh)] = fl
-        if row > 0 or i == 0:
-            for dx in range(-1, 2):
-                if 0 <= cx + dx < w and 0 <= cy + hh < h:
-                    tiles[_idx(w, cx + dx, cy + hh)] = fl
-        if col == 0 and i + 1 < n:
-            for dy in range(-1, 2):
-                if 0 <= cx + hw < w and 0 <= cy + dy < h:
-                    tiles[_idx(w, cx + hw, cy + dy)] = fl
-        if col == 1:
-            for dy in range(-1, 2):
-                if 0 <= cx - hw < w and 0 <= cy + dy < h:
-                    tiles[_idx(w, cx - hw, cy + dy)] = fl
-
-    cx0, cy0, _n0, fl0, _rw0, rh0 = room_data[0]
-    for y in range(cy0 + rh0 // 2 + 1, min(h - 1, cy0 + rh0 // 2 + MARGIN)):
-        for dx in range(-1, 2):
-            nx = cx0 + dx
-            if 0 <= nx < w and 0 <= y < h:
-                tiles[_idx(w, nx, y)] = PATH
+    for i in range(n_lower - 1, -1, -1):
+        sx0 = i * w // n_lower
+        sx1 = (i + 1) * w // n_lower
+        rd = add_room(sx0, sx1, lower_top, lower_bot, lower_top, used_names[n_upper + i])
+        room_data.append(rd)
+        waypoints.append([rd[0], rd[1]])
 
     for cx, cy, *_ in room_data:
         tiles[_idx(w, cx, cy)] = LAVENDER
@@ -752,7 +710,7 @@ def generate_indoor_world(
         tiles=tiles,
         props=props,
         waypoints=waypoints,
-        waypoint_names=used_names,
+        waypoint_names=[rd[2] for rd in room_data],
         route=route,
         wp_route_idx=wp_route_idx,
         theme=theme,

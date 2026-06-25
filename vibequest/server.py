@@ -47,7 +47,7 @@ _travel_processed: set[str] = set()
 
 def _character_desc(state: GameState) -> str:
     c = state.character
-    return f"{c.name} the {c.role}"
+    return f"{c.name}: {c.personality}"
 
 
 def _story_so_far(state: GameState) -> str:

@@ -481,6 +481,7 @@ function buildCharacter(snap){
   const m={spr,shadow,id:pm.id,name:pm.name,role:pm.role,sprite:pm.sprite,status:pm.status,moving:false,dir:"down"};
   idle(m); character=m;
   scene.cameras.main.startFollow(spr,true,0.09,0.09);
+  scheduleAmbient();
 }
 
 function buildNPCs(snap){
@@ -586,7 +587,47 @@ function updateCharacterStatus(pm){
 
 
 // ---- speech bubbles ----
+const IDLE_LINES=[
+  "Has anyone seen my mug?",
+  "Can we take this offline?",
+  "Just circling back on this.",
+  "I have a hard stop at 2.",
+  "Who didn't refill the paper tray?",
+  "Per my last email...",
+  "Can I steal you for 5 minutes?",
+  "This is above my pay grade.",
+  "The printer's out again.",
+  "Is the WiFi down for anyone else?",
+  "Sorry, I was on mute.",
+  "Did Gary from IT call back?",
+  "Let's put a pin in it.",
+  "Bandwidth is tight this week.",
+  "Who touched the thermostat?",
+  "There's cake in the break room.",
+  "This meeting could have been an email.",
+  "We're still waiting on legal.",
+  "Does anyone have a charger?",
+  "The microwave smells again.",
+  "No one told me about this.",
+  "We need to socialize this idea.",
+  "The 2pm is getting pushed.",
+  "That's a me problem.",
+  "Is this on the shared drive?",
+];
 const bubbles=[];
+let ambientTimer=null;
+function scheduleAmbient(){
+  clearTimeout(ambientTimer);
+  ambientTimer=setTimeout(()=>{
+    if(bubbles.length===0&&character){
+      const pool=[character,...npcs].filter(Boolean);
+      const m=pool[Math.floor(Math.random()*pool.length)];
+      const line=IDLE_LINES[Math.floor(Math.random()*IDLE_LINES.length)];
+      speak(m,m.name,line,3800);
+    }
+    scheduleAmbient();
+  },28000+Math.floor(Math.random()*14000));
+}
 function memberFor(name, role){ return character; }
 function speak(member, name, text, dur){
   if(!member||!text) return;
@@ -606,7 +647,7 @@ function updateBubbles(){
 function clearBubbles(){ for(const b of bubbles) b.el.remove(); bubbles.length=0; }
 function showReactions(rs){
   if(!rs||!rs.length||!character) return;
-  const r=rs.find(r=>r.name===character.name||r.role===character.role)||rs[0];
+  const r=rs.find(r=>r.name===character.name)||rs[0];
   speak(character,character.name,r.line);
 }
 let toastTimer=null;
