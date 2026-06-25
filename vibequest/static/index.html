@@ -56,17 +56,26 @@
     background:rgba(244,236,214,.86);padding:4px 14px;border-radius:4px;opacity:0;transition:opacity .4s}
   #toast.show{opacity:1}
 
-  /* room label — shows destination while moving, current room at rest */
-  #caption{bottom:calc(148px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);max-width:80vw;text-align:center;
+  /* room label */
+  #caption{bottom:calc(clamp(130px,37vw,170px) + env(safe-area-inset-bottom) + 10px);left:50%;transform:translateX(-50%);max-width:80vw;text-align:center;
     font-family:"Courier Prime",monospace;font-size:clamp(8px,2.2vw,10px);letter-spacing:.3em;text-transform:uppercase;color:var(--ink2);
     background:rgba(196,174,136,.55);padding:3px 10px;border-radius:2px;opacity:0;transition:opacity .5s;white-space:nowrap;pointer-events:none}
   #caption.show{opacity:1}
   #caption.at-rest{color:var(--ink);background:rgba(196,174,136,.72);letter-spacing:.35em}
 
-  /* fan hand */
-  #hand{position:fixed;bottom:calc(8px + env(safe-area-inset-bottom));left:50%;width:0;height:0;pointer-events:none;z-index:10}
+  /* card zone — 25 / 50 / 25 horizontal strip */
+  #cardzone{position:fixed;bottom:0;left:0;right:0;display:flex;align-items:flex-end;z-index:10;pointer-events:none}
+  #drawpile{flex:0 0 25%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+    padding-bottom:calc(8px + env(safe-area-inset-bottom));pointer-events:auto;position:relative;overflow:visible}
+  #hand{flex:0 0 50%;position:relative;height:clamp(130px,37vw,170px);pointer-events:none;overflow:visible}
+  #pile{flex:0 0 25%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+    padding-bottom:calc(8px + env(safe-area-inset-bottom));pointer-events:auto;cursor:pointer;position:relative;overflow:visible;z-index:11}
+  /* inner sized slot shared by both piles */
+  .pile-slot{position:relative;width:clamp(58px,15vw,72px);height:clamp(78px,21vw,96px);flex-shrink:0}
+  .pile-lbl{position:absolute;top:-15px;left:50%;transform:translateX(-50%);font-size:7px;letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);font-family:"Courier Prime",monospace;white-space:nowrap}
+  /* hand cards anchored at center-bottom of #hand */
   .card{
-    position:absolute;bottom:0;left:0;
+    position:absolute;bottom:0;left:50%;
     width:clamp(80px,22vw,100px);min-height:clamp(112px,32vw,144px);height:auto;
     border:2px solid var(--ink);border-radius:6px;
     background:var(--cream2);padding:clamp(5px,1.4vw,7px) clamp(7px,2vw,10px);
@@ -82,25 +91,18 @@
   .card.accumulate{background:#88d8a8}.card.action{background:#f8be60}
   .card.chaos{background:#f09098}.card.tweak{background:#b0a0e8}
   .card.played{opacity:0;pointer-events:none}
-  /* draw pile — bottom-left, above hand */
-  #drawpile{position:fixed;left:12px;bottom:clamp(156px,44vw,196px);
-    width:clamp(60px,16vw,76px);height:clamp(80px,22vw,100px);z-index:11;cursor:default}
+  /* draw pile back */
   .draw-back{position:absolute;inset:0;background:#5a1a28;border:2px solid #3a0a18;border-radius:6px;box-shadow:2px 3px 0 rgba(30,20,40,.35)}
   .draw-back::after{content:"";position:absolute;inset:5px;border:1px solid rgba(255,200,180,.2);border-radius:2px}
   .draw-back.s1{transform:translate(-2px,-2px)}
   .draw-back.s2{transform:translate(-4px,-4px)}
-  #drawpile .pile-lbl{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:7px;letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);font-family:"Courier Prime",monospace;white-space:nowrap}
-  /* played pile — bottom-right, above hand */
-  #pile{position:fixed;right:12px;bottom:clamp(156px,44vw,196px);
-    width:clamp(60px,16vw,76px);height:clamp(80px,22vw,100px);pointer-events:auto;cursor:pointer;z-index:11;overflow:visible}
-  .pile-card{position:absolute;inset:0;border:2px solid var(--ink);border-radius:6px;background:var(--cream);
+  /* played pile cards — name only, no overflow */
+  .pile-card{position:absolute;inset:0;border:2px solid var(--ink);border-radius:6px;background:var(--cream);overflow:hidden;
     box-shadow:2px 3px 0 rgba(26,20,40,.14);display:flex;flex-direction:column;gap:2px;padding:clamp(4px,1.4vw,6px) clamp(6px,1.8vw,8px)}
-  .pile-card .ct{font-size:clamp(5px,1.5vw,7px);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:700}
-  .pile-card .cn{font-size:clamp(9px,2.5vw,11px);font-weight:700;line-height:1.15;font-family:"Cormorant Garamond",serif}
-  .pile-card .cd{font-size:clamp(6px,1.6vw,8px);color:var(--ink);line-height:1.3;flex:none;overflow:hidden}
+  .pile-card .ct{font-size:clamp(5px,1.5vw,7px);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:700;flex-shrink:0}
+  .pile-card .cn{font-size:clamp(9px,2.5vw,11px);font-weight:700;line-height:1.2;font-family:"Cormorant Garamond",serif;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
   .pile-card.accumulate{background:#88d8a8}.pile-card.action{background:#f8be60}
   .pile-card.chaos{background:#f09098}.pile-card.tweak{background:#b0a0e8}
-  @keyframes deal-in{from{opacity:0;transform:var(--deal-start)}to{opacity:1;transform:var(--deal-end)}}
   /* card detail overlay */
   .card-detail-overlay{position:fixed;inset:0;z-index:800;display:flex;align-items:center;justify-content:center;background:rgba(28,26,30,.52)}
   .card-detail-overlay .card{position:relative;width:min(250px,72vw);min-height:0;height:auto;padding:18px 20px;transform:rotate(-2deg) !important;box-shadow:0 20px 60px rgba(0,0,0,.4);cursor:default;pointer-events:none;transition:none}
@@ -196,9 +198,11 @@
   </div>
 </div>
 
-<div id="drawpile" class="ui"></div>
-<div id="hand" class="ui"></div>
-<div id="pile" class="ui"></div>
+<div id="cardzone" class="ui">
+  <div id="drawpile"></div>
+  <div id="hand"></div>
+  <div id="pile"></div>
+</div>
 
 <script>
 const TILE = 16;
@@ -636,19 +640,21 @@ function cardTransform(t,drop,step){
 }
 
 function fanStep(n){
-  const available=window.innerWidth*0.5 - 80;
-  return n>1 ? Math.min(55, available/(n-1)*0.85) : 0;
+  const half=window.innerWidth*0.22;
+  return n>1 ? Math.min(52, half/(n-1)) : 0;
 }
 
 function renderDrawPile(count){
   const dp=document.getElementById("drawpile"); dp.innerHTML="";
+  const slot=document.createElement("div"); slot.className="pile-slot";
   const lbl=document.createElement("div"); lbl.className="pile-lbl";
-  lbl.textContent="draw"; dp.appendChild(lbl);
+  lbl.textContent="draw"; slot.appendChild(lbl);
   const layers=Math.min(3,count||1);
   for(let i=layers-1;i>=0;i--){
     const b=document.createElement("div"); b.className="draw-back"+(i>0?" s"+i:"");
-    dp.appendChild(b);
+    slot.appendChild(b);
   }
+  dp.appendChild(slot);
 }
 
 function showCardDetail(c){
@@ -666,9 +672,12 @@ function renderHand(cards){
   const h=document.getElementById("hand"); h.innerHTML="";
   const n=cards.length; if(!n) return;
   const step=fanStep(n);
-  const dp=document.getElementById("drawpile").getBoundingClientRect();
-  const dpCx=dp.left+dp.width/2; const dpCy=dp.top+dp.height/2;
-  const hAnchorX=window.innerWidth/2; const hAnchorY=window.innerHeight-(8+parseInt(getComputedStyle(document.documentElement).getPropertyValue("--sai")||"0"));
+  const handEl=document.getElementById("hand");
+  const hRect=handEl.getBoundingClientRect();
+  const hAnchorX=hRect.left+hRect.width/2;
+  const dpSlot=document.getElementById("drawpile").querySelector(".pile-slot")||document.getElementById("drawpile");
+  const dpRect=dpSlot.getBoundingClientRect();
+  const startX=(dpRect.left+dpRect.width/2)-hAnchorX;
 
   for(let i=0;i<n;i++){
     const c=cards[i];
@@ -744,15 +753,14 @@ function renderHand(cards){
 
     h.appendChild(el);
 
-    // Deal animation: fly from draw pile position
-    const startX=dpCx-hAnchorX; const startY=dpCy-hAnchorY;
+    // Deal animation: expand from draw pile x position
     const endTransform=cardTransform(t,true,step);
     setTimeout(()=>{
       el.style.transition="none";
-      el.style.transform=`translateX(calc(-50% + ${startX}px)) translateY(${startY}px) rotate(-8deg) scale(.8)`;
+      el.style.transform=`translateX(calc(-50% + ${startX}px)) translateY(10px) rotate(-6deg) scale(.72)`;
       el.style.opacity="1";
       requestAnimationFrame(()=>requestAnimationFrame(()=>{
-        el.style.transition="transform .28s cubic-bezier(.25,.8,.25,1)";
+        el.style.transition="transform .3s cubic-bezier(.25,.8,.25,1)";
         el.style.transform=endTransform;
       }));
     }, i*75);
@@ -762,7 +770,8 @@ function renderHand(cards){
 function flyCardToPile(el,c){
   const from=el.getBoundingClientRect();
   const pile=document.getElementById("pile");
-  const to=pile.getBoundingClientRect();
+  const slot=pile.querySelector(".pile-slot");
+  const to=(slot||pile).getBoundingClientRect();
   const clone=el.cloneNode(true);
   Object.assign(clone.style,{
     position:"fixed",left:from.left+"px",top:from.top+"px",
@@ -783,18 +792,19 @@ function flyCardToPile(el,c){
 function renderPile(){
   const pile=document.getElementById("pile"); pile.innerHTML="";
   if(!pileCards.length)return;
-  const lbl=document.createElement("div");
-  lbl.style.cssText="position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:7px;letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);font-family:'Courier Prime',monospace;white-space:nowrap";
-  lbl.textContent="played"; pile.appendChild(lbl);
+  const slot=document.createElement("div"); slot.className="pile-slot";
+  const lbl=document.createElement("div"); lbl.className="pile-lbl";
+  lbl.textContent="played"; slot.appendChild(lbl);
   for(let i=0;i<pileCards.length;i++){
     const c=pileCards[i];
     const p=document.createElement("div"); p.className="pile-card "+c.type;
-    p.innerHTML=`<div class="ct">${c.type}</div><div class="cn">${c.name}</div><div class="cd">${c.description}</div>`;
+    p.innerHTML=`<div class="ct">${c.type}</div><div class="cn">${c.name}</div>`;
     const rot=PILE_ROTS[i%PILE_ROTS.length];
     p.style.transform=`rotate(${rot}deg) translateY(${-i*2}px)`;
     p.style.zIndex=i;
-    pile.appendChild(p);
+    slot.appendChild(p);
   }
+  pile.appendChild(slot);
   pile.onclick=()=>{
     if(!pileCards.length)return;
     const ov=document.createElement("div");

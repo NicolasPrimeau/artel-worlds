@@ -473,6 +473,23 @@ def pick_theme(hook: str, register: str = "") -> str:
         "tps",
         "office",
         "cubicle",
+        "convince",
+        "negotiate",
+        "building manager",
+        "facilities",
+        "vendor",
+        "hr",
+        "budget",
+        "approve",
+        "deadline",
+        "fellowship",
+        "party must",
+        "someone has",
+        "something has",
+        "must determine",
+        "must deliver",
+        "must escort",
+        "must retrieve",
         "supply",
         "drive",
         "slack",
@@ -488,7 +505,7 @@ def pick_theme(hook: str, register: str = "") -> str:
         "stapler",
     ):
         return "office"
-    return "garden"
+    return "office"
 
 
 def _place_zone_props(

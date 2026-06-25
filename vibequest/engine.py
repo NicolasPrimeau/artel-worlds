@@ -86,7 +86,8 @@ QUEST_TEMPLATES = [
     {
         "id": "retrieve",
         "title": "The Retrieval",
-        "hook": "The fellowship must retrieve {item} from {location} before {deadline}.",
+        "title_template": "Missing: {item}",
+        "hook": "Someone needs to retrieve {item} from {location} before {deadline}.",
         "complication": "{complication}.",
         "slots": {
             "item": ITEMS,
@@ -98,7 +99,8 @@ QUEST_TEMPLATES = [
     {
         "id": "escort",
         "title": "The Escort",
-        "hook": "The party must safely escort {npc} from {location} to {destination} before {deadline}.",
+        "title_template": "Re: {npc}",
+        "hook": "Someone needs to safely get {npc} from {location} to {destination} before {deadline}.",
         "complication": "{complication}.",
         "slots": {
             "npc": [
@@ -125,7 +127,8 @@ QUEST_TEMPLATES = [
     {
         "id": "negotiation",
         "title": "The Negotiation",
-        "hook": "The fellowship must convince {npc} to {demand} before {deadline}.",
+        "title_template": "Re: {demand}",
+        "hook": "Someone needs to convince {npc} to {demand} before {deadline}.",
         "complication": "{complication}.",
         "slots": {
             "npc": [
@@ -153,7 +156,8 @@ QUEST_TEMPLATES = [
     {
         "id": "investigation",
         "title": "The Investigation",
-        "hook": "Something has gone missing from {location}. The fellowship must determine what happened before {deadline}.",
+        "title_template": "Incident: {location}",
+        "hook": "Something has gone missing from {location}. Someone needs to figure out what happened before {deadline}.",
         "complication": "{complication}.",
         "slots": {
             "location": LOCATIONS,
@@ -164,7 +168,8 @@ QUEST_TEMPLATES = [
     {
         "id": "delivery",
         "title": "The Delivery",
-        "hook": "The party must deliver {item} to {location} before {deadline}. It must arrive intact.",
+        "title_template": "Deliver: {item}",
+        "hook": "Someone needs to get {item} to {location} before {deadline}. It must arrive intact.",
         "complication": "{complication}.",
         "slots": {
             "item": ITEMS,
@@ -516,14 +521,16 @@ class GameState:
             self.log = self.log[-200:]
 
 
-def _fill_template(template: dict, rng: random.Random) -> tuple[str, str]:
+def _fill_template(template: dict, rng: random.Random) -> tuple[str, str, str]:
     slots = template["slots"]
     filled: dict[str, str] = {}
     for key, pool in slots.items():
         filled[key] = rng.choice(pool)
     hook = template["hook"].format(**filled)
     complication = template.get("complication", "").format(**filled)
-    return hook, complication
+    title_tpl = template.get("title_template", template["title"])
+    title = title_tpl.format(**filled).title()
+    return hook, complication, title
 
 
 def _make_character(rng: random.Random) -> PartyMember:
@@ -540,12 +547,12 @@ def _make_character(rng: random.Random) -> PartyMember:
 
 def _make_quest(rng: random.Random) -> QuestState:
     template = rng.choice(QUEST_TEMPLATES)
-    hook, complication = _fill_template(template, rng)
+    hook, complication, title = _fill_template(template, rng)
     quest_id = str(uuid.uuid4())[:8]
     return QuestState(
         id=quest_id,
         template_id=template["id"],
-        title=template["title"],
+        title=title,
         hook=hook,
         complication=complication,
         register=rng.choice(REGISTERS),
