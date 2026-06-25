@@ -108,3 +108,17 @@ jobs:
         run: flyctl deploy --app artel-alibi --config fly-verglas.toml --remote-only --yes --strategy immediate
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  deploy-vibequest:
+    needs: test
+    if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy VibeQuest
+        run: flyctl deploy --app artel-vibequest --config fly-vibequest.toml --remote-only --yes --strategy immediate
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
