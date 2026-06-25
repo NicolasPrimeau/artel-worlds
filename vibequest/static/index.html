@@ -61,31 +61,37 @@
   #hand{position:fixed;bottom:calc(8px + env(safe-area-inset-bottom));left:50%;width:0;height:0;pointer-events:none;z-index:10}
   .card{
     position:absolute;bottom:0;left:0;
-    width:clamp(88px,26vw,110px);height:clamp(118px,34vw,148px);
+    width:clamp(88px,26vw,110px);min-height:clamp(124px,36vw,156px);height:auto;
     border:2px solid var(--ink);border-radius:6px;
-    background:var(--cream2);padding:clamp(7px,2vw,10px);
-    display:flex;flex-direction:column;gap:4px;
+    background:var(--cream2);padding:clamp(5px,1.6vw,8px) clamp(8px,2.4vw,12px);
+    display:flex;flex-direction:column;gap:3px;
     box-shadow:3px 4px 0 rgba(84,79,87,.18);
     transform-origin:50% 130%;
     transition:transform .18s ease-out, box-shadow .18s, opacity .18s;
-    pointer-events:auto;cursor:pointer;user-select:none;
+    pointer-events:auto;cursor:pointer;user-select:none;touch-action:none;
   }
-  .card .ct{font-size:clamp(8px,2.2vw,10px);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:700}
-  .card .cn{font-size:clamp(13px,3.8vw,16px);font-weight:700;line-height:1.15;font-family:"Cormorant Garamond",serif;letter-spacing:.02em}
-  .card .cd{font-size:clamp(10px,2.8vw,12px);color:var(--ink);line-height:1.35;flex:1;overflow:hidden}
+  .card .ct{font-size:clamp(7px,1.9vw,9px);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:700}
+  .card .cn{font-size:clamp(12px,3.5vw,15px);font-weight:700;line-height:1.15;font-family:"Cormorant Garamond",serif;letter-spacing:.02em}
+  .card .cd{font-size:clamp(8px,2.1vw,9.5px);color:var(--ink);line-height:1.4;flex:none}
   .card.accumulate{background:#eef2e6}.card.action{background:#fbf0e6}
   .card.chaos{background:#f6e7ea}.card.tweak{background:#ece9f2}
   .card.played{opacity:0;pointer-events:none}
-  /* played pile — stacked cards center-bottom */
-  #pile{position:fixed;bottom:calc(clamp(118px,34vw,148px) + 22px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
-    width:clamp(88px,26vw,110px);height:clamp(118px,34vw,148px);pointer-events:none;z-index:9}
+  /* played pile — bottom-left, out of the way */
+  #pile{position:fixed;bottom:calc(8px + env(safe-area-inset-bottom));left:12px;
+    width:clamp(68px,18vw,82px);height:clamp(90px,24vw,108px);pointer-events:none;z-index:9;overflow:visible}
   .pile-card{position:absolute;inset:0;border:2px solid var(--ink);border-radius:6px;background:var(--cream);
-    box-shadow:2px 3px 0 rgba(84,79,87,.14);display:flex;flex-direction:column;gap:4px;padding:clamp(7px,2vw,10px)}
-  .pile-card .ct{font-size:clamp(8px,2.2vw,10px);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:700}
-  .pile-card .cn{font-size:clamp(13px,3.8vw,16px);font-weight:700;line-height:1.15;font-family:"Cormorant Garamond",serif}
-  .pile-card .cd{font-size:clamp(10px,2.8vw,12px);color:var(--ink);line-height:1.35;flex:1;overflow:hidden}
+    box-shadow:2px 3px 0 rgba(84,79,87,.14);display:flex;flex-direction:column;gap:2px;padding:clamp(5px,1.6vw,7px) clamp(7px,2vw,9px)}
+  .pile-card .ct{font-size:clamp(6px,1.7vw,8px);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:700}
+  .pile-card .cn{font-size:clamp(10px,2.8vw,12px);font-weight:700;line-height:1.15;font-family:"Cormorant Garamond",serif}
+  .pile-card .cd{font-size:clamp(7px,1.8vw,8.5px);color:var(--ink);line-height:1.3;flex:none;overflow:hidden}
   .pile-card.accumulate{background:#eef2e6}.pile-card.action{background:#fbf0e6}
   .pile-card.chaos{background:#f6e7ea}.pile-card.tweak{background:#ece9f2}
+  /* card detail overlay */
+  .card-detail-overlay{position:fixed;inset:0;z-index:800;display:flex;align-items:center;justify-content:center;background:rgba(28,26,30,.52)}
+  .card-detail-overlay .card{position:relative;width:min(250px,72vw);min-height:0;height:auto;padding:18px 20px;transform:rotate(-2deg) !important;box-shadow:0 20px 60px rgba(0,0,0,.4);cursor:default;pointer-events:none;transition:none}
+  .card-detail-overlay .card .cn{font-size:clamp(16px,5vw,20px)}
+  .card-detail-overlay .card .cd{font-size:clamp(11px,3.2vw,13px);line-height:1.5}
+  .card-detail-overlay .card .flavor{font-size:clamp(9px,2.5vw,11px);color:var(--ink2);font-style:italic;margin-top:8px}
 
   /* dice overlay */
   #dice{top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .25s}
@@ -535,41 +541,97 @@ function showChapter(snap){
 
 const PILE_ROTS=[3,-5,7,-2,8,-6,4,-8,2,-4];
 let pileCards=[];
+let selectedCard=null;
 
 function cardTransform(t,drop){
   const rot=t*9; const tx=t*70; const ty=drop?Math.abs(t)*14:Math.abs(t)*14-32;
   return `translateX(calc(-50% + ${tx}px)) translateY(${ty}px) rotate(${rot}deg)`;
 }
 
+function showCardDetail(c){
+  const ov=document.createElement("div"); ov.className="card-detail-overlay";
+  const card=document.createElement("div"); card.className="card "+c.type;
+  card.innerHTML=`<div class="ct">${c.type}</div><div class="cn">${c.name}</div><div class="cd">${c.description}</div>${c.flavor?`<div class="flavor">${c.flavor}</div>`:""}`;
+  ov.appendChild(card);
+  ov.addEventListener("pointerup",()=>ov.remove(),{once:true});
+  document.body.appendChild(ov);
+}
+
 function renderHand(cards){
-  pileCards=[]; renderPile();
+  pileCards=[]; renderPile(); selectedCard=null;
   const h=document.getElementById("hand"); h.innerHTML="";
   const n=cards.length;
   for(let i=0;i<n;i++){
     const c=cards[i];
     const t=n>1?(i/(n-1))*2-1:0;
+    const defZ=n-Math.round(Math.abs(i-(n-1)/2)*2);
     const el=document.createElement("div"); el.className="card "+c.type;
     el.innerHTML=`<div class="ct">${c.type}</div><div class="cn">${c.name}</div><div class="cd">${c.description}</div>`;
     el.style.transform=cardTransform(t,true);
-    el.style.zIndex=n-Math.round(Math.abs(i-(n-1)/2)*2);
-    el.addEventListener("mouseenter",()=>{
+    el.style.zIndex=defZ;
+
+    let holdTimer=null, ptStart=null, dragging=false;
+
+    const raise=()=>{ el.style.transform=cardTransform(t,false); el.style.boxShadow="0 12px 24px rgba(84,79,87,.28)"; el.style.zIndex=100; };
+    const lower=()=>{ if(selectedCard===el)return; el.style.transform=cardTransform(t,true); el.style.boxShadow=""; el.style.zIndex=defZ; };
+    const deselect=()=>{ if(selectedCard===el)selectedCard=null; el.style.transform=cardTransform(t,true); el.style.boxShadow=""; el.style.zIndex=defZ; };
+    el._deselect=deselect;
+
+    el.addEventListener("mouseenter",()=>{ if(el.classList.contains("played")||dragging)return; raise(); });
+    el.addEventListener("mouseleave",()=>{ if(el.classList.contains("played")||dragging)return; lower(); });
+
+    el.addEventListener("pointerdown",e=>{
       if(el.classList.contains("played"))return;
-      el.style.transform=cardTransform(t,false);
-      el.style.boxShadow="0 12px 24px rgba(84,79,87,.28)";
-      el.style.zIndex=100;
+      e.preventDefault(); el.setPointerCapture(e.pointerId);
+      ptStart={x:e.clientX,y:e.clientY,rect:el.getBoundingClientRect()}; dragging=false;
+      holdTimer=setTimeout(()=>{ holdTimer=null; if(!dragging) showCardDetail(c); },450);
     });
-    el.addEventListener("mouseleave",()=>{
-      if(el.classList.contains("played"))return;
-      el.style.transform=cardTransform(t,true);
-      el.style.boxShadow="";
-      el.style.zIndex=n-Math.round(Math.abs(i-(n-1)/2)*2);
+
+    el.addEventListener("pointermove",e=>{
+      if(!ptStart||el.classList.contains("played"))return;
+      const dx=e.clientX-ptStart.x, dy=e.clientY-ptStart.y;
+      if(!dragging&&Math.hypot(dx,dy)>8){
+        dragging=true; clearTimeout(holdTimer); holdTimer=null;
+        const r=ptStart.rect;
+        el.style.transition="none"; el.style.position="fixed";
+        el.style.left=r.left+"px"; el.style.top=r.top+"px";
+        el.style.width=r.width+"px"; el.style.height=r.height+"px";
+        el.style.margin="0"; el.style.transform=`rotate(${t*9}deg)`;
+        el.style.zIndex="300"; el.style.boxShadow="0 16px 32px rgba(84,79,87,.4)"; el.style.opacity=".92";
+      }
+      if(dragging){
+        el.style.left=(ptStart.rect.left+e.clientX-ptStart.x)+"px";
+        el.style.top=(ptStart.rect.top+e.clientY-ptStart.y)+"px";
+      }
     });
-    el.onclick=()=>{
-      if(el.classList.contains("played"))return;
-      flyCardToPile(el,c);
-      el.classList.add("played");
-      playCard(c.id);
-    };
+
+    el.addEventListener("pointerup",e=>{
+      clearTimeout(holdTimer); holdTimer=null;
+      const wasDrag=dragging; dragging=false;
+      const wasTouch=ptStart&&(e.pointerType==="touch"||e.pointerType==="pen");
+      ptStart=null;
+      if(wasDrag){
+        el.style.opacity="";
+        flyCardToPile(el,c); el.classList.add("played"); playCard(c.id);
+        if(selectedCard===el)selectedCard=null;
+      } else if(wasTouch){
+        if(selectedCard===el){ deselect(); }
+        else { if(selectedCard)selectedCard._deselect(); selectedCard=el; raise(); }
+      }
+    });
+
+    el.addEventListener("pointercancel",()=>{
+      clearTimeout(holdTimer); holdTimer=null;
+      if(dragging){
+        el.style.position=""; el.style.left=""; el.style.top=""; el.style.width=""; el.style.height="";
+        el.style.margin=""; el.style.opacity=""; el.style.transition="";
+        el.style.transform=cardTransform(t,selectedCard===el?false:true);
+        el.style.boxShadow=selectedCard===el?"0 12px 24px rgba(84,79,87,.28)":"";
+        el.style.zIndex=selectedCard===el?100:defZ;
+      }
+      dragging=false; ptStart=null;
+    });
+
     h.appendChild(el);
   }
 }
@@ -584,7 +646,7 @@ function flyCardToPile(el,c){
     width:from.width+"px",height:from.height+"px",
     margin:"0",zIndex:"200",pointerEvents:"none",
     transition:"left .32s cubic-bezier(.25,.8,.25,1),top .32s cubic-bezier(.25,.8,.25,1),transform .32s cubic-bezier(.25,.8,.25,1)",
-    transform:el.style.transform,
+    transform:el.style.transform||`rotate(${(pileCards.length%5-2)*4}deg)`,
   });
   document.body.appendChild(clone);
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
@@ -597,6 +659,10 @@ function flyCardToPile(el,c){
 
 function renderPile(){
   const pile=document.getElementById("pile"); pile.innerHTML="";
+  if(!pileCards.length)return;
+  const lbl=document.createElement("div");
+  lbl.style.cssText="position:absolute;top:-15px;left:2px;font-size:7px;letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);font-family:'Courier Prime',monospace;white-space:nowrap";
+  lbl.textContent="played"; pile.appendChild(lbl);
   for(let i=0;i<pileCards.length;i++){
     const c=pileCards[i];
     const p=document.createElement("div"); p.className="pile-card "+c.type;
