@@ -810,7 +810,7 @@ function scheduleAmbient(){
 function memberFor(name, role){ return character; }
 function speak(member, name, text, dur){
   if(!member||!text) return;
-  for(const o of bubbles){ if(o.member===member) o.until=0; }
+  clearBubbles();
   const el=document.createElement("div"); el.className="bubble";
   el.innerHTML=`<span class="nm">${name||member.name}</span>${text}`;
   document.getElementById("bubbles").appendChild(el);
