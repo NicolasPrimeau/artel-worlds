@@ -517,10 +517,9 @@ function showMemberDetail(pm){
   const ov=document.createElement("div");
   ov.style.cssText="position:fixed;inset:0;z-index:800;display:flex;align-items:center;justify-content:center;background:rgba(28,26,30,.5);";
   const box=document.createElement("div");
-  const statusColor=pm.status==="lost"?"#c84444":pm.status==="rattled"?"#d4a840":"var(--sage2)";
-  const hpBar=`<div style="display:flex;gap:3px;margin-top:6px">${Array.from({length:pm.hp},()=>`<div style="width:8px;height:8px;background:${statusColor};border:1px solid var(--ink);border-radius:1px"></div>`).join("")}</div>`;
   box.style.cssText="background:var(--cream);border:2px solid var(--ink);border-radius:4px;padding:18px 22px;min-width:180px;max-width:min(280px,80vw);box-shadow:4px 4px 0 rgba(26,20,40,.2);transform:rotate(1deg)";
-  box.innerHTML=`<div style="font-size:8px;letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);margin-bottom:4px">PARTY</div><div style="font-size:17px;font-weight:700;font-family:'Cormorant Garamond',serif">${pm.name}</div><div style="font-size:10px;color:var(--ink2);margin-top:3px;letter-spacing:.05em">${pm.role}</div><div style="font-size:10px;color:${statusColor};margin-top:4px;text-transform:uppercase;letter-spacing:.06em">${pm.status}</div>${hpBar}`;
+  const statusNote=pm.status==="lost"?`<div style="font-size:10px;color:#c84444;margin-top:8px;letter-spacing:.05em">Out of commission.</div>`:pm.status==="rattled"?`<div style="font-size:10px;color:#d4a840;margin-top:8px;letter-spacing:.05em">Shaken but still going.</div>`:"";
+  box.innerHTML=`<div style="font-size:17px;font-weight:700;font-family:'Cormorant Garamond',serif">${pm.name}</div>${statusNote}`;
   ov.appendChild(box);
   ov.addEventListener("pointerup",()=>ov.remove(),{once:true});
   document.body.appendChild(ov);
