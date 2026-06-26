@@ -59,19 +59,24 @@
   #toast.show{opacity:1}
 
   /* room label */
-  #caption{bottom:calc(clamp(130px,37vw,170px) + 120px + 8px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);max-width:80vw;text-align:center;
+  #caption{bottom:calc(clamp(130px,37vw,170px) + 160px + 8px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);max-width:80vw;text-align:center;
     font-family:"Courier Prime",monospace;font-size:clamp(8px,2.2vw,10px);letter-spacing:.3em;text-transform:uppercase;color:var(--ink2);
     background:rgba(196,174,136,.55);padding:3px 10px;border-radius:2px;opacity:0;transition:opacity .5s;white-space:nowrap;pointer-events:none}
   #caption.show{opacity:1}
   #caption.at-rest{color:var(--ink);background:rgba(196,174,136,.72);letter-spacing:.35em}
 
-  /* card zone — 25 / 50 / 25 horizontal strip */
-  #station-log{position:fixed;bottom:clamp(130px,37vw,170px);left:0;right:0;z-index:9;pointer-events:none;
-    max-height:120px;overflow-y:auto;display:flex;flex-direction:column;justify-content:flex-end;
-    background:rgba(196,174,136,.92);border-top:1px solid rgba(26,20,40,.15);padding:4px 12px 3px}
-  .slog-entry{font-family:"Courier Prime",monospace;font-size:clamp(9px,2.4vw,11px);line-height:1.45;
-    color:var(--ink);padding:1px 0;opacity:.55;transition:opacity .4s}
-  .slog-entry.fresh{opacity:1}
+  /* ── cinematic narrative panel ── */
+  #scene-panel{position:fixed;bottom:clamp(130px,37vw,170px);left:0;right:0;z-index:9;pointer-events:none;
+    min-height:54px;max-height:160px;overflow:hidden;
+    display:flex;flex-direction:column;justify-content:flex-end;gap:0;
+    background:rgba(10,6,22,.86);border-top:2px solid rgba(196,174,136,.22);
+    padding:10px 22px 9px}
+  .sbeat{font-family:"Courier Prime",monospace;font-size:clamp(13px,3.4vw,16px);line-height:1.55;
+    color:rgba(240,232,210,.95);padding:0;transition:opacity .5s}
+  .sbeat.live{opacity:1}
+  .sbeat.dim{opacity:.3;font-size:clamp(10px,2.6vw,12px);transition:opacity .5s,font-size .3s}
+  .sbeat .swho{display:block;font-size:clamp(7px,1.7vw,8px);letter-spacing:.32em;text-transform:uppercase;
+    color:rgba(196,174,136,.65);margin-bottom:2px}
   #cardzone{position:fixed;bottom:0;left:0;right:0;display:flex;align-items:flex-end;z-index:10;pointer-events:none}
   #drawpile{flex:0 0 25%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
     padding-bottom:calc(8px + env(safe-area-inset-bottom));pointer-events:auto;position:relative;overflow:visible}
@@ -212,8 +217,9 @@
     .target-box{padding:10px 12px 12px}
     .target-npc{font-size:13px;padding:8px 10px}
     #toast{bottom:calc(clamp(130px,37vw,170px) + env(safe-area-inset-bottom) + 4px)}
-    #caption{bottom:calc(clamp(130px,37vw,170px) + 96px + 6px + env(safe-area-inset-bottom))}
-    #station-log{bottom:calc(clamp(130px,37vw,170px) + env(safe-area-inset-bottom));max-height:96px}
+    #caption{bottom:calc(clamp(130px,37vw,170px) + 130px + 6px + env(safe-area-inset-bottom))}
+    #scene-panel{max-height:130px;padding:8px 14px 8px}
+    .sbeat{font-size:clamp(12px,3.1vw,15px)}
   }
 </style>
 </head>
@@ -296,7 +302,7 @@
   </div>
 </div>
 
-<div id="station-log" class="ui"></div>
+<div id="scene-panel" class="ui"></div>
 <div id="cardzone" class="ui">
   <div id="drawpile"></div>
   <div id="hand"></div>
@@ -1025,24 +1031,42 @@ function speakNPC(name,text,dur){
   }
   bubbles.push({el,member:{name},until:performance.now()+(dur||4800)});
 }
-function addLogEntry(text){
+let _typingTimer=null;
+function showSceneBeat(text, who=''){
   if(!text) return;
-  const log=document.getElementById("station-log"); if(!log) return;
-  const el=document.createElement("div"); el.className="slog-entry fresh"; el.textContent=text;
-  log.querySelectorAll(".slog-entry.fresh").forEach(e=>e.classList.remove("fresh"));
-  log.appendChild(el);
-  while(log.children.length>6) log.removeChild(log.firstChild);
-  log.scrollTop=log.scrollHeight;
+  const panel=document.getElementById("scene-panel"); if(!panel) return;
+  panel.querySelectorAll(".sbeat.live").forEach(e=>{ e.classList.remove("live"); e.classList.add("dim"); });
+  panel.querySelectorAll(".sbeat.dim").forEach((e,i,a)=>{ if(i<a.length-2) e.remove(); });
+  const el=document.createElement("div"); el.className="sbeat live";
+  if(who) el.innerHTML=`<span class="swho">${who}</span>`;
+  const body=document.createElement("span"); el.appendChild(body);
+  panel.appendChild(el);
+  if(_typingTimer){ clearInterval(_typingTimer); _typingTimer=null; }
+  const words=text.split(" "); let i=0;
+  _typingTimer=setInterval(()=>{
+    body.textContent+=(i>0?" ":"")+words[i++];
+    if(i>=words.length){ clearInterval(_typingTimer); _typingTimer=null; }
+  }, 52);
 }
+function addLogEntry(text){ showSceneBeat(text); }
 function showReactions(rs,snap,npcName){
   if(!rs||!rs.length) return;
   const npcR=npcName?rs.find(r=>r.name===npcName):null;
   const charR=character?(rs.find(r=>r.name===character.name)||rs.find(r=>!npcName||r.name!==npcName)||rs[rs.length-1]):null;
   if(npcR){
-    speakNPC(npcName,npcR.line,4200);
-    if(charR&&character) setTimeout(()=>{ if(character) speak(character,character.name,charR.line,3800); },4600);
+    const delay=Math.max(600, (rs[0]&&rs[0].line?rs[0].line.split(" ").length*52+300:600));
+    speakNPC(npcName,npcR.line,5000);
+    setTimeout(()=>showSceneBeat(`"${npcR.line}"`, npcName), delay);
+    if(charR&&character){
+      setTimeout(()=>{
+        speak(character,character.name,charR.line,4000);
+        showSceneBeat(`"${charR.line}"`, character.name);
+      }, delay+3000);
+    }
   } else if(charR&&character){
-    speak(character,character.name,charR.line);
+    speak(character,character.name,charR.line,4000);
+    const delay=Math.max(400, (charR.line.split(" ").length*52+200));
+    setTimeout(()=>showSceneBeat(`"${charR.line}"`, character.name), delay);
   }
 }
 let toastTimer=null;

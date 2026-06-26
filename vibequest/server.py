@@ -315,7 +315,7 @@ async def _resolve_window(state: GameState) -> None:
         memory_ctx = ""
         if artel_task:
             try:
-                memory_ctx = await artel_task
+                memory_ctx = await asyncio.wait_for(asyncio.shield(artel_task), timeout=0.6)
             except Exception:
                 pass
 
@@ -351,7 +351,7 @@ async def _resolve_window(state: GameState) -> None:
             else None
         )
 
-        await asyncio.sleep(2.5)
+        await asyncio.sleep(1.0)
 
         if llm_task:
             try:
@@ -672,7 +672,7 @@ async def _travel_card_loop() -> None:
                         dice_label=dice_result.value,
                     )
                 )
-        await asyncio.sleep(2.5)
+        await asyncio.sleep(1.0)
         event = ""
         if travel_llm_task:
             try:
@@ -815,7 +815,7 @@ async def _deal_loop() -> None:
         await _broadcast({"type": "deal_card", "card": _card_msg(card)})
 
 
-AMBIENT_INTERVAL = 38.0
+AMBIENT_INTERVAL = 22.0
 
 
 async def _ambient_loop() -> None:
