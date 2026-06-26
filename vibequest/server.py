@@ -758,8 +758,8 @@ def create_app() -> FastAPI:
         _clients.add(ws)
         if _state:
             await ws.send_text(json.dumps({"type": "state", "state": _state_snapshot(_state)}))
-            card = deal_hand(_rng, size=1)[0]
-            await ws.send_text(json.dumps({"type": "deal_card", "card": _card_msg(card)}))
+            for card in deal_hand(_rng, size=5):
+                await ws.send_text(json.dumps({"type": "deal_card", "card": _card_msg(card)}))
         try:
             while True:
                 await ws.receive_text()
