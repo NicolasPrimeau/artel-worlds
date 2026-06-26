@@ -616,6 +616,7 @@ class PlayedCard:
     card_id: str
     player_id: str
     played_at: float = field(default_factory=time.time)
+    target_npc_id: str | None = None
 
 
 @dataclass

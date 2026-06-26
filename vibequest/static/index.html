@@ -104,6 +104,17 @@
   .pile-card .cn{font-size:clamp(9px,2.5vw,11px);font-weight:700;line-height:1.2;font-family:"Cormorant Garamond",serif;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
   .pile-card.accumulate{background:#88d8a8}.pile-card.action{background:#f8be60}
   .pile-card.chaos{background:#f09098}.pile-card.tweak{background:#b0a0e8}
+  /* target picker */
+  #target-picker{position:fixed;inset:0;z-index:850;display:flex;align-items:flex-end;justify-content:center;background:rgba(26,20,40,.44);padding-bottom:calc(clamp(130px,37vw,170px) + 12px)}
+  #target-picker[hidden]{display:none}
+  .target-box{background:var(--cream);border:2px solid var(--ink);border-radius:6px 6px 0 0;padding:12px 14px 16px;width:min(380px,96vw);box-shadow:0 -4px 24px rgba(26,20,40,.18)}
+  .target-label{font-size:9px;letter-spacing:.45em;text-transform:uppercase;color:var(--ink2);margin-bottom:10px}
+  .target-list{display:flex;flex-direction:column;gap:6px;max-height:40vh;overflow-y:auto}
+  .target-npc{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1.5px solid var(--ink);border-radius:3px;cursor:pointer;background:transparent;color:var(--ink);font-family:"Cormorant Garamond",serif;font-size:15px;text-align:left;transition:background .12s}
+  .target-npc:hover{background:var(--ink);color:var(--cream)}
+  .target-npc .tn-role{font-size:10px;font-family:"Courier Prime",monospace;letter-spacing:.1em;text-transform:uppercase;opacity:.6;margin-left:auto;flex-shrink:0}
+  .target-cancel{margin-top:10px;width:100%;padding:7px;background:none;border:none;color:var(--ink2);font-family:"Courier Prime",monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer}
+  .target-cancel:hover{color:var(--ink)}
   /* card detail overlay */
   .card-detail-overlay{position:fixed;inset:0;z-index:800;display:flex;align-items:center;justify-content:center;background:rgba(28,26,30,.52)}
   .card-detail-overlay .card{position:relative;left:auto;bottom:auto;width:min(250px,72vw);min-height:0;height:auto;padding:18px 20px;transform:rotate(-2deg) !important;box-shadow:0 20px 60px rgba(0,0,0,.4);cursor:default;pointer-events:none;transition:none}
@@ -169,6 +180,21 @@
   #sharepop a,#sharepop button{background:none;border:0;border-bottom:1px solid var(--ink);color:var(--ink2);padding:8px 16px;font-size:11px;letter-spacing:.06em;white-space:nowrap;text-align:left;cursor:pointer;font:inherit}
   #sharepop a:last-child,#sharepop button:last-child{border-bottom:0}
   #sharepop a:hover,#sharepop button:hover{background:var(--cream);color:var(--ink)}
+
+  @media (max-width:480px){
+    #hud{max-width:min(58vw,180px)}
+    .bubble{max-width:clamp(110px,52vw,160px);font-size:12px}
+    #endscreen{padding:10px;align-items:flex-start;overflow-y:auto}
+    .endbox{max-width:100%;padding:20px 18px;max-height:none}
+    .endbox .verdict{font-size:clamp(24px,8vw,36px)}
+    .vote-section{margin-top:14px}
+    .vote-btn{font-size:12px;padding:7px 10px}
+    #target-picker{padding-bottom:calc(clamp(130px,37vw,170px) + 6px)}
+    .target-box{padding:10px 12px 12px}
+    .target-npc{font-size:13px;padding:8px 10px}
+    #toast{bottom:calc(clamp(130px,37vw,170px) + env(safe-area-inset-bottom) + 4px)}
+    #caption{bottom:calc(clamp(130px,37vw,170px) + env(safe-area-inset-bottom) + 4px)}
+  }
 </style>
 </head>
 <body>
@@ -230,6 +256,14 @@
       <div class="vote-options" id="vote-options"></div>
     </div>
     <button class="newquest" onclick="document.getElementById('endscreen').hidden=true">Skip</button>
+  </div>
+</div>
+
+<div id="target-picker" hidden>
+  <div class="target-box">
+    <div class="target-label">Who does this affect?</div>
+    <div class="target-list" id="target-list"></div>
+    <button class="target-cancel" id="target-cancel">cancel</button>
   </div>
 </div>
 
@@ -375,7 +409,7 @@ const WALK_SPEED = 1.1;   // route tiles per second
 const SPACING = 1.25;     // route-tile gap between followers
 const playerId = (()=>{ let p=localStorage.getItem("vq_pid"); if(!p){p="p"+Math.random().toString(36).slice(2,8);localStorage.setItem("vq_pid",p);} return p; })();
 
-let scene=null, world=null, character=null, npcs=[], built=null, pendingState=null;
+let scene=null, world=null, character=null, npcs=[], built=null, pendingState=null, currentSnap=null;
 let routeArr=[], wpIdx=[], leaderPos=0, targetIdx=0;
 let currentHeading="", captionVisible=false, waypointNames=[], lastCaptionIdx=-1;
 
@@ -568,6 +602,7 @@ function onMove(pos){
 }
 
 function applyState(snap){
+  currentSnap=snap;
   if(!scene){ pendingState=snap; return; }
   const W=snap.world;
   if(W && built!==snap.run_id){
@@ -962,13 +997,13 @@ let selectedCard=null;
 let _voteTimer=null;
 
 function cardTransform(t,drop,step){
-  const s=step??55; const rot=t*8; const tx=t*s; const ty=drop?Math.abs(t)*12:Math.abs(t)*12-30;
+  const s=step??70; const rot=t*10; const tx=t*s; const ty=drop?Math.abs(t)*16:Math.abs(t)*16-34;
   return `translateX(calc(-50% + ${tx}px)) translateY(${ty}px) rotate(${rot}deg)`;
 }
 
 function fanStep(n){
-  const half=window.innerWidth*0.22;
-  return n>1 ? Math.min(52, half/(n-1)) : 0;
+  const half=window.innerWidth*0.30;
+  return n>1 ? Math.min(72, half/(n-1)) : 0;
 }
 
 function renderDrawPile(count){
@@ -1057,9 +1092,14 @@ function renderHand(cards){
       ptStart=null;
       if(wasDrag){
         el.style.opacity="";
-        flyCardToPile(el,c); el.classList.add("played"); playCard(c.id);
-        removeCardFromHand(c.id);
-        if(selectedCard===el)selectedCard=null;
+        const doPlay=(targetNpcId)=>{ flyCardToPile(el,c); el.classList.add("played"); playCard(c.id,targetNpcId); removeCardFromHand(c.id); if(selectedCard===el)selectedCard=null; };
+        if(c.type==="action" && showTargetPicker(npcId=>doPlay(npcId))){
+          el.style.opacity=""; el.style.position=""; el.style.left=""; el.style.top="";
+          el.style.width=""; el.style.height=""; el.style.margin=""; el.style.transition="";
+          el.style.transform=cardTransform(t,true,step); dragging=false;
+        } else {
+          doPlay(null);
+        }
       } else if(wasTouch){
         if(selectedCard===el){ deselect(); }
         else { if(selectedCard)selectedCard._deselect(); selectedCard=el; raise(); }
@@ -1152,10 +1192,39 @@ function renderPile(){
   };
 }
 
-async function playCard(id){
+async function playCard(id, targetNpcId){
   sndCard();
-  try{ await fetch("/play",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({card_id:id,player_id:playerId})}); }catch(e){}
+  const body={card_id:id,player_id:playerId};
+  if(targetNpcId) body.target_npc_id=targetNpcId;
+  try{ await fetch("/play",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)}); }catch(e){}
 }
+
+let _targetCallback=null;
+
+function showTargetPicker(onTarget){
+  const questNpcs=(currentSnap?.quest?.npcs)||[];
+  if(!questNpcs.length) return false;
+  _targetCallback=onTarget;
+  const list=document.getElementById("target-list");
+  list.innerHTML="";
+  questNpcs.forEach(npc=>{
+    const btn=document.createElement("button");
+    btn.className="target-npc";
+    btn.innerHTML=`<span>${npc.name}</span><span class="tn-role">${npc.role}</span>`;
+    btn.addEventListener("click",()=>{
+      document.getElementById("target-picker").hidden=true;
+      if(_targetCallback){ _targetCallback(npc.id); _targetCallback=null; }
+    },{once:true});
+    list.appendChild(btn);
+  });
+  document.getElementById("target-picker").hidden=false;
+  return true;
+}
+
+document.getElementById("target-cancel").addEventListener("click",()=>{
+  document.getElementById("target-picker").hidden=true;
+  _targetCallback=null;
+});
 
 function addDealCard(card){
   if(myHand.length>=MAX_HAND) return;

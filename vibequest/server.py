@@ -188,10 +188,16 @@ async def _resolve_window(state: GameState) -> None:
             "established": [],
         }
         if llm.enabled():
-            current_npc = next(
-                (n for n in state.quest.npcs if n.waypoint_idx == state.target_idx),
-                None,
-            )
+            if played_card.target_npc_id:
+                current_npc = next(
+                    (n for n in state.quest.npcs if n.id == played_card.target_npc_id),
+                    None,
+                )
+            else:
+                current_npc = next(
+                    (n for n in state.quest.npcs if n.waypoint_idx == state.target_idx),
+                    None,
+                )
             npc_context = (
                 f"{current_npc.name} ({current_npc.role}): {current_npc.personality}"
                 if current_npc
@@ -675,9 +681,12 @@ def create_app() -> FastAPI:
             return JSONResponse({"error": "no active game"}, status_code=400)
         card_id = request_data.get("card_id", "")
         player_id = request_data.get("player_id", "anonymous")
+        target_npc_id = request_data.get("target_npc_id") or None
         if card_id not in CARD_BY_ID:
             return JSONResponse({"error": "unknown card"}, status_code=400)
-        played = PlayedCard(id=str(_rng.random()), card_id=card_id, player_id=player_id)
+        played = PlayedCard(
+            id=str(_rng.random()), card_id=card_id, player_id=player_id, target_npc_id=target_npc_id
+        )
         async with _lock:
             _state.window.cards.append(played)
         await _broadcast(
