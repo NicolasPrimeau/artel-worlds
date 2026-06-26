@@ -241,6 +241,7 @@ async def _resolve_window(state: GameState) -> None:
             "reactions": [],
             "established": [],
         }
+        current_npc = None
         if llm.enabled():
             if played_card.target_npc_id:
                 current_npc = next(
@@ -252,6 +253,8 @@ async def _resolve_window(state: GameState) -> None:
                     (n for n in state.quest.npcs if n.waypoint_idx == state.target_idx),
                     None,
                 )
+            if not current_npc and card_def.type == CardType.CHAOS and state.quest.npcs:
+                current_npc = state.quest.npcs[0]
             npc_context = (
                 f"{current_npc.name} ({current_npc.role}): {current_npc.personality}"
                 if current_npc
@@ -321,6 +324,7 @@ async def _resolve_window(state: GameState) -> None:
                 "type": "card_resolved",
                 "narrative": result.get("narrative", ""),
                 "reactions": result.get("reactions", []),
+                "npc_name": current_npc.name if current_npc else "",
                 "state": _state_snapshot(state, include_world=False),
             }
         )

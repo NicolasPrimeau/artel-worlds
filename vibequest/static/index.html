@@ -48,6 +48,7 @@
   .bubble{position:fixed;bottom:60%;left:50%;transform:translateX(-50%);max-width:140px;background:rgba(253,244,226,.78);border:1px solid rgba(26,20,40,.5);border-radius:6px;
     padding:4px 8px;font-family:"Cormorant Garamond",serif;font-size:13px;line-height:1.2;color:var(--ink);box-shadow:1px 2px 0 rgba(26,20,40,.12);
     white-space:normal;text-align:center;animation:pop .16s ease-out;z-index:300;pointer-events:none;backdrop-filter:blur(1px);-webkit-backdrop-filter:blur(1px)}
+  .npc-bubble{background:rgba(240,168,160,.9);border-color:var(--rose2);max-width:160px}
   .bubble .nm{display:block;font-family:"Courier Prime",monospace;font-size:7px;letter-spacing:.14em;text-transform:uppercase;color:var(--rose2);margin-bottom:1px}
   @keyframes pop{from{opacity:0;transform:translateX(-50%) scale(.85)}to{opacity:1;transform:translateX(-50%) scale(1)}}
 
@@ -934,6 +935,27 @@ function updateBubbles(){
   }
 }
 function clearBubbles(){ for(const b of bubbles) b.el.remove(); bubbles.length=0; }
+function speakNPC(name,text,dur){
+  if(!text) return;
+  clearBubbles();
+  const el=document.createElement("div"); el.className="bubble npc-bubble";
+  el.innerHTML=`<span class="nm">${name}</span>${text}`;
+  const npcObj=npcs.find(n=>n.name===name);
+  if(npcObj&&scene){
+    const cam=scene.cameras.main; const wv=cam.worldView;
+    const fx=(npcObj.spr.x-wv.x)/wv.width;
+    const fy=(npcObj.spr.y-wv.y)/wv.height;
+    const sx=Math.round(fx*window.innerWidth);
+    const sy=Math.max(8,Math.round(fy*window.innerHeight)-64);
+    el.style.cssText=(fx>0.05&&fx<0.95&&fy>0.05&&fy<0.95)
+      ?`position:fixed;left:${sx}px;top:${sy}px;transform:translateX(-50%)`
+      :`position:fixed;right:12px;top:52px`;
+    document.body.appendChild(el);
+  } else {
+    document.getElementById("bubbles").appendChild(el);
+  }
+  bubbles.push({el,member:{name},until:performance.now()+(dur||4800)});
+}
 function addLogEntry(text){
   if(!text) return;
   const log=document.getElementById("station-log"); if(!log) return;
@@ -943,22 +965,15 @@ function addLogEntry(text){
   while(log.children.length>6) log.removeChild(log.firstChild);
   log.scrollTop=log.scrollHeight;
 }
-function showReactions(rs,snap){
+function showReactions(rs,snap,npcName){
   if(!rs||!rs.length) return;
-  const targetIdx=snap&&snap.pos!=null?snap.pos.target_idx:null;
-  const npcData=targetIdx!=null?(snap.quest?.npcs||[]).find(n=>n.waypoint_idx===targetIdx):null;
-  if(npcData){
-    const npcR=rs.find(r=>r.name===npcData.name);
-    const charR=character&&(rs.find(r=>r.name===character.name)||rs.find(r=>r.name!==npcData.name)||rs[rs.length-1]);
-    if(npcR){
-      speak({name:npcData.name},npcData.name,npcR.line,3800);
-      if(charR&&character) setTimeout(()=>{ if(character) speak(character,character.name,charR.line,4200); },4100);
-    } else if(charR&&character){
-      speak(character,character.name,charR.line);
-    }
-  } else if(character){
-    const r=rs.find(r=>r.name===character.name)||rs[0];
-    if(r) speak(character,character.name,r.line);
+  const npcR=npcName?rs.find(r=>r.name===npcName):null;
+  const charR=character?(rs.find(r=>r.name===character.name)||rs.find(r=>!npcName||r.name!==npcName)||rs[rs.length-1]):null;
+  if(npcR){
+    speakNPC(npcName,npcR.line,4200);
+    if(charR&&character) setTimeout(()=>{ if(character) speak(character,character.name,charR.line,3800); },4600);
+  } else if(charR&&character){
+    speak(character,character.name,charR.line);
   }
 }
 let toastTimer=null;
@@ -1025,6 +1040,7 @@ function showCardAdded(m){
     overlay.classList.remove("show");
     setTimeout(()=>{d20.style.display="";tagEl.classList.remove("show");},350);
   },2500);
+  if(m.card_description) addLogEntry(m.card_description);
 }
 
 function showChapter(snap){
@@ -1446,7 +1462,7 @@ function connect(){
         applyState(m.state);
         if(m.next_heading) setCaption(m.next_heading);
         if(m.narrative) addLogEntry(m.narrative);
-        if(m.reactions?.length) showReactions(m.reactions,m.state);
+        if(m.reactions?.length) showReactions(m.reactions,m.state,m.npc_name||null);
         break;
       }
       case "quest_complete": applyState(m.state);

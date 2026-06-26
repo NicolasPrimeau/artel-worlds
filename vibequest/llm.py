@@ -100,7 +100,13 @@ async def narrate_card(
             + "\n".join(f"- {p}" for p in pressure_context)
         )
 
-    if npc_context:
+    if npc_context and card_type == "chaos":
+        reaction_instruction = (
+            "Write exactly 2 reactions. First: the PERSON AT THIS LOCATION does or says something SPECIFIC and IMMEDIATE caused by this chaos "
+            "(use their exact name, under 12 words, reference exactly what just happened — no generic reactions). "
+            "Second: the player character responds (under 12 words). Both in workplace register."
+        )
+    elif npc_context:
         reaction_instruction = (
             "Write exactly 2 reactions: first from the PERSON AT THIS LOCATION (use their exact name, speak in their established voice and personality), "
             "then from the player character. Each reaction under 12 words. Workplace register — tired, distracted, focused on the wrong detail."
