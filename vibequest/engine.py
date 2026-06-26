@@ -699,7 +699,8 @@ class QuestState:
     props: list[Prop] = field(default_factory=list)
 
 
-def apply_world_changes(quest: QuestState, changes: list[dict], rng: random.Random) -> None:
+def apply_world_changes(quest: QuestState, changes: list[dict], rng: random.Random) -> list[dict]:
+    side_effects: list[dict] = []
     for ch in changes:
         action = ch.get("action", "")
         if action == "add_prop":
@@ -716,6 +717,17 @@ def apply_world_changes(quest: QuestState, changes: list[dict], rng: random.Rand
         elif action == "remove_prop":
             prop_id = str(ch.get("id", ""))
             quest.props = [p for p in quest.props if p.id != prop_id]
+        elif action == "prop_update":
+            prop_id = str(ch.get("id", ""))
+            for p in quest.props:
+                if p.id == prop_id:
+                    if "label" in ch:
+                        p.label = str(ch["label"])[:24]
+                    if "description" in ch:
+                        p.description = str(ch["description"])
+                    if "waypoint_idx" in ch:
+                        p.waypoint_idx = int(ch["waypoint_idx"])
+                    break
         elif action == "add_npc":
             npc_id = f"npc_dyn_{len(quest.npcs)}"
             quest.npcs.append(
@@ -729,7 +741,7 @@ def apply_world_changes(quest: QuestState, changes: list[dict], rng: random.Rand
                     behavior=str(ch.get("behavior", "stationary")),
                 )
             )
-        elif action == "move_npc":
+        elif action in ("move_npc", "npc_move"):
             npc_id = str(ch.get("npc_id", ""))
             new_wp = int(ch.get("waypoint_idx", 0))
             for npc in quest.npcs:
@@ -739,6 +751,9 @@ def apply_world_changes(quest: QuestState, changes: list[dict], rng: random.Rand
         elif action == "remove_npc":
             npc_id = str(ch.get("npc_id", ""))
             quest.npcs = [n for n in quest.npcs if n.id != npc_id]
+        elif action in ("npc_say", "schedule"):
+            side_effects.append(ch)
+    return side_effects
 
 
 @dataclass

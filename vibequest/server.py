@@ -86,6 +86,22 @@ def _scene_beats(state: GameState) -> str:
     return "\n".join(f"Round {i + 1}: {b}" for i, b in enumerate(recent))
 
 
+def _scene_context(state: GameState) -> str:
+    if not state.world:
+        return ""
+    names = state.world.waypoint_names or []
+    lines = []
+    for i, _ in enumerate(state.world.waypoints):
+        name = names[i] if i < len(names) else f"Location {i}"
+        tag = " ← PLAYER" if i == state.target_idx else ""
+        npcs_here = [n for n in state.quest.npcs if n.waypoint_idx == i]
+        props_here = [p for p in state.quest.props if p.waypoint_idx == i]
+        parts = [f"{n.name} [id:{n.id}] ({n.role}) — {n.personality[:80]}" for n in npcs_here]
+        parts += [f"[{p.label}] [id:{p.id}] — {p.description[:60]}" for p in props_here]
+        lines.append(f"  {i}. {name}{tag}: {', '.join(parts) if parts else 'empty'}")
+    return "\n".join(lines)
+
+
 def _state_snapshot(state: GameState, include_world: bool = True) -> dict:
     return {
         "run_id": state.run_id,
@@ -288,9 +304,7 @@ async def _resolve_window(state: GameState) -> None:
                     register=state.quest.register,
                     npc_context=npc_context,
                     pressure_context=pressure_context,
-                    waypoint_count=len(state.world.waypoints) if state.world else 5,
-                    existing_props=[(p.id, p.label) for p in state.quest.props],
-                    existing_npc_ids=[(n.id, n.name) for n in state.quest.npcs],
+                    scene_context=_scene_context(state),
                 )
             except Exception as exc:
                 log.warning("narrate_card failed: %s", exc)
@@ -300,9 +314,42 @@ async def _resolve_window(state: GameState) -> None:
         if len(state.quest.facts) > 24:
             state.quest.facts = state.quest.facts[-24:]
 
-        world_changes = [c for c in result.get("world_changes", []) if isinstance(c, dict)][:4]
+        world_changes = [c for c in result.get("world_changes", []) if isinstance(c, dict)][:6]
+        side_effects: list[dict] = []
         if world_changes:
-            apply_world_changes(state.quest, world_changes, _rng)
+            side_effects = apply_world_changes(state.quest, world_changes, _rng)
+
+        for fx in side_effects:
+            action = fx.get("action", "")
+            if action == "npc_say":
+                npc_id = str(fx.get("npc_id", ""))
+                line = str(fx.get("line", ""))
+                speaker = next((n for n in state.quest.npcs if n.id == npc_id), None)
+                if speaker and line:
+                    await _broadcast({"type": "npc_speak", "npc_name": speaker.name, "line": line})
+            elif action == "schedule":
+                delay = min(float(fx.get("delay", 30)), 120.0)
+                event_text = str(fx.get("event", ""))
+                follow = [c for c in fx.get("world_changes", []) if isinstance(c, dict)]
+
+                async def _delayed(
+                    d: float = delay, t: str = event_text, wc: list = follow
+                ) -> None:
+                    await asyncio.sleep(d)
+                    async with _lock:
+                        if wc:
+                            apply_world_changes(_state.quest, wc, _rng)
+                        if t:
+                            _state.log_event("scene_event", t, {})
+                    await _broadcast(
+                        {
+                            "type": "scene_event",
+                            "text": t,
+                            "state": _state_snapshot(_state, include_world=False),
+                        }
+                    )
+
+                asyncio.create_task(_delayed())
 
         resolution = CardResolution(
             card=played_card,

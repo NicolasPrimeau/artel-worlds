@@ -690,18 +690,21 @@ function syncProps(snap){
   }
   // add new props
   for(const p of Object.values(incomingMap)){
-    if(propLabels[p.id]) continue;
     const key=Math.min(p.waypoint_idx,W.waypoints.length-1);
     const wp=W.waypoints[key]; if(!wp) continue;
     const px=wp[0]*TILE+TILE/2, py=wp[1]*TILE+TILE/2-10;
-    const t=scene.add.text(px,py,p.label,{
-      fontFamily:'Courier Prime,monospace',fontSize:'5px',
-      color:'#d83c38',backgroundColor:'rgba(253,244,226,.92)',
-      padding:{x:2,y:1}
-    }).setDepth(950).setOrigin(0.5,1);
-    t.setInteractive();
-    t.on('pointerup',()=>toast(p.description));
-    propLabels[p.id]=t;
+    if(propLabels[p.id]){
+      propLabels[p.id].setText(p.label).setPosition(px,py);
+    } else {
+      const t=scene.add.text(px,py,p.label,{
+        fontFamily:'Courier Prime,monospace',fontSize:'5px',
+        color:'#d83c38',backgroundColor:'rgba(253,244,226,.92)',
+        padding:{x:2,y:1}
+      }).setDepth(950).setOrigin(0.5,1);
+      t.setInteractive();
+      t.on('pointerup',()=>toast(p.description));
+      propLabels[p.id]=t;
+    }
   }
 }
 
@@ -1522,6 +1525,8 @@ function connect(){
         if(m.scene&&m.scene.opening){ const mem=memberFor(null,m.scene.speaker); speak(mem,mem&&mem.name,m.scene.opening,5200); }
         break;
       case "travel_event": { addLogEntry(m.text); break; }
+      case "npc_speak": { speakNPC(m.npc_name,m.line,5000); break; }
+      case "scene_event": { applyState(m.state); if(m.text) addLogEntry(m.text); break; }
       case "dice_roll": showDice(m); break;
       case "card_added": showCardAdded(m); break;
       case "card_resolved": {

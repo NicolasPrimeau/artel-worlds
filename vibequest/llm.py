@@ -68,9 +68,7 @@ async def narrate_card(
     register: str = "a deadpan documentary",
     npc_context: str = "",
     pressure_context: list[str] | None = None,
-    waypoint_count: int = 5,
-    existing_props: list[tuple[str, str]] | None = None,
-    existing_npc_ids: list[tuple[str, str]] | None = None,
+    scene_context: str = "",
 ) -> dict:
     if dice_value == 20:
         crit = (
@@ -119,16 +117,7 @@ async def narrate_card(
             "Write 1 reaction from the player character. Under 12 words. Workplace register."
         )
 
-    props_block = ""
-    if existing_props:
-        props_block = "OBJECTS IN THE WORLD: " + ", ".join(
-            f"{label} (id:{pid})" for pid, label in existing_props
-        )
-    npc_ids_block = ""
-    if existing_npc_ids:
-        npc_ids_block = "PEOPLE IN THE WORLD: " + ", ".join(
-            f"{name} (id:{nid})" for nid, name in existing_npc_ids
-        )
+    stage_block = f"LIVE STAGE:\n{scene_context}" if scene_context else ""
 
     prompt = f"""{_TONE}
 
@@ -140,40 +129,43 @@ MORALE: {momentum} ({delta_desc} from this card — let this show in tone, not i
 {facts_block}
 {story_block}
 {pressure_block}
-{props_block}
-{npc_ids_block}
+{stage_block}
 CONTEXT: {memory_context or "None."}
 
 CARD PLAYED: {card_name} ({card_type})
 CARD EFFECT: {card_description}
 DICE: {dice_value}/20 ({dice_label}). {crit}
 
-The engine has already applied the mechanical effect. Narrate what caused that outcome — exactly 1 sentence, {register} register.
-Be specific to named people, objects, and places already established. Do not contradict anything in WHAT IS CURRENTLY TRUE.
-If a chaos card: something unexpected really does happen, name it concretely. Under 25 words.
+Narrate what happened — exactly 1 sentence, {register} register.
+Be specific to named people, objects, places. Do not contradict WHAT IS CURRENTLY TRUE.
 
 {reaction_instruction}
 
 Then 0-2 "established" facts about what is now true.
 
-WORLD BUILDING — the world is a live stage. If the dice and card warrant something physically appearing or changing, put it in world_changes.
-Use this when something concrete should exist: a new person walks in, an object appears, someone moves to another location, something gets removed.
-Be ruthlessly specific. Not "a strange object" — "a whiteboard labeled OPERATION SEAGULL in red marker". Not "a new person" — their full name, title, and one deadpan personality fact.
-Locations are indexed 0 to {waypoint_count - 1}. Keep world_changes to 0-2 entries. Leave empty if nothing materializes.
+DIRECTOR'S PALETTE — you are the director of a live set. Use world_changes to make things exist, move, speak, or disappear.
+You have full creative authority. The engine enforces physics; you decide story.
+Be ruthlessly specific. Not "a strange object" — "a whiteboard labeled OPERATION SEAGULL in red marker, someone else's handwriting".
+Not "a new person arrives" — their exact name, title, one precise personality fact, which location.
+If the card and dice call for something to happen later, use schedule. If someone needs to say something right now, use npc_say.
+Keep world_changes to 0-3 entries. Leave empty only if nothing in the scene actually changes.
 
-Available actions:
-- add_prop: {{"action":"add_prop","id":"unique_snake_id","label":"SHORT LABEL","description":"what it is exactly","waypoint_idx":N}}
-- remove_prop: {{"action":"remove_prop","id":"existing_prop_id"}}
-- add_npc: {{"action":"add_npc","name":"Full Name","role":"Job Title","personality":"1-2 sentence deadpan character description","waypoint_idx":N,"behavior":"stationary"}}
-- move_npc: {{"action":"move_npc","npc_id":"existing_npc_id","waypoint_idx":N}}
-- remove_npc: {{"action":"remove_npc","npc_id":"existing_npc_id"}}
+Actions available:
+- add_prop: {{"action":"add_prop","id":"snake_id","label":"≤4 WORDS","description":"exact description","waypoint_idx":N}}
+- remove_prop: {{"action":"remove_prop","id":"existing_id"}}
+- prop_update: {{"action":"prop_update","id":"existing_id","label":"new label","description":"new description"}}
+- add_npc: {{"action":"add_npc","name":"Full Name","role":"Title","personality":"1-2 sentence deadpan fact","waypoint_idx":N,"behavior":"stationary"}}
+- move_npc: {{"action":"move_npc","npc_id":"existing_id","waypoint_idx":N}}
+- remove_npc: {{"action":"remove_npc","npc_id":"existing_id"}}
+- npc_say: {{"action":"npc_say","npc_id":"existing_id","line":"under 15 words, right now, in their voice"}}
+- schedule: {{"action":"schedule","delay":30,"event":"one sentence — what happens then","world_changes":[...]}}
 
 JSON only:
 {{
-  "narrative": "1 sentence narration",
-  "consequence": "one sentence, the immediate consequence",
-  "reactions": [{{"name": "exact person name", "role": "their role", "line": "under 12 words"}}],
-  "established": ["fact 1", "fact 2"],
+  "narrative": "1 sentence",
+  "consequence": "1 sentence immediate consequence",
+  "reactions": [{{"name": "name", "role": "role", "line": "under 12 words"}}],
+  "established": ["fact"],
   "world_changes": []
 }}"""
 
