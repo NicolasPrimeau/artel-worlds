@@ -481,7 +481,37 @@ async def _travel_card_loop() -> None:
         card_def = CARD_BY_ID.get(card.card_id)
         if not card_def:
             continue
+
+        if card_def.type in (CardType.ACCUMULATE, CardType.TWEAK):
+            apply_card_effects(card_def, DiceResult.MID, state.quest)
+            if card_def.type == CardType.ACCUMULATE:
+                state.quest.pressure_pool.append(
+                    {
+                        "name": card_def.name,
+                        "description": card_def.description,
+                        "remaining": PRESSURE_DURATION,
+                    }
+                )
+            else:
+                state.quest.register = _rng.choice(
+                    [r for r in REGISTERS if r != state.quest.register]
+                )
+            state.log_event("pressure_added", card_def.description, {"card": card_def.name})
+            _card_added_sent.discard(card.id)
+            continue
+
         dice_value, dice_result = roll_d20(_rng)
+        await _broadcast(
+            {
+                "type": "dice_roll",
+                "dice_value": dice_value,
+                "dice_result": dice_result.value,
+                "card_name": card_def.name,
+                "card_type": card_def.type.value,
+                "card_description": card_def.description,
+            }
+        )
+        await asyncio.sleep(4.0)
         apply_card_effects(card_def, dice_result, state.quest)
         is_chaos_hit = card_def.type == CardType.CHAOS and dice_result in (
             DiceResult.HIGH,
@@ -551,11 +581,23 @@ async def _start_new_game(preset_quest: QuestState | None = None) -> None:
         if isinstance(npcs_raw, list):
             available = [s for s in range(1, 11) if s != _state.character.sprite]
             npcs = []
+            used_wps: set[int] = set()
+            wp_max = waypoint_count - 1
             for i, nd in enumerate(npcs_raw):
                 if not isinstance(nd, dict):
                     continue
                 sprite = available[i % len(available)] if available else (i % 10 + 1)
-                wp_max = waypoint_count - 1
+                req = min(int(nd.get("waypoint_idx", 0)), wp_max)
+                idx = req
+                if idx in used_wps:
+                    for d in range(1, wp_max + 1):
+                        if idx + d <= wp_max and (idx + d) not in used_wps:
+                            idx = idx + d
+                            break
+                        if idx - d >= 0 and (idx - d) not in used_wps:
+                            idx = idx - d
+                            break
+                used_wps.add(idx)
                 npcs.append(
                     NPC(
                         id=f"npc_{i}",
@@ -563,7 +605,7 @@ async def _start_new_game(preset_quest: QuestState | None = None) -> None:
                         role=nd.get("role", "Unknown"),
                         personality=nd.get("personality", ""),
                         sprite=sprite,
-                        waypoint_idx=min(int(nd.get("waypoint_idx", 0)), wp_max),
+                        waypoint_idx=idx,
                         behavior=nd.get("behavior", "stationary"),
                     )
                 )

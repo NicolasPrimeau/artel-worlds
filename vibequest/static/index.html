@@ -579,10 +579,19 @@ function buildNPCs(snap){
   npcs=[];
   const W=world;
   if(!snap.quest?.npcs?.length||!W)return;
+  const wpCount={}, wpUsed={};
   for(const npc of snap.quest.npcs){
-    const wp=W.waypoints[Math.min(npc.waypoint_idx,W.waypoints.length-1)];
+    const key=Math.min(npc.waypoint_idx,W.waypoints.length-1);
+    wpCount[key]=(wpCount[key]||0)+1;
+  }
+  for(const npc of snap.quest.npcs){
+    const key=Math.min(npc.waypoint_idx,W.waypoints.length-1);
+    const wp=W.waypoints[key];
     if(!wp)continue;
-    const px=wp[0]*TILE+TILE/2, py=wp[1]*TILE+TILE/2;
+    const total=wpCount[key]||1;
+    const slot=wpUsed[key]||0; wpUsed[key]=slot+1;
+    const spread=(slot-(total-1)/2)*TILE;
+    const px=wp[0]*TILE+TILE/2+spread, py=wp[1]*TILE+TILE/2;
     const shadow=scene.add.image(px,py+6,"shadow").setDepth(899).setAlpha(.3).setScale(.75);
     const spr=scene.add.sprite(px,py,"hero"+npc.sprite).setDepth(1000+py);
     spr.setInteractive({useHandCursor:true});
