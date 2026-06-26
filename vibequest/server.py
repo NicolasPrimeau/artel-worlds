@@ -49,6 +49,7 @@ _state: GameState | None = None
 _clients: set[WebSocket] = set()
 _lock = asyncio.Lock()
 _travel_processed: set[str] = set()
+_card_added_sent: set[str] = set()
 _vote_options: list[QuestState] | None = None
 _votes: dict[int, int] = {}
 _deal_type_idx: int = 0
@@ -166,14 +167,16 @@ async def _resolve_window(state: GameState) -> None:
             continue
 
         if card_def.type in (CardType.ACCUMULATE, CardType.TWEAK):
-            await _broadcast(
-                {
-                    "type": "card_added",
-                    "card_name": card_def.name,
-                    "card_type": card_def.type.value,
-                    "card_description": card_def.description,
-                }
-            )
+            if played_card.id not in _card_added_sent:
+                await _broadcast(
+                    {
+                        "type": "card_added",
+                        "card_name": card_def.name,
+                        "card_type": card_def.type.value,
+                        "card_description": card_def.description,
+                    }
+                )
+            _card_added_sent.discard(played_card.id)
             if card_def.type == CardType.ACCUMULATE:
                 state.quest.pressure_pool.append(
                     {
@@ -565,6 +568,9 @@ async def _start_new_game(preset_quest: QuestState | None = None) -> None:
                     )
                 )
             _state.quest.npcs = npcs
+            log.info("Generated %d NPCs", len(npcs))
+        else:
+            log.warning("NPC generation failed: %s — %s", type(npcs_raw).__name__, npcs_raw)
     if artel.enabled():
         await artel.write_memory(
             f"New VibeQuest begun: {_state.quest.hook} Complication: {_state.quest.complication}",
@@ -742,6 +748,7 @@ def create_app() -> FastAPI:
         target_npc_id = request_data.get("target_npc_id") or None
         if card_id not in CARD_BY_ID:
             return JSONResponse({"error": "unknown card"}, status_code=400)
+        card_def = CARD_BY_ID[card_id]
         played = PlayedCard(
             id=str(_rng.random()), card_id=card_id, player_id=player_id, target_npc_id=target_npc_id
         )
@@ -750,6 +757,16 @@ def create_app() -> FastAPI:
         await _broadcast(
             {"type": "card_played", "card_id": card_id, "card_count": len(_state.window.cards)}
         )
+        if card_def.type in (CardType.ACCUMULATE, CardType.TWEAK):
+            await _broadcast(
+                {
+                    "type": "card_added",
+                    "card_name": card_def.name,
+                    "card_type": card_def.type.value,
+                    "card_description": card_def.description,
+                }
+            )
+            _card_added_sent.add(played.id)
         return JSONResponse({"ok": True, "card_count": len(_state.window.cards)})
 
     @app.websocket("/ws")
