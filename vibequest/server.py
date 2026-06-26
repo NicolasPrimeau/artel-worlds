@@ -21,12 +21,14 @@ from .engine import (
     GameState,
     NPC,
     PlayedCard,
+    QuestState,
     apply_card_effects,
     apply_disaster,
     advance_window,
     at_station,
     classify_result,
     deal_hand,
+    make_quest,
     maybe_travel_event,
     new_game,
     roll_d20,
@@ -37,11 +39,16 @@ from .engine import (
 log = logging.getLogger("vibequest")
 STATIC = Path(__file__).parent / "static"
 
+DEAL_INTERVAL = 8.0
+VOTE_TIMEOUT = 25.0
+
 _rng = random.SystemRandom()
 _state: GameState | None = None
 _clients: set[WebSocket] = set()
 _lock = asyncio.Lock()
 _travel_processed: set[str] = set()
+_vote_options: list[QuestState] | None = None
+_votes: dict[int, int] = {}
 
 
 def _character_desc(state: GameState) -> str:
@@ -355,6 +362,7 @@ async def _resolve_window(state: GameState) -> None:
 
 
 async def _end_quest(state: GameState) -> None:
+    global _vote_options, _votes
     state.phase = "complete"
     closing = ""
     if llm.enabled():
@@ -373,8 +381,28 @@ async def _end_quest(state: GameState) -> None:
             "state": _state_snapshot(state, include_world=False),
         }
     )
-    await asyncio.sleep(12.0)
-    await _start_new_game()
+    await asyncio.sleep(5.0)
+    q1, _ = make_quest(_rng)
+    q2, _ = make_quest(_rng)
+    _vote_options = [q1, q2]
+    _votes = {0: 0, 1: 0, 2: 0}
+    await _broadcast(
+        {
+            "type": "vote_start",
+            "timeout": int(VOTE_TIMEOUT),
+            "options": [
+                {"idx": 0, "title": q1.title, "hook": q1.hook},
+                {"idx": 1, "title": q2.title, "hook": q2.hook},
+                {"idx": 2, "title": "Surprise Me", "hook": "A completely random quest."},
+            ],
+        }
+    )
+    await asyncio.sleep(VOTE_TIMEOUT)
+    winner_idx = max(_votes, key=lambda k: _votes[k]) if any(_votes.values()) else 2
+    chosen = None if winner_idx == 2 else _vote_options[winner_idx]
+    _vote_options = None
+    _votes = {}
+    await _start_new_game(preset_quest=chosen)
 
 
 async def _travel_card_loop() -> None:
@@ -432,9 +460,9 @@ async def _travel_card_loop() -> None:
         await _broadcast({"type": "travel_event", "text": event, "chaos": is_chaos_hit})
 
 
-async def _start_new_game() -> None:
+async def _start_new_game(preset_quest: QuestState | None = None) -> None:
     global _state
-    _state = new_game(_rng)
+    _state = new_game(_rng, preset_quest=preset_quest)
     if llm.enabled():
         waypoint_count = len(_state.world.waypoints) if _state.world else 5
         theme = _state.world.theme if _state.world else "office"
@@ -516,6 +544,25 @@ async def _move_loop() -> None:
             await _broadcast({"type": "travel_event", "text": event})
 
 
+def _card_msg(card) -> dict:
+    return {
+        "id": card.id,
+        "name": card.name,
+        "type": card.type.value,
+        "description": card.description,
+        "flavor": card.flavor,
+    }
+
+
+async def _deal_loop() -> None:
+    while True:
+        await asyncio.sleep(DEAL_INTERVAL)
+        if not _clients or _state is None or _state.phase != "active":
+            continue
+        card = deal_hand(_rng, size=1)[0]
+        await _broadcast({"type": "deal_card", "card": _card_msg(card)})
+
+
 async def _window_loop() -> None:
     global _state
     while True:
@@ -544,6 +591,7 @@ def create_app() -> FastAPI:
         asyncio.create_task(_window_loop())
         asyncio.create_task(_move_loop())
         asyncio.create_task(_travel_card_loop())
+        asyncio.create_task(_deal_loop())
 
     app.mount("/assets", StaticFiles(directory=STATIC / "assets"), name="assets")
 
@@ -611,6 +659,16 @@ def create_app() -> FastAPI:
             ]
         )
 
+    @app.post("/vote")
+    async def vote(request_data: dict = Body(...)) -> JSONResponse:
+        global _votes
+        choice = request_data.get("choice")
+        if choice not in (0, 1, 2) or _vote_options is None:
+            return JSONResponse({"error": "no vote active or invalid choice"}, status_code=400)
+        _votes[choice] = _votes.get(choice, 0) + 1
+        await _broadcast({"type": "vote_update", "votes": dict(_votes)})
+        return JSONResponse({"ok": True, "votes": dict(_votes)})
+
     @app.post("/play")
     async def play_card(request_data: dict = Body(...)) -> JSONResponse:
         if _state is None or _state.phase != "active":
@@ -633,24 +691,8 @@ def create_app() -> FastAPI:
         _clients.add(ws)
         if _state:
             await ws.send_text(json.dumps({"type": "state", "state": _state_snapshot(_state)}))
-            hand = deal_hand(_rng)
-            await ws.send_text(
-                json.dumps(
-                    {
-                        "type": "hand",
-                        "cards": [
-                            {
-                                "id": c.id,
-                                "name": c.name,
-                                "type": c.type.value,
-                                "description": c.description,
-                                "flavor": c.flavor,
-                            }
-                            for c in hand
-                        ],
-                    }
-                )
-            )
+            for card in deal_hand(_rng, size=2):
+                await ws.send_text(json.dumps({"type": "deal_card", "card": _card_msg(card)}))
         try:
             while True:
                 await ws.receive_text()

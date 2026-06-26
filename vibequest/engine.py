@@ -383,6 +383,178 @@ CARD_LIBRARY = [
         "Tonal.",
         0.6,
     ),
+    # ── Accumulate (additional) ──────────────────────────────────────────────
+    CardDef(
+        "acc_confidence",
+        "False Confidence",
+        CardType.ACCUMULATE,
+        "Someone is more certain than the situation warrants. Everyone finds this reassuring.",
+        "Stack these.",
+        1.2,
+    ),
+    CardDef(
+        "acc_sunk",
+        "Sunk Cost",
+        CardType.ACCUMULATE,
+        "Too much has already been invested to stop now. Nobody says this out loud.",
+        "Stack these.",
+        1.0,
+    ),
+    CardDef(
+        "acc_consensus",
+        "Group Consensus",
+        CardType.ACCUMULATE,
+        "Everyone agrees. Whether this is helpful remains to be seen.",
+        "Stack these.",
+        1.1,
+    ),
+    CardDef(
+        "acc_borrowed",
+        "Borrowed Time",
+        CardType.ACCUMULATE,
+        "The window for resolving this cleanly is narrowing. Everyone can feel it.",
+        "Stack these.",
+        1.0,
+    ),
+    CardDef(
+        "acc_momentum",
+        "Unstoppable Momentum",
+        CardType.ACCUMULATE,
+        "Events have taken on a life of their own. The party is no longer steering.",
+        "Rare. Stack these.",
+        0.2,
+    ),
+    # ── Action (additional) ──────────────────────────────────────────────────
+    CardDef(
+        "act_misunderstanding",
+        "Critical Misunderstanding",
+        CardType.ACTION,
+        "Everyone means something different by the same word. This becomes clear at the worst moment.",
+        "Avoidable in hindsight.",
+        0.9,
+    ),
+    CardDef(
+        "act_detour",
+        "Unnecessary Detour",
+        CardType.ACTION,
+        "The direct path is unavailable for reasons nobody can fully explain.",
+        "Standard.",
+        0.8,
+    ),
+    CardDef(
+        "act_advice",
+        "Unsolicited Expertise",
+        CardType.ACTION,
+        "Someone not involved in this situation offers their analysis at considerable length.",
+        "Thorough.",
+        0.8,
+    ),
+    CardDef(
+        "act_missing",
+        "Missing Component",
+        CardType.ACTION,
+        "A key element is not where it should be. Nobody knows where it is.",
+        "Classic.",
+        0.8,
+    ),
+    CardDef(
+        "act_precedent",
+        "Appeals to Precedent",
+        CardType.ACTION,
+        "How this was done before becomes relevant. The record of how it was done before is incomplete.",
+        "Procedural.",
+        0.7,
+    ),
+    CardDef(
+        "act_authority",
+        "Sudden Authority",
+        CardType.ACTION,
+        "Someone with unclear jurisdiction makes a binding decision without being asked.",
+        "Rare. Final.",
+        0.2,
+    ),
+    # ── Chaos (additional) ───────────────────────────────────────────────────
+    CardDef(
+        "cha_proximity",
+        "Proximity Effect",
+        CardType.CHAOS,
+        "Being near the problem makes it worse. This was not predictable in advance.",
+        "Move away.",
+        0.6,
+    ),
+    CardDef(
+        "cha_arrival",
+        "Unexpected Arrival",
+        CardType.CHAOS,
+        "Someone appears who was not part of any plan and has strong opinions about the plan.",
+        "Unscheduled.",
+        0.7,
+    ),
+    CardDef(
+        "cha_containment",
+        "Containment Failure",
+        CardType.CHAOS,
+        "Something that was being managed has stopped being managed. This is now everyone's problem.",
+        "Spreading.",
+        0.6,
+    ),
+    CardDef(
+        "cha_cascade",
+        "Cascade",
+        CardType.CHAOS,
+        "One thing going wrong causes another thing to go wrong. The chain continues.",
+        "Inevitable.",
+        0.5,
+    ),
+    CardDef(
+        "cha_category",
+        "Category Error",
+        CardType.CHAOS,
+        "The situation has been fundamentally misclassified from the beginning. Everything follows from this.",
+        "Rare. Foundational.",
+        0.2,
+    ),
+    # ── Tweak (additional) ───────────────────────────────────────────────────
+    CardDef(
+        "twk_pressure",
+        "Time Pressure Update",
+        CardType.TWEAK,
+        "The urgency of the situation has been reassessed. The new assessment is higher.",
+        "Upward only.",
+        0.8,
+    ),
+    CardDef(
+        "twk_scope",
+        "Scope Creep",
+        CardType.TWEAK,
+        "The original task has quietly expanded to include several adjacent tasks nobody agreed to.",
+        "Standard.",
+        0.8,
+    ),
+    CardDef(
+        "twk_info",
+        "New Information",
+        CardType.TWEAK,
+        "A fact that changes how the situation should be read has come to light. It was always true.",
+        "Late.",
+        0.7,
+    ),
+    CardDef(
+        "twk_perspective",
+        "Perspective Shift",
+        CardType.TWEAK,
+        "Seen from a different angle, this situation looks entirely different. Both readings are valid.",
+        "Reorienting.",
+        0.7,
+    ),
+    CardDef(
+        "twk_recontextualize",
+        "Complete Recontextualization",
+        CardType.TWEAK,
+        "Everything known about the situation is technically still true, but now means something different.",
+        "Rare. Everything changes.",
+        0.2,
+    ),
 ]
 
 CARD_BY_ID = {c.id: c for c in CARD_LIBRARY}
@@ -544,7 +716,7 @@ def _make_character(rng: random.Random) -> PartyMember:
     )
 
 
-def _make_quest(rng: random.Random) -> tuple[QuestState, str]:
+def make_quest(rng: random.Random) -> tuple[QuestState, str]:
     cat_name = rng.choice(list(QUEST_CATEGORIES.keys()))
     cat = QUEST_CATEGORIES[cat_name]
     task = rng.choice(cat["tasks"])
@@ -561,11 +733,15 @@ def _make_quest(rng: random.Random) -> tuple[QuestState, str]:
     return quest, cat["theme"]
 
 
-def new_game(rng: random.Random | None = None) -> GameState:
+def new_game(rng: random.Random | None = None, preset_quest: QuestState | None = None) -> GameState:
     rng = rng or random.Random()
     now = time.time()
     character = _make_character(rng)
-    quest, theme = _make_quest(rng)
+    if preset_quest is not None:
+        quest = preset_quest
+        theme = QUEST_CATEGORIES.get(quest.template_id, {}).get("theme", "office")
+    else:
+        quest, theme = make_quest(rng)
     window = WindowState(opened_at=now, closes_at=now + CARD_WINDOW)
     run_id = str(uuid.uuid4())[:8]
     world = generate_world(rng, theme=theme, step_count=MAX_RESOLUTIONS)
