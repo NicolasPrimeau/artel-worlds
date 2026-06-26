@@ -68,6 +68,9 @@ async def narrate_card(
     register: str = "a deadpan documentary",
     npc_context: str = "",
     pressure_context: list[str] | None = None,
+    waypoint_count: int = 5,
+    existing_props: list[tuple[str, str]] | None = None,
+    existing_npc_ids: list[tuple[str, str]] | None = None,
 ) -> dict:
     if dice_value == 20:
         crit = (
@@ -116,6 +119,17 @@ async def narrate_card(
             "Write 1 reaction from the player character. Under 12 words. Workplace register."
         )
 
+    props_block = ""
+    if existing_props:
+        props_block = "OBJECTS IN THE WORLD: " + ", ".join(
+            f"{label} (id:{pid})" for pid, label in existing_props
+        )
+    npc_ids_block = ""
+    if existing_npc_ids:
+        npc_ids_block = "PEOPLE IN THE WORLD: " + ", ".join(
+            f"{name} (id:{nid})" for nid, name in existing_npc_ids
+        )
+
     prompt = f"""{_TONE}
 
 SITUATION: {quest_hook}
@@ -126,6 +140,8 @@ MORALE: {momentum} ({delta_desc} from this card — let this show in tone, not i
 {facts_block}
 {story_block}
 {pressure_block}
+{props_block}
+{npc_ids_block}
 CONTEXT: {memory_context or "None."}
 
 CARD PLAYED: {card_name} ({card_type})
@@ -138,14 +154,27 @@ If a chaos card: something unexpected really does happen, name it concretely. Un
 
 {reaction_instruction}
 
-Then 0-2 "established" facts: short present-tense statements about what is now true in the world because of this. Only write facts that actually change something (an object's state, a person's situation, a location's status). Skip if nothing new was established.
+Then 0-2 "established" facts about what is now true.
+
+WORLD BUILDING — the world is a live stage. If the dice and card warrant something physically appearing or changing, put it in world_changes.
+Use this when something concrete should exist: a new person walks in, an object appears, someone moves to another location, something gets removed.
+Be ruthlessly specific. Not "a strange object" — "a whiteboard labeled OPERATION SEAGULL in red marker". Not "a new person" — their full name, title, and one deadpan personality fact.
+Locations are indexed 0 to {waypoint_count - 1}. Keep world_changes to 0-2 entries. Leave empty if nothing materializes.
+
+Available actions:
+- add_prop: {{"action":"add_prop","id":"unique_snake_id","label":"SHORT LABEL","description":"what it is exactly","waypoint_idx":N}}
+- remove_prop: {{"action":"remove_prop","id":"existing_prop_id"}}
+- add_npc: {{"action":"add_npc","name":"Full Name","role":"Job Title","personality":"1-2 sentence deadpan character description","waypoint_idx":N,"behavior":"stationary"}}
+- move_npc: {{"action":"move_npc","npc_id":"existing_npc_id","waypoint_idx":N}}
+- remove_npc: {{"action":"remove_npc","npc_id":"existing_npc_id"}}
 
 JSON only:
 {{
-  "narrative": "2-3 sentence narration",
+  "narrative": "1 sentence narration",
   "consequence": "one sentence, the immediate consequence",
   "reactions": [{{"name": "exact person name", "role": "their role", "line": "under 12 words"}}],
-  "established": ["fact 1", "fact 2"]
+  "established": ["fact 1", "fact 2"],
+  "world_changes": []
 }}"""
 
     req = Request(system="Respond only with valid JSON. No fantasy language.", user=prompt)
@@ -157,9 +186,12 @@ JSON only:
             "consequence": "The situation continues.",
             "reactions": [],
             "established": [],
+            "world_changes": [],
         }
     if "established" not in parsed:
         parsed["established"] = []
+    if "world_changes" not in parsed:
+        parsed["world_changes"] = []
     return parsed
 
 

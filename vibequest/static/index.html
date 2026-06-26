@@ -440,6 +440,7 @@ const SPACING = 1.25;     // route-tile gap between followers
 const playerId = (()=>{ let p=localStorage.getItem("vq_pid"); if(!p){p="p"+Math.random().toString(36).slice(2,8);localStorage.setItem("vq_pid",p);} return p; })();
 
 let scene=null, world=null, character=null, npcs=[], built=null, pendingState=null, currentSnap=null;
+let propLabels={};
 let routeArr=[], wpIdx=[], leaderPos=0, targetIdx=0;
 let currentHeading="", captionVisible=false, waypointNames=[], lastCaptionIdx=-1;
 
@@ -640,6 +641,70 @@ function onMove(pos){
   if(pos.rpos!=null && pos.rpos > leaderPos+2) leaderPos = pos.rpos; // resync if server far ahead
 }
 
+function syncNPCs(snap){
+  if(!world||!scene) return;
+  const incomingMap={};
+  for(const n of snap.quest?.npcs||[]) incomingMap[n.id]=n;
+  const W=world;
+  // remove NPCs no longer in state
+  for(let i=npcs.length-1;i>=0;i--){
+    if(!incomingMap[npcs[i].id]){npcs[i].spr.destroy();npcs[i].shadow.destroy();npcs.splice(i,1);}
+  }
+  const localIds=new Set(npcs.map(n=>n.id));
+  // add or move
+  for(const n of Object.values(incomingMap)){
+    const wpCount=W.waypoints.length;
+    const key=Math.min(n.waypoint_idx,wpCount-1);
+    const wp=W.waypoints[key]; if(!wp) continue;
+    const existing=npcs.find(m=>m.id===n.id);
+    if(existing){
+      // move if waypoint changed
+      const tx=wp[0]*TILE+TILE/2, ty=wp[1]*TILE+TILE/2;
+      existing.spr.setPosition(tx,ty); existing.shadow.setPosition(tx,ty+6);
+      existing.spr.setDepth(1000+ty);
+    } else {
+      // build new NPC sprite
+      const px=wp[0]*TILE+TILE/2, py=wp[1]*TILE+TILE/2;
+      const shadow=scene.add.image(px,py+6,"shadow").setDepth(899).setAlpha(.3).setScale(.75);
+      const spr=scene.add.sprite(px,py,"hero"+(n.sprite||0)).setDepth(1000+py);
+      try{spr.anims.play("idle_down_"+(n.sprite||0),true);}catch(e){}
+      spr.setInteractive();
+      const m={spr,shadow,id:n.id,name:n.name,role:n.role,dir:"down"};
+      spr.on("pointerup",()=>{ const box=document.getElementById("npc-info"); if(!box) return;
+        box.innerHTML=`<div style="font-size:8px;letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);margin-bottom:4px">NPC</div><div style="font-size:17px;font-weight:700;font-family:'Cormorant Garamond',serif">${n.name}</div><div style="font-size:10px;color:var(--ink2);margin-top:3px">${n.role}</div>${n.personality?`<div style="font-size:11px;font-style:italic;color:var(--ink2);margin-top:8px;border-top:1px solid rgba(26,20,40,.12);padding-top:8px">${n.personality}</div>`:""}`;
+        box.classList.add("show"); setTimeout(()=>box.classList.remove("show"),5000);
+      });
+      npcs.push(m);
+    }
+  }
+}
+
+function syncProps(snap){
+  if(!world||!scene) return;
+  const W=world;
+  const incomingMap={};
+  for(const p of snap.quest?.props||[]) incomingMap[p.id]=p;
+  // remove gone props
+  for(const id of Object.keys(propLabels)){
+    if(!incomingMap[id]){propLabels[id].destroy();delete propLabels[id];}
+  }
+  // add new props
+  for(const p of Object.values(incomingMap)){
+    if(propLabels[p.id]) continue;
+    const key=Math.min(p.waypoint_idx,W.waypoints.length-1);
+    const wp=W.waypoints[key]; if(!wp) continue;
+    const px=wp[0]*TILE+TILE/2, py=wp[1]*TILE+TILE/2-10;
+    const t=scene.add.text(px,py,p.label,{
+      fontFamily:'Courier Prime,monospace',fontSize:'5px',
+      color:'#d83c38',backgroundColor:'rgba(253,244,226,.92)',
+      padding:{x:2,y:1}
+    }).setDepth(950).setOrigin(0.5,1);
+    t.setInteractive();
+    t.on('pointerup',()=>toast(p.description));
+    propLabels[p.id]=t;
+  }
+}
+
 function applyState(snap){
   currentSnap=snap;
   if(!scene){ pendingState=snap; return; }
@@ -647,13 +712,14 @@ function applyState(snap){
   if(W && built!==snap.run_id){
     for(const n of npcs){n.spr.destroy();n.shadow.destroy();}
     npcs=[];
+    for(const id of Object.keys(propLabels)){propLabels[id].destroy();}
+    propLabels={};
     world=W; built=snap.run_id;
     waypointNames=W.waypoint_names||[];
     buildWorld(W); buildCharacter(snap);
     clearBubbles();
   }
-  const incoming=snap.quest?.npcs||[];
-  if(world && incoming.length && incoming.length!==npcs.length) buildNPCs(snap);
+  if(world){ syncNPCs(snap); syncProps(snap); }
   setHud(snap);
 }
 

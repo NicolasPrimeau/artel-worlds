@@ -627,6 +627,14 @@ class NPC:
 
 
 @dataclass
+class Prop:
+    id: str
+    label: str
+    description: str
+    waypoint_idx: int
+
+
+@dataclass
 class PlayedCard:
     id: str
     card_id: str
@@ -688,6 +696,49 @@ class QuestState:
     scene_beat_start: int = 0
     facts: list[str] = field(default_factory=list)
     pressure_pool: list[dict] = field(default_factory=list)
+    props: list[Prop] = field(default_factory=list)
+
+
+def apply_world_changes(quest: QuestState, changes: list[dict], rng: random.Random) -> None:
+    for ch in changes:
+        action = ch.get("action", "")
+        if action == "add_prop":
+            prop_id = str(ch.get("id") or f"prop_{len(quest.props)}")
+            if not any(p.id == prop_id for p in quest.props):
+                quest.props.append(
+                    Prop(
+                        id=prop_id,
+                        label=str(ch.get("label", "ITEM"))[:24],
+                        description=str(ch.get("description", "")),
+                        waypoint_idx=int(ch.get("waypoint_idx", 0)),
+                    )
+                )
+        elif action == "remove_prop":
+            prop_id = str(ch.get("id", ""))
+            quest.props = [p for p in quest.props if p.id != prop_id]
+        elif action == "add_npc":
+            npc_id = f"npc_dyn_{len(quest.npcs)}"
+            quest.npcs.append(
+                NPC(
+                    id=npc_id,
+                    name=str(ch.get("name", "Unknown")),
+                    role=str(ch.get("role", "")),
+                    personality=str(ch.get("personality", "")),
+                    sprite=rng.randint(0, 5),
+                    waypoint_idx=int(ch.get("waypoint_idx", 0)),
+                    behavior=str(ch.get("behavior", "stationary")),
+                )
+            )
+        elif action == "move_npc":
+            npc_id = str(ch.get("npc_id", ""))
+            new_wp = int(ch.get("waypoint_idx", 0))
+            for npc in quest.npcs:
+                if npc.id == npc_id:
+                    npc.waypoint_idx = new_wp
+                    break
+        elif action == "remove_npc":
+            npc_id = str(ch.get("npc_id", ""))
+            quest.npcs = [n for n in quest.npcs if n.id != npc_id]
 
 
 @dataclass

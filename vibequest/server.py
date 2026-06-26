@@ -25,6 +25,7 @@ from .engine import (
     QuestState,
     apply_card_effects,
     apply_disaster,
+    apply_world_changes,
     advance_window,
     at_station,
     classify_result,
@@ -106,6 +107,15 @@ def _state_snapshot(state: GameState, include_world: bool = True) -> dict:
                     "waypoint_idx": n.waypoint_idx,
                 }
                 for n in state.quest.npcs
+            ],
+            "props": [
+                {
+                    "id": p.id,
+                    "label": p.label,
+                    "description": p.description,
+                    "waypoint_idx": p.waypoint_idx,
+                }
+                for p in state.quest.props
             ],
             "beats": state.quest.beats[-4:],
             "resolution_count": state.quest.resolution_count,
@@ -278,6 +288,9 @@ async def _resolve_window(state: GameState) -> None:
                     register=state.quest.register,
                     npc_context=npc_context,
                     pressure_context=pressure_context,
+                    waypoint_count=len(state.world.waypoints) if state.world else 5,
+                    existing_props=[(p.id, p.label) for p in state.quest.props],
+                    existing_npc_ids=[(n.id, n.name) for n in state.quest.npcs],
                 )
             except Exception as exc:
                 log.warning("narrate_card failed: %s", exc)
@@ -286,6 +299,10 @@ async def _resolve_window(state: GameState) -> None:
         state.quest.facts.extend(new_facts)
         if len(state.quest.facts) > 24:
             state.quest.facts = state.quest.facts[-24:]
+
+        world_changes = [c for c in result.get("world_changes", []) if isinstance(c, dict)][:4]
+        if world_changes:
+            apply_world_changes(state.quest, world_changes, _rng)
 
         resolution = CardResolution(
             card=played_card,
