@@ -658,6 +658,7 @@ def create_app() -> FastAPI:
     async def startup() -> None:
         global _state
         _state = new_game(_rng)
+        asyncio.create_task(_start_new_game())
         asyncio.create_task(_window_loop())
         asyncio.create_task(_move_loop())
         asyncio.create_task(_travel_card_loop())
