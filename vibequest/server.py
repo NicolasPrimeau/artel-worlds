@@ -256,24 +256,27 @@ async def _resolve_window(state: GameState) -> None:
                 if current_npc
                 else ""
             )
-            result = await llm.narrate_card(
-                card_name=card_def.name,
-                card_description=card_def.description,
-                card_type=card_def.type.value,
-                dice_value=dice_value,
-                dice_label=dice_result.value,
-                quest_hook=state.quest.hook,
-                complication=state.quest.complication,
-                party_summary=_character_desc(state),
-                momentum=state.quest.momentum,
-                momentum_delta=momentum_delta,
-                memory_context=memory_ctx,
-                story_so_far=_story_so_far(state),
-                story_facts=list(state.quest.facts),
-                register=state.quest.register,
-                npc_context=npc_context,
-                pressure_context=pressure_context,
-            )
+            try:
+                result = await llm.narrate_card(
+                    card_name=card_def.name,
+                    card_description=card_def.description,
+                    card_type=card_def.type.value,
+                    dice_value=dice_value,
+                    dice_label=dice_result.value,
+                    quest_hook=state.quest.hook,
+                    complication=state.quest.complication,
+                    party_summary=_character_desc(state),
+                    momentum=state.quest.momentum,
+                    momentum_delta=momentum_delta,
+                    memory_context=memory_ctx,
+                    story_so_far=_story_so_far(state),
+                    story_facts=list(state.quest.facts),
+                    register=state.quest.register,
+                    npc_context=npc_context,
+                    pressure_context=pressure_context,
+                )
+            except Exception as exc:
+                log.warning("narrate_card failed: %s", exc)
 
         new_facts = [f for f in result.get("established", []) if isinstance(f, str)][:2]
         state.quest.facts.extend(new_facts)
@@ -687,7 +690,12 @@ async def _window_loop() -> None:
             continue
         async with _lock:
             if _state.window.cards and _state.phase == "active" and at_station(_state):
-                await _resolve_window(_state)
+                try:
+                    await _resolve_window(_state)
+                except Exception as exc:
+                    log.error("_resolve_window crashed: %s", exc)
+                    _state.window.resolving = False
+                    _state.phase = "active"
 
 
 def create_app() -> FastAPI:
