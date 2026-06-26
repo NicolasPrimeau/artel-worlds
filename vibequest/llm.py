@@ -126,9 +126,9 @@ CARD PLAYED: {card_name} ({card_type})
 CARD EFFECT: {card_description}
 DICE: {dice_value}/20 ({dice_label}). {crit}
 
-The engine has already applied the mechanical effect. Narrate what caused that outcome — 2-3 sentences, {register} register.
+The engine has already applied the mechanical effect. Narrate what caused that outcome — exactly 1 sentence, {register} register.
 Be specific to named people, objects, and places already established. Do not contradict anything in WHAT IS CURRENTLY TRUE.
-If a chaos card: something unexpected really does happen, name it concretely.
+If a chaos card: something unexpected really does happen, name it concretely. Under 25 words.
 
 {reaction_instruction}
 

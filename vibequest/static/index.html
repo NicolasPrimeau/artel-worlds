@@ -65,6 +65,12 @@
   #caption.at-rest{color:var(--ink);background:rgba(196,174,136,.72);letter-spacing:.35em}
 
   /* card zone — 25 / 50 / 25 horizontal strip */
+  #station-log{position:fixed;bottom:clamp(130px,37vw,170px);left:0;right:0;z-index:9;pointer-events:none;
+    max-height:68px;overflow-y:auto;display:flex;flex-direction:column;justify-content:flex-end;
+    background:rgba(196,174,136,.92);border-top:1px solid rgba(26,20,40,.15);padding:4px 12px 3px}
+  .slog-entry{font-family:"Courier Prime",monospace;font-size:clamp(9px,2.4vw,11px);line-height:1.45;
+    color:var(--ink);padding:1px 0;opacity:.55;transition:opacity .4s}
+  .slog-entry.fresh{opacity:1}
   #cardzone{position:fixed;bottom:0;left:0;right:0;display:flex;align-items:flex-end;z-index:10;pointer-events:none}
   #drawpile{flex:0 0 25%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
     padding-bottom:calc(8px + env(safe-area-inset-bottom));pointer-events:auto;position:relative;overflow:visible}
@@ -206,6 +212,7 @@
     .target-npc{font-size:13px;padding:8px 10px}
     #toast{bottom:calc(clamp(130px,37vw,170px) + env(safe-area-inset-bottom) + 4px)}
     #caption{bottom:calc(clamp(130px,37vw,170px) + env(safe-area-inset-bottom) + 4px)}
+    #station-log{bottom:calc(clamp(130px,37vw,170px) + env(safe-area-inset-bottom));max-height:56px}
   }
 </style>
 </head>
@@ -288,6 +295,7 @@
   </div>
 </div>
 
+<div id="station-log" class="ui"></div>
 <div id="cardzone" class="ui">
   <div id="drawpile"></div>
   <div id="hand"></div>
@@ -926,6 +934,15 @@ function updateBubbles(){
   }
 }
 function clearBubbles(){ for(const b of bubbles) b.el.remove(); bubbles.length=0; }
+function addLogEntry(text){
+  if(!text) return;
+  const log=document.getElementById("station-log"); if(!log) return;
+  const el=document.createElement("div"); el.className="slog-entry fresh"; el.textContent=text;
+  log.querySelectorAll(".slog-entry.fresh").forEach(e=>e.classList.remove("fresh"));
+  log.appendChild(el);
+  while(log.children.length>6) log.removeChild(log.firstChild);
+  log.scrollTop=log.scrollHeight;
+}
 function showReactions(rs,snap){
   if(!rs||!rs.length) return;
   const targetIdx=snap&&snap.pos!=null?snap.pos.target_idx:null;
@@ -1428,13 +1445,8 @@ function connect(){
       case "card_resolved": {
         applyState(m.state);
         if(m.next_heading) setCaption(m.next_heading);
-        if(m.narrative&&character){
-          speak(character,character.name,m.narrative,4200);
-          if(m.reactions?.length) setTimeout(()=>showReactions(m.reactions,m.state),4300);
-        } else {
-          const last=[...(m.state.log||[])].reverse().find(e=>e.kind==="resolution"&&e.reactions?.length);
-          if(last) showReactions(last.reactions,m.state);
-        }
+        if(m.narrative) addLogEntry(m.narrative);
+        if(m.reactions?.length) showReactions(m.reactions,m.state);
         break;
       }
       case "quest_complete": applyState(m.state);
