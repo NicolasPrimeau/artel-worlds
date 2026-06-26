@@ -152,8 +152,9 @@ async def _broadcast(msg: dict) -> None:
 
 async def _resolve_window(state: GameState) -> None:
     global _travel_processed
+    already_handled = set(_travel_processed)
     _travel_processed.clear()
-    played = advance_window(state, _rng)
+    played = [c for c in advance_window(state, _rng) if c.id not in already_handled]
 
     state.window.resolving = True
     state.phase = "resolving"

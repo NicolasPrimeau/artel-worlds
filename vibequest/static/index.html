@@ -1439,7 +1439,7 @@ function connect(){
       case "scene": applyState(m.state);
         if(m.scene&&m.scene.opening){ const mem=memberFor(null,m.scene.speaker); speak(mem,mem&&mem.name,m.scene.opening,5200); }
         break;
-      case "travel_event": { speak(character,character&&character.name,m.text,4200); break; }
+      case "travel_event": { addLogEntry(m.text); break; }
       case "dice_roll": showDice(m); break;
       case "card_added": showCardAdded(m); break;
       case "card_resolved": {
