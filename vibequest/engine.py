@@ -729,7 +729,11 @@ def apply_world_changes(quest: QuestState, changes: list[dict], rng: random.Rand
                         p.waypoint_idx = int(ch["waypoint_idx"])
                     break
         elif action == "add_npc":
-            npc_id = f"npc_dyn_{len(quest.npcs)}"
+            raw_name = str(ch.get("name", "unknown"))
+            slug = "_".join(raw_name.lower().split())[:24]
+            npc_id = f"npc_{slug}"
+            if any(n.id == npc_id for n in quest.npcs):
+                npc_id = f"npc_{slug}_{len(quest.npcs)}"
             quest.npcs.append(
                 NPC(
                     id=npc_id,
