@@ -627,6 +627,8 @@ function applyState(snap){
   if(!scene){ pendingState=snap; return; }
   const W=snap.world;
   if(W && built!==snap.run_id){
+    for(const n of npcs){n.spr.destroy();n.shadow.destroy();}
+    npcs=[];
     world=W; built=snap.run_id;
     waypointNames=W.waypoint_names||[];
     buildWorld(W); buildCharacter(snap);
@@ -1204,7 +1206,7 @@ function _attachCardHandlers(el,uid,c){
         if(c.type==="action"&&showTargetPicker(npcId=>doPlay(npcId))){
           el.style.position=""; el.style.left=""; el.style.top="";
           el.style.width=""; el.style.height=""; el.style.margin=""; el.style.transition="";
-          el.style.transform=cardTransform(el._t,true,el._step);
+          _layoutHand(null);
         } else {
           doPlay(null);
         }
