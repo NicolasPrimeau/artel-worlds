@@ -815,6 +815,46 @@ async def _deal_loop() -> None:
         await _broadcast({"type": "deal_card", "card": _card_msg(card)})
 
 
+AMBIENT_INTERVAL = 38.0
+
+
+async def _ambient_loop() -> None:
+    while True:
+        await asyncio.sleep(AMBIENT_INTERVAL)
+        state = _state
+        if state is None or not _clients or state.phase != "active" or not llm.enabled():
+            continue
+        npcs_here = [n for n in state.quest.npcs if n.waypoint_idx == state.target_idx]
+        npc = npcs_here[0] if npcs_here else (state.quest.npcs[0] if state.quest.npcs else None)
+        if not npc:
+            continue
+        try:
+            result = await llm.narrate_ambient(
+                quest_hook=state.quest.hook,
+                story_so_far=_story_so_far(state),
+                scene_name=_scene_name(state),
+                npc_name=npc.name,
+                npc_role=npc.role,
+                npc_personality=npc.personality,
+                story_facts=list(state.quest.facts),
+            )
+            narrative = result.get("narrative", "")
+            line = result.get("line", "")
+            if line:
+                await _broadcast({"type": "npc_speak", "npc_name": npc.name, "line": line})
+            if narrative:
+                state.log_event("ambient", narrative)
+                await _broadcast(
+                    {
+                        "type": "scene_event",
+                        "text": narrative,
+                        "state": _state_snapshot(state, include_world=False),
+                    }
+                )
+        except Exception as exc:
+            log.warning("ambient event failed: %s", exc)
+
+
 async def _window_loop() -> None:
     global _state
     while True:
@@ -850,6 +890,7 @@ def create_app() -> FastAPI:
         asyncio.create_task(_move_loop())
         asyncio.create_task(_travel_card_loop())
         asyncio.create_task(_deal_loop())
+        asyncio.create_task(_ambient_loop())
 
     app.mount("/assets", StaticFiles(directory=STATIC / "assets"), name="assets")
 

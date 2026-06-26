@@ -289,6 +289,41 @@ Under 50 words. No em dashes."""
     return await ROUTER.complete(req)
 
 
+async def narrate_ambient(
+    quest_hook: str,
+    story_so_far: str,
+    scene_name: str,
+    npc_name: str,
+    npc_role: str,
+    npc_personality: str,
+    story_facts: list[str] | None = None,
+) -> dict:
+    facts_block = ""
+    if story_facts:
+        facts_block = "WHAT IS CURRENTLY TRUE:\n" + "\n".join(f"- {f}" for f in story_facts[-6:])
+    prompt = f"""{_TONE}
+
+The scene is ticking forward on its own. No card was played. Something happens passively — the world keeps moving.
+
+SITUATION: {quest_hook}
+LOCATION: {scene_name}
+PERSON HERE: {npc_name} ({npc_role}) — {npc_personality}
+WHAT HAS HAPPENED: {story_so_far or "Nothing yet."}
+{facts_block}
+
+Write one observation sentence (under 18 words) describing something that just happened — a person doing something, a detail noticed, the situation shifting slightly.
+Then write one line this person says out loud (under 12 words). In their established voice. Mundane. No acknowledgment of strangeness.
+
+JSON only:
+{{"narrative": "one sentence", "line": "what they say"}}"""
+    req = Request(system="Respond only with valid JSON. No fantasy language.", user=prompt)
+    raw = await ROUTER.complete(req)
+    parsed = parse_json(raw)
+    if not parsed:
+        return {}
+    return parsed
+
+
 async def narrate_pressure_card(
     card_name: str,
     card_type: str,
