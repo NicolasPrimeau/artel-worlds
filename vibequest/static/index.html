@@ -1513,7 +1513,7 @@ function connect(){
         resetHand();
         applyState(m.state); showChapter(m.state);
         const sc=m.state.quest&&m.state.quest.scene;
-        if(sc&&sc.opening){ const mem=memberFor(null,sc.speaker); setTimeout(()=>speak(mem,mem&&mem.name,sc.opening,5200),3900); }
+        if(sc&&sc.opening){ const mem=memberFor(null,sc.speaker); setTimeout(()=>speak(mem,mem&&mem.name,sc.opening,5200),3900); addLogEntry(sc.opening); }
         break;
       }
       case "deal_card": addDealCard(m.card); break;

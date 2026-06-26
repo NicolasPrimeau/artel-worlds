@@ -515,6 +515,12 @@ async def _resolve_window(state: GameState) -> None:
     state.window.resolving = False
     state.phase = "active"
 
+    _refill_pool = list(CARD_BY_ID.values())
+    _refill_weights = [c.weight for c in _refill_pool]
+    for _ in played:
+        card_def = _rng.choices(_refill_pool, weights=_refill_weights)[0]
+        await _broadcast({"type": "deal_card", "card": _card_msg(card_def)})
+
     if state.quest.outcome:
         await _end_quest(state)
         return
