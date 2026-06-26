@@ -43,40 +43,37 @@
   #titlecard .objectives li.done{opacity:.4;text-decoration:line-through}
   #titlecard .objectives li.done .ob{color:var(--ink2)}
 
-  /* speech bubble — fixed above character (camera follows, so character ≈ center) */
+  /* speech bubble — compact, positioned above character */
   #bubbles{pointer-events:none}
-  .bubble{position:fixed;bottom:60%;left:50%;transform:translateX(-50%);max-width:140px;background:rgba(253,244,226,.78);border:1px solid rgba(26,20,40,.5);border-radius:6px;
-    padding:4px 8px;font-family:"Cormorant Garamond",serif;font-size:13px;line-height:1.2;color:var(--ink);box-shadow:1px 2px 0 rgba(26,20,40,.12);
-    white-space:normal;text-align:center;animation:pop .16s ease-out;z-index:300;pointer-events:none;backdrop-filter:blur(1px);-webkit-backdrop-filter:blur(1px)}
-  .npc-bubble{background:rgba(240,168,160,.9);border-color:var(--rose2);max-width:160px}
-  .bubble .nm{display:block;font-family:"Courier Prime",monospace;font-size:7px;letter-spacing:.14em;text-transform:uppercase;color:var(--rose2);margin-bottom:1px}
-  @keyframes pop{from{opacity:0;transform:translateX(-50%) scale(.85)}to{opacity:1;transform:translateX(-50%) scale(1)}}
+  .bubble{position:fixed;bottom:56%;left:50%;transform:translateX(-50%);max-width:110px;background:rgba(253,244,226,.82);border:1px solid rgba(26,20,40,.4);border-radius:4px;
+    padding:3px 7px;font-family:"Cormorant Garamond",serif;font-size:11px;line-height:1.25;color:var(--ink);box-shadow:1px 2px 0 rgba(26,20,40,.10);
+    white-space:normal;text-align:center;animation:pop .14s ease-out;z-index:300;pointer-events:none}
+  .npc-bubble{background:rgba(240,168,160,.88);border-color:var(--rose2);max-width:120px}
+  .bubble .nm{display:block;font-family:"Courier Prime",monospace;font-size:6px;letter-spacing:.14em;text-transform:uppercase;color:var(--rose2);margin-bottom:1px}
+  @keyframes pop{from{opacity:0;transform:translateX(-50%) scale(.88)}to{opacity:1;transform:translateX(-50%) scale(1)}}
 
-  /* tiny ambient caption (travel beats, scene conclusions) */
-  #toast{bottom:calc(120px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);max-width:90vw;text-align:center;
-    font-family:"Cormorant Garamond",serif;font-style:italic;font-size:clamp(13px,3.6vw,16px);color:var(--ink);
-    background:rgba(244,236,214,.86);padding:4px 14px;border-radius:4px;opacity:0;transition:opacity .4s}
-  #toast.show{opacity:1}
+  /* toast — hidden, text routed to scene panel */
+  #toast{display:none}
 
   /* room label */
-  #caption{bottom:calc(clamp(130px,37vw,170px) + 160px + 8px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);max-width:80vw;text-align:center;
-    font-family:"Courier Prime",monospace;font-size:clamp(8px,2.2vw,10px);letter-spacing:.3em;text-transform:uppercase;color:var(--ink2);
-    background:rgba(196,174,136,.55);padding:3px 10px;border-radius:2px;opacity:0;transition:opacity .5s;white-space:nowrap;pointer-events:none}
+  #caption{bottom:calc(clamp(130px,37vw,170px) + 122px + 6px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);max-width:80vw;text-align:center;
+    font-family:"Courier Prime",monospace;font-size:clamp(7px,1.9vw,9px);letter-spacing:.28em;text-transform:uppercase;color:var(--ink2);
+    background:rgba(196,174,136,.5);padding:2px 8px;border-radius:2px;opacity:0;transition:opacity .5s;white-space:nowrap;pointer-events:none}
   #caption.show{opacity:1}
-  #caption.at-rest{color:var(--ink);background:rgba(196,174,136,.72);letter-spacing:.35em}
+  #caption.at-rest{color:var(--ink);background:rgba(196,174,136,.65);letter-spacing:.3em}
 
   /* ── cinematic narrative panel ── */
   #scene-panel{position:fixed;bottom:clamp(130px,37vw,170px);left:0;right:0;z-index:9;pointer-events:none;
-    min-height:54px;max-height:160px;overflow:hidden;
+    min-height:44px;max-height:122px;overflow:hidden;
     display:flex;flex-direction:column;justify-content:flex-end;gap:0;
-    background:rgba(10,6,22,.86);border-top:2px solid rgba(196,174,136,.22);
-    padding:10px 22px 9px}
-  .sbeat{font-family:"Courier Prime",monospace;font-size:clamp(13px,3.4vw,16px);line-height:1.55;
+    background:rgba(10,6,22,.88);border-top:1px solid rgba(196,174,136,.18);
+    padding:8px 18px 7px}
+  .sbeat{font-family:"Courier Prime",monospace;font-size:clamp(12px,3.1vw,14px);line-height:1.5;
     color:rgba(240,232,210,.95);padding:0;transition:opacity .5s}
   .sbeat.live{opacity:1}
-  .sbeat.dim{opacity:.3;font-size:clamp(10px,2.6vw,12px);transition:opacity .5s,font-size .3s}
-  .sbeat .swho{display:block;font-size:clamp(7px,1.7vw,8px);letter-spacing:.32em;text-transform:uppercase;
-    color:rgba(196,174,136,.65);margin-bottom:2px}
+  .sbeat.dim{opacity:.28;font-size:clamp(9px,2.3vw,11px);transition:opacity .5s,font-size .3s}
+  .sbeat .swho{display:block;font-size:clamp(6px,1.5vw,7px);letter-spacing:.3em;text-transform:uppercase;
+    color:rgba(196,174,136,.6);margin-bottom:1px}
   #cardzone{position:fixed;bottom:0;left:0;right:0;display:flex;align-items:flex-end;z-index:10;pointer-events:none}
   #drawpile{flex:0 0 25%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
     padding-bottom:calc(8px + env(safe-area-inset-bottom));pointer-events:auto;position:relative;overflow:visible}
@@ -135,24 +132,33 @@
   .card-detail-overlay .card .cd{font-size:clamp(11px,3.2vw,13px);line-height:1.5;display:block;overflow:visible;-webkit-line-clamp:unset}
   .card-detail-overlay .card .flavor{font-size:clamp(9px,2.5vw,11px);color:var(--ink2);font-style:italic;margin-top:8px;display:block;overflow:visible;-webkit-line-clamp:unset}
 
-  /* dice overlay */
-  #dice{top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;opacity:0;transition:opacity .3s;background:rgba(26,20,40,.78);backdrop-filter:blur(3px);padding:24px}
+  /* dice — compact floating bar above scene panel */
+  #dice{
+    bottom:calc(clamp(130px,37vw,170px) + 122px + 2px + env(safe-area-inset-bottom));
+    left:50%;transform:translateX(-50%);
+    display:flex;align-items:center;gap:8px;
+    background:rgba(26,20,40,.9);border:1px solid rgba(196,174,136,.25);border-radius:4px;
+    padding:5px 10px 5px 8px;white-space:nowrap;
+    opacity:0;transition:opacity .22s;pointer-events:none;z-index:20;
+  }
   #dice.show{opacity:1}
-  #dice-card-show{background:var(--cream2);border:2px solid var(--ink);border-radius:6px;padding:14px 18px;max-width:min(260px,82vw);text-align:center;transform:translateY(18px);opacity:0;transition:transform .35s ease-out,opacity .35s}
-  #dice.show #dice-card-show{transform:translateY(0);opacity:1}
-  .dcs-type{font-size:8px;letter-spacing:.45em;text-transform:uppercase;color:var(--ink2)}
-  .dcs-name{font-family:"Cormorant Garamond",serif;font-size:clamp(18px,5.5vw,24px);font-weight:700;margin:4px 0}
-  .dcs-desc{font-size:clamp(10px,3vw,12px);color:var(--ink);line-height:1.45}
-  .dcs-tag{font-size:8px;letter-spacing:.4em;text-transform:uppercase;color:var(--rose2);margin-top:10px;opacity:0;transition:opacity .25s}
+  #dice-card-show{display:flex;flex-direction:column;gap:1px}
+  .dcs-type{font-size:6px;letter-spacing:.4em;text-transform:uppercase;color:rgba(196,174,136,.6)}
+  .dcs-name{font-family:"Cormorant Garamond",serif;font-size:clamp(13px,3.5vw,15px);font-weight:700;color:#f0ead8;line-height:1.1}
+  .dcs-desc{display:none}
+  .dcs-tag{font-size:6px;letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);opacity:0;transition:opacity .2s}
   .dcs-tag.show{opacity:1}
-  #d20{width:clamp(110px,32vw,140px);height:clamp(110px,32vw,140px);background:var(--cream);border:3px solid var(--ink);border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:6px 6px 0 rgba(26,20,40,.2);transform:rotate(-5deg) scale(0);transition:transform .35s cubic-bezier(.34,1.56,.64,1)}
-  #d20.reveal{transform:rotate(-5deg) scale(1)}
-  #d20 .num{font-size:clamp(44px,13vw,60px);font-weight:700;line-height:1;font-family:"Cormorant Garamond",serif}
-  #d20 .lab{font-size:clamp(9px,2.6vw,10px);letter-spacing:.35em;text-transform:uppercase;color:var(--rose2);margin-top:3px}
-  #d20.nat20{background:#f0d060;border-color:#b89000;animation:d20boom .5s ease-out forwards}
-  #d20.nat1{background:#f09098;border-color:var(--rose2);animation:d20shake .5s ease-out forwards}
-  @keyframes d20boom{0%{transform:rotate(-5deg) scale(1)}40%{transform:rotate(4deg) scale(1.18)}70%{transform:rotate(-2deg) scale(1.07)}100%{transform:rotate(-3deg) scale(1)}}
-  @keyframes d20shake{0%{transform:rotate(-5deg)}18%{transform:rotate(5deg)}36%{transform:rotate(-4deg)}54%{transform:rotate(3deg)}72%{transform:rotate(-2deg)}100%{transform:rotate(-3deg)}}
+  #d20{width:40px;height:40px;background:var(--cream);border:2px solid var(--ink);border-radius:7px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    box-shadow:2px 2px 0 rgba(26,20,40,.3);
+    transform:rotate(-4deg) scale(0);transition:transform .25s cubic-bezier(.34,1.56,.64,1);flex-shrink:0}
+  #d20.reveal{transform:rotate(-4deg) scale(1)}
+  #d20 .num{font-size:clamp(16px,4.5vw,20px);font-weight:700;line-height:1;font-family:"Cormorant Garamond",serif}
+  #d20 .lab{font-size:5px;letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);margin-top:1px}
+  #d20.nat20{background:#f0d060;border-color:#b89000;animation:d20boom .4s ease-out forwards}
+  #d20.nat1{background:#f09098;border-color:var(--rose2);animation:d20shake .4s ease-out forwards}
+  @keyframes d20boom{0%{transform:rotate(-4deg) scale(1)}40%{transform:rotate(5deg) scale(1.2)}70%{transform:rotate(-2deg) scale(1.08)}100%{transform:rotate(-3deg) scale(1)}}
+  @keyframes d20shake{0%{transform:rotate(-4deg)}18%{transform:rotate(5deg)}36%{transform:rotate(-4deg)}54%{transform:rotate(3deg)}72%{transform:rotate(-2deg)}100%{transform:rotate(-3deg)}}
 
   /* chapter intro */
   #chapter{top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .5s;pointer-events:none;padding:0 16px}
@@ -207,7 +213,7 @@
 
   @media (max-width:480px){
     #hud{max-width:min(58vw,180px)}
-    .bubble{max-width:clamp(110px,52vw,160px);font-size:12px}
+    .bubble{max-width:clamp(90px,44vw,120px);font-size:10px}
     #endscreen{padding:10px;align-items:flex-start;overflow-y:auto}
     .endbox{max-width:100%;padding:20px 18px;max-height:none}
     .endbox .verdict{font-size:clamp(24px,8vw,36px)}
@@ -216,10 +222,10 @@
     #target-picker{padding-bottom:calc(clamp(130px,37vw,170px) + 6px)}
     .target-box{padding:10px 12px 12px}
     .target-npc{font-size:13px;padding:8px 10px}
-    #toast{bottom:calc(clamp(130px,37vw,170px) + env(safe-area-inset-bottom) + 4px)}
-    #caption{bottom:calc(clamp(130px,37vw,170px) + 130px + 6px + env(safe-area-inset-bottom))}
-    #scene-panel{max-height:130px;padding:8px 14px 8px}
-    .sbeat{font-size:clamp(12px,3.1vw,15px)}
+    #caption{bottom:calc(clamp(130px,37vw,170px) + 100px + 4px + env(safe-area-inset-bottom))}
+    #scene-panel{max-height:100px;padding:6px 12px 6px;min-height:36px}
+    .sbeat{font-size:clamp(11px,2.8vw,13px)}
+    #dice{bottom:calc(clamp(130px,37vw,170px) + 100px + 2px + env(safe-area-inset-bottom))}
   }
 </style>
 </head>
@@ -1069,11 +1075,7 @@ function showReactions(rs,snap,npcName){
     setTimeout(()=>showSceneBeat(`"${charR.line}"`, character.name), delay);
   }
 }
-let toastTimer=null;
-function toast(text){
-  const el=document.getElementById("toast"); el.textContent=text; el.classList.add("show");
-  clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove("show"),5000);
-}
+function toast(text){ showSceneBeat(text); }
 
 function showDice(m){
   const overlay=document.getElementById("dice");
