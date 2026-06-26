@@ -226,12 +226,40 @@ async def _resolve_window(state: GameState) -> None:
                 consequence="",
             )
             state.window.resolutions.append(resolution)
-            state.log_event(
-                "pressure_added",
-                card_def.description,
-                {"card": card_def.name, "card_type": card_def.type.value},
+            pressure_llm_task = (
+                asyncio.create_task(
+                    llm.narrate_pressure_card(
+                        card_name=card_def.name,
+                        card_type=card_def.type.value,
+                        card_description=card_def.description,
+                        quest_hook=state.quest.hook,
+                    )
+                )
+                if llm.enabled()
+                else None
             )
             await asyncio.sleep(1.5)
+            pressure_narrative = ""
+            if pressure_llm_task:
+                try:
+                    pressure_narrative = await pressure_llm_task
+                except Exception:
+                    pass
+            state.log_event(
+                "pressure_added",
+                pressure_narrative or card_def.description,
+                {"card": card_def.name, "card_type": card_def.type.value},
+            )
+            if pressure_narrative:
+                await _broadcast(
+                    {
+                        "type": "card_resolved",
+                        "narrative": pressure_narrative,
+                        "reactions": [],
+                        "npc_name": "",
+                        "state": _state_snapshot(state, include_world=False),
+                    }
+                )
             continue
 
         dice_value, dice_result = roll_d20(_rng)

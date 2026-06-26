@@ -59,7 +59,7 @@
   #toast.show{opacity:1}
 
   /* room label */
-  #caption{bottom:calc(clamp(130px,37vw,170px) + 68px + 8px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);max-width:80vw;text-align:center;
+  #caption{bottom:calc(clamp(130px,37vw,170px) + 120px + 8px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);max-width:80vw;text-align:center;
     font-family:"Courier Prime",monospace;font-size:clamp(8px,2.2vw,10px);letter-spacing:.3em;text-transform:uppercase;color:var(--ink2);
     background:rgba(196,174,136,.55);padding:3px 10px;border-radius:2px;opacity:0;transition:opacity .5s;white-space:nowrap;pointer-events:none}
   #caption.show{opacity:1}
@@ -67,7 +67,7 @@
 
   /* card zone — 25 / 50 / 25 horizontal strip */
   #station-log{position:fixed;bottom:clamp(130px,37vw,170px);left:0;right:0;z-index:9;pointer-events:none;
-    max-height:68px;overflow-y:auto;display:flex;flex-direction:column;justify-content:flex-end;
+    max-height:120px;overflow-y:auto;display:flex;flex-direction:column;justify-content:flex-end;
     background:rgba(196,174,136,.92);border-top:1px solid rgba(26,20,40,.15);padding:4px 12px 3px}
   .slog-entry{font-family:"Courier Prime",monospace;font-size:clamp(9px,2.4vw,11px);line-height:1.45;
     color:var(--ink);padding:1px 0;opacity:.55;transition:opacity .4s}
@@ -212,8 +212,8 @@
     .target-box{padding:10px 12px 12px}
     .target-npc{font-size:13px;padding:8px 10px}
     #toast{bottom:calc(clamp(130px,37vw,170px) + env(safe-area-inset-bottom) + 4px)}
-    #caption{bottom:calc(clamp(130px,37vw,170px) + 56px + 6px + env(safe-area-inset-bottom))}
-    #station-log{bottom:calc(clamp(130px,37vw,170px) + env(safe-area-inset-bottom));max-height:56px}
+    #caption{bottom:calc(clamp(130px,37vw,170px) + 96px + 6px + env(safe-area-inset-bottom))}
+    #station-log{bottom:calc(clamp(130px,37vw,170px) + env(safe-area-inset-bottom));max-height:96px}
   }
 </style>
 </head>

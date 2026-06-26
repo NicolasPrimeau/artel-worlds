@@ -289,6 +289,24 @@ Under 50 words. No em dashes."""
     return await ROUTER.complete(req)
 
 
+async def narrate_pressure_card(
+    card_name: str,
+    card_type: str,
+    card_description: str,
+    quest_hook: str,
+) -> str:
+    prompt = f"""{_TONE}
+
+A background card just shifted the situation quietly, with no dice roll.
+
+SITUATION: {quest_hook}
+CARD: {card_name} ({card_type}) — {card_description}
+
+One sentence under 15 words describing what subtly changed in the room. No drama. Nobody reacts."""
+    req = Request(system="Respond in one sentence only. No fantasy language.", user=prompt)
+    return await ROUTER.complete(req)
+
+
 async def narrate_travel_card(
     card_name: str,
     card_type: str,
