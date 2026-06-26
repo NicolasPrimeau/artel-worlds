@@ -87,8 +87,9 @@
     pointer-events:auto;cursor:pointer;user-select:none;touch-action:none;
   }
   .card .ct{font-size:clamp(6px,1.7vw,8px);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:700}
-  .card .cn{font-size:clamp(11px,3.2vw,14px);font-weight:700;line-height:1.15;font-family:"Cormorant Garamond",serif;letter-spacing:.02em}
-  .card .cd{font-size:clamp(7px,1.9vw,9px);color:var(--ink);line-height:1.4;flex:none}
+  .card .cn{font-size:clamp(11px,3.2vw,14px);font-weight:700;line-height:1.15;font-family:"Cormorant Garamond",serif;letter-spacing:.02em;word-break:break-word;overflow-wrap:anywhere}
+  .card .cd{font-size:clamp(7px,1.9vw,9px);color:var(--ink);line-height:1.4;flex:none;word-break:break-word;overflow-wrap:anywhere;overflow:hidden;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical}
+  .card .flavor{word-break:break-word;overflow-wrap:anywhere;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
   .card.accumulate{background:#88d8a8}.card.action{background:#f8be60}
   .card.chaos{background:#f09098}.card.tweak{background:#b0a0e8}
   .card.played{opacity:0;pointer-events:none}
@@ -119,8 +120,8 @@
   .card-detail-overlay{position:fixed;inset:0;z-index:800;display:flex;align-items:center;justify-content:center;background:rgba(28,26,30,.52)}
   .card-detail-overlay .card{position:relative;left:auto;bottom:auto;width:min(250px,72vw);min-height:0;height:auto;padding:18px 20px;transform:rotate(-2deg) !important;box-shadow:0 20px 60px rgba(0,0,0,.4);cursor:default;pointer-events:none;transition:none}
   .card-detail-overlay .card .cn{font-size:clamp(16px,5vw,20px)}
-  .card-detail-overlay .card .cd{font-size:clamp(11px,3.2vw,13px);line-height:1.5}
-  .card-detail-overlay .card .flavor{font-size:clamp(9px,2.5vw,11px);color:var(--ink2);font-style:italic;margin-top:8px}
+  .card-detail-overlay .card .cd{font-size:clamp(11px,3.2vw,13px);line-height:1.5;display:block;overflow:visible;-webkit-line-clamp:unset}
+  .card-detail-overlay .card .flavor{font-size:clamp(9px,2.5vw,11px);color:var(--ink2);font-style:italic;margin-top:8px;display:block;overflow:visible;-webkit-line-clamp:unset}
 
   /* dice overlay */
   #dice{top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;opacity:0;transition:opacity .3s;background:rgba(26,20,40,.78);backdrop-filter:blur(3px);padding:24px}
@@ -1259,7 +1260,7 @@ function renderPile(){
       const card=document.createElement("div");
       card.className="card "+c.type;
       card.style.cssText="position:relative;left:auto;bottom:auto;width:min(220px,70vw);height:auto;min-height:0;padding:14px 16px;transform:none;pointer-events:none;flex-shrink:0";
-      card.innerHTML=`<div class="ct">${c.type}</div><div class="cn">${c.name}</div><div class="cd">${c.description}</div>`;
+      card.innerHTML=`<div class="ct">${c.type}</div><div class="cn">${c.name}</div><div class="cd" style="display:block;overflow:visible;-webkit-line-clamp:unset">${c.description}</div>`;
       ov.appendChild(card);
     }
     ov.addEventListener("pointerup",()=>ov.remove(),{once:true});
