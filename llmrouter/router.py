@@ -88,6 +88,7 @@ class Router:
                     "provider": m.provider,
                     "model": m.model,
                     "tier": m.tier,
+                    "grade": m.grade,
                     "tools": m.tools,
                     "calls": m.calls,
                     "ok": m.ok,
