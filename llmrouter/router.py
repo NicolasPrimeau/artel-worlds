@@ -17,6 +17,9 @@ from .models import Model
 # free-vs-paid). It records per-model telemetry so the ops board can show exactly what's throttled.
 
 
+GRADE_RANK = {"fast": 0, "balanced": 1, "capable": 2}
+
+
 @dataclass
 class Request:
     system: str
@@ -25,6 +28,9 @@ class Request:
     timeout: float = 16.0
     requires_tools: bool = False  # if set, only models whose caps mark tool support are eligible
     allow_paid: bool = False  # if unset (default), paid-tier models are never routed to
+    min_grade: str = (
+        "fast"  # "fast" | "balanced" | "capable" — filters to models at or above this tier
+    )
     tools: list | None = None  # OpenAI tool schemas; when set, act() returns the model's tool call
 
 
@@ -95,10 +101,13 @@ class Router:
         return out
 
     def _eligible(self, req: Request) -> list[Model]:
+        min_rank = GRADE_RANK.get(req.min_grade, 0)
         return [
             m
             for m in self.models
-            if (not req.requires_tools or m.tools) and (req.allow_paid or m.tier == "free")
+            if (not req.requires_tools or m.tools)
+            and (req.allow_paid or m.tier == "free")
+            and GRADE_RANK.get(m.grade, 0) >= min_rank
         ]
 
     async def _pick(self, eligible: list[Model]) -> Model | None:

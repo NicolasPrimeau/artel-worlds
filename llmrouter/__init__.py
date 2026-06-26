@@ -1,8 +1,9 @@
 from .models import CAPS, PROVIDERS, Caps, Model, build_models
-from .router import RateLimited, Request, Router, parse_json
+from .router import GRADE_RANK, RateLimited, Request, Router, parse_json
 
 __all__ = [
     "CAPS",
+    "GRADE_RANK",
     "PROVIDERS",
     "Caps",
     "Model",

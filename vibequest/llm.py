@@ -25,26 +25,8 @@ _DEFAULT_POOL = [
 ]
 _POOL = [s for s in env("POOL", ",".join(_DEFAULT_POOL)).split(",") if s.strip()]
 
-_WORLD_BUILDER_POOL = [
-    "groq:llama-3.3-70b-versatile",
-    "groq:openai/gpt-oss-120b",
-    "groq:qwen/qwen3-32b",
-    "cerebras:gpt-oss-120b",
-    "sambanova:Meta-Llama-3.3-70B-Instruct",
-    "gemini:gemini-2.5-flash",
-]
-_WB_POOL = [s for s in env("WB_POOL", ",".join(_WORLD_BUILDER_POOL)).split(",") if s.strip()]
-
 ROUTER = Router(
     build_models(_POOL, _KEYS),
-    concurrency=int(env("CONCURRENCY", "6")),
-    cooldown=float(env("COOLDOWN", "8.0")),
-    cost_in_per_m=float(env("COST_IN_PER_M", "0.15")),
-    cost_out_per_m=float(env("COST_OUT_PER_M", "0.60")),
-)
-
-WB_ROUTER = Router(
-    build_models(_WB_POOL, _KEYS),
     concurrency=int(env("CONCURRENCY", "6")),
     cooldown=float(env("COOLDOWN", "8.0")),
     cost_in_per_m=float(env("COST_IN_PER_M", "0.15")),
@@ -187,8 +169,12 @@ JSON only:
   "world_changes": []
 }}"""
 
-    req = Request(system="Respond only with valid JSON. No fantasy language.", user=prompt)
-    raw = await WB_ROUTER.complete(req)
+    req = Request(
+        system="Respond only with valid JSON. No fantasy language.",
+        user=prompt,
+        min_grade="capable",
+    )
+    raw = await ROUTER.complete(req)
     parsed = parse_json(raw)
     if not parsed or "narrative" not in parsed:
         return {
