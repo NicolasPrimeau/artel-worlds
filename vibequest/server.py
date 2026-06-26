@@ -641,12 +641,9 @@ async def _move_loop() -> None:
         if state is None or not _clients or state.phase in ("resolving", "complete"):
             continue
         sync_target(state)
-        event = maybe_travel_event(state, _rng)
+        maybe_travel_event(state, _rng)
         if step_party(state):
             await _broadcast(_pos_msg(state))
-        if event:
-            state.log_event("travel", event)
-            await _broadcast({"type": "travel_event", "text": event})
 
 
 def _card_msg(card) -> dict:
