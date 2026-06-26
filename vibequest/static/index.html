@@ -1505,15 +1505,19 @@ function connect(){
   ws.onmessage=ev=>{
     const m=JSON.parse(ev.data);
     switch(m.type){
-      case "state": applyState(m.state); break;
+      case "state": {
+        applyState(m.state);
+        const _opening = m.state.log && m.state.log.find(e => e.kind === 'opening');
+        if(_opening) addLogEntry(_opening.text);
+        break;
+      }
       case "new_quest": {
         document.getElementById("endscreen").hidden=true;
         document.getElementById("vote-section").hidden=true;
         clearInterval(_voteTimer);
         resetHand();
         applyState(m.state); showChapter(m.state);
-        const sc=m.state.quest&&m.state.quest.scene;
-        if(sc&&sc.opening){ const mem=memberFor(null,sc.speaker); setTimeout(()=>speak(mem,mem&&mem.name,sc.opening,5200),3900); addLogEntry(sc.opening); }
+        if(m.opening){ addLogEntry(m.opening); setTimeout(()=>{ const mem=memberFor(null,null); speak(mem,null,m.opening,5200); },3900); }
         break;
       }
       case "deal_card": addDealCard(m.card); break;

@@ -730,7 +730,10 @@ async def _start_new_game(preset_quest: QuestState | None = None) -> None:
             f"New VibeQuest begun: {_state.quest.hook} Complication: {_state.quest.complication}",
             tags=["vibequest", "quest-start"],
         )
-    await _broadcast({"type": "new_quest", "state": _state_snapshot(_state)})
+    opening_text = opening if isinstance(opening, str) else ""
+    await _broadcast(
+        {"type": "new_quest", "state": _state_snapshot(_state), "opening": opening_text}
+    )
 
 
 def _pos_msg(state: GameState) -> dict:
