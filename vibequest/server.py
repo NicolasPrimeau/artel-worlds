@@ -316,7 +316,12 @@ async def _resolve_window(state: GameState) -> None:
             )
 
         await _broadcast(
-            {"type": "card_resolved", "state": _state_snapshot(state, include_world=False)}
+            {
+                "type": "card_resolved",
+                "narrative": result.get("narrative", ""),
+                "reactions": result.get("reactions", []),
+                "state": _state_snapshot(state, include_world=False),
+            }
         )
         await asyncio.sleep(3.0)
 

@@ -1428,8 +1428,13 @@ function connect(){
       case "card_resolved": {
         applyState(m.state);
         if(m.next_heading) setCaption(m.next_heading);
-        const last=[...(m.state.log||[])].reverse().find(e=>e.kind==="resolution"&&e.reactions&&e.reactions.length);
-        if(last) showReactions(last.reactions,m.state);
+        if(m.narrative&&character){
+          speak(character,character.name,m.narrative,4200);
+          if(m.reactions?.length) setTimeout(()=>showReactions(m.reactions,m.state),4300);
+        } else {
+          const last=[...(m.state.log||[])].reverse().find(e=>e.kind==="resolution"&&e.reactions?.length);
+          if(last) showReactions(last.reactions,m.state);
+        }
         break;
       }
       case "quest_complete": applyState(m.state);
