@@ -63,6 +63,7 @@ async def narrate_card(
     story_facts: list[str] | None = None,
     register: str = "a deadpan documentary",
     npc_context: str = "",
+    pressure_context: list[str] | None = None,
 ) -> dict:
     if dice_value == 20:
         crit = (
@@ -88,6 +89,12 @@ async def narrate_card(
     if story_facts:
         facts_block = "WHAT IS CURRENTLY TRUE:\n" + "\n".join(f"- {f}" for f in story_facts[-10:])
     story_block = f"WHAT HAS HAPPENED: {story_so_far}" if story_so_far else ""
+    pressure_block = ""
+    if pressure_context:
+        pressure_block = (
+            "ACCUMULATED PRESSURE (these have been building — weave them into the narrative as background tension, not new information):\n"
+            + "\n".join(f"- {p}" for p in pressure_context)
+        )
 
     if npc_context:
         reaction_instruction = (
@@ -108,6 +115,7 @@ PEOPLE: {party_summary}
 MORALE: {momentum} ({delta_desc} from this card — let this show in tone, not in explicit statement)
 {facts_block}
 {story_block}
+{pressure_block}
 CONTEXT: {memory_context or "None."}
 
 CARD PLAYED: {card_name} ({card_type})

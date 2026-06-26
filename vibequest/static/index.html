@@ -123,12 +123,23 @@
   .card-detail-overlay .card .flavor{font-size:clamp(9px,2.5vw,11px);color:var(--ink2);font-style:italic;margin-top:8px}
 
   /* dice overlay */
-  #dice{top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .25s}
+  #dice{top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;opacity:0;transition:opacity .3s;background:rgba(26,20,40,.78);backdrop-filter:blur(3px);padding:24px}
   #dice.show{opacity:1}
-  #dice .d20{width:clamp(120px,34vw,150px);height:clamp(120px,34vw,150px);background:var(--cream);border:3px solid var(--ink);border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:6px 6px 0 rgba(26,20,40,.2);transform:rotate(-6deg)}
-  #dice .num{font-size:clamp(46px,13vw,62px);font-weight:700;line-height:1}
-  #dice .lab{font-size:clamp(10px,2.8vw,11px);letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);margin-top:4px}
-  #dice .cardname{font-size:clamp(10px,2.8vw,11px);color:var(--ink2);margin-top:6px;max-width:130px;text-align:center}
+  #dice-card-show{background:var(--cream2);border:2px solid var(--ink);border-radius:6px;padding:14px 18px;max-width:min(260px,82vw);text-align:center;transform:translateY(18px);opacity:0;transition:transform .35s ease-out,opacity .35s}
+  #dice.show #dice-card-show{transform:translateY(0);opacity:1}
+  .dcs-type{font-size:8px;letter-spacing:.45em;text-transform:uppercase;color:var(--ink2)}
+  .dcs-name{font-family:"Cormorant Garamond",serif;font-size:clamp(18px,5.5vw,24px);font-weight:700;margin:4px 0}
+  .dcs-desc{font-size:clamp(10px,3vw,12px);color:var(--ink);line-height:1.45}
+  .dcs-tag{font-size:8px;letter-spacing:.4em;text-transform:uppercase;color:var(--rose2);margin-top:10px;opacity:0;transition:opacity .25s}
+  .dcs-tag.show{opacity:1}
+  #d20{width:clamp(110px,32vw,140px);height:clamp(110px,32vw,140px);background:var(--cream);border:3px solid var(--ink);border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:6px 6px 0 rgba(26,20,40,.2);transform:rotate(-5deg) scale(0);transition:transform .35s cubic-bezier(.34,1.56,.64,1)}
+  #d20.reveal{transform:rotate(-5deg) scale(1)}
+  #d20 .num{font-size:clamp(44px,13vw,60px);font-weight:700;line-height:1;font-family:"Cormorant Garamond",serif}
+  #d20 .lab{font-size:clamp(9px,2.6vw,10px);letter-spacing:.35em;text-transform:uppercase;color:var(--rose2);margin-top:3px}
+  #d20.nat20{background:#f0d060;border-color:#b89000;animation:d20boom .5s ease-out forwards}
+  #d20.nat1{background:#f09098;border-color:var(--rose2);animation:d20shake .5s ease-out forwards}
+  @keyframes d20boom{0%{transform:rotate(-5deg) scale(1)}40%{transform:rotate(4deg) scale(1.18)}70%{transform:rotate(-2deg) scale(1.07)}100%{transform:rotate(-3deg) scale(1)}}
+  @keyframes d20shake{0%{transform:rotate(-5deg)}18%{transform:rotate(5deg)}36%{transform:rotate(-4deg)}54%{transform:rotate(3deg)}72%{transform:rotate(-2deg)}100%{transform:rotate(-3deg)}}
 
   /* chapter intro */
   #chapter{top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .5s;pointer-events:none;padding:0 16px}
@@ -233,7 +244,16 @@
 </div></div>
 
 <div id="dice" class="ui">
-  <div class="d20"><div class="num" id="dnum">20</div><div class="lab" id="dlab"></div><div class="cardname" id="dcard"></div></div>
+  <div id="dice-card-show">
+    <div class="dcs-type" id="dcs-type"></div>
+    <div class="dcs-name" id="dcs-name"></div>
+    <div class="dcs-desc" id="dcs-desc"></div>
+    <div class="dcs-tag" id="dcs-tag"></div>
+  </div>
+  <div id="d20">
+    <div class="num" id="dnum">20</div>
+    <div class="lab" id="dlab"></div>
+  </div>
 </div>
 
 <div id="chapter" class="ui">
@@ -918,15 +938,64 @@ function toast(text){
   clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove("show"),5000);
 }
 
-function showDice(d){
-  document.getElementById("dnum").textContent=d.dice_value;
-  document.getElementById("dlab").textContent=(d.dice_result||"").replace("_"," ");
-  document.getElementById("dcard").textContent=d.card_name||"";
-  const el=document.getElementById("dice"); el.classList.add("show");
-  const card=el.querySelector(".d20");
-  card.style.transition="none"; card.style.transform="rotate(-6deg) scale(.6)";
-  requestAnimationFrame(()=>{card.style.transition="transform .4s cubic-bezier(.2,1.4,.5,1)";card.style.transform="rotate(-6deg) scale(1)";});
-  setTimeout(()=>el.classList.remove("show"),2400);
+function showDice(m){
+  const overlay=document.getElementById("dice");
+  const d20=document.getElementById("d20");
+  const numEl=document.getElementById("dnum");
+  const labEl=document.getElementById("dlab");
+  const tagEl=document.getElementById("dcs-tag");
+  document.getElementById("dcs-type").textContent=(m.card_type||"").toUpperCase();
+  document.getElementById("dcs-name").textContent=m.card_name||"";
+  document.getElementById("dcs-desc").textContent=m.card_description||"";
+  tagEl.textContent=""; tagEl.classList.remove("show");
+  d20.className=""; numEl.textContent="?"; labEl.textContent="";
+  overlay.classList.add("show");
+  setTimeout(()=>{
+    d20.classList.add("reveal");
+    setTimeout(()=>_rollDice(m.dice_value,m.dice_result,numEl,labEl,d20,tagEl),260);
+  },500);
+}
+
+function _rollDice(finalValue,diceResult,numEl,labEl,d20El,tagEl){
+  const ROLLS=22;
+  const delays=Array.from({length:ROLLS},(_,i)=>45+Math.pow(i/ROLLS,1.7)*230);
+  let idx=0;
+  function tick(){
+    if(idx>=ROLLS){
+      numEl.textContent=finalValue;
+      labEl.textContent=(diceResult||"").replace("_"," ");
+      if(finalValue===20){d20El.classList.add("nat20");tagEl.textContent="breakthrough";setTimeout(()=>tagEl.classList.add("show"),150);}
+      else if(finalValue===1){d20El.classList.add("nat1");tagEl.textContent="disaster";setTimeout(()=>tagEl.classList.add("show"),150);}
+      sndDice(finalValue);
+      setTimeout(()=>{
+        const overlay=document.getElementById("dice");
+        overlay.classList.remove("show");
+        setTimeout(()=>{d20El.className="";tagEl.classList.remove("show");},400);
+      },1400);
+      return;
+    }
+    numEl.textContent=(idx===ROLLS-1)?finalValue:(Math.floor(Math.random()*20)+1);
+    idx++;
+    setTimeout(tick,delays[idx-1]);
+  }
+  tick();
+}
+
+function showCardAdded(m){
+  const overlay=document.getElementById("dice");
+  const d20=document.getElementById("d20");
+  const tagEl=document.getElementById("dcs-tag");
+  document.getElementById("dcs-type").textContent=(m.card_type||"").toUpperCase();
+  document.getElementById("dcs-name").textContent=m.card_name||"";
+  document.getElementById("dcs-desc").textContent=m.card_description||"";
+  tagEl.textContent=m.card_type==="accumulate"?"pressure building":"context shifts";
+  tagEl.classList.add("show");
+  d20.style.display="none";
+  overlay.classList.add("show");
+  setTimeout(()=>{
+    overlay.classList.remove("show");
+    setTimeout(()=>{d20.style.display="";tagEl.classList.remove("show");},350);
+  },2500);
 }
 
 function showChapter(snap){
@@ -1312,7 +1381,8 @@ function connect(){
         if(m.scene&&m.scene.opening){ const mem=memberFor(null,m.scene.speaker); speak(mem,mem&&mem.name,m.scene.opening,5200); }
         break;
       case "travel_event": { speak(character,character&&character.name,m.text,4200); break; }
-      case "dice_roll": showDice(m); sndDice(m.dice_value); break;
+      case "dice_roll": showDice(m); break;
+      case "card_added": showCardAdded(m); break;
       case "card_resolved": {
         applyState(m.state);
         if(m.next_heading) setCaption(m.next_heading);

@@ -15,6 +15,7 @@ from .engine import (
     CARD_BY_ID,
     MIN_RESOLUTIONS,
     MAX_SCENE_ROUNDS,
+    REGISTERS,
     CardResolution,
     CardType,
     DiceResult,
@@ -41,6 +42,7 @@ STATIC = Path(__file__).parent / "static"
 
 DEAL_INTERVAL = 12.0
 VOTE_TIMEOUT = 25.0
+PRESSURE_DURATION = 3
 
 _rng = random.SystemRandom()
 _state: GameState | None = None
@@ -163,6 +165,45 @@ async def _resolve_window(state: GameState) -> None:
         if not card_def:
             continue
 
+        if card_def.type in (CardType.ACCUMULATE, CardType.TWEAK):
+            await _broadcast(
+                {
+                    "type": "card_added",
+                    "card_name": card_def.name,
+                    "card_type": card_def.type.value,
+                    "card_description": card_def.description,
+                }
+            )
+            if card_def.type == CardType.ACCUMULATE:
+                state.quest.pressure_pool.append(
+                    {
+                        "name": card_def.name,
+                        "description": card_def.description,
+                        "remaining": PRESSURE_DURATION,
+                    }
+                )
+            else:
+                state.quest.register = _rng.choice(
+                    [r for r in REGISTERS if r != state.quest.register]
+                )
+            apply_card_effects(card_def, DiceResult.MID, state.quest)
+            resolution = CardResolution(
+                card=played_card,
+                card_def=card_def,
+                dice_value=10,
+                dice_result=DiceResult.MID,
+                narrative=card_def.description,
+                consequence="",
+            )
+            state.window.resolutions.append(resolution)
+            state.log_event(
+                "pressure_added",
+                card_def.description,
+                {"card": card_def.name, "card_type": card_def.type.value},
+            )
+            await asyncio.sleep(2.5)
+            continue
+
         dice_value, dice_result = roll_d20(_rng)
         await _broadcast(
             {
@@ -170,9 +211,17 @@ async def _resolve_window(state: GameState) -> None:
                 "dice_value": dice_value,
                 "dice_result": dice_result.value,
                 "card_name": card_def.name,
+                "card_type": card_def.type.value,
+                "card_description": card_def.description,
             }
         )
-        await asyncio.sleep(2.0)
+        await asyncio.sleep(4.0)
+
+        pressure_context = [f"{p['name']}: {p['description']}" for p in state.quest.pressure_pool]
+        state.quest.pressure_pool = [
+            {**p, "remaining": p["remaining"] - 1} for p in state.quest.pressure_pool
+        ]
+        state.quest.pressure_pool = [p for p in state.quest.pressure_pool if p["remaining"] > 0]
 
         memory_ctx = ""
         if artel.enabled():
@@ -220,6 +269,7 @@ async def _resolve_window(state: GameState) -> None:
                 story_facts=list(state.quest.facts),
                 register=state.quest.register,
                 npc_context=npc_context,
+                pressure_context=pressure_context,
             )
 
         new_facts = [f for f in result.get("established", []) if isinstance(f, str)][:2]
