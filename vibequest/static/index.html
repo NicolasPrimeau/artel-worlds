@@ -1134,8 +1134,18 @@ function _layoutHand(animUid){
   renderDrawPile(Math.max(1,MAX_HAND-n));
 }
 
+function _reorderIndex(clientX,uid){
+  const others=_handItems.filter(i=>i.uid!==uid);
+  for(let i=0;i<others.length;i++){
+    const oe=_handEls.get(others[i].uid); if(!oe) continue;
+    const r=oe.getBoundingClientRect();
+    if(clientX<r.left+r.width/2) return i;
+  }
+  return others.length;
+}
+
 function _attachCardHandlers(el,uid,c){
-  let holdTimer=null,ptStart=null,dragging=false;
+  let holdTimer=null,ptStart=null,dragging=false,dragMode=null;
   const raise=()=>{ el.style.transform=cardTransform(el._t,false,el._step); el.style.boxShadow="0 12px 24px rgba(26,20,40,.28)"; el.style.zIndex=100; };
   const lower=()=>{ if(selectedCard===el)return; el.style.transform=cardTransform(el._t,true,el._step); el.style.boxShadow=""; el.style.zIndex=el._defZ; };
   const deselect=()=>{ if(selectedCard===el)selectedCard=null; el.style.transform=cardTransform(el._t,true,el._step); el.style.boxShadow=""; el.style.zIndex=el._defZ; };
@@ -1145,7 +1155,7 @@ function _attachCardHandlers(el,uid,c){
   el.addEventListener("pointerdown",e=>{
     if(el.classList.contains("played"))return;
     e.preventDefault(); el.setPointerCapture(e.pointerId);
-    ptStart={x:e.clientX,y:e.clientY,rect:el.getBoundingClientRect()}; dragging=false;
+    ptStart={x:e.clientX,y:e.clientY,rect:el.getBoundingClientRect()}; dragging=false; dragMode=null;
     holdTimer=setTimeout(()=>{ holdTimer=null; if(!dragging) showCardDetail(c); },450);
   });
   el.addEventListener("pointermove",e=>{
@@ -1153,32 +1163,51 @@ function _attachCardHandlers(el,uid,c){
     const dx=e.clientX-ptStart.x,dy=e.clientY-ptStart.y;
     if(!dragging&&Math.hypot(dx,dy)>8){
       dragging=true; clearTimeout(holdTimer); holdTimer=null;
+      dragMode=Math.abs(dx)>Math.abs(dy)?"reorder":"play";
       const r=ptStart.rect;
       el.style.transition="none"; el.style.position="fixed";
       el.style.left=r.left+"px"; el.style.top=r.top+"px";
       el.style.width=r.width+"px"; el.style.height=r.height+"px";
-      el.style.margin="0"; el.style.transform=`rotate(${el._t*8}deg)`;
-      el.style.zIndex="300"; el.style.boxShadow="0 16px 32px rgba(26,20,40,.4)"; el.style.opacity=".92";
+      el.style.margin="0"; el.style.zIndex="300";
+      el.style.boxShadow="0 16px 32px rgba(26,20,40,.4)"; el.style.opacity=".92";
+      el.style.transform=dragMode==="reorder"?"rotate(0deg)":`rotate(${el._t*8}deg)`;
     }
     if(dragging){
-      el.style.left=(ptStart.rect.left+e.clientX-ptStart.x)+"px";
-      el.style.top=(ptStart.rect.top+e.clientY-ptStart.y)+"px";
+      if(dragMode==="play"){
+        el.style.left=(ptStart.rect.left+dx)+"px";
+        el.style.top=(ptStart.rect.top+dy)+"px";
+      } else {
+        el.style.left=(ptStart.rect.left+dx)+"px";
+        const curIdx=_handItems.findIndex(i=>i.uid===uid);
+        const newIdx=_reorderIndex(e.clientX,uid);
+        if(newIdx!==curIdx){
+          const item=_handItems.splice(curIdx,1)[0];
+          _handItems.splice(newIdx,0,item);
+          _layoutHand(null);
+        }
+      }
     }
   });
   el.addEventListener("pointerup",e=>{
     clearTimeout(holdTimer); holdTimer=null;
-    const wasDrag=dragging; dragging=false;
+    const wasDrag=dragging,wasMode=dragMode; dragging=false; dragMode=null;
     const wasTouch=ptStart&&(e.pointerType==="touch"||e.pointerType==="pen");
     ptStart=null;
     if(wasDrag){
       el.style.opacity="";
-      const doPlay=(targetNpcId)=>{ flyCardToPile(el,c); el.classList.add("played"); playCard(c.id,targetNpcId); _removeHandItem(uid); if(selectedCard===el)selectedCard=null; };
-      if(c.type==="action"&&showTargetPicker(npcId=>doPlay(npcId))){
+      if(wasMode==="reorder"){
         el.style.position=""; el.style.left=""; el.style.top="";
         el.style.width=""; el.style.height=""; el.style.margin=""; el.style.transition="";
-        el.style.transform=cardTransform(el._t,true,el._step); dragging=false;
+        _layoutHand(null);
       } else {
-        doPlay(null);
+        const doPlay=(targetNpcId)=>{ flyCardToPile(el,c); el.classList.add("played"); playCard(c.id,targetNpcId); _removeHandItem(uid); if(selectedCard===el)selectedCard=null; };
+        if(c.type==="action"&&showTargetPicker(npcId=>doPlay(npcId))){
+          el.style.position=""; el.style.left=""; el.style.top="";
+          el.style.width=""; el.style.height=""; el.style.margin=""; el.style.transition="";
+          el.style.transform=cardTransform(el._t,true,el._step);
+        } else {
+          doPlay(null);
+        }
       }
     } else if(wasTouch){
       if(selectedCard===el){ deselect(); }
@@ -1193,8 +1222,9 @@ function _attachCardHandlers(el,uid,c){
       el.style.transform=cardTransform(el._t,selectedCard===el?false:true,el._step);
       el.style.boxShadow=selectedCard===el?"0 12px 24px rgba(26,20,40,.28)":"";
       el.style.zIndex=selectedCard===el?100:el._defZ;
+      _layoutHand(null);
     }
-    dragging=false; ptStart=null;
+    dragging=false; ptStart=null; dragMode=null;
   });
 }
 
