@@ -619,6 +619,17 @@ def _place_zone_props(
             p(xi, iy1 - 2, rng.choice(kinds))
 
 
+def _weighted_splits(total: int, weights: list[int]) -> list[int]:
+    s = sum(weights) or 1
+    pts: list[int] = [0]
+    acc = 0.0
+    for wt in weights[:-1]:
+        acc += wt * total / s
+        pts.append(round(acc))
+    pts.append(total)
+    return pts
+
+
 def generate_indoor_world(
     rng: random.Random, theme: str = "office", step_count: int = 6
 ) -> WorldMap:
@@ -654,35 +665,70 @@ def generate_indoor_world(
     room_data: list[tuple[int, int, str, int, int, int]] = []
     waypoints: list[list[int]] = []
 
-    def add_room(sx0: int, sx1: int, y_top: int, y_bot: int, door_y: int, name: str) -> tuple:
-        fl, _, _ = zone_def_map.get(name, (FLOOR, 18, 10))
+    def add_room(
+        sx0: int,
+        sx1: int,
+        y_top: int,
+        y_bot: int,
+        door_y: int,
+        name: str,
+        anchor_bottom: bool = True,
+    ) -> tuple:
+        fl, _, rh_r = zone_def_map.get(name, (FLOOR, 18, 10))
         cx = (sx0 + sx1) // 2
-        cy = (y_top + y_bot) // 2
-        for y in range(y_top + 1, y_bot):
+        int_h = min(rh_r, y_bot - y_top - 2)
+        if anchor_bottom:
+            ry0 = y_bot - int_h - 1
+            ry1 = y_bot
+        else:
+            ry0 = y_top
+            ry1 = y_top + int_h + 1
+        cy = (ry0 + ry1) // 2
+        for y in range(ry0 + 1, ry1):
             for x in range(sx0 + 1, sx1):
                 tiles[_idx(w, x, y)] = fl
         for dx in (-1, 0, 1):
             nx = cx + dx
             if sx0 < nx < sx1 and 0 <= door_y < h:
                 tiles[_idx(w, nx, door_y)] = fl
-        return (cx, cy, name, fl, sx1 - sx0, y_bot - y_top)
+        return (cx, cy, name, fl, sx1 - sx0, ry1 - ry0)
+
+    upper_names = used_names[:n_upper]
+    lower_names = used_names[n_upper:]
+    upper_splits = _weighted_splits(
+        w, [zone_def_map.get(n, (FLOOR, 18, 10))[1] for n in upper_names]
+    )
+    lower_splits = (
+        _weighted_splits(w, [zone_def_map.get(n, (FLOOR, 18, 10))[1] for n in lower_names])
+        if lower_names
+        else []
+    )
 
     for i in range(n_upper):
-        sx0 = i * w // n_upper
-        sx1 = (i + 1) * w // n_upper
-        rd = add_room(sx0, sx1, 0, upper_bot, upper_bot, used_names[i])
+        rd = add_room(
+            upper_splits[i],
+            upper_splits[i + 1],
+            0,
+            upper_bot,
+            upper_bot,
+            upper_names[i],
+            anchor_bottom=True,
+        )
         room_data.append(rd)
         waypoints.append([rd[0], rd[1]])
 
     for i in range(n_lower - 1, -1, -1):
-        sx0 = i * w // n_lower
-        sx1 = (i + 1) * w // n_lower
-        rd = add_room(sx0, sx1, lower_top, lower_bot, lower_top, used_names[n_upper + i])
+        rd = add_room(
+            lower_splits[i],
+            lower_splits[i + 1],
+            lower_top,
+            lower_bot,
+            lower_top,
+            lower_names[i],
+            anchor_bottom=False,
+        )
         room_data.append(rd)
         waypoints.append([rd[0], rd[1]])
-
-    for cx, cy, *_ in room_data:
-        tiles[_idx(w, cx, cy)] = LAVENDER
 
     occupied: set[tuple[int, int]] = {(cx, cy) for cx, cy, *_ in room_data}
     props: list[dict] = []
@@ -752,16 +798,11 @@ def generate_outdoor_world(
     props: list[dict] = []
 
     for wx, wy in waypoints:
-        tiles[_idx(w, wx, wy)] = LAVENDER
-        props.append({"x": wx, "y": wy - 1, "kind": "lamp"})
-        for dx in range(-3, 4):
-            for dy in range(-3, 4):
+        for dx in range(-2, 3):
+            for dy in range(-2, 3):
                 nx, ny = wx + dx, wy + dy
                 if 1 <= nx < w - 1 and 1 <= ny < h - 1:
                     occupied.add((nx, ny))
-                    if tiles[_idx(w, nx, ny)] == base:
-                        tiles[_idx(w, nx, ny)] = PATH_LIGHT
-        tiles[_idx(w, wx, wy)] = LAVENDER
 
     # Irregular ponds (blob growth)
     if th["ponds"]:
