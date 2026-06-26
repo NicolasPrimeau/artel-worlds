@@ -991,7 +991,9 @@ function sndComplete(success){
 
 const PILE_ROTS=[3,-5,7,-2,8,-6,4,-8,2,-4];
 const MAX_HAND=5;
-let myHand=[];
+let _handItems=[];      // [{uid,id,name,type,description,flavor}]
+let _handEls=new Map(); // uid → el
+let _nextUid=0;
 let pileCards=[];
 let selectedCard=null;
 let _voteTimer=null;
@@ -1028,110 +1030,114 @@ function showCardDetail(c){
   document.body.appendChild(ov);
 }
 
-function renderHand(cards){
-  renderDrawPile(Math.max(1, MAX_HAND - cards.length));
-  const h=document.getElementById("hand"); h.innerHTML="";
-  const n=cards.length; if(!n) return;
+function _layoutHand(animUid){
+  const n=_handItems.length;
   const step=fanStep(n);
   const handEl=document.getElementById("hand");
   const hRect=handEl.getBoundingClientRect();
   const hAnchorX=hRect.left+hRect.width/2;
-  const dpSlot=document.getElementById("drawpile").querySelector(".pile-slot")||document.getElementById("drawpile");
-  const dpRect=dpSlot.getBoundingClientRect();
-  const startX=(dpRect.left+dpRect.width/2)-hAnchorX;
-
-  for(let i=0;i<n;i++){
-    const c=cards[i];
+  let dpRect=null;
+  if(animUid!=null){
+    const dpSlot=document.getElementById("drawpile").querySelector(".pile-slot")||document.getElementById("drawpile");
+    dpRect=dpSlot.getBoundingClientRect();
+  }
+  _handItems.forEach((item,i)=>{
+    const el=_handEls.get(item.uid); if(!el) return;
     const t=n>1?(i/(n-1))*2-1:0;
     const defZ=n-Math.round(Math.abs(i-(n-1)/2)*2);
-    const el=document.createElement("div"); el.className="card "+c.type;
-    el.innerHTML=`<div class="ct">${c.type}</div><div class="cn">${c.name}</div><div class="cd">${c.description}</div>`;
-    el.style.opacity="0";
-    el.style.transform=cardTransform(t,true,step);
-    el.style.zIndex=defZ;
-
-    let holdTimer=null, ptStart=null, dragging=false;
-
-    const raise=()=>{ el.style.transform=cardTransform(t,false,step); el.style.boxShadow="0 12px 24px rgba(26,20,40,.28)"; el.style.zIndex=100; };
-    const lower=()=>{ if(selectedCard===el)return; el.style.transform=cardTransform(t,true,step); el.style.boxShadow=""; el.style.zIndex=defZ; };
-    const deselect=()=>{ if(selectedCard===el)selectedCard=null; el.style.transform=cardTransform(t,true,step); el.style.boxShadow=""; el.style.zIndex=defZ; };
-    el._deselect=deselect; el._step=step; el._t=t; el._defZ=defZ;
-
-    el.addEventListener("mouseenter",()=>{ if(el.classList.contains("played")||dragging)return; raise(); });
-    el.addEventListener("mouseleave",()=>{ if(el.classList.contains("played")||dragging)return; lower(); });
-
-    el.addEventListener("pointerdown",e=>{
-      if(el.classList.contains("played"))return;
-      e.preventDefault(); el.setPointerCapture(e.pointerId);
-      ptStart={x:e.clientX,y:e.clientY,rect:el.getBoundingClientRect()}; dragging=false;
-      holdTimer=setTimeout(()=>{ holdTimer=null; if(!dragging) showCardDetail(c); },450);
-    });
-
-    el.addEventListener("pointermove",e=>{
-      if(!ptStart||el.classList.contains("played"))return;
-      const dx=e.clientX-ptStart.x, dy=e.clientY-ptStart.y;
-      if(!dragging&&Math.hypot(dx,dy)>8){
-        dragging=true; clearTimeout(holdTimer); holdTimer=null;
-        const r=ptStart.rect;
-        el.style.transition="none"; el.style.position="fixed";
-        el.style.left=r.left+"px"; el.style.top=r.top+"px";
-        el.style.width=r.width+"px"; el.style.height=r.height+"px";
-        el.style.margin="0"; el.style.transform=`rotate(${t*8}deg)`;
-        el.style.zIndex="300"; el.style.boxShadow="0 16px 32px rgba(26,20,40,.4)"; el.style.opacity=".92";
-      }
-      if(dragging){
-        el.style.left=(ptStart.rect.left+e.clientX-ptStart.x)+"px";
-        el.style.top=(ptStart.rect.top+e.clientY-ptStart.y)+"px";
-      }
-    });
-
-    el.addEventListener("pointerup",e=>{
-      clearTimeout(holdTimer); holdTimer=null;
-      const wasDrag=dragging; dragging=false;
-      const wasTouch=ptStart&&(e.pointerType==="touch"||e.pointerType==="pen");
-      ptStart=null;
-      if(wasDrag){
-        el.style.opacity="";
-        const doPlay=(targetNpcId)=>{ flyCardToPile(el,c); el.classList.add("played"); playCard(c.id,targetNpcId); removeCardFromHand(c.id); if(selectedCard===el)selectedCard=null; };
-        if(c.type==="action" && showTargetPicker(npcId=>doPlay(npcId))){
-          el.style.opacity=""; el.style.position=""; el.style.left=""; el.style.top="";
-          el.style.width=""; el.style.height=""; el.style.margin=""; el.style.transition="";
-          el.style.transform=cardTransform(t,true,step); dragging=false;
-        } else {
-          doPlay(null);
-        }
-      } else if(wasTouch){
-        if(selectedCard===el){ deselect(); }
-        else { if(selectedCard)selectedCard._deselect(); selectedCard=el; raise(); }
-      }
-    });
-
-    el.addEventListener("pointercancel",()=>{
-      clearTimeout(holdTimer); holdTimer=null;
-      if(dragging){
-        el.style.position=""; el.style.left=""; el.style.top=""; el.style.width=""; el.style.height="";
-        el.style.margin=""; el.style.opacity=""; el.style.transition="";
-        el.style.transform=cardTransform(t,selectedCard===el?false:true,step);
-        el.style.boxShadow=selectedCard===el?"0 12px 24px rgba(26,20,40,.28)":"";
-        el.style.zIndex=selectedCard===el?100:defZ;
-      }
-      dragging=false; ptStart=null;
-    });
-
-    h.appendChild(el);
-
-    // Deal animation: expand from draw pile x position
-    const endTransform=cardTransform(t,true,step);
-    setTimeout(()=>{
+    el._t=t; el._step=step; el._defZ=defZ;
+    if(item.uid===animUid && dpRect){
+      const startX=(dpRect.left+dpRect.width/2)-hAnchorX;
       el.style.transition="none";
       el.style.transform=`translateX(calc(-50% + ${startX}px)) translateY(10px) rotate(-6deg) scale(.72)`;
       el.style.opacity="1";
       requestAnimationFrame(()=>requestAnimationFrame(()=>{
         el.style.transition="transform .3s cubic-bezier(.25,.8,.25,1)";
-        el.style.transform=endTransform;
+        el.style.transform=cardTransform(t,true,step);
       }));
-    }, i*75);
-  }
+    } else if(el.style.position!=="fixed"){
+      el.style.transition="transform .18s ease-out";
+      el.style.transform=cardTransform(t,true,step);
+      el.style.zIndex=String(defZ);
+    }
+  });
+  renderDrawPile(Math.max(1,MAX_HAND-n));
+}
+
+function _attachCardHandlers(el,uid,c){
+  let holdTimer=null,ptStart=null,dragging=false;
+  const raise=()=>{ el.style.transform=cardTransform(el._t,false,el._step); el.style.boxShadow="0 12px 24px rgba(26,20,40,.28)"; el.style.zIndex=100; };
+  const lower=()=>{ if(selectedCard===el)return; el.style.transform=cardTransform(el._t,true,el._step); el.style.boxShadow=""; el.style.zIndex=el._defZ; };
+  const deselect=()=>{ if(selectedCard===el)selectedCard=null; el.style.transform=cardTransform(el._t,true,el._step); el.style.boxShadow=""; el.style.zIndex=el._defZ; };
+  el._deselect=deselect;
+  el.addEventListener("mouseenter",()=>{ if(el.classList.contains("played")||dragging)return; raise(); });
+  el.addEventListener("mouseleave",()=>{ if(el.classList.contains("played")||dragging)return; lower(); });
+  el.addEventListener("pointerdown",e=>{
+    if(el.classList.contains("played"))return;
+    e.preventDefault(); el.setPointerCapture(e.pointerId);
+    ptStart={x:e.clientX,y:e.clientY,rect:el.getBoundingClientRect()}; dragging=false;
+    holdTimer=setTimeout(()=>{ holdTimer=null; if(!dragging) showCardDetail(c); },450);
+  });
+  el.addEventListener("pointermove",e=>{
+    if(!ptStart||el.classList.contains("played"))return;
+    const dx=e.clientX-ptStart.x,dy=e.clientY-ptStart.y;
+    if(!dragging&&Math.hypot(dx,dy)>8){
+      dragging=true; clearTimeout(holdTimer); holdTimer=null;
+      const r=ptStart.rect;
+      el.style.transition="none"; el.style.position="fixed";
+      el.style.left=r.left+"px"; el.style.top=r.top+"px";
+      el.style.width=r.width+"px"; el.style.height=r.height+"px";
+      el.style.margin="0"; el.style.transform=`rotate(${el._t*8}deg)`;
+      el.style.zIndex="300"; el.style.boxShadow="0 16px 32px rgba(26,20,40,.4)"; el.style.opacity=".92";
+    }
+    if(dragging){
+      el.style.left=(ptStart.rect.left+e.clientX-ptStart.x)+"px";
+      el.style.top=(ptStart.rect.top+e.clientY-ptStart.y)+"px";
+    }
+  });
+  el.addEventListener("pointerup",e=>{
+    clearTimeout(holdTimer); holdTimer=null;
+    const wasDrag=dragging; dragging=false;
+    const wasTouch=ptStart&&(e.pointerType==="touch"||e.pointerType==="pen");
+    ptStart=null;
+    if(wasDrag){
+      el.style.opacity="";
+      const doPlay=(targetNpcId)=>{ flyCardToPile(el,c); el.classList.add("played"); playCard(c.id,targetNpcId); _removeHandItem(uid); if(selectedCard===el)selectedCard=null; };
+      if(c.type==="action"&&showTargetPicker(npcId=>doPlay(npcId))){
+        el.style.position=""; el.style.left=""; el.style.top="";
+        el.style.width=""; el.style.height=""; el.style.margin=""; el.style.transition="";
+        el.style.transform=cardTransform(el._t,true,el._step); dragging=false;
+      } else {
+        doPlay(null);
+      }
+    } else if(wasTouch){
+      if(selectedCard===el){ deselect(); }
+      else { if(selectedCard)selectedCard._deselect(); selectedCard=el; raise(); }
+    }
+  });
+  el.addEventListener("pointercancel",()=>{
+    clearTimeout(holdTimer); holdTimer=null;
+    if(dragging){
+      el.style.position=""; el.style.left=""; el.style.top=""; el.style.width=""; el.style.height="";
+      el.style.margin=""; el.style.opacity=""; el.style.transition="";
+      el.style.transform=cardTransform(el._t,selectedCard===el?false:true,el._step);
+      el.style.boxShadow=selectedCard===el?"0 12px 24px rgba(26,20,40,.28)":"";
+      el.style.zIndex=selectedCard===el?100:el._defZ;
+    }
+    dragging=false; ptStart=null;
+  });
+}
+
+function resetHand(){
+  document.getElementById("hand").innerHTML="";
+  _handItems=[]; _handEls.clear();
+  pileCards=[]; selectedCard=null;
+  renderPile(); renderDrawPile(3);
+}
+
+function renderHand(cards){
+  resetHand();
+  cards.forEach(c=>addDealCard(c));
 }
 
 function flyCardToPile(el,c){
@@ -1227,15 +1233,23 @@ document.getElementById("target-cancel").addEventListener("click",()=>{
 });
 
 function addDealCard(card){
-  if(myHand.length>=MAX_HAND) return;
-  myHand.push(card);
-  renderHand(myHand);
+  if(_handItems.length>=MAX_HAND) return;
+  const uid=String(_nextUid++);
+  _handItems.push({uid,...card});
+  const h=document.getElementById("hand");
+  const el=document.createElement("div"); el.className="card "+card.type;
+  el.innerHTML=`<div class="ct">${card.type}</div><div class="cn">${card.name}</div><div class="cd">${card.description}</div>`;
+  el.style.opacity="0"; el._t=0; el._step=0; el._defZ=1;
+  h.appendChild(el);
+  _handEls.set(uid,el);
+  _attachCardHandlers(el,uid,card);
+  _layoutHand(uid);
 }
 
-function removeCardFromHand(cardId){
-  const idx=myHand.findIndex(c=>c.id===cardId);
-  if(idx!==-1) myHand.splice(idx,1);
-  setTimeout(()=>renderHand(myHand),400);
+function _removeHandItem(uid){
+  _handItems=_handItems.filter(item=>item.uid!==uid);
+  _handEls.delete(uid);
+  _layoutHand(null);
 }
 
 function showVote(options,timeout){
@@ -1284,8 +1298,7 @@ function connect(){
         document.getElementById("endscreen").hidden=true;
         document.getElementById("vote-section").hidden=true;
         clearInterval(_voteTimer);
-        myHand=[]; pileCards=[]; selectedCard=null;
-        renderHand(myHand); renderPile(); renderDrawPile(3);
+        resetHand();
         applyState(m.state); showChapter(m.state);
         const sc=m.state.quest&&m.state.quest.scene;
         if(sc&&sc.opening){ const mem=memberFor(null,sc.speaker); setTimeout(()=>speak(mem,mem&&mem.name,sc.opening,5200),3900); }
@@ -1293,7 +1306,7 @@ function connect(){
       }
       case "deal_card": addDealCard(m.card); break;
       case "hand": myHand=m.cards; renderHand(myHand); break;
-      case "window_closing": pileCards=[]; renderPile(); renderDrawPile(3); break;
+      case "window_closing": pileCards=[]; renderPile(); break;
       case "move": onMove(m.pos); break;
       case "scene": applyState(m.state);
         if(m.scene&&m.scene.opening){ const mem=memberFor(null,m.scene.speaker); speak(mem,mem&&mem.name,m.scene.opening,5200); }

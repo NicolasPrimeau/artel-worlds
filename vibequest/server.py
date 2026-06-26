@@ -39,7 +39,7 @@ from .engine import (
 log = logging.getLogger("vibequest")
 STATIC = Path(__file__).parent / "static"
 
-DEAL_INTERVAL = 8.0
+DEAL_INTERVAL = 12.0
 VOTE_TIMEOUT = 25.0
 
 _rng = random.SystemRandom()
@@ -49,6 +49,7 @@ _lock = asyncio.Lock()
 _travel_processed: set[str] = set()
 _vote_options: list[QuestState] | None = None
 _votes: dict[int, int] = {}
+_deal_type_idx: int = 0
 
 
 def _character_desc(state: GameState) -> str:
@@ -560,12 +561,19 @@ def _card_msg(card) -> dict:
     }
 
 
+_DEAL_TYPE_CYCLE = [CardType.ACCUMULATE, CardType.ACTION, CardType.CHAOS, CardType.TWEAK]
+
+
 async def _deal_loop() -> None:
+    global _deal_type_idx
     while True:
         await asyncio.sleep(DEAL_INTERVAL)
         if not _clients or _state is None or _state.phase != "active":
             continue
-        card = deal_hand(_rng, size=1)[0]
+        target_type = _DEAL_TYPE_CYCLE[_deal_type_idx % len(_DEAL_TYPE_CYCLE)]
+        _deal_type_idx += 1
+        pool = [c for c in CARD_BY_ID.values() if c.type == target_type]
+        card = _rng.choices(pool, weights=[c.weight for c in pool])[0]
         await _broadcast({"type": "deal_card", "card": _card_msg(card)})
 
 
@@ -700,8 +708,8 @@ def create_app() -> FastAPI:
         _clients.add(ws)
         if _state:
             await ws.send_text(json.dumps({"type": "state", "state": _state_snapshot(_state)}))
-            for card in deal_hand(_rng, size=2):
-                await ws.send_text(json.dumps({"type": "deal_card", "card": _card_msg(card)}))
+            card = deal_hand(_rng, size=1)[0]
+            await ws.send_text(json.dumps({"type": "deal_card", "card": _card_msg(card)}))
         try:
             while True:
                 await ws.receive_text()
