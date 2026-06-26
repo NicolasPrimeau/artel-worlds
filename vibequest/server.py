@@ -186,7 +186,7 @@ async def _resolve_window(state: GameState) -> None:
     state.phase = "resolving"
     if played:
         await _broadcast({"type": "window_closing", "card_count": len(played)})
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(0.8)
 
     for played_card in played:
         card_def = CARD_BY_ID.get(played_card.card_id)
@@ -231,10 +231,17 @@ async def _resolve_window(state: GameState) -> None:
                 card_def.description,
                 {"card": card_def.name, "card_type": card_def.type.value},
             )
-            await asyncio.sleep(2.5)
+            await asyncio.sleep(1.5)
             continue
 
         dice_value, dice_result = roll_d20(_rng)
+
+        artel_task = (
+            asyncio.create_task(artel.search_memory(f"{state.quest.hook} {card_def.name}"))
+            if artel.enabled()
+            else None
+        )
+
         await _broadcast(
             {
                 "type": "dice_roll",
@@ -245,7 +252,6 @@ async def _resolve_window(state: GameState) -> None:
                 "card_description": card_def.description,
             }
         )
-        await asyncio.sleep(4.0)
 
         pressure_context = [f"{p['name']}: {p['description']}" for p in state.quest.pressure_pool]
         state.quest.pressure_pool = [
@@ -253,21 +259,12 @@ async def _resolve_window(state: GameState) -> None:
         ]
         state.quest.pressure_pool = [p for p in state.quest.pressure_pool if p["remaining"] > 0]
 
-        memory_ctx = ""
-        if artel.enabled():
-            memory_ctx = await artel.search_memory(f"{state.quest.hook} {card_def.name}")
-
         momentum_before = state.quest.momentum
         apply_card_effects(card_def, dice_result, state.quest)
         momentum_delta = state.quest.momentum - momentum_before
 
-        result = {
-            "narrative": card_def.description,
-            "consequence": "",
-            "reactions": [],
-            "established": [],
-        }
         current_npc = None
+        npc_context = ""
         if llm.enabled():
             if played_card.target_npc_id:
                 current_npc = next(
@@ -286,8 +283,23 @@ async def _resolve_window(state: GameState) -> None:
                 if current_npc
                 else ""
             )
+
+        memory_ctx = ""
+        if artel_task:
             try:
-                result = await llm.narrate_card(
+                memory_ctx = await artel_task
+            except Exception:
+                pass
+
+        result = {
+            "narrative": card_def.description,
+            "consequence": "",
+            "reactions": [],
+            "established": [],
+        }
+        llm_task = (
+            asyncio.create_task(
+                llm.narrate_card(
                     card_name=card_def.name,
                     card_description=card_def.description,
                     card_type=card_def.type.value,
@@ -306,6 +318,16 @@ async def _resolve_window(state: GameState) -> None:
                     pressure_context=pressure_context,
                     scene_context=_scene_context(state),
                 )
+            )
+            if llm.enabled()
+            else None
+        )
+
+        await asyncio.sleep(2.5)
+
+        if llm_task:
+            try:
+                result = await llm_task
             except Exception as exc:
                 log.warning("narrate_card failed: %s", exc)
 
@@ -392,7 +414,7 @@ async def _resolve_window(state: GameState) -> None:
                 "state": _state_snapshot(state, include_world=False),
             }
         )
-        await asyncio.sleep(3.0)
+        await asyncio.sleep(1.5)
 
     window_result = classify_result(state.window.resolutions)
     state.quest.result_history.append(window_result)
@@ -488,7 +510,7 @@ async def _resolve_window(state: GameState) -> None:
     await _broadcast(
         {"type": "card_resolved", "state": _state_snapshot(state, include_world=False)}
     )
-    await asyncio.sleep(2.0)
+    await asyncio.sleep(0.5)
 
     state.window.resolving = False
     state.phase = "active"
@@ -544,7 +566,7 @@ async def _end_quest(state: GameState) -> None:
 
 async def _travel_card_loop() -> None:
     while True:
-        await asyncio.sleep(2.0)
+        await asyncio.sleep(1.0)
         state = _state
         if state is None or state.phase != "active" or not _clients:
             continue
@@ -588,25 +610,26 @@ async def _travel_card_loop() -> None:
                 "card_description": card_def.description,
             }
         )
-        await asyncio.sleep(4.0)
         apply_card_effects(card_def, dice_result, state.quest)
         is_chaos_hit = card_def.type == CardType.CHAOS and dice_result in (
             DiceResult.HIGH,
             DiceResult.NAT_20,
         )
-        event = ""
+        travel_llm_task = None
         if llm.enabled():
-            try:
-                if is_chaos_hit:
-                    event = await llm.narrate_chaos_interrupt(
+            if is_chaos_hit:
+                travel_llm_task = asyncio.create_task(
+                    llm.narrate_chaos_interrupt(
                         card_name=card_def.name,
                         card_description=card_def.description,
                         quest_hook=state.quest.hook,
                         story_so_far=_story_so_far(state),
                         dice_value=dice_value,
                     )
-                else:
-                    event = await llm.narrate_travel_card(
+                )
+            else:
+                travel_llm_task = asyncio.create_task(
+                    llm.narrate_travel_card(
                         card_name=card_def.name,
                         card_type=card_def.type.value,
                         quest_hook=state.quest.hook,
@@ -614,6 +637,12 @@ async def _travel_card_loop() -> None:
                         dice_value=dice_value,
                         dice_label=dice_result.value,
                     )
+                )
+        await asyncio.sleep(2.5)
+        event = ""
+        if travel_llm_task:
+            try:
+                event = await travel_llm_task
             except Exception:
                 pass
         if not event:
