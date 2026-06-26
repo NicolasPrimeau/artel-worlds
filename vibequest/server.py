@@ -464,7 +464,7 @@ async def _end_quest(state: GameState) -> None:
 
 async def _travel_card_loop() -> None:
     while True:
-        await asyncio.sleep(3.0)
+        await asyncio.sleep(2.0)
         state = _state
         if state is None or state.phase != "active" or not _clients:
             continue
