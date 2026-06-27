@@ -134,6 +134,222 @@ NPC_POOL = [
         "personality": "Has asked this question before. Is asking again because the answer changed last time. She is keeping track.",
         "behavior": "wandering",
     },
+    {
+        "name": "Ray Hollis",
+        "role": "IT Infrastructure",
+        "personality": "Replies to everything with a ticket number. He is the one who opened the ticket. He is waiting on himself.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Pam Grundy",
+        "role": "Office Admin",
+        "personality": "Was told this was temporary three years ago. Has not raised it since. Is still thinking about it.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Clive Osei",
+        "role": "Building Manager",
+        "personality": "Has keys to rooms nobody knew existed. Won't say what's in them. Not suspicious — just private.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "Diane Fuentes",
+        "role": "Communications",
+        "personality": "Rewrites every email before sending it. The original was fine. The revision is fine. The process is non-negotiable.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Arthur Goss",
+        "role": "Print Room",
+        "personality": "Remembers every job he has ever processed. Date, time, requestor. Does not keep notes. Just remembers.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Nina Haworth",
+        "role": "Risk & Audit",
+        "personality": "Asks questions that make people feel like they've done something wrong even when they haven't.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Pete Mullen",
+        "role": "Delivery",
+        "personality": "On his third lap of the floor. Something on the trolley has no label. He is not concerned.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "Fiona Yates",
+        "role": "Events Coordinator",
+        "personality": "Has a colour-coded binder for every scenario except this one.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Bob Tench",
+        "role": "Senior Developer",
+        "personality": "The answer is always 'it depends.' He will tell you what it depends on. That also depends.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Lena Kowalski",
+        "role": "Data Analyst",
+        "personality": "Says 'statistically speaking' before statements that are not statistics.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Omar Petrov",
+        "role": "Customer Success",
+        "personality": "Uses the word 'ecosystem' unironically. Has been asked to stop. Is thinking about it.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "Ruth Digby",
+        "role": "Contracts",
+        "personality": "Can quote the relevant clause from memory. The clause does not help. She quotes it anyway.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Sam Hartley",
+        "role": "Intern",
+        "personality": "Doing exactly what they were told. Told the wrong thing. Still doing it.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "Gordon Leach",
+        "role": "Finance Director",
+        "personality": "Seems pleasant. Has never approved anything. Has never rejected anything. Things just stop near him.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Tina Brock",
+        "role": "Customer Support",
+        "personality": "Has been on hold with an external vendor for 25 minutes and is treating this as normal.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Mo Sadiq",
+        "role": "Network Engineer",
+        "personality": "Fixes things before anyone notices they're broken. Gets no credit. Has noted this. Moving on.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "June Whittle",
+        "role": "Records Management",
+        "personality": "Nothing is deleted. Everything is archived. The archive is full. This is not her problem.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Ed Fairweather",
+        "role": "Operations Analyst",
+        "personality": "Has run the numbers. The numbers say no. He has run them again to be sure.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Ros Keane",
+        "role": "PA to the Director",
+        "personality": "Knows everything. Will tell you exactly as much as is useful and not one word more.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Tim Calloway",
+        "role": "Health & Safety",
+        "personality": "Not here to cause trouble. Just needs someone to sign the form. Nobody will sign the form.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "Viv Sutton",
+        "role": "Finance Business Partner",
+        "personality": "Uses 'optics' as a noun in every third sentence. Unaware she does this.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Hal Oduya",
+        "role": "Systems Admin",
+        "personality": "Has remote access to everything. Is currently at his desk. Nobody knows where his desk is.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Cath Greer",
+        "role": "Training & Development",
+        "personality": "There is a module for this. She will find it. It will not cover this exact situation.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Paul Ince",
+        "role": "Logistics",
+        "personality": "The shipment is somewhere. He knows roughly where. The tracking says something different. He trusts himself.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "Mel Browning",
+        "role": "Change Management",
+        "personality": "Process exists to protect everyone. She will explain this. Nobody is protected by what she is explaining.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Frank Lau",
+        "role": "Executive Sponsor",
+        "personality": "Sent an email about this two weeks ago. Considers the matter resolved. It is not resolved.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Donna Peel",
+        "role": "Office Cleaner",
+        "personality": "Knows things. Has heard things. Is professionally deaf until she is not.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "Kit Barker",
+        "role": "UX Designer",
+        "personality": "The problem is a people problem. The solution is a people solution. This is not useful right now.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Reg Ashton",
+        "role": "Reprographics",
+        "personality": "Retired three years ago. Still comes in on Tuesdays. Nobody has asked him to stop.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Yemi Adewale",
+        "role": "Business Development",
+        "personality": "Everything is a potential partnership. He is taking notes. The notes will become a deck.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "Angela Stride",
+        "role": "Office Coordinator",
+        "personality": "Has rearranged the stationery cupboard four times this year. Each time is the definitive arrangement.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Geoff Morley",
+        "role": "Facilities Engineer",
+        "personality": "Needs five minutes. Has needed five minutes for forty minutes. Very optimistic about the next five.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "Lisa Thorn",
+        "role": "Brand Manager",
+        "personality": "Notices when the wrong shade of blue is used. Is noticing right now. About something unrelated to the current crisis.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Raj Kapoor",
+        "role": "IT Helpdesk",
+        "personality": "Has tried turning it off and on again. Has not mentioned this. Wants credit for not mentioning it.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Debbie Noon",
+        "role": "Finance Analyst",
+        "personality": "Numbers are correct. Conclusions drawn from them are not her responsibility.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Len Hackett",
+        "role": "Parking & Transport",
+        "personality": "The visitor bay is reserved. For someone else. There is a list. She is not on the list.",
+        "behavior": "stationary",
+    },
 ]
 
 QUEST_CATEGORIES: dict[str, dict] = {
@@ -320,6 +536,96 @@ QUEST_CATEGORIES: dict[str, dict] = {
                     "Complete everything before they walk out",
                 ],
             },
+            {
+                "title": "The Wrong Invoice",
+                "hook": "An invoice for the wrong amount has already been approved and is about to be paid. It needs to be stopped.",
+                "objectives": [
+                    "Find who approved it and why",
+                    "Get the payment frozen before it processes",
+                    "Issue a corrected invoice before close of business",
+                ],
+            },
+            {
+                "title": "Confidential Document",
+                "hook": "A document marked confidential has been left on the photocopier. People have already seen it.",
+                "objectives": [
+                    "Retrieve all copies",
+                    "Find out who has seen it",
+                    "Report the incident before someone else does",
+                ],
+            },
+            {
+                "title": "Server Room Access",
+                "hook": "Someone needs access to the server room for a time-sensitive fix. The keyholder is not answering.",
+                "objectives": [
+                    "Find an alternative keyholder",
+                    "Get into the server room without triggering security",
+                    "Complete the fix before the outage window closes",
+                ],
+            },
+            {
+                "title": "The Complaint",
+                "hook": "A formal complaint has been filed about something that happened in the break room last Thursday. HR wants a statement by 3pm.",
+                "objectives": [
+                    "Find out what actually happened",
+                    "Identify who needs to provide statements",
+                    "Get everything to HR before the deadline",
+                ],
+            },
+            {
+                "title": "Shared Calendar Chaos",
+                "hook": "Someone deleted the wrong recurring meeting from the shared calendar. Three weeks of bookings are now gone.",
+                "objectives": [
+                    "Find a backup or audit log",
+                    "Reconstruct the missing events",
+                    "Notify everyone affected before they show up to the wrong room",
+                ],
+            },
+            {
+                "title": "The Reference Check",
+                "hook": "HR needs a reference check completed for a candidate who starts Monday. Nobody in the process has initiated it.",
+                "objectives": [
+                    "Track down the right contact for the reference",
+                    "Get the reference form sent and returned",
+                    "Confirm receipt with HR before end of Friday",
+                ],
+            },
+            {
+                "title": "Software License Expiry",
+                "hook": "A critical software license expired at midnight and an entire team can't work. IT says this is not their problem.",
+                "objectives": [
+                    "Establish whose budget covers the renewal",
+                    "Get the purchase approved fast",
+                    "Have the license reinstated before the afternoon standup",
+                ],
+            },
+            {
+                "title": "The Broken Chair",
+                "hook": "Someone reported a broken chair to facilities two weeks ago. The chair is still broken and someone just hurt themselves on it.",
+                "objectives": [
+                    "Get the chair removed immediately",
+                    "Document the incident before end of day",
+                    "Ensure a replacement arrives before tomorrow morning",
+                ],
+            },
+            {
+                "title": "Social Media Situation",
+                "hook": "An employee posted something about the company on social media this morning. It has been shared 47 times. Leadership is aware.",
+                "objectives": [
+                    "Find out exactly what was posted and where",
+                    "Get Communications involved before they find out themselves",
+                    "Agree on a response approach before midday",
+                ],
+            },
+            {
+                "title": "The Budget Overrun",
+                "hook": "A project has gone 30% over budget without anyone noticing until now. The monthly review is this afternoon.",
+                "objectives": [
+                    "Get the full picture before the review",
+                    "Find someone to explain it who won't panic",
+                    "Prepare a remediation plan in the next two hours",
+                ],
+            },
         ],
         "complications": [
             "Half the relevant people are in back-to-back meetings until 4pm.",
@@ -337,6 +643,21 @@ QUEST_CATEGORIES: dict[str, dict] = {
             "The relevant documentation is in a shared drive that nobody has access to.",
             "Building security has flagged something unrelated but is now involved.",
             "There is loud construction noise on the relevant floor.",
+            "Someone forwarded the wrong email chain to the wrong people this morning.",
+            "The usual system is down and the backup system requires a password nobody has.",
+            "A client is visiting the building today and has been told everything is under control.",
+            "There are two conflicting versions of the same document and nobody knows which is current.",
+            "An unrelated audit started this morning and people are being pulled into interviews.",
+            "The budget code for this has been suspended pending a review that was supposed to finish last week.",
+            "The person with the relevant authority is in transit between offices and unreachable for 90 minutes.",
+            "A fire drill was called 20 minutes ago. Some people came back. Some are still outside.",
+            "The catering for a different event has been delivered to the wrong floor and is blocking the corridor.",
+            "A well-meaning colleague has already sent an update about this to the whole department.",
+            "The usual contact at the relevant supplier was made redundant last week. Nobody was told.",
+            "Someone accidentally marked the key task as completed in the system. It wasn't.",
+            "The room that was needed for this has been double-booked with something that cannot be moved.",
+            "A company-wide software update rolled out overnight and several things have stopped working differently.",
+            "Someone senior found out about this situation and asked to be kept updated. That is now the main task.",
         ],
     },
 }
@@ -1014,19 +1335,32 @@ def make_quest(rng: random.Random) -> tuple[QuestState, str]:
 
 
 def make_npcs(rng: random.Random, waypoint_count: int) -> list[NPC]:
-    pool = rng.sample(NPC_POOL, min(3, len(NPC_POOL)))
-    sprites = rng.sample(range(1, 16), len(pool))
+    count = min(7, len(NPC_POOL), max(3, waypoint_count))
+    pool = rng.sample(NPC_POOL, count)
+    sprites = rng.sample(range(1, 16), min(count, 15))
     npcs = []
-    for i, (raw, sprite) in enumerate(zip(pool, sprites)):
-        waypoint_idx = min(i * max(1, waypoint_count // len(pool)), waypoint_count - 1)
+    used_wps: set[int] = set()
+    for i, raw in enumerate(pool):
+        sprite = sprites[i % len(sprites)]
+        preferred = round(i * (waypoint_count - 1) / max(count - 1, 1))
+        idx = preferred
+        for delta in range(waypoint_count):
+            for candidate in (preferred + delta, preferred - delta):
+                if 0 <= candidate < waypoint_count and candidate not in used_wps:
+                    idx = candidate
+                    break
+            else:
+                continue
+            break
+        used_wps.add(idx)
         npcs.append(
             NPC(
-                id=f"npc_{raw['name'].split()[0].lower()}",
+                id=f"npc_{raw['name'].split()[0].lower()}_{i}",
                 name=raw["name"],
                 role=raw["role"],
                 personality=raw["personality"],
                 sprite=sprite,
-                waypoint_idx=waypoint_idx,
+                waypoint_idx=idx,
                 behavior=raw["behavior"],
             )
         )
