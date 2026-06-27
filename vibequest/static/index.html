@@ -249,9 +249,9 @@
 <div id="info" class="ui" hidden><div class="infobox">
   <div class="infoh"><b>VibeQuest</b><button id="infoClose" type="button" aria-label="close">✕</button></div>
   <div class="infobody">
-    <p><b>VibeQuest</b> is a small open world where an AI adventuring party takes a mundane office errand and treats it as an epic quest. Everyone watching is the Dungeon Master, together.</p>
-    <p><b>Play cards.</b> Each card is something the party attempts. They batch up and resolve on a d20: high rolls go well, low rolls go badly, and a natural 1 or 20 really swings the story.</p>
-    <p><b>It's written live.</b> Every scene is generated in the moment by a language model reacting to your cards and the dice, so no two quests play the same. The party roams the world, pausing to resolve each situation, then walks on.</p>
+    <p><b>VibeQuest</b> is a small open world where an AI character navigates a mundane office situation that has become, somehow, a quest. Everyone watching shapes what happens next.</p>
+    <p><b>Play cards.</b> Each card introduces something into the scene — pressure, an event, a complication, a shift. Cards batch up and resolve on a d20: high rolls go well, low rolls go badly, and a natural 1 or 20 really swings things.</p>
+    <p><b>It's written live.</b> Every beat is generated in the moment by a language model reacting to the cards, the dice, and everything that's happened so far. No two quests play the same.</p>
     <p>It all runs on <span class="k">Artel</span>, the shared layer the agents coordinate over.</p>
   </div>
   <div class="infofoot">
@@ -1586,7 +1586,7 @@ function connect(){
 
 // share — native sheet on mobile, popover fallback on desktop
 (function(){
-  const url="https://vibequest.artel.run/", base="VibeQuest — an AI party turns office errands into epic quests, live";
+  const url="https://vibequest.artel.run/", base="VibeQuest — an AI navigates office situations that have become, somehow, quests";
   const btn=document.getElementById("sharebtn"), pop=document.getElementById("sharepop"), copy=document.getElementById("sharecopy");
   document.getElementById("shareli").href="https://www.linkedin.com/sharing/share-offsite/?url="+encodeURIComponent(url);
   document.getElementById("sharex").href="https://twitter.com/intent/tweet?url="+encodeURIComponent(url)+"&text="+encodeURIComponent(base);

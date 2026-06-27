@@ -59,7 +59,7 @@ async def narrate_card(
     dice_label: str,
     quest_hook: str,
     complication: str,
-    party_summary: str,
+    protagonist: str,
     momentum: int,
     momentum_delta: int,
     memory_context: str,
@@ -124,7 +124,7 @@ async def narrate_card(
 SITUATION: {quest_hook}
 COMPLICATION: {complication}
 {f"PERSON AT THIS LOCATION: {npc_context}" if npc_context else ""}
-PEOPLE: {party_summary}
+PROTAGONIST: {protagonist}
 MORALE: {momentum} ({delta_desc} from this card — let this show in tone, not in explicit statement)
 {facts_block}
 {story_block}
@@ -255,7 +255,7 @@ JSON only:
     return parsed
 
 
-async def narrate_quest_start(quest_hook: str, complication: str, party_summary: str) -> str:
+async def narrate_quest_start(quest_hook: str, complication: str, protagonist: str) -> str:
     prompt = f"""{_TONE}
 
 A new situation is beginning. Write a 2-sentence opening.
@@ -263,7 +263,7 @@ The first sentence establishes the ordinary task. The second introduces the firs
 
 SITUATION: {quest_hook}
 COMPLICATION: {complication}
-PEOPLE: {party_summary}
+PROTAGONIST: {protagonist}
 
 Under 50 words. No em dashes. Modern, flat, casual tone. No fantasy words."""
 
@@ -271,9 +271,7 @@ Under 50 words. No em dashes. Modern, flat, casual tone. No fantasy words."""
     return await ROUTER.complete(req)
 
 
-async def narrate_quest_end(
-    quest_hook: str, outcome: str, momentum: int, party_summary: str
-) -> str:
+async def narrate_quest_end(quest_hook: str, outcome: str, momentum: int, protagonist: str) -> str:
     prompt = f"""{_TONE}
 
 The situation has ended. Write a 2-sentence closing statement.
@@ -281,7 +279,7 @@ Deliver it like a memo or a debrief. Outcome: {outcome}. Morale: {momentum}.
 Whether it went well or badly, report it with the same flat administrative tone.
 
 SITUATION: {quest_hook}
-PEOPLE: {party_summary}
+PROTAGONIST: {protagonist}
 
 Under 50 words. No em dashes."""
 

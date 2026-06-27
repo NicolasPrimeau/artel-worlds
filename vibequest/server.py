@@ -333,7 +333,7 @@ async def _resolve_window(state: GameState) -> None:
                     dice_label=dice_result.value,
                     quest_hook=state.quest.hook,
                     complication=state.quest.complication,
-                    party_summary=_character_desc(state),
+                    protagonist=_character_desc(state),
                     momentum=state.quest.momentum,
                     momentum_delta=momentum_delta,
                     memory_context=memory_ctx,
@@ -555,7 +555,7 @@ async def _end_quest(state: GameState) -> None:
             quest_hook=state.quest.hook,
             outcome=state.quest.outcome or "unclear",
             momentum=state.quest.momentum,
-            party_summary=_character_desc(state),
+            protagonist=_character_desc(state),
         )
     state.log_event("quest_end", closing or f"The quest concludes. Outcome: {state.quest.outcome}.")
     await _broadcast(
@@ -692,7 +692,7 @@ async def _start_new_game(preset_quest: QuestState | None = None) -> None:
             llm.narrate_quest_start(
                 quest_hook=_state.quest.hook,
                 complication=_state.quest.complication,
-                party_summary=_character_desc(_state),
+                protagonist=_character_desc(_state),
             ),
             llm.generate_objectives(
                 quest_hook=_state.quest.hook,
