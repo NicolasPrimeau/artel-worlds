@@ -667,16 +667,39 @@ async def _travel_card_loop() -> None:
 async def _start_new_game(preset_quest: QuestState | None = None) -> None:
     global _state
     _state = new_game(_rng, preset_quest=preset_quest)
-    opening_text = f"{_state.quest.hook} {_state.quest.complication}"
+
+    complication = ""
+    if llm.enabled():
+        try:
+            complication = await asyncio.wait_for(
+                llm.generate_complication(
+                    quest_hook=_state.quest.hook,
+                    quest_title=_state.quest.title,
+                ),
+                timeout=5.0,
+            )
+        except Exception:
+            pass
+    _state.quest.complication = complication
+
+    opening_text = _state.quest.hook
     _state.log_event("opening", opening_text)
+    if complication:
+        _state.log_event("complication", complication)
+
     if artel.enabled():
-        await artel.write_memory(
-            f"New VibeQuest begun: {_state.quest.hook} Complication: {_state.quest.complication}",
-            tags=["vibequest", "quest-start"],
+        asyncio.create_task(
+            artel.write_memory(
+                f"New VibeQuest begun: {_state.quest.hook} Complication: {complication}",
+                tags=["vibequest", "quest-start"],
+            )
         )
     await _broadcast(
         {"type": "new_quest", "state": _state_snapshot(_state), "opening": opening_text}
     )
+    if complication:
+        await asyncio.sleep(2.5)
+        await _broadcast({"type": "scene_beat", "text": complication, "who": ""})
 
 
 def _pos_msg(state: GameState) -> dict:

@@ -183,6 +183,22 @@ JSON: {{"finale":false,"outcome":"success or failure","closing_beat":"..."}}"""
     return parsed
 
 
+async def generate_complication(quest_hook: str, quest_title: str) -> str:
+    prompt = f"""{_TONE}
+
+One complication sentence for this situation. Specific to this task. May be mundane, absurd, or quietly impossible — all stated flatly, as if normal.
+TASK: {quest_title} — {quest_hook}
+One sentence only. No setup, no explanation."""
+
+    req = Request(
+        system="Respond with one sentence only. No preamble, no quotation marks.",
+        user=prompt,
+        min_grade="fast",
+        timeout=5.0,
+    )
+    return await ROUTER.complete(req)
+
+
 async def narrate_quest_end(quest_hook: str, outcome: str, momentum: int, protagonist: str) -> str:
     prompt = f"""{_TONE}
 
