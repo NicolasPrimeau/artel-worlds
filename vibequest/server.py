@@ -802,12 +802,10 @@ async def _window_loop() -> None:
         if not _clients:
             continue
         sync_target(_state)
-        if not at_station(_state):
-            continue
         if not _state.window.cards:
             continue
         async with _lock:
-            if _state.window.cards and _state.phase == "active" and at_station(_state):
+            if _state.window.cards and _state.phase == "active":
                 try:
                     await _resolve_window(_state)
                 except Exception as exc:
