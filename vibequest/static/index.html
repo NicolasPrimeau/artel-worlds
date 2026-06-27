@@ -1018,23 +1018,25 @@ function updateBubbles(){
 function clearBubbles(){ for(const b of bubbles) b.el.remove(); bubbles.length=0; }
 function speakNPC(name,text,dur){
   if(!text) return;
+  const npcObj=npcs.find(n=>n.name===name);
+  if(!npcObj||!scene){
+    showSceneBeat(`"${text}"`, name);
+    return;
+  }
+  const cam=scene.cameras.main; const wv=cam.worldView;
+  const fx=(npcObj.spr.x-wv.x)/wv.width;
+  const fy=(npcObj.spr.y-wv.y)/wv.height;
+  if(fx<0.05||fx>0.95||fy<0.05||fy>0.95){
+    showSceneBeat(`"${text}"`, name);
+    return;
+  }
   clearBubbles();
   const el=document.createElement("div"); el.className="bubble npc-bubble";
   el.innerHTML=`<span class="nm">${name}</span>${text}`;
-  const npcObj=npcs.find(n=>n.name===name);
-  if(npcObj&&scene){
-    const cam=scene.cameras.main; const wv=cam.worldView;
-    const fx=(npcObj.spr.x-wv.x)/wv.width;
-    const fy=(npcObj.spr.y-wv.y)/wv.height;
-    const sx=Math.round(fx*window.innerWidth);
-    const sy=Math.max(8,Math.round(fy*window.innerHeight)-64);
-    el.style.cssText=(fx>0.05&&fx<0.95&&fy>0.05&&fy<0.95)
-      ?`position:fixed;left:${sx}px;top:${sy}px;transform:translateX(-50%)`
-      :`position:fixed;right:12px;top:52px`;
-    document.body.appendChild(el);
-  } else {
-    document.getElementById("bubbles").appendChild(el);
-  }
+  const sx=Math.round(fx*window.innerWidth);
+  const sy=Math.max(8,Math.round(fy*window.innerHeight)-64);
+  el.style.cssText=`position:fixed;left:${sx}px;top:${sy}px;transform:translateX(-50%)`;
+  document.body.appendChild(el);
   bubbles.push({el,member:{name},until:performance.now()+(dur||4800)});
 }
 let _typingTimer=null;

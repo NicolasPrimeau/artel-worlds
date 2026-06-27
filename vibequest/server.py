@@ -304,8 +304,6 @@ async def _resolve_window(state: GameState) -> None:
                     (n for n in state.quest.npcs if n.waypoint_idx == state.target_idx),
                     None,
                 )
-            if not current_npc and card_def.type == CardType.CHAOS and state.quest.npcs:
-                current_npc = state.quest.npcs[0]
             npc_context = (
                 f"{current_npc.name} ({current_npc.role}): {current_npc.personality}"
                 if current_npc
@@ -819,7 +817,7 @@ async def _ambient_loop() -> None:
         if state is None or not _clients or state.phase != "active" or not llm.enabled():
             continue
         npcs_here = [n for n in state.quest.npcs if n.waypoint_idx == state.target_idx]
-        npc = npcs_here[0] if npcs_here else (state.quest.npcs[0] if state.quest.npcs else None)
+        npc = npcs_here[0] if npcs_here else None
         if not npc:
             continue
         try:
