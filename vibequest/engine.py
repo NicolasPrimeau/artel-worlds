@@ -25,6 +25,117 @@ CARD_WINDOW = 5.0  # seconds between resolution checks
 # The LLM constructs the narrative JIT as cards are played — only the starting situation is fixed.
 # Future categories: grocery, commute, school, airport, etc.
 
+NPC_POOL = [
+    {
+        "name": "Dennis Marsh",
+        "role": "IT Support",
+        "personality": "Has a system for everything. The system is not documented. He will explain it if asked, but only partially.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Sandra Okafor",
+        "role": "Office Manager",
+        "personality": "Responsible for everything and authorized for nothing. Has a spreadsheet that tracks the spreadsheet.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "Keith Burrows",
+        "role": "Facilities",
+        "personality": "Knows every fuse box, every unlabeled door. Shares this information reluctantly and non-chronologically.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "Margot Chen",
+        "role": "Finance",
+        "personality": "Does not process things verbally. Sends a follow-up email three minutes after every conversation.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Phil Noonan",
+        "role": "Legal",
+        "personality": "Responds to everything with a question about scope. His questions are long. His answers are longer.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Yvonne Tait",
+        "role": "HR",
+        "personality": "Extremely warm. Cannot share any information. These two facts create a specific kind of interaction she has had many times.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Trevor Bale",
+        "role": "Security",
+        "personality": "Takes the badge scanner personally. Has opinions about tailgating that he will share unprompted.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "Carol Pinkett",
+        "role": "Reception",
+        "personality": "Has worked here longer than the company has had its current name. Remembers the previous name.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Darnell Wade",
+        "role": "Procurement",
+        "personality": "Everything requires a PO number. He does not make this rule. He does enforce it.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Helen Frost",
+        "role": "Executive Assistant",
+        "personality": "Controls the calendar. The calendar is a form of power she exercises carefully and without emotion.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Gary Plum",
+        "role": "Maintenance",
+        "personality": "The job takes as long as it takes. This is not a value judgment. It is a statement of fact.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "Irene Solis",
+        "role": "Payroll",
+        "personality": "Has a sign on her desk that says PLEASE READ THE FAQ. She wrote the FAQ. She updates it biannually.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Marcus Firth",
+        "role": "Project Manager",
+        "personality": "Speaks only in status updates. Currently at 60%. ETA unclear.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "Bev Larocque",
+        "role": "Admin",
+        "personality": "Has been 'just about to leave' for 45 minutes. This is not unusual for her.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Noel Pritchard",
+        "role": "Compliance",
+        "personality": "Reads everything. CC'd on things he doesn't need to be CC'd on. Says nothing until he does.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Jan Metzger",
+        "role": "Accounts",
+        "personality": "Tracks everything she has ever done for anyone. Not resentfully. Just accurately.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Steve Doyle",
+        "role": "Sales",
+        "personality": "Very friendly. Every conversation ends with something that needs to happen as a result of it.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "Wendy Carr",
+        "role": "Operations",
+        "personality": "Has asked this question before. Is asking again because the answer changed last time. She is keeping track.",
+        "behavior": "wandering",
+    },
+]
+
 QUEST_CATEGORIES: dict[str, dict] = {
     "office": {
         "theme": "office",
@@ -32,82 +143,182 @@ QUEST_CATEGORIES: dict[str, dict] = {
             {
                 "title": "Q3 Expense Report",
                 "hook": "Someone needs to submit the Q3 expense report before the finance system locks at 5pm.",
+                "objectives": [
+                    "Find who has the receipts",
+                    "Get Finance to unlock the submission portal",
+                    "Submit before the system closes",
+                ],
             },
             {
                 "title": "Fix The Printer",
                 "hook": "The printer on the third floor has stopped working. It needs to be running before the 2pm presentation.",
+                "objectives": [
+                    "Identify what's actually wrong with it",
+                    "Track down someone who can fix it",
+                    "Confirm it's working before the presentation",
+                ],
             },
             {
                 "title": "The Missing Key Fob",
                 "hook": "Someone's access key fob stopped working and they can't get into the building. Needs to be resolved before their shift ends.",
+                "objectives": [
+                    "Find out why the fob deactivated",
+                    "Get to whoever can reactivate it",
+                    "Issue a working fob before end of shift",
+                ],
             },
             {
                 "title": "Coffee Pod Situation",
                 "hook": "Someone used the last coffee pod and didn't reorder. This needs to be addressed before the 9am stand-up.",
+                "objectives": [
+                    "Establish who is responsible for reordering",
+                    "Find an emergency supply",
+                    "Have coffee available by 9am",
+                ],
             },
             {
                 "title": "Room Double-Booking",
                 "hook": "The main conference room is double-booked for Thursday. Someone needs to sort this out before people start arriving.",
+                "objectives": [
+                    "Identify both parties and what they need",
+                    "Find an alternative for one of them",
+                    "Confirm the resolution in writing",
+                ],
             },
             {
                 "title": "The Unsigned NDA",
                 "hook": "A contractor started today without signing the NDA. Legal needs it signed before end of day.",
+                "objectives": [
+                    "Find the contractor",
+                    "Get Legal to send the correct version",
+                    "Get it signed and returned",
+                ],
             },
             {
                 "title": "Laptop Recovery",
                 "hook": "An ex-employee still has a company laptop. IT needs it back before the asset audit tomorrow.",
+                "objectives": [
+                    "Locate the ex-employee",
+                    "Arrange a handoff",
+                    "Log the return before the audit",
+                ],
             },
             {
                 "title": "The Fish Incident",
                 "hook": "Someone microwaved fish in the break room and the smell is spreading to the open plan. This has to stop.",
+                "objectives": [
+                    "Identify who did it",
+                    "Get the break room ventilated",
+                    "Establish that this cannot happen again",
+                ],
             },
             {
                 "title": "All-Hands Deck",
                 "hook": "The all-hands presentation is in two hours and slides are still missing from three departments.",
+                "objectives": [
+                    "Chase the three departments",
+                    "Assemble the slides into one deck",
+                    "Get it to the presenter in time",
+                ],
             },
             {
                 "title": "New Hire Setup",
                 "hook": "A new hire started today with no desk, no computer, and no system access. Someone needs to fix this.",
+                "objectives": [
+                    "Find them a desk",
+                    "Get IT to provision a machine",
+                    "Get their accounts activated today",
+                ],
             },
             {
                 "title": "The IT Ticket",
                 "hook": "An IT support ticket has been open for three weeks with no update. Someone needs to get it resolved before the end of the quarter.",
+                "objectives": [
+                    "Find out who owns the ticket",
+                    "Get an actual status",
+                    "Close it before quarter end",
+                ],
             },
             {
                 "title": "Catering Mix-Up",
                 "hook": "The catering order for tomorrow's client lunch was placed at the wrong branch. Someone needs to sort this out today.",
+                "objectives": [
+                    "Reach the right branch",
+                    "Redirect or reorder",
+                    "Confirm delivery for tomorrow",
+                ],
             },
             {
                 "title": "Form 2309-B",
                 "hook": "A form needs three signatures before it can be processed. Two of the signatories are in different buildings and one is not responding.",
+                "objectives": [
+                    "Get the first two signatures",
+                    "Track down the third signatory",
+                    "Submit the form before processing closes",
+                ],
             },
             {
                 "title": "The Projector",
                 "hook": "The projector in the small meeting room won't connect to any laptop. A client presentation starts in 20 minutes.",
+                "objectives": [
+                    "Find the right cable or adapter",
+                    "Get the projector working",
+                    "Have the room ready before the client arrives",
+                ],
             },
             {
                 "title": "Parking Situation",
                 "hook": "A VIP visitor is arriving in an hour and nobody arranged parking. The visitor is already on their way.",
+                "objectives": [
+                    "Find an available space",
+                    "Get building security to reserve it",
+                    "Notify the visitor before they arrive",
+                ],
             },
             {
                 "title": "The Good Stapler",
                 "hook": "Someone's good stapler has gone missing from their desk. They have asked for help recovering it. The regular staplers are not acceptable.",
+                "objectives": [
+                    "Establish when it disappeared",
+                    "Identify who might have it",
+                    "Return the correct stapler",
+                ],
             },
             {
                 "title": "The Vending Machine",
                 "hook": "The vending machine took someone's money and dispensed nothing. Three other people have also lost money. Someone needs to get to the bottom of this.",
+                "objectives": [
+                    "Document the losses",
+                    "Contact the vendor",
+                    "Get refunds or a working machine",
+                ],
             },
             {
                 "title": "Birthday Logistics",
                 "hook": "It is someone's birthday. A cake was ordered to the wrong address. The birthday person arrives in 45 minutes.",
+                "objectives": [
+                    "Locate the cake",
+                    "Arrange pickup or redirect",
+                    "Have it here before they arrive",
+                ],
             },
             {
                 "title": "The Thermostat Dispute",
                 "hook": "Two teams on the same floor are in a cold war over the office thermostat. Someone needs to mediate before it escalates to HR.",
+                "objectives": [
+                    "Understand each team's position",
+                    "Find a setting both can accept",
+                    "Get a written agreement before it goes to HR",
+                ],
             },
             {
                 "title": "The Offboarding",
                 "hook": "Someone is leaving at end of day and needs to be formally offboarded. Nobody owns this process and nothing has been started.",
+                "objectives": [
+                    "Find out what offboarding actually requires",
+                    "Get the relevant people moving",
+                    "Complete everything before they walk out",
+                ],
             },
         ],
         "complications": [
@@ -797,8 +1008,29 @@ def make_quest(rng: random.Random) -> tuple[QuestState, str]:
         hook=task["hook"],
         complication=complication,
         register=rng.choice(REGISTERS),
+        objectives=list(task.get("objectives", [])),
     )
     return quest, cat["theme"]
+
+
+def make_npcs(rng: random.Random, waypoint_count: int) -> list[NPC]:
+    pool = rng.sample(NPC_POOL, min(3, len(NPC_POOL)))
+    sprites = rng.sample(range(1, 16), len(pool))
+    npcs = []
+    for i, (raw, sprite) in enumerate(zip(pool, sprites)):
+        waypoint_idx = min(i * max(1, waypoint_count // len(pool)), waypoint_count - 1)
+        npcs.append(
+            NPC(
+                id=f"npc_{raw['name'].split()[0].lower()}",
+                name=raw["name"],
+                role=raw["role"],
+                personality=raw["personality"],
+                sprite=sprite,
+                waypoint_idx=waypoint_idx,
+                behavior=raw["behavior"],
+            )
+        )
+    return npcs
 
 
 def new_game(rng: random.Random | None = None, preset_quest: QuestState | None = None) -> GameState:
@@ -813,6 +1045,8 @@ def new_game(rng: random.Random | None = None, preset_quest: QuestState | None =
     window = WindowState(opened_at=now, closes_at=now + CARD_WINDOW)
     run_id = str(uuid.uuid4())[:8]
     world = generate_world(rng, theme=theme, step_count=MAX_RESOLUTIONS)
+    waypoint_count = len(world.waypoints) if world else 5
+    quest.npcs = make_npcs(rng, waypoint_count)
     state = GameState(run_id=run_id, character=character, quest=quest, window=window, world=world)
     state.lx, state.ly = world.route[0]
     state.facing = "up"

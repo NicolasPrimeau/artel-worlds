@@ -20,7 +20,6 @@ from .engine import (
     CardType,
     DiceResult,
     GameState,
-    NPC,
     PlayedCard,
     QuestState,
     apply_card_effects,
@@ -226,25 +225,8 @@ async def _resolve_window(state: GameState) -> None:
                 consequence="",
             )
             state.window.resolutions.append(resolution)
-            pressure_llm_task = (
-                asyncio.create_task(
-                    llm.narrate_pressure_card(
-                        card_name=card_def.name,
-                        card_type=card_def.type.value,
-                        card_description=card_def.description,
-                        quest_hook=state.quest.hook,
-                    )
-                )
-                if llm.enabled()
-                else None
-            )
-            await asyncio.sleep(1.5)
-            pressure_narrative = ""
-            if pressure_llm_task:
-                try:
-                    pressure_narrative = await pressure_llm_task
-                except Exception:
-                    pass
+            pressure_narrative = card_def.description
+            await asyncio.sleep(0.4)
             state.log_event(
                 "pressure_added",
                 pressure_narrative or card_def.description,
@@ -685,72 +667,13 @@ async def _travel_card_loop() -> None:
 async def _start_new_game(preset_quest: QuestState | None = None) -> None:
     global _state
     _state = new_game(_rng, preset_quest=preset_quest)
-    if llm.enabled():
-        waypoint_count = len(_state.world.waypoints) if _state.world else 5
-        theme = _state.world.theme if _state.world else "office"
-        opening, objectives, npcs_raw = await asyncio.gather(
-            llm.narrate_quest_start(
-                quest_hook=_state.quest.hook,
-                complication=_state.quest.complication,
-                protagonist=_character_desc(_state),
-            ),
-            llm.generate_objectives(
-                quest_hook=_state.quest.hook,
-                complication=_state.quest.complication,
-            ),
-            llm.generate_npcs(
-                quest_hook=_state.quest.hook,
-                complication=_state.quest.complication,
-                theme=theme,
-                waypoint_count=waypoint_count,
-            ),
-            return_exceptions=True,
-        )
-        if isinstance(opening, str) and opening:
-            _state.log_event("opening", opening)
-        if isinstance(objectives, list):
-            _state.quest.objectives = objectives
-        if isinstance(npcs_raw, list):
-            available = [s for s in range(1, 11) if s != _state.character.sprite]
-            npcs = []
-            used_wps: set[int] = set()
-            wp_max = waypoint_count - 1
-            for i, nd in enumerate(npcs_raw):
-                if not isinstance(nd, dict):
-                    continue
-                sprite = available[i % len(available)] if available else (i % 10 + 1)
-                req = min(int(nd.get("waypoint_idx", 0)), wp_max)
-                idx = req
-                if idx in used_wps:
-                    for d in range(1, wp_max + 1):
-                        if idx + d <= wp_max and (idx + d) not in used_wps:
-                            idx = idx + d
-                            break
-                        if idx - d >= 0 and (idx - d) not in used_wps:
-                            idx = idx - d
-                            break
-                used_wps.add(idx)
-                npcs.append(
-                    NPC(
-                        id=f"npc_{i}",
-                        name=nd.get("name", f"Person {i + 1}"),
-                        role=nd.get("role", "Unknown"),
-                        personality=nd.get("personality", ""),
-                        sprite=sprite,
-                        waypoint_idx=idx,
-                        behavior=nd.get("behavior", "stationary"),
-                    )
-                )
-            _state.quest.npcs = npcs
-            log.info("Generated %d NPCs", len(npcs))
-        else:
-            log.warning("NPC generation failed: %s — %s", type(npcs_raw).__name__, npcs_raw)
+    opening_text = f"{_state.quest.hook} {_state.quest.complication}"
+    _state.log_event("opening", opening_text)
     if artel.enabled():
         await artel.write_memory(
             f"New VibeQuest begun: {_state.quest.hook} Complication: {_state.quest.complication}",
             tags=["vibequest", "quest-start"],
         )
-    opening_text = opening if isinstance(opening, str) else ""
     await _broadcast(
         {"type": "new_quest", "state": _state_snapshot(_state), "opening": opening_text}
     )

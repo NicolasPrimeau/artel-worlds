@@ -183,17 +183,6 @@ JSON: {{"finale":false,"outcome":"success or failure","closing_beat":"..."}}"""
     return parsed
 
 
-async def narrate_quest_start(quest_hook: str, complication: str, protagonist: str) -> str:
-    prompt = f"""{_TONE}
-
-Opening: 2 sentences. First: the ordinary task. Second: the first hint something is slightly off, stated as if normal.
-SITUATION: {quest_hook} | COMPLICATION: {complication} | PROTAGONIST: {protagonist}
-Under 50 words. No em dashes."""
-
-    req = Request(system="Respond in plain prose. No fantasy language.", user=prompt)
-    return await ROUTER.complete(req)
-
-
 async def narrate_quest_end(quest_hook: str, outcome: str, momentum: int, protagonist: str) -> str:
     prompt = f"""{_TONE}
 
@@ -229,22 +218,6 @@ JSON: {{"narrative":"...","line":"..."}}"""
     req = Request(system="Respond only with valid JSON. No fantasy language.", user=prompt)
     raw = await ROUTER.complete(req)
     return parse_json(raw) or {}
-
-
-async def narrate_pressure_card(
-    card_name: str,
-    card_type: str,
-    card_description: str,
-    quest_hook: str,
-) -> str:
-    prompt = f"""{_TONE}
-
-A background card shifted the situation quietly. No dice roll.
-SITUATION: {quest_hook} | CARD: {card_name} ({card_type}) — {card_description}
-1 sentence (≤15 words). Something subtly changed. No drama, nobody reacts."""
-
-    req = Request(system="Respond in one sentence only. No fantasy language.", user=prompt)
-    return await ROUTER.complete(req)
 
 
 async def narrate_travel_card(
@@ -289,30 +262,6 @@ CARD: {card_name} — {card_description} | DICE: {dice_value}/20
     return await ROUTER.complete(req)
 
 
-async def generate_npcs(
-    quest_hook: str,
-    complication: str,
-    theme: str,
-    waypoint_count: int,
-) -> list[dict]:
-    prompt = f"""{_TONE}
-
-Generate 3 people who work here. Each needs one deadpan personality detail — specific, flat, like a Wes Anderson character card.
-Examples: "Has worked here nine years. Still no permanent desk. Has stopped asking." / "Keeps a printed seating chart from 2019. Refers to it as the correct one."
-
-SITUATION: {quest_hook} | COMPLICATION: {complication} | SETTING: {theme}
-Assign waypoint_idx 0–{waypoint_count - 1}. behavior: "stationary" or "wandering". Common first names only.
-
-JSON: {{"npcs":[{{"name":"First Last","role":"Title","personality":"2 sentences","waypoint_idx":0,"behavior":"stationary"}}]}}"""
-
-    req = Request(system="Respond only with valid JSON.", user=prompt)
-    raw = await ROUTER.complete(req)
-    parsed = parse_json(raw)
-    if parsed and isinstance(parsed.get("npcs"), list):
-        return [n for n in parsed["npcs"][:4] if isinstance(n, dict)]
-    return []
-
-
 async def assess_scene(
     scene_name: str,
     scene_goal: str,
@@ -348,19 +297,3 @@ JSON: {{"resolved":false,"dm_note":"one sentence why"}}"""
         return {"resolved": rounds >= max_rounds, "dm_note": ""}
     parsed["resolved"] = bool(parsed.get("resolved")) or rounds >= max_rounds
     return parsed
-
-
-async def generate_objectives(quest_hook: str, complication: str) -> list[str]:
-    prompt = f"""{_TONE}
-
-3 objectives as a to-do list. Each ≤8 words. Read like real task items — specific, mundane, slightly wrong.
-Escalate: normal step → getting complicated → actual resolution needed.
-SITUATION: {quest_hook} | COMPLICATION: {complication}
-JSON: {{"objectives":["...","...","..."]}}"""
-
-    req = Request(system="Respond only with valid JSON.", user=prompt)
-    raw = await ROUTER.complete(req)
-    parsed = parse_json(raw)
-    if parsed and isinstance(parsed.get("objectives"), list):
-        return [str(o) for o in parsed["objectives"][:3]]
-    return []
