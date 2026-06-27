@@ -350,6 +350,78 @@ NPC_POOL = [
         "personality": "The visitor bay is reserved. For someone else. There is a list. She is not on the list.",
         "behavior": "stationary",
     },
+    {
+        "name": "Neil Burr",
+        "role": "Temporary Staff",
+        "personality": "Has been temporary for six years. The agency that placed him closed in 2021. He is still being paid. Nobody knows by whom.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "Carol Voss",
+        "role": "Second Floor",
+        "personality": "Her job title is 'Second Floor.' This is what her badge says. This is what her email says. Nobody has ever asked about it.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Martin Ogle",
+        "role": "Former Employee",
+        "personality": "Left the company eighteen months ago. Still comes in. Uses his old desk. His access card still works. IT is aware.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "Susan Drax",
+        "role": "Head of Process",
+        "personality": "There is no Process department. There is Susan. She has a team of one. The one is also Susan, listed under a slightly different name.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Barry Finch",
+        "role": "IT Support",
+        "personality": "Replaced Dennis eighteen months ago. Dennis is also still here. They have never been seen in the same room. This is not discussed.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Elaine Hobbs",
+        "role": "Meeting Room 4B",
+        "personality": "Is always in Meeting Room 4B. The room is always booked by someone else. The booking system shows it as empty. Nobody raises this.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Derek Pound",
+        "role": "Project Lead",
+        "personality": "Leads a project that was completed two years ago. He has continued leading it. The project continues to have updates.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "Maureen Crisp",
+        "role": "Retired (Emeritus)",
+        "personality": "Retired in 2019. Still receives internal emails and replies to them the same day. Nobody knows who set this up. The replies are useful.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Hugh Tandy",
+        "role": "Data Governance",
+        "personality": "Oversees a dataset that, according to the system, does not exist. He disputes this. The data is there. He has shown it to people. They've seen it.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Val Shore",
+        "role": "Notetaker",
+        "personality": "Takes notes in every meeting she attends. Has not spoken in a meeting since 2022. Her notes are always correct. Nobody knows whose meetings she attends.",
+        "behavior": "wandering",
+    },
+    {
+        "name": "Theo Wick",
+        "role": "Client Liaison",
+        "personality": "Represents a client account that was closed three years ago. He still receives their calls. He still schedules their reviews. They seem happy.",
+        "behavior": "stationary",
+    },
+    {
+        "name": "Brenda Ash",
+        "role": "Building Occupant",
+        "personality": "Is in the building every day. Does not work here. Has a desk. Has a mug. Has a coat on a hook. Nobody has ever asked.",
+        "behavior": "stationary",
+    },
 ]
 
 QUEST_CATEGORIES: dict[str, dict] = {
@@ -626,6 +698,69 @@ QUEST_CATEGORIES: dict[str, dict] = {
                     "Prepare a remediation plan in the next two hours",
                 ],
             },
+            {
+                "title": "The Ringing Phone",
+                "hook": "A phone on an empty desk has been ringing for three days. No one owns the extension. No one knows whose desk it was. Facilities says it is not a facilities issue.",
+                "objectives": [
+                    "Find out whose extension it is",
+                    "Get someone authorized to answer it or stop it",
+                    "File a resolution before end of day so the ticket can be closed",
+                ],
+            },
+            {
+                "title": "The Impossible Booking",
+                "hook": "A conference room is booked for this morning by an account that was deactivated in 2022. The room is currently occupied by no one. The booking cannot be cancelled.",
+                "objectives": [
+                    "Find out how the booking exists",
+                    "Get Facilities or IT to override it",
+                    "Have the room available for the team that actually needs it",
+                ],
+            },
+            {
+                "title": "The Unknown Contributor",
+                "hook": "A person named R. Holt has been contributing to a shared project for four months. Nobody on the team added them. They reply to comments within minutes. Nobody knows who they are.",
+                "objectives": [
+                    "Find out if R. Holt is internal or external",
+                    "Establish whether their contributions are correct",
+                    "Resolve their access status without breaking the project",
+                ],
+            },
+            {
+                "title": "The Plant",
+                "hook": "The large plant near the south entrance died overnight. It was healthy yesterday. Someone has put flowers on it. A card has appeared. The card is signed by seventeen people.",
+                "objectives": [
+                    "Establish what actually happened",
+                    "Determine whether facilities should be involved or whether this has become an HR matter",
+                    "Handle the card signatories before this reaches leadership",
+                ],
+            },
+            {
+                "title": "The Approved Request",
+                "hook": "An equipment request has been approved for the fourth time. The equipment has never arrived. The previous three approvals are documented. Nobody can explain where the equipment goes.",
+                "objectives": [
+                    "Track what actually happens when the order is placed",
+                    "Find the gap in the process",
+                    "Get the equipment to the person before they make a fifth request",
+                ],
+            },
+            {
+                "title": "The Door",
+                "hook": "There is a door on the second floor that is not on the floor plan. It has a keypad. Facilities does not have the code. Nobody is claiming it.",
+                "objectives": [
+                    "Find out who has access to it",
+                    "Determine whether it is a safety issue",
+                    "Get it documented or sealed before the building inspector arrives Friday",
+                ],
+            },
+            {
+                "title": "Email From The Previous Tenant",
+                "hook": "The building's previous occupant has been sending emails to the company's internal support address for six weeks. The emails describe IT problems in detail. Someone has been replying to them.",
+                "objectives": [
+                    "Find out who has been replying",
+                    "Determine if any information has been shared that shouldn't have been",
+                    "Close the loop with the previous tenant and close the ticket",
+                ],
+            },
         ],
         "complications": [
             "Half the relevant people are in back-to-back meetings until 4pm.",
@@ -658,6 +793,15 @@ QUEST_CATEGORIES: dict[str, dict] = {
             "The room that was needed for this has been double-booked with something that cannot be moved.",
             "A company-wide software update rolled out overnight and several things have stopped working differently.",
             "Someone senior found out about this situation and asked to be kept updated. That is now the main task.",
+            "The fire drill happened forty minutes ago. One person did not come back inside. Nobody has mentioned this.",
+            "The system logged an action that nobody performed. IT says the log is correct. Everyone agrees they did not do it.",
+            "A room that should be empty is clearly occupied. The booking system shows it as available. Nobody will look directly at the door.",
+            "The same email has been forwarded back into the thread it originally came from. Nobody knows how. Nobody is addressing it.",
+            "Someone has added a calendar event for this to every person in the building, including people who left last year. The out-of-office replies are now part of the thread.",
+            "An automated system sent an update about this to the company Slack at 3am. It was accurate. Nobody set this up.",
+            "The person from the previous attempt at resolving this says they resolved it. Their notes confirm this. The issue is not resolved.",
+            "There is a second version of this problem on a different floor that nobody has connected to this one yet. Someone is about to.",
+            "The issue was escalated last week and then de-escalated without resolution. It has arrived back at the same point with no explanation.",
         ],
     },
 }
