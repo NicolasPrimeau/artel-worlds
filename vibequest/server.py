@@ -45,7 +45,7 @@ STATIC = Path(__file__).parent / "static"
 DEAL_INTERVAL = 20.0
 VOTE_TIMEOUT = 25.0
 PRESSURE_DURATION = 3
-BATCH_WINDOW = 1.5
+BATCH_WINDOW = 0.5
 
 _rng = random.SystemRandom()
 _state: GameState | None = None
@@ -192,7 +192,7 @@ async def _resolve_window(state: GameState) -> None:
     state.phase = "resolving"
     if played:
         await _broadcast({"type": "window_closing", "card_count": len(played)})
-        await asyncio.sleep(0.8)
+        await asyncio.sleep(0.35)
 
     for played_card in played:
         card_def = CARD_BY_ID.get(played_card.card_id)
@@ -340,7 +340,7 @@ async def _resolve_window(state: GameState) -> None:
             else None
         )
 
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(0.6)
 
         if llm_task:
             try:
@@ -436,7 +436,7 @@ async def _resolve_window(state: GameState) -> None:
                 "state": _state_snapshot(state, include_world=False),
             }
         )
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(0.8)
 
     window_result = classify_result(state.window.resolutions)
     state.quest.result_history.append(window_result)
