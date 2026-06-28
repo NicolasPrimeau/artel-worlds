@@ -680,8 +680,8 @@ function syncNPCs(snap){
       // build new NPC sprite
       const px=wp[0]*TILE+TILE/2, py=wp[1]*TILE+TILE/2;
       const shadow=scene.add.image(px,py+6,"shadow").setDepth(899).setAlpha(.3).setScale(.75);
-      const spr=scene.add.sprite(px,py,"hero"+(n.sprite||0)).setDepth(1000+py);
-      try{spr.anims.play("idle_down_"+(n.sprite||0),true);}catch(e){}
+      const spr=scene.add.sprite(px,py,"hero"+(n.sprite||1)).setDepth(1000+py);
+      try{spr.anims.play("idle_down_"+(n.sprite||1),true);}catch(e){}
       spr.setInteractive();
       const m={spr,shadow,id:n.id,name:n.name,role:n.role,dir:"down"};
       spr.on("pointerup",()=>{ const box=document.getElementById("npc-info"); if(!box) return;

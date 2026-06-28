@@ -1362,7 +1362,7 @@ def apply_world_changes(quest: QuestState, changes: list[dict], rng: random.Rand
                     name=str(ch.get("name", "Unknown")),
                     role=str(ch.get("role", "")),
                     personality=str(ch.get("personality", "")),
-                    sprite=rng.randint(0, 5),
+                    sprite=rng.randint(1, 10),
                     waypoint_idx=int(ch.get("waypoint_idx", 0)),
                     behavior=str(ch.get("behavior", "stationary")),
                 )
@@ -1449,7 +1449,7 @@ def make_npcs(rng: random.Random, waypoint_count: int) -> list[NPC]:
     n_mundane = count - n_surreal
     pool = rng.sample(MUNDANE_NPCS, min(n_mundane, len(MUNDANE_NPCS)))
     pool += rng.sample(SURREAL_NPCS, n_surreal)
-    sprites = rng.sample(range(1, 16), min(len(pool), 15))
+    sprites = rng.sample(range(1, 11), min(len(pool), 10))
     npcs = []
     used_wps: set[int] = {0}  # reserve wp0 for player spawn
     last = waypoint_count - 1  # deepest placeable waypoint
