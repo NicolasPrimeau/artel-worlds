@@ -1281,10 +1281,10 @@ MAX_SCENE_ROUNDS = 4
 
 SURREAL_ARC = [
     "a flat corporate procedural",
-    "a documentary that has just started to notice something is off",
-    "a slow-burn psychological unease, stated calmly",
-    "creeping domestic horror reported as administrative fact",
-    "a surreal waking nightmare narrated like meeting minutes",
+    "a deadpan office memo that has noticed one small thing doesn't add up",
+    "an HR briefing calmly itemizing things that make no sense",
+    "the minutes of a meeting where the impossible is just another agenda item",
+    "a straight-faced status report from inside a situation that has stopped obeying logic",
 ]
 
 

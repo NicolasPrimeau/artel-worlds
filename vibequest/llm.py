@@ -49,21 +49,22 @@ ROUTER = Router(
 SPEND = ROUTER.spend
 
 _TONE = (
-    "Setting: real modern office. It begins ordinary and escalates into wrongness that nobody acknowledges — everyone acts normal. "
-    "Register: Wes Anderson deadpan — precise, symmetrical, dryly funny, understated; specific concrete nouns over adjectives; the uncanny reported as administrative fact. "
-    "Flat deadpan workplace tone. Never: quest, realm, dungeon, adventurer, arcane, legendary, brave, slay. "
-    "Use: flag, loop in, bandwidth, circle back, per my last email, action item."
+    "Setting: a real modern office where ordinary business escalates into absurdity that nobody acknowledges — everyone stays professional and a little bored. "
+    "Voice: Wes Anderson deadpan — dry, flat, precise, quietly funny. Plain declarative sentences; specific concrete nouns; the absurd reported like a line in a memo. "
+    "NOT noir, NOT a thriller, NOT horror. No mood-setting, no atmosphere, no dread or suspense. Ban the words lone, quiet, silence, ticking, shadow, stillness, and phrasings like 'something felt wrong'. State plainly what happens; let the absurdity be the joke. "
+    "Never fantasy words: quest, realm, dungeon, adventurer, arcane, legendary, brave, slay. "
+    "Use office-speak: flag, loop in, bandwidth, circle back, per my last email, action item."
 )
 
 
 def _escalation(resolution_count: int, max_resolutions: int) -> str:
     i = resolution_count / max(max_resolutions - 1, 1)
     if i < 0.34:
-        band = "Reality is intact. Keep this grounded and ordinary; at most the faintest wrongness, the kind anyone would explain away."
+        band = "Ordinary office business, dryly observed. At most one small thing is slightly off, and it is treated as routine."
     elif i < 0.67:
-        band = "Cracks are showing. Small impossibilities happen and nobody remarks on them. Stay calm and procedural."
+        band = "Small impossibilities are now routine agenda items. Everyone stays professional, mildly inconvenienced, never alarmed."
     else:
-        band = "The rules no longer hold. The absurd is routine now; report it flatly, like minutes of a meeting."
+        band = "The situation has stopped obeying logic. Itemize each absurdity flatly, like meeting minutes — deadpan, unbothered, never ominous."
     return f"ESCALATION (scene {resolution_count + 1} of ~{max_resolutions}): {band}"
 
 
