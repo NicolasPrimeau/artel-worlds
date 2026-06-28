@@ -1442,14 +1442,16 @@ def make_npcs(rng: random.Random, waypoint_count: int) -> list[NPC]:
     pool = rng.sample(NPC_POOL, count)
     sprites = rng.sample(range(1, 16), min(count, 15))
     npcs = []
-    used_wps: set[int] = set()
+    used_wps: set[int] = {0}  # reserve wp0 for player spawn
+    avail = waypoint_count - 1  # slots 1..waypoint_count-1
     for i, raw in enumerate(pool):
         sprite = sprites[i % len(sprites)]
-        preferred = round(i * (waypoint_count - 1) / max(count - 1, 1))
+        preferred = 1 + round(i * (avail - 1) / max(count - 1, 1))
+        preferred = min(preferred, waypoint_count - 1)
         idx = preferred
         for delta in range(waypoint_count):
             for candidate in (preferred + delta, preferred - delta):
-                if 0 <= candidate < waypoint_count and candidate not in used_wps:
+                if 1 <= candidate < waypoint_count and candidate not in used_wps:
                     idx = candidate
                     break
             else:
