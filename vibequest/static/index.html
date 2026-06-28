@@ -1478,6 +1478,8 @@ function addDealCard(card){
 }
 
 function _removeHandItem(uid){
+  const el=_handEls.get(uid);
+  if(el) el.remove();
   _handItems=_handItems.filter(item=>item.uid!==uid);
   _handEls.delete(uid);
   _layoutHand(null);
