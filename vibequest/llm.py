@@ -49,22 +49,39 @@ ROUTER = Router(
 SPEND = ROUTER.spend
 
 _TONE = (
-    "Setting: a real modern office where ordinary business escalates into absurdity that nobody acknowledges — everyone stays professional and a little bored. "
-    "Voice: Wes Anderson deadpan — dry, flat, precise, quietly funny. Plain declarative sentences; specific concrete nouns; the absurd reported like a line in a memo. "
-    "NOT noir, NOT a thriller, NOT horror. No mood-setting, no atmosphere, no dread or suspense. Ban the words lone, quiet, silence, ticking, shadow, stillness, and phrasings like 'something felt wrong'. State plainly what happens; let the absurdity be the joke. "
-    "Never fantasy words: quest, realm, dungeon, adventurer, arcane, legendary, brave, slay. "
-    "Use office-speak: flag, loop in, bandwidth, circle back, per my last email, action item."
+    "Narrate VibeQuest like a Wes Anderson HR bulletin co-authored by someone who has been on garden leave since 2022 and nobody noticed. "
+    "The comedy is not in weirdness — it is in forensic precision applied to the wrong thing. "
+    "Good: 'The printer on level three has been enrolled in the asset disposal programme since February. The printer is still printing. Facilities has not been informed.' "
+    "Good: 'Martin from Procurement holds the door open. Martin has been on gardening leave since April. Nobody says anything because this is the wrong time.' "
+    "Bad: 'Something strange happened. Nobody said a word. The air felt heavy.' (atmospheric, vague, not funny) "
+    "The joke is always in the specific wrong detail — a name, a ticket number, a date, a process — and how someone nearby immediately responds with the correct professional behaviour for a slightly different problem. "
+    "They cc the right people. They flag it. They will circle back after the all-hands. They do not acknowledge that the situation is impossible. "
+    "NOT atmosphere, NOT dread, NOT mood. Ban: lone, quiet, ticking, shadow, stillness, 'something felt wrong', 'the air changed'. "
+    "NOT fantasy: quest, realm, dungeon, adventurer, arcane, legendary, brave, slay. "
+    "USE: per my last email, actioned, flagged, going forward, cc'd, loop in, noted for the record, as per, bandwidth, action item."
 )
 
 
 def _escalation(resolution_count: int, max_resolutions: int) -> str:
     i = resolution_count / max(max_resolutions - 1, 1)
     if i < 0.34:
-        band = "Ordinary office business, dryly observed. At most one small thing is slightly off, and it is treated as routine."
+        band = (
+            "One specific thing is subtly, precisely wrong — a person who should not be here is here, a document exists that has no owner, "
+            "a process has been running unattended since 2019 and someone has been quietly cc'd on its outputs for three years. "
+            "Treat it as a minor discrepancy that will be noted in the minutes."
+        )
     elif i < 0.67:
-        band = "Small impossibilities are now routine agenda items. Everyone stays professional, mildly inconvenienced, never alarmed."
+        band = (
+            "The impossible is now a standing agenda item. The thing from before is still happening. A new impossible thing has been quietly added. "
+            "People have developed workarounds. Nobody has escalated because escalating requires using a form that was deprecated in 2023. "
+            "Someone has definitely sent an email about this."
+        )
     else:
-        band = "The situation has stopped obeying logic. Itemize each absurdity flatly, like meeting minutes — deadpan, unbothered, never ominous."
+        band = (
+            "The situation has stopped obeying physics. This has been noted. Each violation of reality has its own ticket in the system; several are marked WONTFIX. "
+            "The correct person to contact about this retired in 2021 and still responds to emails, though nobody is sure from where. "
+            "Everyone is handling it professionally."
+        )
     return f"ESCALATION (scene {resolution_count + 1} of ~{max_resolutions}): {band}"
 
 
@@ -144,7 +161,7 @@ PROTAGONIST: {protagonist} | MORALE: {momentum} ({delta_desc})
 CARD: {card_name} ({card_type}) — {card_description}
 DICE: {dice_value}/20 ({dice_label}). {crit}
 
-Write 1 narrative sentence ({register} register). {reactions} 0-2 established facts.
+Write 2 sentences in the {register} register. Include one specific, exactly wrong detail (name, date, ticket number, or bureaucratic process) and show it being professionally mishandled by someone nearby. {reactions} 0-2 established facts.
 {_WORLD_ACTIONS}
 
 JSON: {{"narrative":"...","consequence":"...","reactions":[{{"name":"...","role":"...","line":"..."}}],"established":["..."],"world_changes":[]}}"""
