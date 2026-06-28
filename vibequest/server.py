@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import random
+import uuid
 from pathlib import Path
 
 from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect
@@ -14,8 +15,9 @@ from . import artel, llm
 from .engine import (
     CARD_BY_ID,
     MIN_RESOLUTIONS,
+    MAX_RESOLUTIONS,
     MAX_SCENE_ROUNDS,
-    REGISTERS,
+    arc_register,
     CardResolution,
     CardType,
     DiceResult,
@@ -43,11 +45,13 @@ STATIC = Path(__file__).parent / "static"
 DEAL_INTERVAL = 20.0
 VOTE_TIMEOUT = 25.0
 PRESSURE_DURATION = 3
+BATCH_WINDOW = 1.5
 
 _rng = random.SystemRandom()
 _state: GameState | None = None
 _clients: set[WebSocket] = set()
 _lock = asyncio.Lock()
+_card_signal = asyncio.Event()
 _travel_processed: set[str] = set()
 _card_added_sent: set[str] = set()
 _vote_options: list[QuestState] | None = None
@@ -89,8 +93,11 @@ def _scene_context(state: GameState) -> str:
     if not state.world:
         return ""
     names = state.world.waypoint_names or []
+    total = len(state.world.waypoints)
+    lo = max(0, state.target_idx - 1)
+    hi = min(total, state.target_idx + 2)
     lines = []
-    for i, _ in enumerate(state.world.waypoints):
+    for i in range(lo, hi):
         name = names[i] if i < len(names) else f"Location {i}"
         tag = " ← PLAYER" if i == state.target_idx else ""
         npcs_here = [n for n in state.quest.npcs if n.waypoint_idx == i]
@@ -212,8 +219,8 @@ async def _resolve_window(state: GameState) -> None:
                     }
                 )
             else:
-                state.quest.register = _rng.choice(
-                    [r for r in REGISTERS if r != state.quest.register]
+                state.quest.register = arc_register(
+                    state.quest.resolution_count + 2, MAX_RESOLUTIONS
                 )
             apply_card_effects(card_def, DiceResult.MID, state.quest)
             resolution = CardResolution(
@@ -325,6 +332,8 @@ async def _resolve_window(state: GameState) -> None:
                     npc_context=npc_context,
                     pressure_context=pressure_context,
                     scene_context=_scene_context(state),
+                    resolution_count=state.quest.resolution_count,
+                    max_resolutions=MAX_RESOLUTIONS,
                 )
             )
             if llm.enabled()
@@ -363,10 +372,15 @@ async def _resolve_window(state: GameState) -> None:
                 follow = [c for c in fx.get("world_changes", []) if isinstance(c, dict)]
 
                 async def _delayed(
-                    d: float = delay, t: str = event_text, wc: list = follow
+                    d: float = delay,
+                    t: str = event_text,
+                    wc: list = follow,
+                    rid: str = state.run_id,
                 ) -> None:
                     await asyncio.sleep(d)
                     async with _lock:
+                        if _state.run_id != rid:
+                            return
                         if wc:
                             apply_world_changes(_state.quest, wc, _rng)
                         if t:
@@ -600,8 +614,8 @@ async def _travel_card_loop() -> None:
                     }
                 )
             else:
-                state.quest.register = _rng.choice(
-                    [r for r in REGISTERS if r != state.quest.register]
+                state.quest.register = arc_register(
+                    state.quest.resolution_count + 2, MAX_RESOLUTIONS
                 )
             state.log_event("pressure_added", card_def.description, {"card": card_def.name})
             _card_added_sent.discard(card.id)
@@ -618,6 +632,8 @@ async def _travel_card_loop() -> None:
                 "card_description": card_def.description,
             }
         )
+        if _state is not state:
+            continue
         apply_card_effects(card_def, dice_result, state.quest)
         is_chaos_hit = card_def.type == CardType.CHAOS and dice_result in (
             DiceResult.HIGH,
@@ -655,6 +671,8 @@ async def _travel_card_loop() -> None:
                 pass
         if not event:
             event = f"{'Something goes wrong.' if dice_value <= 6 else 'Something happens.'} {card_def.name}."
+        if _state is not state:
+            continue
         state.quest.beats.append(event)
         state.log_event(
             "chaos_interrupt" if is_chaos_hit else "travel_card",
@@ -796,7 +814,11 @@ async def _ambient_loop() -> None:
 async def _window_loop() -> None:
     global _state
     while True:
-        await asyncio.sleep(5.0)
+        try:
+            await asyncio.wait_for(_card_signal.wait(), timeout=5.0)
+        except asyncio.TimeoutError:
+            pass
+        _card_signal.clear()
         if _state is None or _state.phase == "resolving" or _state.phase == "complete":
             continue
         if not _clients:
@@ -804,6 +826,7 @@ async def _window_loop() -> None:
         sync_target(_state)
         if not _state.window.cards:
             continue
+        await asyncio.sleep(BATCH_WINDOW)
         async with _lock:
             if _state.window.cards and _state.phase == "active":
                 try:
@@ -915,10 +938,14 @@ def create_app() -> FastAPI:
             return JSONResponse({"error": "unknown card"}, status_code=400)
         card_def = CARD_BY_ID[card_id]
         played = PlayedCard(
-            id=str(_rng.random()), card_id=card_id, player_id=player_id, target_npc_id=target_npc_id
+            id=uuid.uuid4().hex[:12],
+            card_id=card_id,
+            player_id=player_id,
+            target_npc_id=target_npc_id,
         )
         async with _lock:
             _state.window.cards.append(played)
+        _card_signal.set()
         await _broadcast(
             {"type": "card_played", "card_id": card_id, "card_count": len(_state.window.cards)}
         )

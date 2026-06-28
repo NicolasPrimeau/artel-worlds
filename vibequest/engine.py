@@ -25,7 +25,7 @@ CARD_WINDOW = 5.0  # seconds between resolution checks
 # The LLM constructs the narrative JIT as cards are played — only the starting situation is fixed.
 # Future categories: grocery, commute, school, airport, etc.
 
-NPC_POOL = [
+MUNDANE_NPCS = [
     {
         "name": "Dennis Marsh",
         "role": "IT Support",
@@ -350,6 +350,9 @@ NPC_POOL = [
         "personality": "The visitor bay is reserved. For someone else. There is a list. She is not on the list.",
         "behavior": "stationary",
     },
+]
+
+SURREAL_NPCS = [
     {
         "name": "Neil Burr",
         "role": "Temporary Staff",
@@ -423,6 +426,8 @@ NPC_POOL = [
         "behavior": "stationary",
     },
 ]
+
+NPC_POOL = MUNDANE_NPCS + SURREAL_NPCS
 
 QUEST_CATEGORIES: dict[str, dict] = {
     "office": {
@@ -1274,22 +1279,23 @@ MAX_RESOLUTIONS = 8
 MAX_SCENE_ROUNDS = 4
 
 
-REGISTERS = [
-    "a tense heist thriller",
-    "gothic horror",
-    "a slow-burn romance",
-    "hardboiled noir detective",
-    "a deadpan nature documentary",
-    "high courtroom drama",
-    "Cold War spy espionage",
-    "a sweeping disaster epic",
-    "a corporate procedural",
-    "an overwrought war film",
-    "a cutthroat cooking competition",
-    "a haunted-house ghost story",
-    "a sports underdog story",
-    "a prestige-TV crime saga",
+SURREAL_ARC = [
+    "a flat corporate procedural",
+    "a documentary that has just started to notice something is off",
+    "a slow-burn psychological unease, stated calmly",
+    "creeping domestic horror reported as administrative fact",
+    "a surreal waking nightmare narrated like meeting minutes",
 ]
+
+
+def intensity(resolution_count: int, max_resolutions: int = MAX_RESOLUTIONS) -> float:
+    return min(1.0, resolution_count / max(max_resolutions - 1, 1))
+
+
+def arc_register(resolution_count: int, max_resolutions: int = MAX_RESOLUTIONS) -> str:
+    i = intensity(resolution_count, max_resolutions)
+    idx = min(int(i * len(SURREAL_ARC)), len(SURREAL_ARC) - 1)
+    return SURREAL_ARC[idx]
 
 
 @dataclass
@@ -1431,7 +1437,7 @@ def make_quest(rng: random.Random) -> tuple[QuestState, str]:
         title=task["title"],
         hook=task["hook"],
         complication="",
-        register=rng.choice(REGISTERS),
+        register=arc_register(0),
         objectives=list(task.get("objectives", [])),
     )
     return quest, cat["theme"]
@@ -1439,15 +1445,20 @@ def make_quest(rng: random.Random) -> tuple[QuestState, str]:
 
 def make_npcs(rng: random.Random, waypoint_count: int) -> list[NPC]:
     count = min(7, len(NPC_POOL), max(3, waypoint_count))
-    pool = rng.sample(NPC_POOL, count)
-    sprites = rng.sample(range(1, 16), min(count, 15))
+    n_surreal = min(len(SURREAL_NPCS), max(1, count // 3))
+    n_mundane = count - n_surreal
+    pool = rng.sample(MUNDANE_NPCS, min(n_mundane, len(MUNDANE_NPCS)))
+    pool += rng.sample(SURREAL_NPCS, n_surreal)
+    sprites = rng.sample(range(1, 16), min(len(pool), 15))
     npcs = []
     used_wps: set[int] = {0}  # reserve wp0 for player spawn
-    avail = waypoint_count - 1  # slots 1..waypoint_count-1
+    last = waypoint_count - 1  # deepest placeable waypoint
+    span = max(last - 1, 1)
     for i, raw in enumerate(pool):
         sprite = sprites[i % len(sprites)]
-        preferred = 1 + round(i * (avail - 1) / max(count - 1, 1))
-        preferred = min(preferred, waypoint_count - 1)
+        frac = i / max(len(pool) - 1, 1)  # 0=front mundane .. 1=deep surreal
+        preferred = 1 + round(frac * (span - 1))
+        preferred = min(max(preferred, 1), last)
         idx = preferred
         for delta in range(waypoint_count):
             for candidate in (preferred + delta, preferred - delta):
@@ -1497,6 +1508,7 @@ def new_game(rng: random.Random | None = None, preset_quest: QuestState | None =
 
 
 def sync_target(state: GameState) -> None:
+    state.quest.register = arc_register(state.quest.resolution_count)
     if state.world is None:
         return
     state.target_idx = min(state.quest.resolution_count + 1, len(state.world.waypoints) - 1)

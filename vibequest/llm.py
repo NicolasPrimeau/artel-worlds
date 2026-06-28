@@ -36,10 +36,23 @@ ROUTER = Router(
 SPEND = ROUTER.spend
 
 _TONE = (
-    "Setting: real modern office. Things escalate into wrongness that nobody acknowledges — everyone acts normal. "
+    "Setting: real modern office. It begins ordinary and escalates into wrongness that nobody acknowledges — everyone acts normal. "
+    "Register: Wes Anderson deadpan — precise, symmetrical, dryly funny, understated; specific concrete nouns over adjectives; the uncanny reported as administrative fact. "
     "Flat deadpan workplace tone. Never: quest, realm, dungeon, adventurer, arcane, legendary, brave, slay. "
     "Use: flag, loop in, bandwidth, circle back, per my last email, action item."
 )
+
+
+def _escalation(resolution_count: int, max_resolutions: int) -> str:
+    i = resolution_count / max(max_resolutions - 1, 1)
+    if i < 0.34:
+        band = "Reality is intact. Keep this grounded and ordinary; at most the faintest wrongness, the kind anyone would explain away."
+    elif i < 0.67:
+        band = "Cracks are showing. Small impossibilities happen and nobody remarks on them. Stay calm and procedural."
+    else:
+        band = "The rules no longer hold. The absurd is routine now; report it flatly, like minutes of a meeting."
+    return f"ESCALATION (scene {resolution_count + 1} of ~{max_resolutions}): {band}"
+
 
 _WORLD_ACTIONS = """\
 world_changes actions (0-3, specific real names and labels):
@@ -73,6 +86,8 @@ async def narrate_card(
     npc_context: str = "",
     pressure_context: list[str] | None = None,
     scene_context: str = "",
+    resolution_count: int = 0,
+    max_resolutions: int = 8,
 ) -> dict:
     crit = (
         "NAT 20 — something goes specifically right. This is the turning point."
@@ -102,6 +117,7 @@ async def narrate_card(
 
     prompt = f"""{_TONE}
 
+{_escalation(resolution_count, max_resolutions)}
 SITUATION: {quest_hook} | COMPLICATION: {complication}
 {npc}
 PROTAGONIST: {protagonist} | MORALE: {momentum} ({delta_desc})
@@ -126,6 +142,9 @@ JSON: {{"narrative":"...","consequence":"...","reactions":[{{"name":"...","role"
     )
     raw = await ROUTER.complete(req)
     parsed = parse_json(raw)
+    if not parsed or "narrative" not in parsed:
+        raw = await ROUTER.complete(req)
+        parsed = parse_json(raw)
     if not parsed or "narrative" not in parsed:
         return {
             "narrative": f"The {card_name} card is played. The dice show {dice_value}.",
@@ -186,7 +205,8 @@ JSON: {{"finale":false,"outcome":"success or failure","closing_beat":"..."}}"""
 async def generate_complication(quest_hook: str, quest_title: str) -> str:
     prompt = f"""{_TONE}
 
-One complication sentence for this situation. Specific to this task. May be mundane, absurd, or quietly impossible — all stated flatly, as if normal.
+This is the opening beat. It must be completely mundane and ordinary — a plausible small office annoyance, nothing strange yet. The wrongness comes later.
+One complication sentence, specific to this task, stated flatly.
 TASK: {quest_title} — {quest_hook}
 One sentence only. No setup, no explanation."""
 
