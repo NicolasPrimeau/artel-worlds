@@ -43,6 +43,12 @@
   #titlecard .objectives li .ob{flex-shrink:0;font-size:9px;color:var(--rose2);line-height:1}
   #titlecard .objectives li.done{opacity:.4;text-decoration:line-through}
   #titlecard .objectives li.done .ob{color:var(--ink2)}
+  #titlecard .morale-row{display:flex;align-items:center;gap:5px;margin-top:5px;border-top:1px solid rgba(26,20,40,.12);padding-top:5px}
+  #titlecard .morale-lbl{font-size:clamp(6px,1.5vw,7px);letter-spacing:.3em;text-transform:uppercase;color:var(--ink2);flex-shrink:0}
+  #titlecard .morale-bar{flex:1;height:4px;background:rgba(26,20,40,.12);border-radius:2px;overflow:hidden}
+  #titlecard .morale-fill{height:100%;border-radius:2px;transition:width .4s ease,background .4s ease}
+  #titlecard .morale-val{font-size:clamp(7px,1.8vw,9px);font-family:"Courier Prime",monospace;color:var(--ink2);min-width:20px;text-align:right;flex-shrink:0}
+  #titlecard .pressure-badge{font-size:clamp(6px,1.4vw,7px);letter-spacing:.15em;text-transform:uppercase;color:var(--coral);background:rgba(216,60,56,.10);padding:1px 5px;border-radius:10px;flex-shrink:0}
 
   /* speech bubble — compact, positioned above character */
   #bubbles{pointer-events:none}
@@ -248,6 +254,12 @@
     <div class="title" id="qtitle">—</div>
     <div class="hook" id="qhook"></div>
     <ul class="objectives" id="qobjectives"></ul>
+    <div class="morale-row">
+      <span class="morale-lbl">morale</span>
+      <div class="morale-bar"><div class="morale-fill" id="qmorale-fill"></div></div>
+      <span class="morale-val" id="qmorale-val">0</span>
+      <span class="pressure-badge" id="qpressure-badge" style="display:none"></span>
+    </div>
   </div>
 </div>
 <div id="bubbles" class="ui"></div>
@@ -689,9 +701,9 @@ function syncNPCs(snap){
       const px=wp[0]*TILE+TILE/2, py=wp[1]*TILE+TILE/2;
       const shadow=scene.add.image(px,py+6,"shadow").setDepth(899).setAlpha(.3).setScale(.75);
       const spr=scene.add.sprite(px,py,"hero"+(n.sprite||1)).setDepth(1000+py);
-      try{spr.anims.play("idle_down_"+(n.sprite||1),true);}catch(e){}
       spr.setInteractive();
       const m={spr,shadow,id:n.id,name:n.name,role:n.role,dir:"down"};
+      idle(m);
       spr.on("pointerup",()=>{ const box=document.getElementById("npc-info"); if(!box) return;
         box.innerHTML=`<div style="font-size:8px;letter-spacing:.3em;text-transform:uppercase;color:var(--rose2);margin-bottom:4px">NPC</div><div style="font-size:17px;font-weight:700;font-family:'Cormorant Garamond',serif">${n.name}</div><div style="font-size:10px;color:var(--ink2);margin-top:3px">${n.role}</div>${n.personality?`<div style="font-size:11px;font-style:italic;color:var(--ink2);margin-top:8px;border-top:1px solid rgba(26,20,40,.12);padding-top:8px">${n.personality}</div>`:""}`;
         box.classList.add("show"); setTimeout(()=>box.classList.remove("show"),5000);
@@ -769,6 +781,17 @@ function setHud(snap){
       ol.appendChild(li);
     });
   }
+
+  const momentum=q.momentum||0;
+  const pct=Math.max(0,Math.min(100,(momentum+10)/20*100));
+  const fill=document.getElementById("qmorale-fill");
+  const val=document.getElementById("qmorale-val");
+  const badge=document.getElementById("qpressure-badge");
+  if(fill){ fill.style.width=pct+"%"; fill.style.background=momentum>=0?"var(--mint)":"var(--coral)"; }
+  if(val){ val.textContent=(momentum>=0?"+":"")+momentum; val.style.color=momentum>=0?"var(--sage2)":"var(--rose2)"; }
+  const pc=q.pressure_count||0;
+  if(badge){ badge.textContent=pc>0?pc+" pressure":""; badge.style.display=pc>0?"":"none"; }
+
   updateCharacterStatus(snap.character);
 }
 
@@ -1566,6 +1589,11 @@ function connect(){
       case "vote_start": showVote(m.options,m.timeout); break;
       case "vote_update": updateVoteCounts(m.votes); break;
       case "card_played": break;
+      case "crit_moment": {
+        if(m.crit==="nat_20") showSceneBeat("Critical. Something just specifically worked.", "");
+        else if(m.crit==="nat_1") showSceneBeat("Critical failure. Things have gotten specifically worse.", "");
+        break;
+      }
     }
   };
 }

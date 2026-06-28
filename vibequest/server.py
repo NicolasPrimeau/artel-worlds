@@ -125,6 +125,8 @@ def _state_snapshot(state: GameState, include_world: bool = True) -> dict:
             "hook": state.quest.hook,
             "complication": state.quest.complication,
             "objectives": state.quest.objectives,
+            "momentum": state.quest.momentum,
+            "pressure_count": len(state.quest.pressure_pool),
             "npcs": [
                 {
                     "id": n.id,
@@ -458,6 +460,9 @@ async def _resolve_window(state: GameState) -> None:
                 {"victim": victim.id, "status": victim.status},
             )
 
+    # Start waypoint pick in parallel with arc assessment (saves ~1s of latency)
+    pick_task = asyncio.create_task(_do_pick_next_waypoint(state)) if llm.enabled() else None
+
     arc = {"finale": False, "outcome": None}
     if llm.enabled():
         try:
@@ -475,6 +480,7 @@ async def _resolve_window(state: GameState) -> None:
         except Exception:
             pass
 
+    scene_resolved = False
     if arc.get("finale"):
         state.quest.outcome = arc.get("outcome") or (
             "success" if state.quest.momentum >= 0 else "failure"
@@ -482,7 +488,16 @@ async def _resolve_window(state: GameState) -> None:
         if _is_beat(arc.get("closing_beat")):
             state.quest.beats.append(arc["closing_beat"])
             state.log_event("closing_beat", arc["closing_beat"])
+        _complete_artel_objective(state, state.quest.resolution_count)
         state.quest.resolution_count += 1
+        scene_resolved = True
+        if pick_task:
+            try:
+                chosen = await asyncio.wait_for(asyncio.shield(pick_task), timeout=1.0)
+                if chosen is not None:
+                    state.quest.next_waypoint_override = chosen
+            except Exception:
+                pass
         sync_target(state)
     else:
         # NAT_20 with no NAT_1: breakthrough forces scene to resolve now
@@ -493,14 +508,32 @@ async def _resolve_window(state: GameState) -> None:
 
         if nat20_wins:
             state.log_event("crit_breakthrough", "NAT 20 — scene resolved by breakthrough")
+            _complete_artel_objective(state, state.quest.resolution_count)
             state.quest.resolution_count += 1
             state.quest.scene_beat_start = len(state.quest.beats)
             state.quest.scene_rounds = 0
+            scene_resolved = True
+            if pick_task:
+                try:
+                    chosen = await asyncio.wait_for(asyncio.shield(pick_task), timeout=1.0)
+                    if chosen is not None:
+                        state.quest.next_waypoint_override = chosen
+                except Exception:
+                    pass
             sync_target(state)
             await _broadcast({"type": "crit_moment", "crit": "nat_20"})
         else:
             if nat1_blocks:
                 await _broadcast({"type": "crit_moment", "crit": "nat_1"})
+                nat1_res = next(
+                    (r for r in state.window.resolutions if r.dice_result == DiceResult.NAT_1),
+                    None,
+                )
+                if nat1_res and _is_beat(nat1_res.consequence):
+                    await asyncio.sleep(0.5)
+                    await _broadcast(
+                        {"type": "scene_beat", "text": nat1_res.consequence, "who": ""}
+                    )
 
             scene = {"resolved": False, "dm_note": ""}
             if llm.enabled() and not nat1_blocks:
@@ -521,9 +554,18 @@ async def _resolve_window(state: GameState) -> None:
             if not nat1_blocks and (scene.get("resolved") or force):
                 if scene.get("dm_note"):
                     state.log_event("scene_resolved", scene["dm_note"])
+                _complete_artel_objective(state, state.quest.resolution_count)
                 state.quest.resolution_count += 1
                 state.quest.scene_beat_start = len(state.quest.beats)
                 state.quest.scene_rounds = 0
+                scene_resolved = True
+                if pick_task:
+                    try:
+                        chosen = await asyncio.wait_for(asyncio.shield(pick_task), timeout=1.0)
+                        if chosen is not None:
+                            state.quest.next_waypoint_override = chosen
+                    except Exception:
+                        pass
                 sync_target(state)
             else:
                 state.quest.scene_rounds += 1
@@ -534,6 +576,12 @@ async def _resolve_window(state: GameState) -> None:
                 )
                 if reason:
                     state.log_event("scene_continues", reason)
+
+    if pick_task and not pick_task.done():
+        pick_task.cancel()
+
+    if scene_resolved and not state.quest.outcome:
+        asyncio.create_task(_escalate_complication(state))
 
     await _broadcast(
         {"type": "card_resolved", "state": _state_snapshot(state, include_world=False)}
@@ -551,6 +599,16 @@ async def _resolve_window(state: GameState) -> None:
 async def _end_quest(state: GameState) -> None:
     global _vote_options, _votes
     state.phase = "complete"
+    if artel.enabled():
+        remaining = state.quest.artel_task_ids[state.quest.resolution_count :]
+        outcome_str = state.quest.outcome or "unknown"
+        for task_id in remaining:
+            if outcome_str == "success":
+                asyncio.create_task(artel.complete_task(task_id, outcome="Quest succeeded."))
+            else:
+                asyncio.create_task(
+                    artel.fail_task(task_id, outcome=f"Quest ended: {outcome_str}.")
+                )
     closing = ""
     if llm.enabled():
         closing = await llm.narrate_quest_end(
@@ -688,6 +746,72 @@ async def _travel_card_loop() -> None:
         await _broadcast({"type": "travel_event", "text": event, "chaos": is_chaos_hit})
 
 
+def _complete_artel_objective(state: GameState, idx: int) -> None:
+    if not artel.enabled() or idx >= len(state.quest.artel_task_ids):
+        return
+    task_id = state.quest.artel_task_ids[idx]
+    asyncio.create_task(artel.complete_task(task_id, outcome=f"Resolved at scene {idx + 1}."))
+
+
+async def _escalate_complication(state: GameState) -> None:
+    if not llm.enabled():
+        return
+    from .engine import intensity as _intensity
+
+    run_id = state.run_id
+    try:
+        new_comp = await asyncio.wait_for(
+            llm.generate_complication(
+                quest_hook=state.quest.hook,
+                quest_title=state.quest.title,
+                current_complication=state.quest.complication,
+                intensity=_intensity(state.quest.resolution_count),
+            ),
+            timeout=6.0,
+        )
+    except Exception:
+        return
+    if not _is_beat(new_comp) or _state is None or _state.run_id != run_id:
+        return
+    _state.quest.complication = new_comp
+    _state.log_event("complication", new_comp)
+    await asyncio.sleep(1.2)
+    if _state is not None and _state.run_id == run_id:
+        await _broadcast({"type": "scene_beat", "text": new_comp, "who": ""})
+
+
+async def _do_pick_next_waypoint(state: GameState) -> int | None:
+    if not state.world or not llm.enabled():
+        return None
+    names = state.world.waypoint_names or []
+    max_wp = len(state.world.waypoints) - 1
+    current_n = state.quest.resolution_count + 1
+    candidates: list[dict] = []
+    for offset in (-1, 0, 1):
+        idx = current_n + offset
+        if 1 <= idx <= max_wp:
+            name = names[idx] if idx < len(names) else f"Location {idx}"
+            candidates.append({"idx": idx, "name": name})
+    if len(candidates) <= 1:
+        return None
+    cur_name = (
+        names[state.target_idx] if state.target_idx < len(names) else f"Location {state.target_idx}"
+    )
+    try:
+        return await asyncio.wait_for(
+            llm.pick_next_waypoint(
+                quest_hook=state.quest.hook,
+                complication=state.quest.complication,
+                story_so_far=_story_so_far(state),
+                current_location=cur_name,
+                candidates=candidates,
+            ),
+            timeout=3.5,
+        )
+    except Exception:
+        return None
+
+
 async def _start_new_game(preset_quest: QuestState | None = None) -> None:
     global _state
     _state = new_game(_rng, preset_quest=preset_quest)
@@ -718,6 +842,14 @@ async def _start_new_game(preset_quest: QuestState | None = None) -> None:
                 tags=["vibequest", "quest-start"],
             )
         )
+        for obj in _state.quest.objectives:
+            task_id = await artel.create_task(
+                title=f"[{_state.quest.title}] {obj}",
+                description=_state.quest.hook,
+                tags=["vibequest", f"run:{_state.run_id}"],
+            )
+            if task_id:
+                _state.quest.artel_task_ids.append(task_id)
     await _broadcast(
         {"type": "new_quest", "state": _state_snapshot(_state), "opening": opening_text}
     )

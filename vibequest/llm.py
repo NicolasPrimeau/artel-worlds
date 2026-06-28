@@ -219,11 +219,27 @@ JSON: {{"finale":false,"outcome":"success or failure","closing_beat":"..."}}"""
     return parsed
 
 
-async def generate_complication(quest_hook: str, quest_title: str) -> str:
-    prompt = f"""{_TONE}
+async def generate_complication(
+    quest_hook: str,
+    quest_title: str,
+    current_complication: str = "",
+    intensity: float = 0.0,
+) -> str:
+    if intensity < 0.25:
+        scale = "completely mundane and ordinary — a plausible small office annoyance, nothing strange yet. The wrongness comes later"
+    elif intensity < 0.6:
+        scale = "weird — something that makes no procedural sense but is treated as routine. Nobody questions it"
+    else:
+        scale = "impossible — stated flatly, as if it's a normal Tuesday. Specific and concrete"
 
-This is the opening beat. It must be completely mundane and ordinary — a plausible small office annoyance, nothing strange yet. The wrongness comes later.
-One complication sentence, specific to this task, stated flatly.
+    prev = (
+        f"\nPREVIOUS COMPLICATION: {current_complication}\nThe new one must escalate or differ."
+        if current_complication
+        else ""
+    )
+    prompt = f"""{_TONE}{prev}
+
+One complication sentence, specific to this task. Level: {scale}.
 TASK: {quest_title} — {quest_hook}
 One sentence only. No setup, no explanation."""
 
@@ -234,6 +250,39 @@ One sentence only. No setup, no explanation."""
         timeout=5.0,
     )
     return _clean(await ROUTER.complete(req))
+
+
+async def pick_next_waypoint(
+    quest_hook: str,
+    complication: str,
+    story_so_far: str,
+    current_location: str,
+    candidates: list[dict],
+) -> int | None:
+    options_str = "\n".join(f"  {c['idx']}: {c['name']}" for c in candidates)
+    prompt = f"""{_TONE}
+
+SITUATION: {quest_hook} | COMPLICATION: {complication}
+HAPPENED: {story_so_far or "(just beginning)"}
+CURRENT LOCATION: {current_location}
+
+Where should this person go next? Pick the option that would most interestingly escalate or complicate the situation — not always the obvious choice.
+OPTIONS:
+{options_str}
+
+Reply with only the index number."""
+
+    req = Request(
+        system="Respond with a single integer matching one of the option indices. Nothing else.",
+        user=prompt,
+        min_grade="fast",
+        timeout=3.0,
+    )
+    raw = _clean(await ROUTER.complete(req))
+    try:
+        return int(raw.strip())
+    except Exception:
+        return None
 
 
 async def narrate_quest_end(quest_hook: str, outcome: str, momentum: int, protagonist: str) -> str:

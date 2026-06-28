@@ -1319,6 +1319,8 @@ class QuestState:
     facts: list[str] = field(default_factory=list)
     pressure_pool: list[dict] = field(default_factory=list)
     props: list[Prop] = field(default_factory=list)
+    artel_task_ids: list[str] = field(default_factory=list)
+    next_waypoint_override: int | None = None
 
 
 def apply_world_changes(quest: QuestState, changes: list[dict], rng: random.Random) -> list[dict]:
@@ -1511,7 +1513,11 @@ def sync_target(state: GameState) -> None:
     state.quest.register = arc_register(state.quest.resolution_count)
     if state.world is None:
         return
-    state.target_idx = min(state.quest.resolution_count + 1, len(state.world.waypoints) - 1)
+    if state.quest.next_waypoint_override is not None:
+        state.target_idx = min(state.quest.next_waypoint_override, len(state.world.waypoints) - 1)
+        state.quest.next_waypoint_override = None
+    else:
+        state.target_idx = min(state.quest.resolution_count + 1, len(state.world.waypoints) - 1)
 
 
 def at_station(state: GameState) -> bool:
