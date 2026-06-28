@@ -52,6 +52,12 @@ _state: GameState | None = None
 _clients: set[WebSocket] = set()
 _lock = asyncio.Lock()
 _card_signal = asyncio.Event()
+
+
+def _is_beat(text: object) -> bool:
+    return bool(text) and str(text).strip().lower() not in ("none", "null", "n/a", "na", "tbd")
+
+
 _travel_processed: set[str] = set()
 _card_added_sent: set[str] = set()
 _vote_options: list[QuestState] | None = None
@@ -418,7 +424,7 @@ async def _resolve_window(state: GameState) -> None:
             },
         )
 
-        if result.get("consequence"):
+        if _is_beat(result.get("consequence")):
             state.quest.beats.append(result["consequence"])
 
         if artel.enabled():
@@ -473,7 +479,7 @@ async def _resolve_window(state: GameState) -> None:
         state.quest.outcome = arc.get("outcome") or (
             "success" if state.quest.momentum >= 0 else "failure"
         )
-        if arc.get("closing_beat"):
+        if _is_beat(arc.get("closing_beat")):
             state.quest.beats.append(arc["closing_beat"])
             state.log_event("closing_beat", arc["closing_beat"])
         state.quest.resolution_count += 1
@@ -669,8 +675,8 @@ async def _travel_card_loop() -> None:
                 event = await travel_llm_task
             except Exception:
                 pass
-        if not event:
-            event = f"{'Something goes wrong.' if dice_value <= 6 else 'Something happens.'} {card_def.name}."
+        if not _is_beat(event):
+            event = f"{card_def.name} is handled in transit."
         if _state is not state:
             continue
         state.quest.beats.append(event)
