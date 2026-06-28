@@ -1,7 +1,20 @@
 from __future__ import annotations
 
+import re
+
 from . import env
 from llmrouter import Request, Router, build_models, parse_json
+
+_THINK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def _clean(text: str) -> str:
+    t = _THINK.sub("", text or "")
+    i = t.lower().find("<think>")
+    if i != -1:
+        t = t[:i]
+    return t.strip()
+
 
 _KEYS = {
     "groq": env("LLM_KEY"),
@@ -153,6 +166,9 @@ JSON: {{"narrative":"...","consequence":"...","reactions":[{{"name":"...","role"
             "established": [],
             "world_changes": [],
         }
+    parsed["narrative"] = _clean(str(parsed.get("narrative", "")))
+    if parsed.get("consequence"):
+        parsed["consequence"] = _clean(str(parsed["consequence"]))
     parsed.setdefault("established", [])
     parsed.setdefault("world_changes", [])
     return parsed
@@ -216,7 +232,7 @@ One sentence only. No setup, no explanation."""
         min_grade="fast",
         timeout=5.0,
     )
-    return await ROUTER.complete(req)
+    return _clean(await ROUTER.complete(req))
 
 
 async def narrate_quest_end(quest_hook: str, outcome: str, momentum: int, protagonist: str) -> str:
@@ -227,7 +243,7 @@ SITUATION: {quest_hook} | PROTAGONIST: {protagonist}
 Under 50 words. No em dashes."""
 
     req = Request(system="Respond in plain prose. No fantasy language.", user=prompt)
-    return await ROUTER.complete(req)
+    return _clean(await ROUTER.complete(req))
 
 
 async def narrate_ambient(
@@ -277,7 +293,7 @@ CARD: {card_name} ({card_type}) | DICE: {dice_value}/20 — {outcome}
 1 sentence, ≤20 words. Nobody acknowledges it's strange."""
 
     req = Request(system="Respond in one sentence only. No fantasy language.", user=prompt)
-    return await ROUTER.complete(req)
+    return _clean(await ROUTER.complete(req))
 
 
 async def narrate_chaos_interrupt(
@@ -295,7 +311,7 @@ CARD: {card_name} — {card_description} | DICE: {dice_value}/20
 1 sentence, ≤25 words. Matter-of-fact. Normal Tuesday."""
 
     req = Request(system="Respond in one sentence only. No fantasy language.", user=prompt)
-    return await ROUTER.complete(req)
+    return _clean(await ROUTER.complete(req))
 
 
 async def assess_scene(
