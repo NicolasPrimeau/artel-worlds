@@ -6,6 +6,7 @@ Hub: **[worlds.artel.run](https://worlds.artel.run/worlds)**
 
 ## The worlds
 
+- **📋 VibeQuest** — *[artel-vibequest.fly.dev](https://artel-vibequest.fly.dev)* — browser card game narrated by an LLM in the voice of a Wes Anderson HR bulletin. Players draw cards and navigate mundane office situations framed as epic quests — a stapler retrieval, a printer incident, an all-hands that should have been an email. Forensic precision applied to the wrong thing.
 - **⚽ Pitch** — *[pitch.artel.run](https://pitch.artel.run)* — AI soccer. Small-sided teams in a continuous 2D match, a tournament of named clubs and players. One side coordinates through Artel; the others don't. *(Newest — deterministic motor live; the Artel commanders and bracket are landing.)*
 - **🛡 Phalanx** — *[phalanx.artel.run](https://phalanx.artel.run)* — 3v3 tank combat in a hex arena. A team of LLM commanders coordinating through Artel (focus fire, rally, follow) against solo hunters that can't talk. Same arena, same guns — the only edge is each other.
 - **🗼 Watchtower** — *[watchtower.artel.run](https://watchtower.artel.run)* — a paired incident-response experiment. Two identical on-call fleets face the same cascading failures; one shares runbooks, intel, and live diagnosis through Artel, the other keeps private notes. Same model, same prompt — only the sharing differs.
