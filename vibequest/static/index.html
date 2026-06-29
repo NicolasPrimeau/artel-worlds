@@ -30,11 +30,17 @@
   /* ── unified quest panel (top-left) ── */
   #hud{top:calc(8px + env(safe-area-inset-top));left:10px;display:flex;flex-direction:column;gap:4px;max-width:min(62vw,240px)}
   #titlecard{
-    pointer-events:none;background:rgba(247,238,217,.93);border:1px solid rgba(26,20,40,.55);border-radius:4px;
+    pointer-events:auto;cursor:pointer;
+    background:rgba(247,238,217,.93);border:1px solid rgba(26,20,40,.55);border-radius:4px;
     border-top:3px solid var(--rose2);
     padding:clamp(6px,1.5vw,9px) clamp(9px,2.6vw,13px);box-shadow:3px 3px 0 rgba(26,20,40,.18);
     backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);
   }
+  #titlecard .tc-header{display:flex;align-items:center;justify-content:space-between;gap:6px}
+  #titlecard .tc-toggle{font-size:9px;color:var(--rose2);opacity:.7;flex-shrink:0;line-height:1;transition:transform .2s}
+  #titlecard.expanded .tc-toggle{transform:rotate(180deg)}
+  #tc-body{overflow:hidden;max-height:0;transition:max-height .25s ease}
+  #titlecard.expanded #tc-body{max-height:300px}
   #titlecard .label{font-size:clamp(7px,1.9vw,9px);letter-spacing:.4em;text-transform:uppercase;color:var(--rose2);padding-left:.2em}
   #titlecard .title{font-size:clamp(13px,3.6vw,16px);font-weight:700;letter-spacing:.04em;text-transform:uppercase;line-height:1.1;border-top:1px solid rgba(26,20,40,.14);padding-top:4px;margin-top:2px}
   #titlecard .hook{font-size:clamp(11px,2.7vw,13px);color:var(--ink);font-style:italic;margin-top:3px;line-height:1.35;font-family:"Cormorant Garamond",serif;opacity:.9}
@@ -250,15 +256,22 @@
 
 <div id="hud" class="ui">
   <div id="titlecard">
-    <div class="label">VibeQuest</div>
-    <div class="title" id="qtitle">—</div>
-    <div class="hook" id="qhook"></div>
-    <ul class="objectives" id="qobjectives"></ul>
-    <div class="morale-row">
-      <span class="morale-lbl">morale</span>
-      <div class="morale-bar"><div class="morale-fill" id="qmorale-fill"></div></div>
-      <span class="morale-val" id="qmorale-val">0</span>
-      <span class="pressure-badge" id="qpressure-badge" style="display:none"></span>
+    <div class="tc-header">
+      <div>
+        <div class="label">VibeQuest</div>
+        <div class="title" id="qtitle">—</div>
+      </div>
+      <span class="tc-toggle">▼</span>
+    </div>
+    <div id="tc-body">
+      <div class="hook" id="qhook"></div>
+      <ul class="objectives" id="qobjectives"></ul>
+      <div class="morale-row">
+        <span class="morale-lbl">morale</span>
+        <div class="morale-bar"><div class="morale-fill" id="qmorale-fill"></div></div>
+        <span class="morale-val" id="qmorale-val">0</span>
+        <span class="pressure-badge" id="qpressure-badge" style="display:none"></span>
+      </div>
     </div>
   </div>
 </div>
@@ -1242,7 +1255,8 @@ let selectedCard=null;
 let _voteTimer=null;
 
 function cardTransform(t,drop,step){
-  const s=step??70; const rot=t*10; const tx=t*s; const ty=drop?Math.abs(t)*16:Math.abs(t)*16-34;
+  const s=step??70; const rot=t*12; const tx=t*s;
+  const ty=drop ? -Math.abs(t)*22 : -Math.abs(t)*22-30;
   return `translateX(calc(-50% + ${tx}px)) translateY(${ty}px) rotate(${rot}deg)`;
 }
 
@@ -1391,7 +1405,19 @@ function resetHand(){
 
 function renderHand(cards){
   resetHand();
-  cards.forEach(c=>addDealCard(c));
+  const h=document.getElementById("hand");
+  cards.forEach(c=>{
+    if(_handItems.length>=MAX_HAND) return;
+    const uid=String(_nextUid++);
+    _handItems.push({uid,...c});
+    const el=document.createElement("div"); el.className="card "+c.type;
+    el.innerHTML=`<div class="ct">${c.type}</div><div class="cn">${c.name}</div><div class="cd">${c.description}</div>`;
+    el._t=0; el._step=0; el._defZ=1; el.style.opacity="1";
+    h.appendChild(el);
+    _handEls.set(uid,el);
+    _attachCardHandlers(el,uid,c);
+  });
+  _layoutHand(null);
 }
 
 function flyCardToPile(el,c){
@@ -1599,6 +1625,11 @@ function connect(){
 }
 
 // info panel
+(function(){
+  const tc=document.getElementById("titlecard");
+  tc.addEventListener("click",()=>tc.classList.toggle("expanded"));
+})();
+
 (function(){
   const m=document.getElementById("info");
   document.getElementById("infobtn").addEventListener("click",()=>m.hidden=false);
