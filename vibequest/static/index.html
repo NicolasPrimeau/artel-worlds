@@ -697,21 +697,29 @@ function syncNPCs(snap){
   for(let i=npcs.length-1;i>=0;i--){
     if(!incomingMap[npcs[i].id]){npcs[i].spr.destroy();npcs[i].shadow.destroy();npcs.splice(i,1);}
   }
-  const localIds=new Set(npcs.map(n=>n.id));
+  // count NPCs per waypoint so we can fan out co-located ones
+  const wpCounts={}, wpUsed={};
+  for(const n of Object.values(incomingMap)){
+    const key=Math.min(n.waypoint_idx,W.waypoints.length-1);
+    wpCounts[key]=(wpCounts[key]||0)+1;
+  }
   // add or move
   for(const n of Object.values(incomingMap)){
     const wpCount=W.waypoints.length;
     const key=Math.min(n.waypoint_idx,wpCount-1);
     const wp=W.waypoints[key]; if(!wp) continue;
+    const total=wpCounts[key]||1;
+    const slot=wpUsed[key]||0; wpUsed[key]=slot+1;
+    const spread=(slot-(total-1)/2)*TILE;
     const existing=npcs.find(m=>m.id===n.id);
     if(existing){
       // move if waypoint changed
-      const tx=wp[0]*TILE+TILE/2, ty=wp[1]*TILE+TILE/2;
+      const tx=wp[0]*TILE+TILE/2+spread, ty=wp[1]*TILE+TILE/2;
       existing.spr.setPosition(tx,ty); existing.shadow.setPosition(tx,ty+6);
       existing.spr.setDepth(1000+ty);
     } else {
       // build new NPC sprite
-      const px=wp[0]*TILE+TILE/2, py=wp[1]*TILE+TILE/2;
+      const px=wp[0]*TILE+TILE/2+spread, py=wp[1]*TILE+TILE/2;
       const shadow=scene.add.image(px,py+6,"shadow").setDepth(899).setAlpha(.3).setScale(.75);
       const spr=scene.add.sprite(px,py,"hero"+(n.sprite||1)).setDepth(1000+py);
       spr.setInteractive();
