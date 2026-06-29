@@ -1602,6 +1602,12 @@ def apply_card_effects(card_def: CardDef, dice: DiceResult, quest: QuestState) -
         quest.momentum = max(-10, min(10, quest.momentum + _DELTA[dice]))
     elif card_def.type == CardType.CHAOS:
         quest.tension = min(10, quest.tension + (2 if dice == DiceResult.NAT_1 else 1))
+        drop = 2 if dice in (DiceResult.NAT_1, DiceResult.LOW) else 1
+        quest.momentum = max(-10, min(10, quest.momentum - drop))
+    elif card_def.type == CardType.TWEAK:
+        # a reframe intensifies the current trajectory — never a no-op
+        step = 2 if quest.momentum >= 0 else -2
+        quest.momentum = max(-10, min(10, quest.momentum + step))
     if dice == DiceResult.NAT_1:
         quest.tension = min(10, quest.tension + 1)
 

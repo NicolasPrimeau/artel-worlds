@@ -49,7 +49,14 @@
   #titlecard .objectives li .ob{flex-shrink:0;font-size:9px;color:var(--rose2);line-height:1}
   #titlecard .objectives li.done{opacity:.4;text-decoration:line-through}
   #titlecard .objectives li.done .ob{color:var(--ink2)}
-  #titlecard .morale-row{display:flex;align-items:center;gap:5px;margin-top:5px;border-top:1px solid rgba(26,20,40,.12);padding-top:5px}
+  #titlecard .morale-row{display:flex;align-items:center;gap:5px;margin-top:5px;border-top:1px solid rgba(26,20,40,.12);padding-top:5px;border-radius:3px}
+  #titlecard .morale-row.pulse-up{animation:moraleUp .7s ease-out}
+  #titlecard .morale-row.pulse-down{animation:moraleDn .7s ease-out}
+  @keyframes moraleUp{0%{background:rgba(30,168,104,.45)}100%{background:transparent}}
+  @keyframes moraleDn{0%{background:rgba(216,60,56,.45)}100%{background:transparent}}
+  #titlecard .morale-delta{font-size:clamp(7px,1.8vw,9px);font-family:"Courier Prime",monospace;font-weight:700;opacity:0;flex-shrink:0;min-width:14px}
+  #titlecard .morale-delta.flash{animation:deltaFlash 1.1s ease-out}
+  @keyframes deltaFlash{0%{opacity:0;transform:translateY(4px)}20%{opacity:1;transform:translateY(0)}80%{opacity:1}100%{opacity:0}}
   #titlecard .morale-lbl{font-size:clamp(6px,1.5vw,7px);letter-spacing:.3em;text-transform:uppercase;color:var(--ink2);flex-shrink:0}
   #titlecard .morale-bar{flex:1;height:4px;background:rgba(26,20,40,.12);border-radius:2px;overflow:hidden}
   #titlecard .morale-fill{height:100%;border-radius:2px;transition:width .4s ease,background .4s ease}
@@ -263,15 +270,16 @@
       </div>
       <span class="tc-toggle">▼</span>
     </div>
+    <div class="morale-row">
+      <span class="morale-lbl">morale</span>
+      <div class="morale-bar"><div class="morale-fill" id="qmorale-fill"></div></div>
+      <span class="morale-val" id="qmorale-val">0</span>
+      <span class="morale-delta" id="qmorale-delta"></span>
+      <span class="pressure-badge" id="qpressure-badge" style="display:none"></span>
+    </div>
     <div id="tc-body">
       <div class="hook" id="qhook"></div>
       <ul class="objectives" id="qobjectives"></ul>
-      <div class="morale-row">
-        <span class="morale-lbl">morale</span>
-        <div class="morale-bar"><div class="morale-fill" id="qmorale-fill"></div></div>
-        <span class="morale-val" id="qmorale-val">0</span>
-        <span class="pressure-badge" id="qpressure-badge" style="display:none"></span>
-      </div>
     </div>
   </div>
 </div>
@@ -487,6 +495,7 @@ const SPACING = 1.25;     // route-tile gap between followers
 const playerId = (()=>{ let p=localStorage.getItem("vq_pid"); if(!p){p="p"+Math.random().toString(36).slice(2,8);localStorage.setItem("vq_pid",p);} return p; })();
 
 let scene=null, world=null, character=null, npcs=[], built=null, pendingState=null, currentSnap=null;
+let _lastMomentum=null;
 let propLabels={};
 let routeArr=[], wpIdx=[], leaderPos=0, targetIdx=0;
 let currentHeading="", captionVisible=false, waypointNames=[], lastCaptionIdx=-1;
@@ -808,6 +817,19 @@ function setHud(snap){
   const fill=document.getElementById("qmorale-fill");
   const val=document.getElementById("qmorale-val");
   const badge=document.getElementById("qpressure-badge");
+  const deltaEl=document.getElementById("qmorale-delta");
+  const row=document.querySelector("#titlecard .morale-row");
+  if(_lastMomentum!==null && momentum!==_lastMomentum && row){
+    const d=momentum-_lastMomentum;
+    if(deltaEl){
+      deltaEl.textContent=(d>0?"+":"")+d;
+      deltaEl.style.color=d>0?"var(--sage2)":"var(--rose2)";
+      deltaEl.classList.remove("flash"); void deltaEl.offsetWidth; deltaEl.classList.add("flash");
+    }
+    const cls=d>0?"pulse-up":"pulse-down";
+    row.classList.remove("pulse-up","pulse-down"); void row.offsetWidth; row.classList.add(cls);
+  }
+  _lastMomentum=momentum;
   if(fill){ fill.style.width=pct+"%"; fill.style.background=momentum>=0?"var(--mint)":"var(--coral)"; }
   if(val){ val.textContent=(momentum>=0?"+":"")+momentum; val.style.color=momentum>=0?"var(--sage2)":"var(--rose2)"; }
   const pc=q.pressure_count||0;
@@ -1106,8 +1128,8 @@ function showDice(m){
 }
 
 function _rollDice(finalValue,diceResult,numEl,labEl,d20El,tagEl){
-  const ROLLS=22;
-  const delays=Array.from({length:ROLLS},(_,i)=>45+Math.pow(i/ROLLS,1.7)*230);
+  const ROLLS=26;
+  const delays=Array.from({length:ROLLS},(_,i)=>60+Math.pow(i/ROLLS,1.7)*360);
   let idx=0;
   function tick(){
     if(idx>=ROLLS){
