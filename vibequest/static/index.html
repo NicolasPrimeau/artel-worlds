@@ -1297,13 +1297,13 @@ function _layoutHand(animUid){
     el._t=t; el._step=step; el._defZ=defZ;
     if(item.uid===animUid){
       el.style.transition="none";
-      el.style.transform=cardTransform(1,true,step)+" scale(.85)";
+      el.style.transform=cardTransform(1,true,step)+" translateY(18px) scale(.82)";
       el.style.opacity="0";
       requestAnimationFrame(()=>requestAnimationFrame(()=>{
         el.style.transition="transform .28s cubic-bezier(.25,.8,.25,1), opacity .18s";
         el.style.opacity="1";
-        el.style.transform=cardTransform(t,true,step);
-        el.style.zIndex=String(defZ);
+        el.style.transform=cardTransform(el._t,true,el._step);
+        el.style.zIndex=String(el._defZ);
       }));
     } else if(el.style.position!=="fixed"){
       el.style.transition="transform .18s ease-out";
