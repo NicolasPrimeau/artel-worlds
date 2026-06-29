@@ -107,7 +107,7 @@
     background:var(--cream2);padding:clamp(6px,1.7vw,8px) clamp(7px,2vw,10px) clamp(7px,1.8vw,9px);
     display:flex;flex-direction:column;gap:3px;overflow:hidden;
     box-shadow:3px 4px 0 rgba(26,20,40,.22), inset 0 1px 0 rgba(255,255,255,.4), inset 0 0 0 1px rgba(255,255,255,.12);
-    transform-origin:50% 130%;
+    transform-origin:50% 100%;
     transition:transform .16s ease-out, box-shadow .16s, opacity .18s, filter .16s;
     pointer-events:auto;cursor:pointer;user-select:none;touch-action:none;
   }
@@ -1255,8 +1255,10 @@ let selectedCard=null;
 let _voteTimer=null;
 
 function cardTransform(t,drop,step){
-  const s=step??70; const rot=t*12; const tx=t*s;
-  const ty=drop ? -Math.abs(t)*22 : -Math.abs(t)*22-30;
+  const s=step??70;
+  const tx=t*s;                          // spread left→right
+  const rot=t*15;                        // edges tilt outward
+  const ty=-(1-t*t)*26 - (drop?0:34);    // center raised, edges arc down toward the bottom
   return `translateX(calc(-50% + ${tx}px)) translateY(${ty}px) rotate(${rot}deg)`;
 }
 
