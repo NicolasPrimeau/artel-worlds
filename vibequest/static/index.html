@@ -364,8 +364,8 @@
 
 <script>
 const TILE = 16;
-// camera zoom: ~2 on phones (more world in frame), 3 on desktop. Integer for crisp pixels.
-function viewZoom(){ return Math.max(2, Math.min(4, Math.round(window.innerWidth/440))); }
+// camera zoom: Pokémon-style — players large relative to the room. Integer for crisp pixels.
+function viewZoom(){ return Math.max(3, Math.min(6, Math.round(window.innerWidth/240))); }
 // Ninja Adventure sheet: 4 columns = directions, 7 rows = frames. Walk = rows 0-3 of a column.
 const DIR_COL = { down:0, up:1, left:2, right:3 };
 const PROP = {
@@ -651,6 +651,13 @@ function buildCharacter(snap){
   scheduleAmbient();
 }
 
+// place NPCs so they never sit on the protagonist (waypoint centre) or each other
+function npcSlotPos(wp,slot,total){
+  const cx=wp[0]*TILE+TILE/2, cy=wp[1]*TILE+TILE/2;
+  const GAP=20; // > sprite width so no overlap
+  return [cx+(slot-(total-1)/2)*GAP, cy+22]; // stand below the path centre, clear of the player
+}
+
 function buildNPCs(snap){
   for(const n of npcs){n.spr.destroy();n.shadow.destroy();}
   npcs=[];
@@ -667,8 +674,7 @@ function buildNPCs(snap){
     if(!wp)continue;
     const total=wpCount[key]||1;
     const slot=wpUsed[key]||0; wpUsed[key]=slot+1;
-    const spread=(slot-(total-1)/2)*TILE;
-    const px=wp[0]*TILE+TILE/2+spread, py=wp[1]*TILE+TILE/2;
+    const [px,py]=npcSlotPos(wp,slot,total);
     const shadow=scene.add.image(px,py+6,"shadow").setDepth(899).setAlpha(.3).setScale(.75);
     const spr=scene.add.sprite(px,py,"hero"+npc.sprite).setDepth(1000+py);
     spr.setInteractive({useHandCursor:true});
@@ -730,16 +736,14 @@ function syncNPCs(snap){
     const wp=W.waypoints[key]; if(!wp) continue;
     const total=wpCounts[key]||1;
     const slot=wpUsed[key]||0; wpUsed[key]=slot+1;
-    const spread=(slot-(total-1)/2)*TILE;
+    const [px,py]=npcSlotPos(wp,slot,total);
     const existing=npcs.find(m=>m.id===n.id);
     if(existing){
       // move if waypoint changed
-      const tx=wp[0]*TILE+TILE/2+spread, ty=wp[1]*TILE+TILE/2;
-      existing.spr.setPosition(tx,ty); existing.shadow.setPosition(tx,ty+6);
-      existing.spr.setDepth(1000+ty);
+      existing.spr.setPosition(px,py); existing.shadow.setPosition(px,py+6);
+      existing.spr.setDepth(1000+py);
     } else {
       // build new NPC sprite
-      const px=wp[0]*TILE+TILE/2+spread, py=wp[1]*TILE+TILE/2;
       const shadow=scene.add.image(px,py+6,"shadow").setDepth(899).setAlpha(.3).setScale(.75);
       const spr=scene.add.sprite(px,py,"hero"+(n.sprite||1)).setDepth(1000+py);
       spr.setInteractive();

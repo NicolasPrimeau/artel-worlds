@@ -649,7 +649,7 @@ async def _deal_loop() -> None:
         await _broadcast({"type": "deal_card", "card": _card_msg(_next_deal_card())})
 
 
-AMBIENT_INTERVAL = 22.0
+AMBIENT_INTERVAL = 12.0
 
 
 async def _ambient_loop() -> None:
