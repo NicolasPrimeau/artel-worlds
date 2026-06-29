@@ -676,8 +676,34 @@ async def _agent_pick_and_go(state: GameState) -> None:
     npcs = state.quest.npcs
     if not npcs:
         return
-    options = [n for n in npcs if n.id not in _agent_recent] or list(npcs)
-    npc = _rng.choice(options)
+    # the LLM (as the agent) decides WHO to go to and WHY, given its goal
+    npc = None
+    intent = ""
+    if llm.enabled():
+        roster = [
+            {"id": n.id, "name": n.name, "role": n.role} for n in npcs if n.id not in _agent_recent
+        ] or [{"id": n.id, "name": n.name, "role": n.role} for n in npcs]
+        try:
+            decision = await asyncio.wait_for(
+                llm.agent_decide(
+                    quest_hook=state.quest.hook,
+                    complication=state.quest.complication,
+                    story_so_far=_story_so_far(state),
+                    npcs=roster,
+                    story_facts=list(state.quest.facts),
+                ),
+                timeout=4.0,
+            )
+            if decision.get("npc_id"):
+                npc = next((n for n in npcs if n.id == decision["npc_id"]), None)
+                intent = decision.get("intent", "")
+        except Exception:
+            pass
+    if npc is None:
+        options = [n for n in npcs if n.id not in _agent_recent] or list(npcs)
+        npc = _rng.choice(options)
+    if not intent:
+        intent = f"{state.character.name} sets off to find {npc.name}, {npc.role}."
     tx, ty = _npc_tile(state, npc)
     path = find_path(state.world, state.lx, state.ly, tx, ty)
     if path and path[0] == [state.lx, state.ly]:
@@ -685,7 +711,6 @@ async def _agent_pick_and_go(state: GameState) -> None:
     state.path = path
     state.agent_goal = npc.id
     _agent_recent.append(npc.id)
-    intent = f"{state.character.name} sets off to find {npc.name}, {npc.role}."
     state.log_event("agent_move", intent, {"npc": npc.id})
     await _broadcast({"type": "scene_beat", "text": intent, "who": state.character.name})
 
@@ -695,14 +720,17 @@ async def _agent_converse(state: GameState, npc) -> None:
         return
     try:
         result = await asyncio.wait_for(
-            llm.narrate_ambient(
+            llm.agent_converse(
                 quest_hook=state.quest.hook,
+                complication=state.quest.complication,
                 story_so_far=_story_so_far(state),
-                scene_name=npc.role,
+                agent_name=state.character.name,
                 npc_name=npc.name,
                 npc_role=npc.role,
                 npc_personality=npc.personality,
                 story_facts=list(state.quest.facts),
+                resolution_count=state.quest.resolution_count,
+                max_resolutions=MAX_RESOLUTIONS,
             ),
             timeout=8.0,
         )
@@ -710,6 +738,9 @@ async def _agent_converse(state: GameState, npc) -> None:
         return
     line = result.get("line", "")
     narrative = result.get("narrative", "")
+    for f in result.get("established", [])[:1]:
+        if isinstance(f, str) and f.strip() and len(state.quest.facts) < 24:
+            state.quest.facts.append(f.strip())
     if line:
         await _broadcast({"type": "npc_speak", "npc_name": npc.name, "line": line})
     if narrative:

@@ -63,26 +63,19 @@ _TONE = (
 
 
 def _escalation(resolution_count: int, max_resolutions: int) -> str:
+    # Anchored to the GOAL getting harder — not random office surrealism (which causes drift).
     i = resolution_count / max(max_resolutions - 1, 1)
     if i < 0.34:
-        band = (
-            "One specific thing is subtly, precisely wrong — a person who should not be here is here, a document exists that has no owner, "
-            "a process has been running unattended since 2019 and someone has been quietly cc'd on its outputs for three years. "
-            "Treat it as a minor discrepancy that will be noted in the minutes."
-        )
+        band = "The goal looks routine, but one small bureaucratic snag stands in the way."
     elif i < 0.67:
         band = (
-            "The impossible is now a standing agenda item. The thing from before is still happening. A new impossible thing has been quietly added. "
-            "People have developed workarounds. Nobody has escalated because escalating requires using a form that was deprecated in 2023. "
-            "Someone has definitely sent an email about this."
+            "The goal is now genuinely hard — process is fighting back, and a workaround is needed."
         )
     else:
-        band = (
-            "The situation has stopped obeying physics. This has been noted. Each violation of reality has its own ticket in the system; several are marked WONTFIX. "
-            "The correct person to contact about this retired in 2021 and still responds to emails, though nobody is sure from where. "
-            "Everyone is handling it professionally."
-        )
-    return f"ESCALATION (scene {resolution_count + 1} of ~{max_resolutions}): {band}"
+        band = "The goal is absurdly entangled in bureaucracy, but it is still the same goal — push it to a conclusion."
+    return (
+        f"ESCALATION (scene {resolution_count + 1} of ~{max_resolutions}): {band} Stay on the goal."
+    )
 
 
 _WORLD_ACTIONS = """\
@@ -441,6 +434,77 @@ JSON: {{"narrative":"...","line":"..."}}"""
     req = Request(system="Respond only with valid JSON. No fantasy language.", user=prompt)
     raw = await ROUTER.complete(req)
     return parse_json(raw) or {}
+
+
+async def agent_decide(
+    quest_hook: str,
+    complication: str,
+    story_so_far: str,
+    npcs: list[dict],
+    story_facts: list[str] | None = None,
+) -> dict:
+    # npcs: [{"id","name","role"}] — the agent (in first person) picks who to approach next and why
+    roster = "\n".join(f"- [{n['id']}] {n['name']}, {n['role']}" for n in npcs)
+    facts = ("KNOWN:\n" + "\n".join(f"- {f}" for f in story_facts[-6:])) if story_facts else ""
+    prompt = f"""{_TONE}
+
+You ARE the protagonist. You have ONE goal and you are working it like a person doing errands.
+GOAL: {quest_hook} | COMPLICATION: {complication}
+SO FAR: {story_so_far or "Just starting."}
+{facts}
+
+PEOPLE YOU COULD GO TALK TO:
+{roster}
+
+Pick the ONE person most useful to your goal right now. Then state, in first person, why you're going to them — name them, tie it to the goal, ≤16 words.
+JSON: {{"npc_id":"<exact id from the list>","intent":"I'll go ..."}}"""
+    req = Request(
+        system="Respond only with valid JSON. No fantasy language.", user=prompt, min_grade="fast"
+    )
+    raw = await ROUTER.complete(req)
+    parsed = parse_json(raw) or {}
+    valid = {n["id"] for n in npcs}
+    if parsed.get("npc_id") not in valid:
+        return {}
+    parsed["intent"] = _clean(str(parsed.get("intent", "")))
+    return parsed
+
+
+async def agent_converse(
+    quest_hook: str,
+    complication: str,
+    story_so_far: str,
+    agent_name: str,
+    npc_name: str,
+    npc_role: str,
+    npc_personality: str,
+    story_facts: list[str] | None = None,
+    resolution_count: int = 0,
+    max_resolutions: int = 8,
+) -> dict:
+    facts = ("TRUE:\n" + "\n".join(f"- {f}" for f in story_facts[-6:])) if story_facts else ""
+    prompt = f"""{_TONE}
+
+{_escalation(resolution_count, max_resolutions)}
+{agent_name} has walked over to {npc_name} specifically to make progress on the goal.
+GOAL: {quest_hook} | COMPLICATION: {complication}
+SO FAR: {story_so_far or "Just starting."}
+{facts}
+{npc_name} ({npc_role}) — {npc_personality}
+
+Write ONE beat (2 sentences): {agent_name} asks {npc_name} something SPECIFIC about the goal, and {npc_name} responds in their voice — helpful or obstructive, but strictly ABOUT THE GOAL. Include one exactly-wrong detail (a ticket number, date, or process). Do NOT drift to unrelated matters. End with {npc_name}'s spoken reply.
+JSON: {{"narrative":"...","line":"<{npc_name}'s reply, ≤14 words>","established":["<one durable fact about the goal>"]}}"""
+    req = Request(
+        system="Respond only with valid JSON. No fantasy language.",
+        user=prompt,
+        min_grade="capable",
+    )
+    raw = await ROUTER.complete(req)
+    parsed = parse_json(raw) or {}
+    if parsed.get("narrative"):
+        parsed["narrative"] = _clean(str(parsed["narrative"]))
+    parsed.setdefault("established", [])
+    return parsed
 
 
 async def narrate_travel_card(
