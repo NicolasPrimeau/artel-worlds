@@ -1581,9 +1581,14 @@ def deal_hand(rng: random.Random, size: int = 5) -> list[CardDef]:
 
 def advance_window(state: GameState, rng: random.Random) -> list[PlayedCard]:
     now = time.time()
+    # drain in place (copy then clear, no await between — race-free in asyncio) so
+    # cards played during resolution land in the same list and resolve next cycle.
     played = list(state.window.cards)
+    state.window.cards.clear()
     rng.shuffle(played)
-    state.window = WindowState(opened_at=now, closes_at=now + CARD_WINDOW)
+    state.window.opened_at = now
+    state.window.closes_at = now + CARD_WINDOW
+    state.window.resolutions = []
     return played
 
 

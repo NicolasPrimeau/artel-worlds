@@ -591,6 +591,10 @@ async def _resolve_window(state: GameState) -> None:
     state.window.resolving = False
     state.phase = "active"
 
+    # cards queued while we were resolving — pick them up immediately
+    if state.window.cards:
+        _card_signal.set()
+
     if state.quest.outcome:
         await _end_quest(state)
         return
@@ -1070,7 +1074,9 @@ def create_app() -> FastAPI:
 
     @app.post("/play")
     async def play_card(request_data: dict = Body(...)) -> JSONResponse:
-        if _state is None or _state.phase != "active":
+        # accept plays during resolution too — they queue into the next window
+        # instead of being rejected (and silently lost after the card animates away)
+        if _state is None or _state.phase not in ("active", "resolving"):
             return JSONResponse({"error": "no active game"}, status_code=400)
         card_id = request_data.get("card_id", "")
         player_id = request_data.get("player_id", "anonymous")
@@ -1084,8 +1090,9 @@ def create_app() -> FastAPI:
             player_id=player_id,
             target_npc_id=target_npc_id,
         )
-        async with _lock:
-            _state.window.cards.append(played)
+        # bare append is race-free in single-threaded asyncio (no await between
+        # advance_window's copy+clear); avoids hanging on the long resolve lock.
+        _state.window.cards.append(played)
         _card_signal.set()
         await _broadcast(
             {"type": "card_played", "card_id": card_id, "card_count": len(_state.window.cards)}
