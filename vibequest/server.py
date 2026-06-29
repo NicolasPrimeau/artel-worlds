@@ -218,17 +218,6 @@ async def _resolve_window(state: GameState) -> None:
         )
         if played_card.target_npc_id and not target_npc_id:
             target_npc_id = played_card.target_npc_id
-        if card_def.type == CardType.ACCUMULATE:
-            state.quest.pressure_pool.append(
-                {
-                    "name": card_def.name,
-                    "description": card_def.description,
-                    "remaining": PRESSURE_DURATION,
-                }
-            )
-        elif card_def.type == CardType.TWEAK and state.quest.pressure_pool:
-            # a reframe dissolves one looming pressure
-            state.quest.pressure_pool.pop()
 
     if not plays:
         state.window.resolving = False
@@ -238,22 +227,14 @@ async def _resolve_window(state: GameState) -> None:
     mom_delta = state.quest.momentum - mom_before
     prog_delta = state.quest.scene_progress - prog_before
 
-    pressure_context = [f"{p['name']}: {p['description']}" for p in state.quest.pressure_pool]
-    state.quest.pressure_pool = [
-        {**p, "remaining": p["remaining"] - 1} for p in state.quest.pressure_pool
-    ]
-    state.quest.pressure_pool = [p for p in state.quest.pressure_pool if p["remaining"] > 0]
-
     scene_resolved = state.quest.scene_progress >= SCENE_THRESHOLD
 
-    # --- pick the person in frame ---
+    # --- the event interrupts the agent where it currently is ---
     current_npc = None
     if target_npc_id:
         current_npc = next((n for n in state.quest.npcs if n.id == target_npc_id), None)
     if current_npc is None:
-        current_npc = next(
-            (n for n in state.quest.npcs if n.waypoint_idx == state.target_idx), None
-        )
+        current_npc = _npc_near_agent(state)
     npc_context = (
         f"{current_npc.name} ({current_npc.role}): {current_npc.personality}" if current_npc else ""
     )
@@ -281,7 +262,7 @@ async def _resolve_window(state: GameState) -> None:
     }
     if llm.enabled():
         try:
-            result = await llm.narrate_window(
+            result = await llm.narrate_event(
                 plays=plays,
                 progress=state.quest.scene_progress,
                 progress_delta=prog_delta,
@@ -295,17 +276,14 @@ async def _resolve_window(state: GameState) -> None:
                 story_so_far=_story_so_far(state),
                 story_facts=list(state.quest.facts),
                 register=state.quest.register,
-                pressure_context=pressure_context,
+                memory_context=memory_ctx,
                 scene_context=_scene_context(state),
                 resolution_count=state.quest.resolution_count,
                 max_resolutions=MAX_RESOLUTIONS,
                 scene_resolved=scene_resolved,
             )
         except Exception as exc:
-            log.warning("narrate_window failed: %s", exc)
-
-    if memory_ctx:
-        pass
+            log.warning("narrate_event failed: %s", exc)
 
     new_facts = [f for f in result.get("established", []) if isinstance(f, str)][:2]
     state.quest.facts.extend(new_facts)
@@ -630,7 +608,7 @@ def _card_msg(card) -> dict:
     }
 
 
-_DEAL_TYPE_CYCLE = [CardType.ACCUMULATE, CardType.ACTION, CardType.CHAOS, CardType.TWEAK]
+_DEAL_TYPE_CYCLE = [CardType.ENCOUNTER, CardType.RIVAL, CardType.BOON, CardType.TWIST]
 
 
 def _next_deal_card():
@@ -657,6 +635,18 @@ def _npc_tile(state: GameState, npc) -> tuple[int, int]:
     wps = state.world.waypoints
     wp = wps[min(npc.waypoint_idx, len(wps) - 1)]
     return wp[0], wp[1]
+
+
+def _npc_near_agent(state: GameState):
+    if not state.quest.npcs or state.world is None:
+        return None
+    best, best_d = None, 1e9
+    for n in state.quest.npcs:
+        tx, ty = _npc_tile(state, n)
+        d = abs(tx - state.lx) + abs(ty - state.ly)
+        if d < best_d:
+            best, best_d = n, d
+    return best
 
 
 async def _agent_loop() -> None:

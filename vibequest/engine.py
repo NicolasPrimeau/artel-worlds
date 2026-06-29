@@ -867,10 +867,11 @@ PARTY_ARCHETYPES = [
 
 
 class CardType(str, Enum):
-    ACCUMULATE = "accumulate"
-    ACTION = "action"
-    CHAOS = "chaos"
-    TWEAK = "tweak"
+    # audience-injected encounters that interrupt the agent's playthrough
+    ENCOUNTER = "encounter"  # a wild event / person crashes in
+    RIVAL = "rival"  # someone blocks or challenges the agent
+    BOON = "boon"  # something helps the agent
+    TWIST = "twist"  # the situation is reframed
 
 
 @dataclass
@@ -884,313 +885,201 @@ class CardDef:
 
 
 CARD_LIBRARY = [
-    # ── Accumulate ────────────────────────────────────────────────────────────
+    # ── Encounter — a wild event or person crashes into the scene ──────────────
     CardDef(
-        "acc_encourage",
-        "Quiet Confidence",
-        CardType.ACCUMULATE,
-        "Something is going better than expected.",
-        "It's working, for now.",
-        1.5,
-    ),
-    CardDef(
-        "acc_doubt",
-        "Second Thoughts",
-        CardType.ACCUMULATE,
-        "The current approach starts to feel less certain.",
-        "Maybe this was a mistake.",
-        1.5,
-    ),
-    CardDef(
-        "acc_urgency",
-        "Clock Ticking",
-        CardType.ACCUMULATE,
-        "There's less time for this than there seemed to be.",
-        "Not much time.",
+        "enc_courier",
+        "A Courier Appears",
+        CardType.ENCOUNTER,
+        "A courier bursts in demanding a signature for a package nobody ordered.",
+        "Wild. Insistent.",
         1.2,
     ),
     CardDef(
-        "acc_suspicion",
-        "Someone's Watching",
-        CardType.ACCUMULATE,
-        "Someone is paying more attention to this than expected.",
-        "They're taking note.",
-        1.0,
-    ),
-    CardDef(
-        "acc_confidence",
-        "False Certainty",
-        CardType.ACCUMULATE,
-        "Everyone's sure this is right. They could be wrong.",
-        "Reasonable. Possibly wrong.",
+        "enc_intern",
+        "Wild Intern",
+        CardType.ENCOUNTER,
+        "An eager intern appears with a clipboard, asking if anyone has seen the all-hands.",
+        "Harmless. Persistent.",
         1.2,
     ),
     CardDef(
-        "acc_sunk",
-        "Too Far In",
-        CardType.ACCUMULATE,
-        "Too much effort is already spent to turn back now.",
-        "No going back.",
+        "enc_alarm",
+        "Fire Drill",
+        CardType.ENCOUNTER,
+        "The alarm tests itself. Everyone must file out, slowly, by department.",
+        "Unscheduled. Mandatory.",
         1.0,
     ),
     CardDef(
-        "acc_consensus",
-        "Everyone Agrees",
-        CardType.ACCUMULATE,
-        "Everyone agrees, which is its own kind of warning.",
-        "Suspicious unanimity.",
+        "enc_auditor",
+        "The Auditor",
+        CardType.ENCOUNTER,
+        "An auditor materialises, asking to see the asset register. Today.",
+        "Nobody summoned them.",
+        0.8,
+    ),
+    CardDef(
+        "enc_catering",
+        "Catering Arrives",
+        CardType.ENCOUNTER,
+        "Sandwiches arrive for a meeting that was cancelled. They must be dealt with.",
+        "Forty rounds. No takers.",
+        1.0,
+    ),
+    CardDef(
+        "enc_phone",
+        "It Won't Stop Ringing",
+        CardType.ENCOUNTER,
+        "A desk phone rings and rings. Nobody owns the desk.",
+        "Line 3. Always line 3.",
+        0.9,
+    ),
+    # ── Rival — someone blocks or challenges the agent ─────────────────────────
+    CardDef(
+        "riv_badge",
+        "Badge Check",
+        CardType.RIVAL,
+        "Reception stops you. Your visitor badge expired at noon.",
+        "Policy is policy.",
+        1.2,
+    ),
+    CardDef(
+        "riv_gatekeeper",
+        "The Gatekeeper",
+        CardType.RIVAL,
+        "A PA refuses to let you past without a calendar invite.",
+        "Fifteen minutes, minimum.",
         1.1,
     ),
     CardDef(
-        "acc_borrowed",
-        "Window Closing",
-        CardType.ACCUMULATE,
-        "Something this depends on won't be available much longer.",
-        "Use it while it lasts.",
+        "riv_replyall",
+        "Reply-All Storm",
+        CardType.RIVAL,
+        "An email thread erupts. Everyone is cc'd. Opinions are forming.",
+        "112 unread.",
         1.0,
     ),
     CardDef(
-        "acc_momentum",
-        "Out of Hand",
-        CardType.ACCUMULATE,
-        "This is becoming bigger than anyone intended.",
-        "It's getting away from everyone.",
-        0.2,
-    ),
-    # ── Action ────────────────────────────────────────────────────────────────
-    CardDef(
-        "act_npc",
-        "They Notice",
-        CardType.ACTION,
-        "Someone here picks up on more than they let on.",
-        "They're deciding what to do with it.",
+        "riv_jurisdiction",
+        "Not Our Department",
+        CardType.RIVAL,
+        "Facilities says this is IT's problem. IT says it is Facilities'.",
+        "Raise a ticket. With whom.",
         1.0,
     ),
     CardDef(
-        "act_obstacle",
-        "The Required Step",
-        CardType.ACTION,
-        "There's a step that can't be skipped, and someone here owns it.",
-        "There's a process.",
+        "riv_signature",
+        "Pending Signature",
+        CardType.RIVAL,
+        "Nothing proceeds without a signature from someone currently on leave.",
+        "Back the 14th. Possibly.",
         1.0,
     ),
     CardDef(
-        "act_shortcut",
-        "The Back Way",
-        CardType.ACTION,
-        "There's a faster way through, available for reasons nobody mentions.",
-        "Why is this an option.",
-        0.8,
-    ),
-    CardDef(
-        "act_revelation",
-        "Late Intelligence",
-        CardType.ACTION,
-        "Something worth knowing earlier is only surfacing now.",
-        "Should have known sooner.",
-        0.8,
-    ),
-    CardDef(
-        "act_ally",
-        "Unexpected Help",
-        CardType.ACTION,
-        "Someone offers to help. It comes with a condition.",
-        "There's a catch.",
-        0.7,
-    ),
-    CardDef(
-        "act_misunderstanding",
-        "Lost in Translation",
-        CardType.ACTION,
-        "Two people meant different things by the same words.",
-        "Both readings are plausible.",
+        "riv_manager",
+        "A Manager Intercepts",
+        CardType.RIVAL,
+        "A manager catches you in the corridor with a quick question that is neither.",
+        "Got a sec? You do not.",
         0.9,
     ),
+    # ── Boon — something genuinely helps the agent ─────────────────────────────
     CardDef(
-        "act_detour",
-        "Wrong Door",
-        CardType.ACTION,
-        "The obvious way through is blocked, for a dull and specific reason.",
-        "Classic.",
-        0.8,
-    ),
-    CardDef(
-        "act_advice",
-        "The Expert",
-        CardType.ACTION,
-        "Someone here actually understands this, and is going to explain it.",
-        "They're right. Unfortunately.",
-        0.8,
-    ),
-    CardDef(
-        "act_missing",
-        "Not Where It Should Be",
-        CardType.ACTION,
-        "Something this needs isn't where it's supposed to be.",
-        "Somebody moved it.",
-        0.8,
-    ),
-    CardDef(
-        "act_confront",
-        "Ask Directly",
-        CardType.ACTION,
-        "A direct question to someone here, for once answered straight.",
-        "They told the truth.",
+        "boon_pass",
+        "Found: Visitor Pass",
+        CardType.BOON,
+        "A spare pass, still valid, hanging on a lanyard by the printer.",
+        "Finders keepers.",
         1.1,
     ),
     CardDef(
-        "act_loop_in",
-        "Now They Know",
-        CardType.ACTION,
-        "Someone here is finally told what's actually going on.",
-        "Can't un-tell someone.",
+        "boon_coffee",
+        "Coffee Round",
+        CardType.BOON,
+        "Someone makes a round. Morale, briefly and genuinely, improves.",
+        "Milk, no sugar.",
+        1.2,
+    ),
+    CardDef(
+        "boon_tipoff",
+        "The Tip-Off",
+        CardType.BOON,
+        "A friendly admin quietly tells you where you actually need to go.",
+        "Don't say I said.",
+        1.1,
+    ),
+    CardDef(
+        "boon_shortcut",
+        "Propped Fire Door",
+        CardType.BOON,
+        "A fire door, propped open. Technically not allowed. Considerably faster.",
+        "Don't tell Facilities.",
+        1.0,
+    ),
+    CardDef(
+        "boon_ally",
+        "An Ally",
+        CardType.BOON,
+        "A colleague offers, genuinely, to vouch for you.",
+        "I've got you.",
+        1.0,
+    ),
+    CardDef(
+        "boon_cache",
+        "It Was Here All Along",
+        CardType.BOON,
+        "The thing you needed was in the second drawer. Of course it was.",
+        "Hidden in plain sight.",
+        0.8,
+    ),
+    # ── Twist — the situation is reframed under everyone's feet ────────────────
+    CardDef(
+        "twist_reorg",
+        "Reorg",
+        CardType.TWIST,
+        "The team you needed reports to someone else now. As of this morning.",
+        "New org chart pending.",
         0.9,
     ),
     CardDef(
-        "act_precedent",
-        "How It Was Done Before",
-        CardType.ACTION,
-        "Someone cites how it's always been done. It doesn't quite fit.",
-        "Procedurally sound. Wrong.",
-        0.7,
-    ),
-    CardDef(
-        "act_authority",
-        "Someone Decides",
-        CardType.ACTION,
-        "A decision gets made without being asked for, and it sticks.",
-        "Rare. Final.",
-        0.2,
-    ),
-    # ── Chaos ─────────────────────────────────────────────────────────────────
-    CardDef(
-        "cha_wild",
-        "Non Sequitur",
-        CardType.CHAOS,
-        "Someone raises something entirely unrelated and carries on.",
-        "Where did that come from.",
-        0.6,
-    ),
-    CardDef(
-        "cha_escalate",
-        "Word Gets Out",
-        CardType.CHAOS,
-        "Someone who didn't need to know now knows, and has opinions.",
-        "They're already moving.",
-        0.6,
-    ),
-    CardDef(
-        "cha_mishap",
-        "It Stops Working",
-        CardType.CHAOS,
-        "Something this relies on stops cooperating at the worst moment.",
-        "Not my problem.",
-        0.7,
-    ),
-    CardDef(
-        "cha_witness",
-        "Wrong Place, Wrong Time",
-        CardType.CHAOS,
-        "The wrong person walks in at exactly the wrong moment.",
-        "Of all the timing.",
-        0.5,
-    ),
-    CardDef(
-        "cha_arrival",
-        "Unscheduled",
-        CardType.CHAOS,
-        "Someone shows up who wasn't expected, at a bad time.",
-        "Nobody invited them.",
-        0.7,
-    ),
-    CardDef(
-        "cha_containment",
-        "Contained No Longer",
-        CardType.CHAOS,
-        "Something that was being kept quiet doesn't stay quiet.",
-        "Everyone knows now.",
-        0.6,
-    ),
-    CardDef(
-        "cha_cascade",
-        "Collateral Damage",
-        CardType.CHAOS,
-        "Something done earlier comes back as a problem elsewhere.",
-        "It's all connected.",
-        0.5,
-    ),
-    CardDef(
-        "cha_category",
-        "Wrong Team",
-        CardType.CHAOS,
-        "This ended up with the wrong people, and they have questions.",
-        "Rare. Structural.",
-        0.2,
-    ),
-    # ── Tweak ─────────────────────────────────────────────────────────────────
-    CardDef(
-        "twk_scope",
-        "Also That",
-        CardType.TWEAK,
-        "There's one more thing to handle. There was always going to be.",
-        "Adjacent. Unavoidable.",
+        "twist_duetoday",
+        "It Was Always Due Today",
+        CardType.TWIST,
+        "The deadline was, apparently, always today. News to everyone.",
+        "Per the original brief.",
         0.9,
     ),
     CardDef(
-        "twk_reframe",
-        "Different Angle",
-        CardType.TWEAK,
-        "The same situation, read a different way.",
-        "Both readings hold up.",
+        "twist_twoversions",
+        "Two Versions",
+        CardType.TWIST,
+        "There are two versions of the document in circulation. Both signed.",
+        "Which is canonical.",
+        0.9,
+    ),
+    CardDef(
+        "twist_wrongbuilding",
+        "Wrong Building",
+        CardType.TWIST,
+        "The person you need has been in Building 7 the whole time.",
+        "Nobody mentioned Building 7.",
+        0.9,
+    ),
+    CardDef(
+        "twist_retroactive",
+        "Retroactive Policy",
+        CardType.TWIST,
+        "A policy now applies, backdated. Everything must be re-checked.",
+        "Effective last Tuesday.",
         0.8,
     ),
     CardDef(
-        "twk_version",
-        "Which Version",
-        CardType.TWEAK,
-        "Two versions of this are both in play.",
-        "Both are real.",
-        0.8,
-    ),
-    CardDef(
-        "twk_retroactive",
-        "Always Priority One",
-        CardType.TWEAK,
-        "This was apparently always urgent. News to everyone.",
-        "History revised.",
+        "twist_namesame",
+        "Two People, One Name",
+        CardType.TWIST,
+        "There are two Dave Wilsons. You have been talking to the wrong one.",
+        "Both in Procurement.",
         0.7,
-    ),
-    CardDef(
-        "twk_notes",
-        "What Was Decided",
-        CardType.TWEAK,
-        "Nobody agrees on what was decided, and nothing was written down.",
-        "Contested.",
-        0.8,
-    ),
-    CardDef(
-        "twk_info",
-        "Always True",
-        CardType.TWEAK,
-        "A detail that changes how to read this has been true all along.",
-        "Late arrival.",
-        0.7,
-    ),
-    CardDef(
-        "twk_pressure",
-        "Updated Urgency",
-        CardType.TWEAK,
-        "One part of this just became more urgent than the rest.",
-        "Upward only.",
-        0.8,
-    ),
-    CardDef(
-        "twk_recontextualize",
-        "Still True. Different Now.",
-        CardType.TWEAK,
-        "Nothing changed. Everything reads differently.",
-        "Everything shifts.",
-        0.2,
     ),
 ]
 
@@ -1618,21 +1507,22 @@ def _clamp(v: int) -> int:
 
 # No dice. Each card TYPE has a fixed, legible job on the shared meters.
 def apply_card_effects(card_def: CardDef, quest: QuestState) -> None:
-    if card_def.type == CardType.ACTION:
-        # push toward the goal
+    if card_def.type == CardType.BOON:
+        # something helps the agent — morale up, a step closer
         quest.scene_progress += 1
         quest.momentum = _clamp(quest.momentum + 2)
-    elif card_def.type == CardType.ACCUMULATE:
-        # raise the stakes — pressure builds, no progress
+    elif card_def.type == CardType.ENCOUNTER:
+        # a wild event — eventful, nudges things along but disruptive
+        quest.scene_progress += 1
         quest.tension = min(10, quest.tension + 1)
-        quest.momentum = _clamp(quest.momentum + 1)
-    elif card_def.type == CardType.CHAOS:
-        # a setback — knocks progress back
+        quest.momentum = _clamp(quest.momentum - 1)
+    elif card_def.type == CardType.RIVAL:
+        # blocks or challenges the agent — a setback to overcome
         quest.scene_progress = max(0, quest.scene_progress - 1)
         quest.tension = min(10, quest.tension + 1)
         quest.momentum = _clamp(quest.momentum - 2)
-    elif card_def.type == CardType.TWEAK:
-        # a reframe — intensifies the current trajectory
+    elif card_def.type == CardType.TWIST:
+        # reframes the situation — swings morale to the current extreme
         quest.momentum = _clamp(quest.momentum + (2 if quest.momentum >= 0 else -2))
 
 
