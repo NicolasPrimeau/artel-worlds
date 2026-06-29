@@ -79,20 +79,24 @@
   #toast{display:none}
 
   /* room label */
-  #caption{bottom:calc(clamp(130px,37vw,170px) + 122px + 6px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);max-width:80vw;text-align:center;
+  #caption{bottom:calc(var(--dock-h) + 6px);left:50%;transform:translateX(-50%);max-width:80vw;text-align:center;
     font-family:"Courier Prime",monospace;font-size:clamp(9px,2.3vw,11px);letter-spacing:.25em;text-transform:uppercase;color:var(--ink);
     background:rgba(196,174,136,.7);padding:3px 10px;border-radius:2px;opacity:0;transition:opacity .5s;white-space:nowrap;pointer-events:none}
   #caption.show{opacity:1}
   #caption.at-rest{color:var(--ink);background:rgba(196,174,136,.65);letter-spacing:.3em}
 
-  /* ── cinematic narrative panel ── */
-  #scene-panel{position:fixed;bottom:calc(clamp(130px,37vw,170px) + 34px);left:0;right:0;z-index:9;pointer-events:none;
-    max-height:130px;overflow:hidden;
+  /* ── split dock: world renders full-screen behind a translucent bottom dock ── */
+  html{--dock-h:clamp(260px,46vh,520px)}
+  #dock{position:fixed;left:0;right:0;bottom:0;height:var(--dock-h);z-index:12;
+    display:flex;flex-direction:column;pointer-events:none;
+    background:linear-gradient(180deg,rgba(20,14,32,0) 0%,rgba(20,14,32,.42) 16%,rgba(20,14,32,.8) 46%,rgba(20,14,32,.88) 100%);
+    backdrop-filter:blur(2.5px);-webkit-backdrop-filter:blur(2.5px);
+    border-top:2px solid rgba(238,207,96,.55)}
+  /* ── cinematic narrative panel (now lives in the dock) ── */
+  #scene-panel{position:static;flex:1 1 auto;min-height:0;overflow-y:auto;pointer-events:auto;
     display:flex;flex-direction:column;justify-content:flex-end;gap:0;
-    background:linear-gradient(rgba(28,20,42,.95),rgba(20,14,32,.95));
-    border-top:2px solid var(--gold);box-shadow:inset 0 1px 0 rgba(238,207,96,.18);
-    padding:10px 18px 9px;
-    transition:padding .2s}
+    background:none;border:none;
+    padding:10px 18px 4px}
   #scene-panel:empty{padding:0}
   .sbeat{font-family:"Courier Prime",monospace;font-size:clamp(13px,3.2vw,15px);line-height:1.55;
     color:#e8e0cc;padding:0;transition:opacity .6s}
@@ -100,7 +104,7 @@
   .sbeat.dim{opacity:.45;font-size:clamp(10px,2.5vw,12px);transition:opacity .6s,font-size .3s}
   .sbeat .swho{display:block;font-size:clamp(7px,1.6vw,8px);letter-spacing:.34em;text-transform:uppercase;
     color:var(--gold);opacity:.92;margin-bottom:3px;font-weight:700}
-  #cardzone{position:fixed;bottom:0;left:0;right:0;display:flex;align-items:flex-end;z-index:10;pointer-events:none}
+  #cardzone{position:static;flex:0 0 auto;left:0;right:0;display:flex;align-items:flex-end;z-index:10;pointer-events:none}
   #drawpile{flex:0 0 25%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
     padding-bottom:calc(8px + env(safe-area-inset-bottom));pointer-events:auto;position:relative;overflow:visible}
   #hand{flex:0 0 50%;position:relative;height:clamp(130px,37vw,170px);pointer-events:none;overflow:visible}
@@ -251,17 +255,16 @@
     .endbox .verdict{font-size:clamp(24px,8vw,36px)}
     .vote-section{margin-top:14px}
     .vote-btn{font-size:12px;padding:7px 10px}
-    #target-picker{padding-bottom:calc(clamp(130px,37vw,170px) + 6px)}
+    #target-picker{padding-bottom:calc(var(--dock-h) + 6px)}
     .target-box{padding:10px 12px 12px}
     .target-npc{font-size:13px;padding:8px 10px}
-    #caption{bottom:calc(clamp(130px,37vw,170px) + 100px + 4px + env(safe-area-inset-bottom))}
-    #scene-panel{max-height:100px;padding:6px 12px 6px}
+    #caption{bottom:calc(var(--dock-h) + 6px)}
+    #scene-panel{padding:6px 12px 4px}
     .sbeat{font-size:clamp(12px,2.8vw,14px)}
-    #dice{bottom:calc(clamp(130px,37vw,170px) + 100px + 2px + env(safe-area-inset-bottom))}
   }
 
   /* ── Pokémon-style encounter overlay ── */
-  #encounter{position:fixed;top:0;left:0;right:0;bottom:calc(clamp(130px,37vw,170px) + 6px);z-index:30;
+  #encounter{position:fixed;top:0;left:0;right:0;bottom:var(--dock-h);z-index:30;
     display:flex;flex-direction:column;justify-content:space-between;pointer-events:none;
     opacity:0;transition:opacity .2s}
   #encounter.show{opacity:1;pointer-events:auto}
@@ -388,18 +391,22 @@
   </div>
 </div>
 
-<div id="scene-panel" class="ui"></div>
 <div id="encounter" class="ui"></div>
-<div id="cardzone" class="ui">
-  <div id="drawpile"></div>
-  <div id="hand"></div>
-  <div id="pile"></div>
+<div id="dock" class="ui">
+  <div id="scene-panel"></div>
+  <div id="cardzone">
+    <div id="drawpile"></div>
+    <div id="hand"></div>
+    <div id="pile"></div>
+  </div>
 </div>
 
 <script>
 const TILE = 16;
 // camera zoom: Pokémon-style — players large relative to the room. Integer for crisp pixels.
 function viewZoom(){ return Math.max(3, Math.min(6, Math.round(window.innerWidth/240))); }
+// lift the camera so the character sits in the upper (visible) half above the dock
+function _camOffsetY(){ return (window.innerHeight*0.22)/viewZoom(); }
 // Ninja Adventure sheet: 4 columns = directions, 7 rows = frames. Walk = rows 0-3 of a column.
 const DIR_COL = { down:0, up:1, left:2, right:3 };
 const PROP = {
@@ -584,7 +591,7 @@ class World extends Phaser.Scene{
     this.cameras.main.setBackgroundColor("#cdd8c6");
     makeProps(this);
     makeIndoorTextures(this);
-    this.scale.on("resize", ()=>{ if(world) this.cameras.main.setZoom(viewZoom()); });
+    this.scale.on("resize", ()=>{ if(world){ this.cameras.main.setZoom(viewZoom()); if(character) this.cameras.main.setFollowOffset(0,_camOffsetY()); } });
     // anims for each hero
     for(let i=1;i<=10;i++){
       for(const dir in DIR_COL){
@@ -685,7 +692,9 @@ function buildCharacter(snap){
   spr.on("pointerup",()=>showMemberDetail(pm));
   const m={spr,shadow,id:pm.id,name:pm.name,role:pm.role,sprite:pm.sprite,status:pm.status,moving:false,dir:"down",tx:px,ty:py};
   idle(m); character=m;
-  scene.cameras.main.startFollow(spr,true,0.09,0.09);
+  const cam=scene.cameras.main;
+  cam.startFollow(spr,true,0.09,0.09);
+  cam.setFollowOffset(0,_camOffsetY());
   scheduleAmbient();
 }
 
