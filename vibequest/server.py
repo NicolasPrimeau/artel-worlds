@@ -42,7 +42,7 @@ from .engine import (
 log = logging.getLogger("vibequest")
 STATIC = Path(__file__).parent / "static"
 
-DEAL_INTERVAL = 20.0
+DEAL_INTERVAL = 10.0
 VOTE_TIMEOUT = 25.0
 PRESSURE_DURATION = 3
 BATCH_WINDOW = 0.5
@@ -896,17 +896,20 @@ def _card_msg(card) -> dict:
 _DEAL_TYPE_CYCLE = [CardType.ACCUMULATE, CardType.ACTION, CardType.CHAOS, CardType.TWEAK]
 
 
-async def _deal_loop() -> None:
+def _next_deal_card():
     global _deal_type_idx
+    target_type = _DEAL_TYPE_CYCLE[_deal_type_idx % len(_DEAL_TYPE_CYCLE)]
+    _deal_type_idx += 1
+    pool = [c for c in CARD_BY_ID.values() if c.type == target_type]
+    return _rng.choices(pool, weights=[c.weight for c in pool])[0]
+
+
+async def _deal_loop() -> None:
     while True:
         await asyncio.sleep(DEAL_INTERVAL)
         if not _clients or _state is None or _state.phase != "active":
             continue
-        target_type = _DEAL_TYPE_CYCLE[_deal_type_idx % len(_DEAL_TYPE_CYCLE)]
-        _deal_type_idx += 1
-        pool = [c for c in CARD_BY_ID.values() if c.type == target_type]
-        card = _rng.choices(pool, weights=[c.weight for c in pool])[0]
-        await _broadcast({"type": "deal_card", "card": _card_msg(card)})
+        await _broadcast({"type": "deal_card", "card": _card_msg(_next_deal_card())})
 
 
 AMBIENT_INTERVAL = 22.0
@@ -1097,6 +1100,8 @@ def create_app() -> FastAPI:
                 }
             )
             _card_added_sent.add(played.id)
+        # refill: deal a replacement so the hand stays full instead of draining
+        await _broadcast({"type": "deal_card", "card": _card_msg(_next_deal_card())})
         return JSONResponse({"ok": True, "card_count": len(_state.window.cards)})
 
     @app.websocket("/ws")

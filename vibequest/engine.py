@@ -1276,7 +1276,7 @@ class CardResolution:
 
 MIN_RESOLUTIONS = 3
 MAX_RESOLUTIONS = 8
-MAX_SCENE_ROUNDS = 4
+MAX_SCENE_ROUNDS = 3
 
 
 SURREAL_ARC = [
@@ -1589,11 +1589,11 @@ def advance_window(state: GameState, rng: random.Random) -> list[PlayedCard]:
 
 # Dice mostly steer the LLM; crits are the real mechanical swings.
 _DELTA = {
-    DiceResult.NAT_1: -5,
-    DiceResult.LOW: -1,
+    DiceResult.NAT_1: -6,
+    DiceResult.LOW: -2,
     DiceResult.MID: 1,
-    DiceResult.HIGH: 1,
-    DiceResult.NAT_20: 5,
+    DiceResult.HIGH: 3,
+    DiceResult.NAT_20: 6,
 }
 
 
