@@ -259,6 +259,37 @@
     .sbeat{font-size:clamp(12px,2.8vw,14px)}
     #dice{bottom:calc(clamp(130px,37vw,170px) + 100px + 2px + env(safe-area-inset-bottom))}
   }
+
+  /* ── Pokémon-style encounter overlay ── */
+  #encounter{position:fixed;top:0;left:0;right:0;bottom:calc(clamp(130px,37vw,170px) + 6px);z-index:30;
+    display:flex;flex-direction:column;justify-content:space-between;pointer-events:none;
+    opacity:0;transition:opacity .2s}
+  #encounter.show{opacity:1;pointer-events:auto}
+  #encounter .enc-scene{position:relative;flex:1 1 auto;overflow:hidden;
+    background:linear-gradient(180deg,rgba(28,20,42,.34),rgba(20,14,32,.5))}
+  #encounter .enc-banner{position:absolute;top:10px;left:50%;transform:translateX(-50%);
+    font-family:"Courier Prime",monospace;font-size:clamp(10px,2.6vw,13px);letter-spacing:.16em;text-transform:uppercase;
+    color:var(--ink);background:var(--cream);border:2px solid var(--ink);border-radius:3px;
+    padding:5px 14px;white-space:nowrap;box-shadow:3px 3px 0 rgba(26,20,40,.3);animation:encDrop .32s cubic-bezier(.34,1.56,.64,1)}
+  @keyframes encDrop{from{transform:translate(-50%,-26px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
+  .enc-sprite{image-rendering:pixelated;background-repeat:no-repeat;flex-shrink:0;filter:drop-shadow(2px 3px 0 rgba(0,0,0,.35))}
+  #encounter .enc-opp{position:absolute;top:clamp(34px,11vw,58px);right:9%;animation:encInR .4s ease-out}
+  #encounter .enc-agent{position:absolute;bottom:6px;left:11%;animation:encInL .4s ease-out}
+  @keyframes encInR{from{transform:translateX(50px);opacity:0}to{transform:translateX(0);opacity:1}}
+  @keyframes encInL{from{transform:translateX(-50px);opacity:0}to{transform:translateX(0);opacity:1}}
+  #encounter .enc-item{position:absolute;top:clamp(40px,12vw,64px);right:13%;font-size:clamp(34px,10vw,56px);
+    filter:drop-shadow(2px 3px 0 rgba(0,0,0,.3));animation:encInR .4s ease-out}
+  #encounter .enc-chips{position:absolute;top:8px;right:10px;display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+  #encounter .enc-chip{font-family:"Courier Prime",monospace;font-size:clamp(8px,2vw,10px);letter-spacing:.1em;text-transform:uppercase;
+    padding:2px 8px;border-radius:10px;border:1.5px solid var(--ink);background:var(--cream);font-weight:700;
+    animation:encChip .5s ease-out}
+  @keyframes encChip{0%{transform:scale(0)}60%{transform:scale(1.15)}100%{transform:scale(1)}}
+  #encounter .enc-box{flex:0 0 auto;margin:0 8px 8px;background:var(--cream);border:3px solid var(--ink);border-radius:6px;
+    padding:9px 14px;box-shadow:4px 4px 0 rgba(26,20,40,.3);min-height:42px}
+  #encounter .enc-text{font-family:"Courier Prime",monospace;font-size:clamp(11px,2.9vw,14px);line-height:1.5;color:var(--ink)}
+  #encounter .enc-text .enc-react{display:block;margin-top:4px;color:var(--rose2);font-style:italic}
+  #encounter .enc-tap{position:absolute;bottom:4px;right:10px;font-size:8px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink2);opacity:.6;animation:encBlink 1s steps(2) infinite}
+  @keyframes encBlink{50%{opacity:.15}}
 </style>
 </head>
 <body>
@@ -356,6 +387,7 @@
 </div>
 
 <div id="scene-panel" class="ui"></div>
+<div id="encounter" class="ui"></div>
 <div id="cardzone" class="ui">
   <div id="drawpile"></div>
   <div id="hand"></div>
@@ -1130,6 +1162,70 @@ function showSceneBeat(text, who=''){
   }, 48);
 }
 function addLogEntry(text){ showSceneBeat(text); }
+
+const ENC_KIND={
+  encounter:{verb:n=>`A wild ${n} appears!`, emoji:"📋"},
+  rival:{verb:n=>`${n} blocks the way!`, emoji:"✋"},
+  boon:{verb:n=>`${n}!`, emoji:"✨"},
+  twist:{verb:n=>`${n}…`, emoji:"🔄"},
+};
+function _heroSprite(idx,size){
+  const n=String(idx).padStart(2,"0");
+  const el=document.createElement("div"); el.className="enc-sprite";
+  el.style.width=size+"px"; el.style.height=size+"px";
+  el.style.backgroundImage=`url(assets/hero_${n}.png)`;
+  el.style.backgroundSize=(4*size)+"px "+(7*size)+"px";
+  el.style.backgroundPosition="0 0"; // idle 'down' frame
+  return el;
+}
+let _encTimer=null, _encType=null, _encDone=null;
+function showEncounter(m){
+  const ov=document.getElementById("encounter"); if(!ov) return;
+  if(m.narrative) addLogEntry(m.narrative); // keep panel history behind the scene
+  clearTimeout(_encTimer); if(_encType) clearInterval(_encType);
+  const ev=(m.events&&m.events[0])||{name:"Something",kind:"encounter"};
+  const kind=ENC_KIND[ev.kind]||ENC_KIND.encounter;
+  const more=m.events.length>1?` +${m.events.length-1}`:"";
+  const oppSize=Math.round(Math.min(window.innerWidth,560)*0.16);
+  const agentSize=Math.round(oppSize*1.15);
+  ov.innerHTML="";
+  const scene=document.createElement("div"); scene.className="enc-scene";
+  const banner=document.createElement("div"); banner.className="enc-banner";
+  banner.style.borderColor="var(--ink)";
+  banner.textContent=kind.verb(ev.name)+more; scene.appendChild(banner);
+  // opponent: NPC sprite if present, else a kind emoji
+  if(m.npc_sprite>0){ const o=_heroSprite(m.npc_sprite,oppSize); o.classList.add("enc-opp"); scene.appendChild(o); }
+  else { const it=document.createElement("div"); it.className="enc-item"; it.textContent=kind.emoji; scene.appendChild(it); }
+  const ag=_heroSprite(m.agent_sprite||1,agentSize); ag.classList.add("enc-agent"); scene.appendChild(ag);
+  // effect chips
+  const chips=document.createElement("div"); chips.className="enc-chips";
+  const md=m.momentum_delta||0, pd=m.progress_delta||0;
+  if(pd){ const c=document.createElement("div"); c.className="enc-chip"; c.style.color=pd>0?"var(--sage2)":"var(--rose2)"; c.textContent=(pd>0?"▲":"▼")+" progress"; chips.appendChild(c); }
+  if(md){ const c=document.createElement("div"); c.className="enc-chip"; c.style.color=md>0?"var(--sage2)":"var(--rose2)"; c.textContent=(md>0?"+":"")+md+" morale"; chips.appendChild(c); }
+  scene.appendChild(chips);
+  const tap=document.createElement("div"); tap.className="enc-tap"; tap.textContent="tap ▾"; scene.appendChild(tap);
+  ov.appendChild(scene);
+  const box=document.createElement("div"); box.className="enc-box";
+  const txt=document.createElement("div"); txt.className="enc-text"; box.appendChild(txt); ov.appendChild(box);
+  ov.classList.add("show");
+  // typewriter the narrative, then reactions
+  const words=(m.narrative||ev.name).split(" "); let i=0;
+  const reactions=(m.reactions||[]).filter(r=>r&&r.line);
+  const finish=()=>{
+    txt.innerHTML="";
+    const p=document.createElement("span"); p.textContent=m.narrative||ev.name; txt.appendChild(p);
+    reactions.forEach(r=>{ const s=document.createElement("span"); s.className="enc-react"; s.textContent=`${r.name}: “${r.line}”`; txt.appendChild(s); });
+  };
+  _encDone=finish;
+  _encType=setInterval(()=>{
+    txt.textContent+=(i>0?" ":"")+words[i++];
+    if(i>=words.length){ clearInterval(_encType); _encType=null; finish(); }
+  },46);
+  const dismiss=()=>{ clearTimeout(_encTimer); if(_encType){clearInterval(_encType);_encType=null;} ov.classList.remove("show"); };
+  _encTimer=setTimeout(dismiss, 4200 + words.length*46 + reactions.length*900);
+  scene.onclick=()=>{ if(_encType){ clearInterval(_encType); _encType=null; finish(); } else dismiss(); };
+  box.onclick=scene.onclick;
+}
 function showReactions(rs,snap,npcName){
   if(!rs||!rs.length) return;
   const npcR=npcName?rs.find(r=>r.name===npcName):null;
@@ -1634,13 +1730,11 @@ function connect(){
       case "scene_beat": { if(m.text) showSceneBeat(m.text, m.who||''); break; }
       case "npc_speak": { speakNPC(m.npc_name,m.line,5000); break; }
       case "scene_event": { applyState(m.state); if(m.text) addLogEntry(m.text); break; }
-      case "dice_roll": showDice(m); break;
-      case "card_added": showCardAdded(m); break;
       case "card_resolved": {
         applyState(m.state);
         if(m.next_heading) setCaption(m.next_heading);
-        if(m.narrative) addLogEntry(m.narrative);
-        if(m.reactions?.length) showReactions(m.reactions,m.state,m.npc_name||null);
+        if(m.events?.length) showEncounter(m);
+        else { if(m.narrative) addLogEntry(m.narrative); if(m.reactions?.length) showReactions(m.reactions,m.state,m.npc_name||null); }
         break;
       }
       case "quest_complete": applyState(m.state);

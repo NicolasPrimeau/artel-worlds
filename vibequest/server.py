@@ -358,6 +358,11 @@ async def _resolve_window(state: GameState) -> None:
             "narrative": narrative,
             "reactions": result.get("reactions", []),
             "npc_name": current_npc.name if current_npc else "",
+            "events": [{"name": p["name"], "kind": p["type"]} for p in plays],
+            "momentum_delta": mom_delta,
+            "progress_delta": prog_delta,
+            "agent_sprite": state.character.sprite,
+            "npc_sprite": current_npc.sprite if current_npc else 0,
             "state": _state_snapshot(state, include_world=False),
         }
     )
