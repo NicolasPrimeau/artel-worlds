@@ -92,18 +92,18 @@
     background:linear-gradient(180deg,#1c1428 0%,#150e20 100%);
     border-top:3px solid var(--gold);box-shadow:0 -3px 14px rgba(0,0,0,.35)}
   /* ── cinematic narrative panel (now lives in the dock) ── */
-  #scene-panel{position:static;flex:1 1 auto;min-height:0;overflow-y:auto;pointer-events:auto;
-    display:flex;flex-direction:column;justify-content:flex-end;gap:0;
-    background:none;border:none;
-    padding:10px 18px 4px}
-  #scene-panel:empty{padding:0}
+  #scene-panel{position:static;flex:0 0 auto;height:clamp(46px,8.5vh,72px);overflow-y:auto;overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;pointer-events:auto;display:block;
+    background:none;border:none;border-bottom:1px solid rgba(238,207,96,.12);
+    padding:7px 18px 5px}
+  #scene-panel:empty{padding:0;border:none}
   .sbeat{font-family:"Courier Prime",monospace;font-size:clamp(13px,3.2vw,15px);line-height:1.55;
     color:#e8e0cc;padding:0;transition:opacity .6s}
   .sbeat.live{opacity:1}
   .sbeat.dim{opacity:.45;font-size:clamp(10px,2.5vw,12px);transition:opacity .6s,font-size .3s}
   .sbeat .swho{display:block;font-size:clamp(7px,1.6vw,8px);letter-spacing:.34em;text-transform:uppercase;
     color:var(--gold);opacity:.92;margin-bottom:3px;font-weight:700}
-  #cardzone{position:static;flex:0 0 auto;left:0;right:0;display:flex;align-items:flex-end;z-index:10;pointer-events:none}
+  #cardzone{position:static;flex:1 1 auto;min-height:0;left:0;right:0;display:flex;align-items:flex-end;z-index:10;pointer-events:none}
   #drawpile{flex:0 0 25%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
     padding-bottom:calc(8px + env(safe-area-inset-bottom));pointer-events:auto;position:relative;overflow:visible}
   #hand{flex:0 0 50%;position:relative;height:clamp(130px,37vw,170px);pointer-events:none;overflow:visible}
@@ -1159,15 +1159,20 @@ function showSceneBeat(text, who=''){
   if(!text) return;
   const panel=document.getElementById("scene-panel"); if(!panel) return;
   panel.querySelectorAll(".sbeat.live").forEach(e=>{ e.classList.remove("live"); e.classList.add("dim"); });
-  panel.querySelectorAll(".sbeat.dim").forEach((e,i,a)=>{ if(i<a.length-1) e.remove(); });
+  // keep a scrollable history; trim only very old beats
+  const all=panel.querySelectorAll(".sbeat");
+  for(let k=0;k<all.length-18;k++) all[k].remove();
   const el=document.createElement("div"); el.className="sbeat live";
   if(who) el.innerHTML=`<span class="swho">${who}</span>`;
   const body=document.createElement("span"); el.appendChild(body);
   panel.appendChild(el);
+  const atBottom=panel.scrollHeight-panel.scrollTop-panel.clientHeight<24;
+  panel.scrollTop=panel.scrollHeight;
   if(_typingTimer){ clearInterval(_typingTimer); _typingTimer=null; }
   const words=text.split(" "); let i=0;
   _typingTimer=setInterval(()=>{
     body.textContent+=(i>0?" ":"")+words[i++];
+    if(atBottom) panel.scrollTop=panel.scrollHeight; // follow newest unless user scrolled up
     if(i>=words.length){ clearInterval(_typingTimer); _typingTimer=null; }
   }, 48);
 }
