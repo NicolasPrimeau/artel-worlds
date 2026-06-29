@@ -5,6 +5,7 @@ import json
 import logging
 import random
 import uuid
+from collections import deque
 from pathlib import Path
 
 from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect
@@ -27,11 +28,11 @@ from .engine import (
     classify_window,
     deal_hand,
     make_quest,
-    maybe_travel_event,
     new_game,
-    step_party,
+    step_path,
     sync_target,
 )
+from .world import find_path
 
 log = logging.getLogger("vibequest")
 STATIC = Path(__file__).parent / "static"
@@ -610,13 +611,12 @@ def _pos_msg(state: GameState) -> dict:
 
 async def _move_loop() -> None:
     while True:
-        await asyncio.sleep(0.9)
+        await asyncio.sleep(0.42)
         state = _state
         if state is None or not _clients or state.phase in ("resolving", "complete"):
             continue
-        sync_target(state)
-        maybe_travel_event(state, _rng)
-        if step_party(state):
+        # free-roam: follow the agent's dynamic path
+        if step_path(state):
             await _broadcast(_pos_msg(state))
 
 
@@ -649,44 +649,84 @@ async def _deal_loop() -> None:
         await _broadcast({"type": "deal_card", "card": _card_msg(_next_deal_card())})
 
 
-AMBIENT_INTERVAL = 12.0
+AGENT_INTERVAL = 3.5
+_agent_recent: deque[str] = deque(maxlen=3)
 
 
-async def _ambient_loop() -> None:
+def _npc_tile(state: GameState, npc) -> tuple[int, int]:
+    wps = state.world.waypoints
+    wp = wps[min(npc.waypoint_idx, len(wps) - 1)]
+    return wp[0], wp[1]
+
+
+async def _agent_loop() -> None:
+    # the protagonist is an autonomous agent: it walks to people and talks to them
     while True:
-        await asyncio.sleep(AMBIENT_INTERVAL)
+        await asyncio.sleep(AGENT_INTERVAL)
         state = _state
-        if state is None or not _clients or state.phase != "active" or not llm.enabled():
+        if state is None or not _clients or state.phase != "active" or state.world is None:
             continue
-        npcs_here = [n for n in state.quest.npcs if n.waypoint_idx == state.target_idx]
-        npc = npcs_here[0] if npcs_here else None
-        if not npc:
-            continue
-        try:
-            result = await llm.narrate_ambient(
+        if state.path:
+            continue  # still walking somewhere
+        if state.agent_goal:
+            npc = next((n for n in state.quest.npcs if n.id == state.agent_goal), None)
+            state.agent_goal = ""
+            if npc:
+                await _agent_converse(state, npc)
+                continue
+        await _agent_pick_and_go(state)
+
+
+async def _agent_pick_and_go(state: GameState) -> None:
+    npcs = state.quest.npcs
+    if not npcs:
+        return
+    options = [n for n in npcs if n.id not in _agent_recent] or list(npcs)
+    npc = _rng.choice(options)
+    tx, ty = _npc_tile(state, npc)
+    path = find_path(state.world, state.lx, state.ly, tx, ty)
+    if path and path[0] == [state.lx, state.ly]:
+        path = path[1:]
+    state.path = path
+    state.agent_goal = npc.id
+    _agent_recent.append(npc.id)
+    intent = f"{state.character.name} sets off to find {npc.name}, {npc.role}."
+    state.log_event("agent_move", intent, {"npc": npc.id})
+    await _broadcast({"type": "scene_beat", "text": intent, "who": state.character.name})
+
+
+async def _agent_converse(state: GameState, npc) -> None:
+    if not llm.enabled():
+        return
+    try:
+        result = await asyncio.wait_for(
+            llm.narrate_ambient(
                 quest_hook=state.quest.hook,
                 story_so_far=_story_so_far(state),
-                scene_name=_scene_name(state),
+                scene_name=npc.role,
                 npc_name=npc.name,
                 npc_role=npc.role,
                 npc_personality=npc.personality,
                 story_facts=list(state.quest.facts),
-            )
-            narrative = result.get("narrative", "")
-            line = result.get("line", "")
-            if line:
-                await _broadcast({"type": "npc_speak", "npc_name": npc.name, "line": line})
-            if narrative:
-                state.log_event("ambient", narrative)
-                await _broadcast(
-                    {
-                        "type": "scene_event",
-                        "text": narrative,
-                        "state": _state_snapshot(state, include_world=False),
-                    }
-                )
-        except Exception as exc:
-            log.warning("ambient event failed: %s", exc)
+            ),
+            timeout=8.0,
+        )
+    except Exception:
+        return
+    line = result.get("line", "")
+    narrative = result.get("narrative", "")
+    if line:
+        await _broadcast({"type": "npc_speak", "npc_name": npc.name, "line": line})
+    if narrative:
+        state.quest.beats.append(narrative)
+        state.log_event("agent_talk", narrative, {"npc": npc.id})
+        await _broadcast(
+            {
+                "type": "scene_event",
+                "text": narrative,
+                "state": _state_snapshot(state, include_world=False),
+            }
+        )
 
 
 async def _window_loop() -> None:
@@ -725,9 +765,8 @@ def create_app() -> FastAPI:
         asyncio.create_task(_start_new_game())
         asyncio.create_task(_window_loop())
         asyncio.create_task(_move_loop())
-        asyncio.create_task(_travel_card_loop())
         asyncio.create_task(_deal_loop())
-        asyncio.create_task(_ambient_loop())
+        asyncio.create_task(_agent_loop())
 
     app.mount("/assets", StaticFiles(directory=STATIC / "assets"), name="assets")
 

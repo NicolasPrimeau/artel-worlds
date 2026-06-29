@@ -494,7 +494,8 @@ function makeIndoorTextures(s){
     g.generateTexture(`wall_${tn}`,16,16); g.destroy();
   }
 }
-const WALK_SPEED = 1.1;   // route tiles per second
+const WALK_SPEED = 1.1;   // (legacy) route tiles per second
+const WALK_PX = 52;       // free-roam: pixels per second the sprite chases the server position
 const SPACING = 1.25;     // route-tile gap between followers
 const playerId = (()=>{ let p=localStorage.getItem("vq_pid"); if(!p){p="p"+Math.random().toString(36).slice(2,8);localStorage.setItem("vq_pid",p);} return p; })();
 
@@ -563,20 +564,21 @@ class World extends Phaser.Scene{
     if(pendingState){ applyState(pendingState); pendingState=null; }
   }
   update(_,dt){
-    if(!character || !routeArr.length) return;
-    const allowed = wpIdx.length ? wpIdx[Math.min(targetIdx, wpIdx.length-1)] : 0;
-    const moving = leaderPos < allowed - 0.001;
-    if(moving) leaderPos = Math.min(allowed, leaderPos + WALK_SPEED*(dt/1000));
+    if(!character) return;
     const m=character;
-    const p = routeXY(leaderPos);
-    m.spr.x=p.x; m.spr.y=p.y;
-    m.shadow.x=p.x; m.shadow.y=p.y+6;
-    m.spr.setDepth(1000+p.y);
-    if(moving && (p.dx||p.dy)){
-      const dir = Math.abs(p.dx)>Math.abs(p.dy) ? (p.dx>0?"right":"left") : (p.dy>0?"down":"up");
+    if(m.tx==null){ m.tx=m.spr.x; m.ty=m.spr.y; }
+    const dx=m.tx-m.spr.x, dy=m.ty-m.spr.y;
+    const dist=Math.hypot(dx,dy);
+    const moving=dist>0.6;
+    if(moving){
+      const step=Math.min(dist, WALK_PX*(dt/1000));
+      m.spr.x+=dx/dist*step; m.spr.y+=dy/dist*step;
+      const dir = Math.abs(dx)>Math.abs(dy) ? (dx>0?"right":"left") : (dy>0?"down":"up");
       if(!m.moving || m.dir!==dir){ m.dir=dir; m.spr.play(`h${m.sprite}-${dir}`,true); }
       m.moving=true;
     } else if(m.moving){ m.moving=false; idle(m); }
+    m.shadow.x=m.spr.x; m.shadow.y=m.spr.y+6;
+    m.spr.setDepth(1000+m.spr.y);
     updateBubbles();
     updateCaption(moving);
   }
@@ -637,15 +639,17 @@ function buildCharacter(snap){
   if(character){ character.spr.destroy(); character.shadow.destroy(); }
   character=null;
   routeArr=snap.world.route||[]; wpIdx=snap.world.wp_route_idx||[];
-  leaderPos=snap.pos.rpos||0; targetIdx=snap.pos.target_idx||0;
+  targetIdx=snap.pos.target_idx||0;
   const pm=snap.character; if(!pm) return;
-  const p=routeXY(leaderPos);
-  const shadow=scene.add.image(p.x,p.y+6,"shadow").setDepth(899).setAlpha(.5).setScale(1.1);
-  const spr=scene.add.sprite(p.x,p.y,"hero"+pm.sprite).setDepth(1000+p.y);
+  const sx=(snap.pos.x!=null?snap.pos.x:(routeArr[0]?routeArr[0][0]:0));
+  const sy=(snap.pos.y!=null?snap.pos.y:(routeArr[0]?routeArr[0][1]:0));
+  const px=sx*TILE+TILE/2, py=sy*TILE+TILE/2;
+  const shadow=scene.add.image(px,py+6,"shadow").setDepth(899).setAlpha(.5).setScale(1.1);
+  const spr=scene.add.sprite(px,py,"hero"+pm.sprite).setDepth(1000+py);
   spr.setFrame(DIR_COL["down"]);
   spr.setInteractive({useHandCursor:true});
   spr.on("pointerup",()=>showMemberDetail(pm));
-  const m={spr,shadow,id:pm.id,name:pm.name,role:pm.role,sprite:pm.sprite,status:pm.status,moving:false,dir:"down"};
+  const m={spr,shadow,id:pm.id,name:pm.name,role:pm.role,sprite:pm.sprite,status:pm.status,moving:false,dir:"down",tx:px,ty:py};
   idle(m); character=m;
   scene.cameras.main.startFollow(spr,true,0.09,0.09);
   scheduleAmbient();
@@ -710,8 +714,12 @@ function showMemberDetail(pm){
 
 function onMove(pos){
   if(!character) return;
-  targetIdx = pos.target_idx;
-  if(pos.rpos!=null && pos.rpos > leaderPos+2) leaderPos = pos.rpos; // resync if server far ahead
+  if(pos.target_idx!=null) targetIdx = pos.target_idx;
+  // free-roam: chase the absolute tile the server reports
+  if(pos.x!=null && pos.y!=null){
+    character.tx = pos.x*TILE+TILE/2;
+    character.ty = pos.y*TILE+TILE/2;
+  }
 }
 
 function syncNPCs(snap){

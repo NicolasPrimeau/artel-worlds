@@ -128,6 +128,7 @@ class WorldMap:
     tint: str = "#ffffff"
     tileset: str = "ground"
     tile_frames: dict = field(default_factory=dict)
+    walkable: list[int] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -143,7 +144,13 @@ class WorldMap:
             "tint": self.tint,
             "tileset": self.tileset,
             "tile_frames": self.tile_frames,
+            "walkable": self.walkable,
         }
+
+
+def find_path(world: "WorldMap", ax: int, ay: int, bx: int, by: int) -> list[list[int]]:
+    walk = set(world.walkable) if world.walkable else PATHLIKE
+    return _bfs(world.w, world.h, world.tiles, [ax, ay], [bx, by], walkable=walk)
 
 
 def _idx(w: int, x: int, y: int) -> int:
@@ -763,6 +770,7 @@ def generate_indoor_world(
         tint=THEMES.get(theme, THEMES["office"])["tint"],
         tileset="interior",
         tile_frames={str(k): v for k, v in frames.items()},
+        walkable=sorted(indoor_walkable),
     )
 
 
@@ -884,6 +892,7 @@ def generate_outdoor_world(
         wp_route_idx=wp_route_idx,
         theme=theme,
         tint=th["tint"],
+        walkable=sorted(OUTDOOR_WALKABLE),
     )
 
 

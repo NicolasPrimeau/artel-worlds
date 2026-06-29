@@ -1407,6 +1407,8 @@ class GameState:
     facing: str = "up"
     rpos: int = 0
     target_idx: int = 0
+    path: list[list[int]] = field(default_factory=list)  # remaining tiles for free-roam
+    agent_goal: str = ""  # npc id the agent is currently walking to
     log: list[dict[str, Any]] = field(default_factory=list)
     tick: int = 0
     phase: str = "active"  # "intro" | "active" | "resolving" | "complete"
@@ -1549,6 +1551,22 @@ def maybe_travel_event(state: GameState, rng: random.Random) -> str | None:
     if rng.random() > 0.10:
         return None
     return rng.choice(TRAVEL_EVENTS)
+
+
+def step_path(state: GameState) -> bool:
+    # free-roam: follow the agent's dynamic path one tile at a time
+    if not state.path:
+        return False
+    nx, ny = state.path[0]
+    if [nx, ny] == [state.lx, state.ly]:
+        state.path.pop(0)
+        if not state.path:
+            return False
+        nx, ny = state.path[0]
+    state.facing = facing_from_delta(nx - state.lx, ny - state.ly)
+    state.lx, state.ly = nx, ny
+    state.path.pop(0)
+    return True
 
 
 def step_party(state: GameState) -> bool:
