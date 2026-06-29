@@ -268,9 +268,11 @@
   #encounter .enc-scene{position:relative;flex:1 1 auto;overflow:hidden;
     background:linear-gradient(180deg,rgba(28,20,42,.34),rgba(20,14,32,.5))}
   #encounter .enc-banner{position:absolute;top:10px;left:50%;transform:translateX(-50%);
-    font-family:"Courier Prime",monospace;font-size:clamp(10px,2.6vw,13px);letter-spacing:.16em;text-transform:uppercase;
+    display:flex;flex-direction:column;align-items:center;gap:1px;text-align:center;
     color:var(--ink);background:var(--cream);border:2px solid var(--ink);border-radius:3px;
-    padding:5px 14px;white-space:nowrap;box-shadow:3px 3px 0 rgba(26,20,40,.3);animation:encDrop .32s cubic-bezier(.34,1.56,.64,1)}
+    padding:4px 16px;max-width:84vw;box-shadow:3px 3px 0 rgba(26,20,40,.3);animation:encDrop .32s cubic-bezier(.34,1.56,.64,1)}
+  #encounter .enc-banner .enc-kind{font-family:"Courier Prime",monospace;font-size:clamp(6px,1.6vw,8px);letter-spacing:.34em;text-transform:uppercase;font-weight:700}
+  #encounter .enc-banner .enc-name{font-family:"Cormorant Garamond",serif;font-size:clamp(13px,3.6vw,18px);font-weight:700;line-height:1.05;letter-spacing:.01em}
   @keyframes encDrop{from{transform:translate(-50%,-26px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
   .enc-sprite{image-rendering:pixelated;background-repeat:no-repeat;flex-shrink:0;filter:drop-shadow(2px 3px 0 rgba(0,0,0,.35))}
   #encounter .enc-opp{position:absolute;top:clamp(34px,11vw,58px);right:9%;animation:encInR .4s ease-out}
@@ -1164,10 +1166,10 @@ function showSceneBeat(text, who=''){
 function addLogEntry(text){ showSceneBeat(text); }
 
 const ENC_KIND={
-  encounter:{verb:n=>`A wild ${n} appears!`, emoji:"📋"},
-  rival:{verb:n=>`${n} blocks the way!`, emoji:"✋"},
-  boon:{verb:n=>`${n}!`, emoji:"✨"},
-  twist:{verb:n=>`${n}…`, emoji:"🔄"},
+  encounter:{tag:"WILD ENCOUNTER", emoji:"📋", col:"#f5b94e"},
+  rival:{tag:"RIVAL APPROACHES", emoji:"✋", col:"#ec858d"},
+  boon:{tag:"A BOON", emoji:"✨", col:"#83d3a3"},
+  twist:{tag:"A TWIST", emoji:"🔄", col:"#a896e2"},
 };
 function _heroSprite(idx,size){
   const n=String(idx).padStart(2,"0");
@@ -1191,8 +1193,8 @@ function showEncounter(m){
   ov.innerHTML="";
   const scene=document.createElement("div"); scene.className="enc-scene";
   const banner=document.createElement("div"); banner.className="enc-banner";
-  banner.style.borderColor="var(--ink)";
-  banner.textContent=kind.verb(ev.name)+more; scene.appendChild(banner);
+  banner.innerHTML=`<span class="enc-kind" style="color:${kind.col}">${kind.tag}</span><span class="enc-name">${ev.name}${more}</span>`;
+  scene.appendChild(banner);
   // opponent: NPC sprite if present, else a kind emoji
   if(m.npc_sprite>0){ const o=_heroSprite(m.npc_sprite,oppSize); o.classList.add("enc-opp"); scene.appendChild(o); }
   else { const it=document.createElement("div"); it.className="enc-item"; it.textContent=kind.emoji; scene.appendChild(it); }
