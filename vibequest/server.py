@@ -16,25 +16,19 @@ from .engine import (
     CARD_BY_ID,
     MIN_RESOLUTIONS,
     MAX_RESOLUTIONS,
-    MAX_SCENE_ROUNDS,
-    arc_register,
-    CardResolution,
+    SCENE_THRESHOLD,
     CardType,
-    DiceResult,
     GameState,
     PlayedCard,
     QuestState,
     apply_card_effects,
-    apply_disaster,
     apply_world_changes,
     advance_window,
-    at_station,
-    classify_result,
+    classify_window,
     deal_hand,
     make_quest,
     maybe_travel_event,
     new_game,
-    roll_d20,
     step_party,
     sync_target,
 )
@@ -59,7 +53,6 @@ def _is_beat(text: object) -> bool:
 
 
 _travel_processed: set[str] = set()
-_card_added_sent: set[str] = set()
 _vote_options: list[QuestState] | None = None
 _votes: dict[int, int] = {}
 _deal_type_idx: int = 0
@@ -127,6 +120,8 @@ def _state_snapshot(state: GameState, include_world: bool = True) -> dict:
             "objectives": state.quest.objectives,
             "momentum": state.quest.momentum,
             "pressure_count": len(state.quest.pressure_pool),
+            "scene_progress": state.quest.scene_progress,
+            "scene_threshold": SCENE_THRESHOLD,
             "npcs": [
                 {
                     "id": n.id,
@@ -195,177 +190,130 @@ async def _resolve_window(state: GameState) -> None:
     already_handled = set(_travel_processed)
     _travel_processed.clear()
     played = [c for c in advance_window(state, _rng) if c.id not in already_handled]
+    if not played:
+        return
 
     state.window.resolving = True
     state.phase = "resolving"
-    if played:
-        await _broadcast({"type": "window_closing", "card_count": len(played)})
-        await asyncio.sleep(0.35)
+    await _broadcast({"type": "window_closing", "card_count": len(played)})
+    await asyncio.sleep(0.3)
 
+    # --- apply every played card to the shared meters (no dice) ---
+    mom_before = state.quest.momentum
+    prog_before = state.quest.scene_progress
+    plays: list[dict] = []
+    target_npc_id: str | None = None
     for played_card in played:
         card_def = CARD_BY_ID.get(played_card.card_id)
         if not card_def:
             continue
-
-        if card_def.type in (CardType.ACCUMULATE, CardType.TWEAK):
-            if played_card.id not in _card_added_sent:
-                await _broadcast(
-                    {
-                        "type": "card_added",
-                        "card_name": card_def.name,
-                        "card_type": card_def.type.value,
-                        "card_description": card_def.description,
-                    }
-                )
-            _card_added_sent.discard(played_card.id)
-            if card_def.type == CardType.ACCUMULATE:
-                state.quest.pressure_pool.append(
-                    {
-                        "name": card_def.name,
-                        "description": card_def.description,
-                        "remaining": PRESSURE_DURATION,
-                    }
-                )
-            else:
-                state.quest.register = arc_register(
-                    state.quest.resolution_count + 2, MAX_RESOLUTIONS
-                )
-            apply_card_effects(card_def, DiceResult.MID, state.quest)
-            resolution = CardResolution(
-                card=played_card,
-                card_def=card_def,
-                dice_value=10,
-                dice_result=DiceResult.MID,
-                narrative=card_def.description,
-                consequence="",
-            )
-            state.window.resolutions.append(resolution)
-            pressure_narrative = card_def.description
-            await asyncio.sleep(0.4)
-            state.log_event(
-                "pressure_added",
-                pressure_narrative or card_def.description,
-                {"card": card_def.name, "card_type": card_def.type.value},
-            )
-            if pressure_narrative:
-                await _broadcast(
-                    {
-                        "type": "card_resolved",
-                        "narrative": pressure_narrative,
-                        "reactions": [],
-                        "npc_name": "",
-                        "state": _state_snapshot(state, include_world=False),
-                    }
-                )
-            continue
-
-        dice_value, dice_result = roll_d20(_rng)
-
-        artel_task = (
-            asyncio.create_task(artel.search_memory(f"{state.quest.hook} {card_def.name}"))
-            if artel.enabled()
-            else None
-        )
-
-        await _broadcast(
+        apply_card_effects(card_def, state.quest)
+        plays.append(
             {
-                "type": "dice_roll",
-                "dice_value": dice_value,
-                "dice_result": dice_result.value,
-                "card_name": card_def.name,
-                "card_type": card_def.type.value,
-                "card_description": card_def.description,
+                "name": card_def.name,
+                "type": card_def.type.value,
+                "description": card_def.description,
             }
         )
-
-        pressure_context = [f"{p['name']}: {p['description']}" for p in state.quest.pressure_pool]
-        state.quest.pressure_pool = [
-            {**p, "remaining": p["remaining"] - 1} for p in state.quest.pressure_pool
-        ]
-        state.quest.pressure_pool = [p for p in state.quest.pressure_pool if p["remaining"] > 0]
-
-        momentum_before = state.quest.momentum
-        apply_card_effects(card_def, dice_result, state.quest)
-        momentum_delta = state.quest.momentum - momentum_before
-
-        current_npc = None
-        npc_context = ""
-        if llm.enabled():
-            if played_card.target_npc_id:
-                current_npc = next(
-                    (n for n in state.quest.npcs if n.id == played_card.target_npc_id),
-                    None,
-                )
-            else:
-                current_npc = next(
-                    (n for n in state.quest.npcs if n.waypoint_idx == state.target_idx),
-                    None,
-                )
-            npc_context = (
-                f"{current_npc.name} ({current_npc.role}): {current_npc.personality}"
-                if current_npc
-                else ""
+        if played_card.target_npc_id and not target_npc_id:
+            target_npc_id = played_card.target_npc_id
+        if card_def.type == CardType.ACCUMULATE:
+            state.quest.pressure_pool.append(
+                {
+                    "name": card_def.name,
+                    "description": card_def.description,
+                    "remaining": PRESSURE_DURATION,
+                }
             )
+        elif card_def.type == CardType.TWEAK and state.quest.pressure_pool:
+            # a reframe dissolves one looming pressure
+            state.quest.pressure_pool.pop()
 
-        memory_ctx = ""
-        if artel_task:
-            try:
-                memory_ctx = await asyncio.wait_for(asyncio.shield(artel_task), timeout=0.6)
-            except Exception:
-                pass
+    if not plays:
+        state.window.resolving = False
+        state.phase = "active"
+        return
 
-        result = {
-            "narrative": card_def.description,
-            "consequence": "",
-            "reactions": [],
-            "established": [],
-        }
-        llm_task = (
-            asyncio.create_task(
-                llm.narrate_card(
-                    card_name=card_def.name,
-                    card_description=card_def.description,
-                    card_type=card_def.type.value,
-                    dice_value=dice_value,
-                    dice_label=dice_result.value,
-                    quest_hook=state.quest.hook,
-                    complication=state.quest.complication,
-                    protagonist=_character_desc(state),
-                    momentum=state.quest.momentum,
-                    momentum_delta=momentum_delta,
-                    memory_context=memory_ctx,
-                    story_so_far=_story_so_far(state),
-                    story_facts=list(state.quest.facts),
-                    register=state.quest.register,
-                    npc_context=npc_context,
-                    pressure_context=pressure_context,
-                    scene_context=_scene_context(state),
-                    resolution_count=state.quest.resolution_count,
-                    max_resolutions=MAX_RESOLUTIONS,
-                )
-            )
-            if llm.enabled()
-            else None
+    mom_delta = state.quest.momentum - mom_before
+    prog_delta = state.quest.scene_progress - prog_before
+
+    pressure_context = [f"{p['name']}: {p['description']}" for p in state.quest.pressure_pool]
+    state.quest.pressure_pool = [
+        {**p, "remaining": p["remaining"] - 1} for p in state.quest.pressure_pool
+    ]
+    state.quest.pressure_pool = [p for p in state.quest.pressure_pool if p["remaining"] > 0]
+
+    scene_resolved = state.quest.scene_progress >= SCENE_THRESHOLD
+
+    # --- pick the person in frame ---
+    current_npc = None
+    if target_npc_id:
+        current_npc = next((n for n in state.quest.npcs if n.id == target_npc_id), None)
+    if current_npc is None:
+        current_npc = next(
+            (n for n in state.quest.npcs if n.waypoint_idx == state.target_idx), None
         )
+    npc_context = (
+        f"{current_npc.name} ({current_npc.role}): {current_npc.personality}" if current_npc else ""
+    )
 
-        await asyncio.sleep(0.6)
+    memory_ctx = ""
+    if artel.enabled():
+        try:
+            names = " ".join(p["name"] for p in plays)
+            memory_ctx = await asyncio.wait_for(
+                asyncio.shield(
+                    asyncio.create_task(artel.search_memory(f"{state.quest.hook} {names}"))
+                ),
+                timeout=0.6,
+            )
+        except Exception:
+            pass
 
-        if llm_task:
-            try:
-                result = await llm_task
-            except Exception as exc:
-                log.warning("narrate_card failed: %s", exc)
+    # --- one beat for the whole window, bound to the cards + result ---
+    result: dict = {
+        "narrative": "",
+        "consequence": "",
+        "reactions": [],
+        "established": [],
+        "world_changes": [],
+    }
+    if llm.enabled():
+        try:
+            result = await llm.narrate_window(
+                plays=plays,
+                progress=state.quest.scene_progress,
+                progress_delta=prog_delta,
+                scene_threshold=SCENE_THRESHOLD,
+                momentum=state.quest.momentum,
+                momentum_delta=mom_delta,
+                quest_hook=state.quest.hook,
+                complication=state.quest.complication,
+                protagonist=_character_desc(state),
+                npc_context=npc_context,
+                story_so_far=_story_so_far(state),
+                story_facts=list(state.quest.facts),
+                register=state.quest.register,
+                pressure_context=pressure_context,
+                scene_context=_scene_context(state),
+                resolution_count=state.quest.resolution_count,
+                max_resolutions=MAX_RESOLUTIONS,
+                scene_resolved=scene_resolved,
+            )
+        except Exception as exc:
+            log.warning("narrate_window failed: %s", exc)
 
-        new_facts = [f for f in result.get("established", []) if isinstance(f, str)][:2]
-        state.quest.facts.extend(new_facts)
-        if len(state.quest.facts) > 24:
-            state.quest.facts = state.quest.facts[-24:]
+    if memory_ctx:
+        pass
 
-        world_changes = [c for c in result.get("world_changes", []) if isinstance(c, dict)][:6]
-        side_effects: list[dict] = []
-        if world_changes:
-            side_effects = apply_world_changes(state.quest, world_changes, _rng)
+    new_facts = [f for f in result.get("established", []) if isinstance(f, str)][:2]
+    state.quest.facts.extend(new_facts)
+    if len(state.quest.facts) > 24:
+        state.quest.facts = state.quest.facts[-24:]
 
+    world_changes = [c for c in result.get("world_changes", []) if isinstance(c, dict)][:6]
+    if world_changes:
+        side_effects = apply_world_changes(state.quest, world_changes, _rng)
         for fx in side_effects:
             action = fx.get("action", "")
             if action == "npc_say":
@@ -403,195 +351,71 @@ async def _resolve_window(state: GameState) -> None:
 
                 asyncio.create_task(_delayed())
 
-        resolution = CardResolution(
-            card=played_card,
-            card_def=card_def,
-            dice_value=dice_value,
-            dice_result=dice_result,
-            narrative=result.get("narrative", ""),
-            consequence=result.get("consequence", ""),
-        )
-        state.window.resolutions.append(resolution)
-        state.log_event(
-            "resolution",
-            result.get("narrative", ""),
-            {
-                "card": card_def.name,
-                "card_type": card_def.type.value,
-                "dice": dice_value,
-                "dice_result": dice_result.value,
-                "consequence": result.get("consequence", ""),
-                "reactions": result.get("reactions", []),
-                "established": new_facts,
-            },
+    narrative = result.get("narrative", "")
+    if _is_beat(result.get("consequence")):
+        state.quest.beats.append(result["consequence"])
+    state.log_event(
+        "resolution",
+        narrative,
+        {
+            "cards": [p["name"] for p in plays],
+            "progress": state.quest.scene_progress,
+            "momentum": state.quest.momentum,
+            "reactions": result.get("reactions", []),
+            "established": new_facts,
+        },
+    )
+    if artel.enabled():
+        await artel.write_memory(
+            f"Quest: {state.quest.hook}. Cards: {', '.join(p['name'] for p in plays)}. {narrative}",
+            tags=["vibequest", "resolution"],
         )
 
-        if _is_beat(result.get("consequence")):
-            state.quest.beats.append(result["consequence"])
+    state.quest.result_history.append(classify_window(prog_delta, mom_delta))
 
-        if artel.enabled():
-            await artel.write_memory(
-                f"Quest: {state.quest.hook}. Card: {card_def.name}. Dice: {dice_value}. {result.get('narrative', '')}",
-                tags=["vibequest", "resolution", card_def.type.value],
-            )
+    await _broadcast(
+        {
+            "type": "card_resolved",
+            "narrative": narrative,
+            "reactions": result.get("reactions", []),
+            "npc_name": current_npc.name if current_npc else "",
+            "state": _state_snapshot(state, include_world=False),
+        }
+    )
+    await asyncio.sleep(0.6)
 
-        await _broadcast(
-            {
-                "type": "card_resolved",
-                "narrative": result.get("narrative", ""),
-                "reactions": result.get("reactions", []),
-                "npc_name": current_npc.name if current_npc else "",
-                "state": _state_snapshot(state, include_world=False),
-            }
-        )
-        await asyncio.sleep(0.8)
-
-    window_result = classify_result(state.window.resolutions)
-    state.quest.result_history.append(window_result)
-    had_nat_20 = any(r.dice_result == DiceResult.NAT_20 for r in state.window.resolutions)
-    had_nat_1 = any(r.dice_result == DiceResult.NAT_1 for r in state.window.resolutions)
-    if window_result == "disaster":
-        victim = apply_disaster(state, _rng)
-        if victim:
-            status_word = "lost" if victim.status == "lost" else "rattled"
-            state.log_event(
-                "disaster",
-                f"{victim.name} is {status_word}.",
-                {"victim": victim.id, "status": victim.status},
-            )
-
-    # Start waypoint pick in parallel with arc assessment (saves ~1s of latency)
-    pick_task = asyncio.create_task(_do_pick_next_waypoint(state)) if llm.enabled() else None
-
-    arc = {"finale": False, "outcome": None}
-    if llm.enabled():
-        try:
-            arc = await llm.assess_arc(
-                quest_hook=state.quest.hook,
-                complication=state.quest.complication,
-                story_so_far=_story_so_far(state),
-                result_history=state.quest.result_history,
-                momentum=state.quest.momentum,
-                resolution_count=state.quest.resolution_count,
-                min_resolutions=MIN_RESOLUTIONS,
-                register=state.quest.register,
-                story_facts=list(state.quest.facts),
-            )
-        except Exception:
-            pass
-
-    scene_resolved = False
-    if arc.get("finale"):
-        state.quest.outcome = arc.get("outcome") or (
-            "success" if state.quest.momentum >= 0 else "failure"
-        )
-        if _is_beat(arc.get("closing_beat")):
-            state.quest.beats.append(arc["closing_beat"])
-            state.log_event("closing_beat", arc["closing_beat"])
+    # --- scene / objective resolution via progress ---
+    if scene_resolved:
+        state.quest.scene_progress = 0
+        state.quest.scene_beat_start = len(state.quest.beats)
         _complete_artel_objective(state, state.quest.resolution_count)
         state.quest.resolution_count += 1
-        scene_resolved = True
-        if pick_task:
+        if llm.enabled():
             try:
-                chosen = await asyncio.wait_for(asyncio.shield(pick_task), timeout=1.0)
+                chosen = await asyncio.wait_for(
+                    asyncio.shield(asyncio.create_task(_do_pick_next_waypoint(state))),
+                    timeout=1.5,
+                )
                 if chosen is not None:
                     state.quest.next_waypoint_override = chosen
             except Exception:
                 pass
         sync_target(state)
-    else:
-        # NAT_20 with no NAT_1: breakthrough forces scene to resolve now
-        # NAT_1 (regardless of 20): disaster forces scene to continue
-        # Both present: chaotic — let the DM decide normally
-        nat20_wins = had_nat_20 and not had_nat_1
-        nat1_blocks = had_nat_1
 
-        if nat20_wins:
-            state.log_event("crit_breakthrough", "NAT 20 — scene resolved by breakthrough")
-            _complete_artel_objective(state, state.quest.resolution_count)
-            state.quest.resolution_count += 1
-            state.quest.scene_beat_start = len(state.quest.beats)
-            state.quest.scene_rounds = 0
-            scene_resolved = True
-            if pick_task:
-                try:
-                    chosen = await asyncio.wait_for(asyncio.shield(pick_task), timeout=1.0)
-                    if chosen is not None:
-                        state.quest.next_waypoint_override = chosen
-                except Exception:
-                    pass
-            sync_target(state)
-            await _broadcast({"type": "crit_moment", "crit": "nat_20"})
-        else:
-            if nat1_blocks:
-                await _broadcast({"type": "crit_moment", "crit": "nat_1"})
-                nat1_res = next(
-                    (r for r in state.window.resolutions if r.dice_result == DiceResult.NAT_1),
-                    None,
-                )
-                if nat1_res and _is_beat(nat1_res.consequence):
-                    await asyncio.sleep(0.5)
-                    await _broadcast(
-                        {"type": "scene_beat", "text": nat1_res.consequence, "who": ""}
-                    )
-
-            scene = {"resolved": False, "dm_note": ""}
-            if llm.enabled() and not nat1_blocks:
-                try:
-                    scene = await llm.assess_scene(
-                        scene_name=_scene_name(state),
-                        scene_goal=_scene_goal(state),
-                        scene_beats=_scene_beats(state),
-                        rounds=state.quest.scene_rounds,
-                        momentum=state.quest.momentum,
-                        max_rounds=MAX_SCENE_ROUNDS,
-                        story_facts=list(state.quest.facts),
-                    )
-                except Exception:
-                    pass
-
-            force = state.quest.scene_rounds >= MAX_SCENE_ROUNDS
-            if not nat1_blocks and (scene.get("resolved") or force):
-                if scene.get("dm_note"):
-                    state.log_event("scene_resolved", scene["dm_note"])
-                _complete_artel_objective(state, state.quest.resolution_count)
-                state.quest.resolution_count += 1
-                state.quest.scene_beat_start = len(state.quest.beats)
-                state.quest.scene_rounds = 0
-                scene_resolved = True
-                if pick_task:
-                    try:
-                        chosen = await asyncio.wait_for(asyncio.shield(pick_task), timeout=1.0)
-                        if chosen is not None:
-                            state.quest.next_waypoint_override = chosen
-                    except Exception:
-                        pass
-                sync_target(state)
-            else:
-                state.quest.scene_rounds += 1
-                reason = (
-                    "NAT 1 — disaster forces another round"
-                    if nat1_blocks
-                    else scene.get("dm_note", "")
-                )
-                if reason:
-                    state.log_event("scene_continues", reason)
-
-    if pick_task and not pick_task.done():
-        pick_task.cancel()
+    # --- deterministic quest completion ---
+    total_scenes = max(len(state.quest.objectives), MIN_RESOLUTIONS)
+    if (
+        state.quest.resolution_count >= total_scenes
+        or state.quest.resolution_count >= MAX_RESOLUTIONS
+    ):
+        state.quest.outcome = "success" if state.quest.momentum >= 0 else "failure"
 
     if scene_resolved and not state.quest.outcome:
         asyncio.create_task(_escalate_complication(state))
 
-    await _broadcast(
-        {"type": "card_resolved", "state": _state_snapshot(state, include_world=False)}
-    )
-    await asyncio.sleep(0.5)
-
     state.window.resolving = False
     state.phase = "active"
 
-    # cards queued while we were resolving — pick them up immediately
     if state.window.cards:
         _card_signal.set()
 
@@ -655,99 +479,8 @@ async def _end_quest(state: GameState) -> None:
 
 
 async def _travel_card_loop() -> None:
-    while True:
-        await asyncio.sleep(1.0)
-        state = _state
-        if state is None or state.phase != "active" or not _clients:
-            continue
-        if at_station(state):
-            continue
-        pending = [c for c in state.window.cards if c.id not in _travel_processed]
-        if not pending:
-            continue
-        card = pending[0]
-        _travel_processed.add(card.id)
-        card_def = CARD_BY_ID.get(card.card_id)
-        if not card_def:
-            continue
-
-        if card_def.type in (CardType.ACCUMULATE, CardType.TWEAK):
-            apply_card_effects(card_def, DiceResult.MID, state.quest)
-            if card_def.type == CardType.ACCUMULATE:
-                state.quest.pressure_pool.append(
-                    {
-                        "name": card_def.name,
-                        "description": card_def.description,
-                        "remaining": PRESSURE_DURATION,
-                    }
-                )
-            else:
-                state.quest.register = arc_register(
-                    state.quest.resolution_count + 2, MAX_RESOLUTIONS
-                )
-            state.log_event("pressure_added", card_def.description, {"card": card_def.name})
-            _card_added_sent.discard(card.id)
-            continue
-
-        dice_value, dice_result = roll_d20(_rng)
-        await _broadcast(
-            {
-                "type": "dice_roll",
-                "dice_value": dice_value,
-                "dice_result": dice_result.value,
-                "card_name": card_def.name,
-                "card_type": card_def.type.value,
-                "card_description": card_def.description,
-            }
-        )
-        if _state is not state:
-            continue
-        apply_card_effects(card_def, dice_result, state.quest)
-        is_chaos_hit = card_def.type == CardType.CHAOS and dice_result in (
-            DiceResult.HIGH,
-            DiceResult.NAT_20,
-        )
-        travel_llm_task = None
-        if llm.enabled():
-            if is_chaos_hit:
-                travel_llm_task = asyncio.create_task(
-                    llm.narrate_chaos_interrupt(
-                        card_name=card_def.name,
-                        card_description=card_def.description,
-                        quest_hook=state.quest.hook,
-                        story_so_far=_story_so_far(state),
-                        dice_value=dice_value,
-                    )
-                )
-            else:
-                travel_llm_task = asyncio.create_task(
-                    llm.narrate_travel_card(
-                        card_name=card_def.name,
-                        card_type=card_def.type.value,
-                        quest_hook=state.quest.hook,
-                        story_so_far=_story_so_far(state),
-                        dice_value=dice_value,
-                        dice_label=dice_result.value,
-                    )
-                )
-        await asyncio.sleep(1.0)
-        event = ""
-        if travel_llm_task:
-            try:
-                event = await travel_llm_task
-            except Exception:
-                pass
-        if not _is_beat(event):
-            event = f"{card_def.name} is handled in transit."
-        if _state is not state:
-            continue
-        state.quest.beats.append(event)
-        state.log_event(
-            "chaos_interrupt" if is_chaos_hit else "travel_card",
-            event,
-            {"card": card_def.name, "dice": dice_value},
-        )
-        await _broadcast({"type": "travel_event", "text": event, "chaos": is_chaos_hit})
+    # retired: all cards resolve through _resolve_window (window-level, no dice)
+    return
 
 
 def _complete_artel_objective(state: GameState, idx: int) -> None:
@@ -1083,7 +816,6 @@ def create_app() -> FastAPI:
         target_npc_id = request_data.get("target_npc_id") or None
         if card_id not in CARD_BY_ID:
             return JSONResponse({"error": "unknown card"}, status_code=400)
-        card_def = CARD_BY_ID[card_id]
         played = PlayedCard(
             id=uuid.uuid4().hex[:12],
             card_id=card_id,
@@ -1097,16 +829,6 @@ def create_app() -> FastAPI:
         await _broadcast(
             {"type": "card_played", "card_id": card_id, "card_count": len(_state.window.cards)}
         )
-        if card_def.type in (CardType.ACCUMULATE, CardType.TWEAK):
-            await _broadcast(
-                {
-                    "type": "card_added",
-                    "card_name": card_def.name,
-                    "card_type": card_def.type.value,
-                    "card_description": card_def.description,
-                }
-            )
-            _card_added_sent.add(played.id)
         # refill: deal a replacement so the hand stays full instead of draining
         await _broadcast({"type": "deal_card", "card": _card_msg(_next_deal_card())})
         return JSONResponse({"ok": True, "card_count": len(_state.window.cards)})

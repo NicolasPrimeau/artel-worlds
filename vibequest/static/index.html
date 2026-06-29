@@ -62,6 +62,9 @@
   #titlecard .morale-fill{height:100%;border-radius:2px;transition:width .4s ease,background .4s ease}
   #titlecard .morale-val{font-size:clamp(7px,1.8vw,9px);font-family:"Courier Prime",monospace;color:var(--ink2);min-width:20px;text-align:right;flex-shrink:0}
   #titlecard .pressure-badge{font-size:clamp(6px,1.4vw,7px);letter-spacing:.15em;text-transform:uppercase;color:var(--coral);background:rgba(216,60,56,.10);padding:1px 5px;border-radius:10px;flex-shrink:0}
+  #titlecard .prog-row{display:flex;align-items:center;gap:6px;margin-top:4px}
+  #titlecard .prog-row .prog-lbl{font-size:clamp(6px,1.5vw,7px);letter-spacing:.3em;text-transform:uppercase;color:var(--ink2)}
+  #titlecard .prog-row .prog-pips{font-size:clamp(10px,2.6vw,13px);letter-spacing:2px;color:var(--sage2);line-height:1}
 
   /* speech bubble — compact, positioned above character */
   #bubbles{pointer-events:none}
@@ -277,6 +280,7 @@
       <span class="morale-delta" id="qmorale-delta"></span>
       <span class="pressure-badge" id="qpressure-badge" style="display:none"></span>
     </div>
+    <div class="prog-row" id="qprogress"></div>
     <div id="tc-body">
       <div class="hook" id="qhook"></div>
       <ul class="objectives" id="qobjectives"></ul>
@@ -496,6 +500,13 @@ const playerId = (()=>{ let p=localStorage.getItem("vq_pid"); if(!p){p="p"+Math.
 
 let scene=null, world=null, character=null, npcs=[], built=null, pendingState=null, currentSnap=null;
 let _lastMomentum=null;
+let _raisedUid=null;
+function _lowerRaised(){
+  if(_raisedUid==null) return;
+  const prev=_handEls.get(_raisedUid); const pid=_raisedUid; _raisedUid=null;
+  if(prev && prev._applyRest) prev._applyRest();
+  else if(pid!==null){}
+}
 let propLabels={};
 let routeArr=[], wpIdx=[], leaderPos=0, targetIdx=0;
 let currentHeading="", captionVisible=false, waypointNames=[], lastCaptionIdx=-1;
@@ -798,8 +809,8 @@ function setHud(snap){
   const ol=document.getElementById("qobjectives");
   ol.innerHTML="";
   const objs=q.objectives||[];
+  const done=q.outcome?objs.length:(q.resolution_count||0);
   if(objs.length){
-    const done=q.outcome?objs.length:Math.floor((q.resolution_count||0)/2);
     objs.forEach((obj,i)=>{
       const li=document.createElement("li");
       const box=document.createElement("span");
@@ -810,6 +821,19 @@ function setHud(snap){
       if(i<done) li.classList.add("done");
       ol.appendChild(li);
     });
+  }
+
+  // scene progress toward the next objective (always visible)
+  const sp=q.scene_progress||0, st=q.scene_threshold||3;
+  const progEl=document.getElementById("qprogress");
+  if(progEl){
+    if(q.outcome){ progEl.style.display="none"; }
+    else {
+      progEl.style.display="";
+      let pips="";
+      for(let i=0;i<st;i++) pips+=i<sp?"▰":"▱";
+      progEl.innerHTML=`<span class="prog-lbl">push</span><span class="prog-pips">${pips}</span>`;
+    }
   }
 
   const momentum=q.momentum||0;
@@ -1311,17 +1335,19 @@ function _reorderIndex(clientX,uid){
 }
 
 function _attachCardHandlers(el,uid,c){
-  let holdTimer=null,ptStart=null,dragging=false,dragMode=null,detailShown=false,_tapped=false,_lastDy=0;
+  let holdTimer=null,ptStart=null,dragging=false,dragMode=null,detailShown=false,_lastDy=0;
   const _applyRest=()=>{
-    el.style.transform=cardTransform(el._t,!_tapped,el._step);
-    el.style.boxShadow=_tapped?"0 12px 24px rgba(26,20,40,.28)":"";
-    el.style.zIndex=_tapped?100:String(el._defZ);
+    const tapped=(_raisedUid===uid);
+    el.style.transform=cardTransform(el._t,!tapped,el._step);
+    el.style.boxShadow=tapped?"0 12px 24px rgba(26,20,40,.28)":"";
+    el.style.zIndex=tapped?100:String(el._defZ);
   };
+  el._applyRest=_applyRest;
   const raiseFull=()=>{ el.style.transform=cardTransform(el._t,false,el._step); el.style.boxShadow="0 12px 24px rgba(26,20,40,.28)"; el.style.zIndex=100; };
   const resetFixed=()=>{ el.style.position=""; el.style.left=""; el.style.top=""; el.style.width=""; el.style.height=""; el.style.margin=""; el.style.transition=""; el.style.opacity=""; };
   const play=()=>{
     if(el.classList.contains("played"))return;
-    _tapped=false;
+    if(_raisedUid===uid) _raisedUid=null;
     const doPlay=(targetNpcId)=>{ flyCardToPile(el,c); el.classList.add("played"); playCard(c.id,targetNpcId); _removeHandItem(uid); };
     if(c.type==="action"&&showTargetPicker(npcId=>doPlay(npcId))){ resetFixed(); _layoutHand(null); }
     else { doPlay(null); }
@@ -1378,8 +1404,9 @@ function _attachCardHandlers(el,uid,c){
       if(_lastDy<-60) play();
       else { _applyRest(); _layoutHand(null); }
     } else {
-      _tapped=!_tapped;
-      _applyRest();
+      // single-selection: tapping a card raises it and lowers any other
+      if(_raisedUid===uid){ _raisedUid=null; _applyRest(); }
+      else { _lowerRaised(); _raisedUid=uid; _applyRest(); }
     }
   });
   el.addEventListener("pointercancel",()=>{
@@ -1391,7 +1418,7 @@ function _attachCardHandlers(el,uid,c){
 
 function resetHand(){
   document.getElementById("hand").innerHTML="";
-  _handItems=[]; _handEls.clear();
+  _handItems=[]; _handEls.clear(); _raisedUid=null;
   pileCards=[]; selectedCard=null;
   renderPile(); renderDrawPile(3);
 }
@@ -1522,6 +1549,7 @@ function addDealCard(card){
 function _removeHandItem(uid){
   const el=_handEls.get(uid);
   if(el) el.remove();
+  if(_raisedUid===uid) _raisedUid=null;
   _handItems=_handItems.filter(item=>item.uid!==uid);
   _handEls.delete(uid);
   _layoutHand(null);

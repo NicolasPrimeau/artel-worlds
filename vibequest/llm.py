@@ -192,6 +192,112 @@ JSON: {{"narrative":"...","consequence":"...","reactions":[{{"name":"...","role"
     return parsed
 
 
+_TYPE_MOVE = {
+    "action": "pushed toward the goal",
+    "accumulate": "let the pressure build",
+    "chaos": "caused a setback",
+    "tweak": "reframed the situation",
+}
+
+
+async def narrate_window(
+    plays: list[dict],
+    progress: int,
+    progress_delta: int,
+    scene_threshold: int,
+    momentum: int,
+    momentum_delta: int,
+    quest_hook: str,
+    complication: str,
+    protagonist: str,
+    npc_context: str = "",
+    story_so_far: str = "",
+    story_facts: list[str] | None = None,
+    register: str = "a deadpan documentary",
+    pressure_context: list[str] | None = None,
+    scene_context: str = "",
+    resolution_count: int = 0,
+    max_resolutions: int = 8,
+    scene_resolved: bool = False,
+) -> dict:
+    facts = ("TRUE:\n" + "\n".join(f"- {f}" for f in story_facts[-8:])) if story_facts else ""
+    history = f"LAST BEAT: {story_so_far}" if story_so_far else ""
+    pressure = ("PRESSURE: " + " / ".join(pressure_context)) if pressure_context else ""
+    stage = f"STAGE:\n{scene_context}" if scene_context else ""
+    npc = f"PERSON HERE: {npc_context}" if npc_context else ""
+
+    card_lines = "\n".join(
+        f"- {p['name']} ({p['type']}): {_TYPE_MOVE.get(p['type'], 'acted')} — {p['description']}"
+        for p in plays
+    )
+    mom_desc = (
+        f"{'up' if momentum_delta > 0 else 'down'} {abs(momentum_delta)}"
+        if momentum_delta
+        else "unchanged"
+    )
+    prog_desc = f"{progress}/{scene_threshold}"
+    if progress_delta:
+        prog_desc += f" ({'+' if progress_delta > 0 else ''}{progress_delta} this round)"
+    outcome_line = (
+        "This breaks the current step open — the party gets through it. End the beat on that resolution."
+        if scene_resolved
+        else "The current step is NOT done yet. End the beat mid-effort."
+    )
+
+    reactions = (
+        "2 reactions — the person here in their voice (≤12 words), then the protagonist (≤12 words)."
+        if npc_context
+        else "1 reaction from the protagonist (≤12 words)."
+    )
+
+    prompt = f"""{_TONE}
+
+{_escalation(resolution_count, max_resolutions)}
+SITUATION: {quest_hook} | COMPLICATION: {complication}
+{npc}
+PROTAGONIST: {protagonist} | MORALE: {momentum} ({mom_desc})
+{facts}
+{history}
+{pressure}
+{stage}
+
+THIS ROUND THE PARTY PLAYED:
+{card_lines}
+MECHANICAL RESULT: progress {prog_desc}, morale {mom_desc}. {outcome_line}
+
+Write ONE beat (2-3 sentences) in the {register} register that continues DIRECTLY from the last beat and dramatizes EXACTLY the cards above and their result — the pushes landing, any setback biting, any reframe shifting the meaning. Do not invent events unrelated to the cards played. Include one specific, exactly wrong detail (name, date, ticket number, or process) being professionally mishandled. {reactions} 0-2 established facts.
+{_WORLD_ACTIONS}
+
+JSON: {{"narrative":"...","consequence":"...","reactions":[{{"name":"...","role":"...","line":"..."}}],"established":["..."],"world_changes":[]}}"""
+
+    req = Request(
+        system="Respond only with valid JSON. No fantasy language.",
+        user=prompt,
+        min_grade="capable",
+    )
+    raw = await ROUTER.complete(req)
+    parsed = parse_json(raw)
+    if not parsed or "narrative" not in parsed:
+        raw = await ROUTER.complete(req)
+        parsed = parse_json(raw)
+    if not parsed or "narrative" not in parsed:
+        moves = ", ".join(p["name"] for p in plays) or "nothing"
+        return {
+            "narrative": f"The party plays {moves}. The matter advances, procedurally.",
+            "consequence": "",
+            "reactions": [],
+            "established": [],
+            "world_changes": [],
+        }
+    parsed["narrative"] = _clean(str(parsed.get("narrative", "")))
+    if parsed.get("consequence"):
+        parsed["consequence"] = _clean(str(parsed["consequence"]))
+    parsed.setdefault("established", [])
+    parsed.setdefault("world_changes", [])
+    parsed.setdefault("reactions", [])
+    return parsed
+
+
 async def assess_arc(
     quest_hook: str,
     complication: str,

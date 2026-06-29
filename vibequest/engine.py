@@ -1277,6 +1277,7 @@ class CardResolution:
 MIN_RESOLUTIONS = 3
 MAX_RESOLUTIONS = 8
 MAX_SCENE_ROUNDS = 3
+SCENE_THRESHOLD = 3  # net ACTION progress needed to resolve a scene / tick an objective
 
 
 SURREAL_ARC = [
@@ -1313,6 +1314,7 @@ class QuestState:
     resolution_count: int = 0
     momentum: int = 0
     tension: int = 0
+    scene_progress: int = 0
     outcome: str | None = None
     scene_rounds: int = 0
     scene_beat_start: int = 0
@@ -1592,29 +1594,36 @@ def advance_window(state: GameState, rng: random.Random) -> list[PlayedCard]:
     return played
 
 
-# Dice mostly steer the LLM; crits are the real mechanical swings.
-_DELTA = {
-    DiceResult.NAT_1: -6,
-    DiceResult.LOW: -2,
-    DiceResult.MID: 1,
-    DiceResult.HIGH: 3,
-    DiceResult.NAT_20: 6,
-}
+def _clamp(v: int) -> int:
+    return max(-10, min(10, v))
 
 
-def apply_card_effects(card_def: CardDef, dice: DiceResult, quest: QuestState) -> None:
-    if card_def.type in (CardType.ACCUMULATE, CardType.ACTION):
-        quest.momentum = max(-10, min(10, quest.momentum + _DELTA[dice]))
-    elif card_def.type == CardType.CHAOS:
-        quest.tension = min(10, quest.tension + (2 if dice == DiceResult.NAT_1 else 1))
-        drop = 2 if dice in (DiceResult.NAT_1, DiceResult.LOW) else 1
-        quest.momentum = max(-10, min(10, quest.momentum - drop))
-    elif card_def.type == CardType.TWEAK:
-        # a reframe intensifies the current trajectory — never a no-op
-        step = 2 if quest.momentum >= 0 else -2
-        quest.momentum = max(-10, min(10, quest.momentum + step))
-    if dice == DiceResult.NAT_1:
+# No dice. Each card TYPE has a fixed, legible job on the shared meters.
+def apply_card_effects(card_def: CardDef, quest: QuestState) -> None:
+    if card_def.type == CardType.ACTION:
+        # push toward the goal
+        quest.scene_progress += 1
+        quest.momentum = _clamp(quest.momentum + 2)
+    elif card_def.type == CardType.ACCUMULATE:
+        # raise the stakes — pressure builds, no progress
         quest.tension = min(10, quest.tension + 1)
+        quest.momentum = _clamp(quest.momentum + 1)
+    elif card_def.type == CardType.CHAOS:
+        # a setback — knocks progress back
+        quest.scene_progress = max(0, quest.scene_progress - 1)
+        quest.tension = min(10, quest.tension + 1)
+        quest.momentum = _clamp(quest.momentum - 2)
+    elif card_def.type == CardType.TWEAK:
+        # a reframe — intensifies the current trajectory
+        quest.momentum = _clamp(quest.momentum + (2 if quest.momentum >= 0 else -2))
+
+
+def classify_window(progress_delta: int, momentum_delta: int) -> str:
+    if progress_delta > 0 and momentum_delta >= 0:
+        return "triumph"
+    if progress_delta < 0 or momentum_delta < 0:
+        return "setback"
+    return "mixed"
 
 
 def classify_result(resolutions: list[CardResolution]) -> str:
