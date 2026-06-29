@@ -22,7 +22,7 @@
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%;overflow:hidden;background:var(--beige);font-family:"Courier Prime",monospace;color:var(--ink)}
-  #game{position:fixed;inset:0;z-index:0}
+  #game{position:fixed;top:0;left:0;right:0;bottom:var(--dock-h);z-index:0}
   #game canvas{image-rendering:pixelated}
   .serif{font-family:"Cormorant Garamond",serif}
   .ui{position:fixed;z-index:10;pointer-events:none}
@@ -86,12 +86,11 @@
   #caption.at-rest{color:var(--ink);background:rgba(196,174,136,.65);letter-spacing:.3em}
 
   /* ── split dock: world renders full-screen behind a translucent bottom dock ── */
-  html{--dock-h:clamp(260px,46vh,520px)}
+  html{--dock-h:clamp(220px,33.333vh,380px)}
   #dock{position:fixed;left:0;right:0;bottom:0;height:var(--dock-h);z-index:12;
     display:flex;flex-direction:column;pointer-events:none;
-    background:linear-gradient(180deg,rgba(20,14,32,0) 0%,rgba(20,14,32,.42) 16%,rgba(20,14,32,.8) 46%,rgba(20,14,32,.88) 100%);
-    backdrop-filter:blur(2.5px);-webkit-backdrop-filter:blur(2.5px);
-    border-top:2px solid rgba(238,207,96,.55)}
+    background:linear-gradient(180deg,#1c1428 0%,#150e20 100%);
+    border-top:3px solid var(--gold);box-shadow:0 -3px 14px rgba(0,0,0,.35)}
   /* ── cinematic narrative panel (now lives in the dock) ── */
   #scene-panel{position:static;flex:1 1 auto;min-height:0;overflow-y:auto;pointer-events:auto;
     display:flex;flex-direction:column;justify-content:flex-end;gap:0;
@@ -405,8 +404,8 @@
 const TILE = 16;
 // camera zoom: Pokémon-style — players large relative to the room. Integer for crisp pixels.
 function viewZoom(){ return Math.max(3, Math.min(6, Math.round(window.innerWidth/240))); }
-// lift the camera so the character sits in the upper (visible) half above the dock
-function _camOffsetY(){ return (window.innerHeight*0.22)/viewZoom(); }
+// canvas is confined to the top 2/3, so the centred character frames itself — no offset needed
+function _camOffsetY(){ return 0; }
 // Ninja Adventure sheet: 4 columns = directions, 7 rows = frames. Walk = rows 0-3 of a column.
 const DIR_COL = { down:0, up:1, left:2, right:3 };
 const PROP = {
