@@ -1041,58 +1041,19 @@ const IDLE_LINES=[
 ];
 const bubbles=[];
 let ambientTimer=null;
-function scheduleAmbient(){
-  clearTimeout(ambientTimer);
-  ambientTimer=setTimeout(()=>{
-    if(bubbles.length===0&&character){
-      const pool=[character,...npcs].filter(Boolean);
-      const m=pool[Math.floor(Math.random()*pool.length)];
-      const line=IDLE_LINES[Math.floor(Math.random()*IDLE_LINES.length)];
-      speak(m,m.name,line,3800);
-    }
-    scheduleAmbient();
-  },28000+Math.floor(Math.random()*14000));
-}
+function scheduleAmbient(){ clearTimeout(ambientTimer); }
 function memberFor(name, role){ return character; }
-function speak(member, name, text, dur){
-  if(!member||!text) return;
-  clearBubbles();
-  const el=document.createElement("div"); el.className="bubble";
-  el.innerHTML=`<span class="nm">${name||member.name}</span>${text}`;
-  document.getElementById("bubbles").appendChild(el);
-  bubbles.push({el,member,until:performance.now()+(dur||4600)});
-}
-function updateBubbles(){
-  const now=performance.now();
-  for(let i=bubbles.length-1;i>=0;i--){
-    const b=bubbles[i];
-    if(now>b.until){ b.el.remove(); bubbles.splice(i,1); }
-  }
-}
-function clearBubbles(){ for(const b of bubbles) b.el.remove(); bubbles.length=0; }
-function speakNPC(name,text,dur){
+// all in-world speech is centralized into the single narrative panel
+function speak(member, name, text){
   if(!text) return;
-  const npcObj=npcs.find(n=>n.name===name);
-  if(!npcObj||!scene){
-    showSceneBeat(`"${text}"`, name);
-    return;
-  }
-  const cam=scene.cameras.main; const wv=cam.worldView;
-  const fx=(npcObj.spr.x-wv.x)/wv.width;
-  const fy=(npcObj.spr.y-wv.y)/wv.height;
-  if(fx<0.05||fx>0.95||fy<0.05||fy>0.95){
-    showSceneBeat(`"${text}"`, name);
-    return;
-  }
-  clearBubbles();
-  const el=document.createElement("div"); el.className="bubble npc-bubble";
-  el.innerHTML=`<span class="nm">${name}</span>${text}`;
-  const sx=Math.round(fx*window.innerWidth);
-  const sy=Math.max(8,Math.round(fy*window.innerHeight)-64);
-  el.style.cssText=`position:fixed;left:${sx}px;top:${sy}px;transform:translateX(-50%)`;
-  document.body.appendChild(el);
-  bubbles.push({el,member:{name},until:performance.now()+(dur||4800)});
+  showSceneBeat(`"${text}"`, name||(member&&member.name)||"");
 }
+function speakNPC(name,text){
+  if(!text) return;
+  showSceneBeat(`"${text}"`, name||"");
+}
+function updateBubbles(){}
+function clearBubbles(){}
 let _typingTimer=null;
 function showSceneBeat(text, who=''){
   if(!text) return;
@@ -1115,19 +1076,12 @@ function showReactions(rs,snap,npcName){
   if(!rs||!rs.length) return;
   const npcR=npcName?rs.find(r=>r.name===npcName):null;
   const charR=character?(rs.find(r=>r.name===character.name)||rs.find(r=>!npcName||r.name!==npcName)||rs[rs.length-1]):null;
+  let delay=0;
   if(npcR){
-    const delay=Math.max(600, (rs[0]&&rs[0].line?rs[0].line.split(" ").length*52+300:600));
-    speakNPC(npcName,npcR.line,5000);
     setTimeout(()=>showSceneBeat(`"${npcR.line}"`, npcName), delay);
-    if(charR&&character){
-      setTimeout(()=>{
-        speak(character,character.name,charR.line,4000);
-        showSceneBeat(`"${charR.line}"`, character.name);
-      }, delay+3000);
-    }
-  } else if(charR&&character){
-    speak(character,character.name,charR.line,4000);
-    const delay=Math.max(400, (charR.line.split(" ").length*52+200));
+    delay += Math.max(1600, npcR.line.split(" ").length*55+500);
+  }
+  if(charR&&character&&(!npcR||charR.line!==npcR.line)){
     setTimeout(()=>showSceneBeat(`"${charR.line}"`, character.name), delay);
   }
 }
