@@ -720,12 +720,25 @@ def generate_indoor_world(
             props.append({"x": x, "y": y, "kind": kind})
             occupied.add((x, y))
 
+    wp_set = {(cx, cy) for cx, cy, *_ in room_data}
     for cx, cy, *_ in room_data[n_rooms:]:
         _put(cx - 1, cy - 1, "desk")
         _put(cx, cy - 1, "desk")
         _put(cx - 1, cy + 1, "chair")
         _put(cx, cy + 1, "chair")
         _put(cx + 1, cy, "plant_pot")
+
+    # fill the rest of the bullpen so it reads as a packed open-plan, not bare floor —
+    # cubicle rows of desks/partitions, leaving walking lanes and clear space around NPCs
+    _filler = ["desk", "desk", "partition", "cabinet", "chair", "plant_pot"]
+    for gy in range(bull_y0 + 1, h - 2, 2):
+        for gx in range(2, w - 2, 3):
+            if any((gx + ox, gy + oy) in wp_set for ox in (-1, 0, 1) for oy in (-1, 0, 1)):
+                continue  # keep space clear around the people you walk up to
+            if (gx, gy) in occupied:
+                continue
+            if rng.random() < 0.62:
+                _put(gx, gy, rng.choice(_filler))
 
     indoor_walkable = {FLOOR, PATH, PATH_LIGHT, LAVENDER}
     route: list[list[int]] = []
