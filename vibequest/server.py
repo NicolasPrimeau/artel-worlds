@@ -1000,6 +1000,14 @@ def create_app() -> FastAPI:
                 "spend": round(spend.get("usd", 0.0), 5),
                 "spend_days": dict(spend.get("days", {})),
                 "calls": spend.get("calls", 0),
+                "narration_model": (
+                    [m.model for m in llm.NARRATION.models]
+                    if llm.NARRATION is not llm.ROUTER
+                    else "free pool (set OPENAI_KEY)"
+                ),
+                "narration_spend": round((llm.NARRATION.spend or {}).get("usd", 0.0), 5)
+                if llm.NARRATION is not llm.ROUTER
+                else 0.0,
                 "router": llm.ROUTER.metrics() if llm.enabled() else [],
                 "llm_enabled": llm.enabled(),
                 "artel_enabled": artel.enabled(),

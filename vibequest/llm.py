@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 
+import llmrouter
+
 from . import env
 from llmrouter import Request, Router, build_models, parse_json
 
@@ -56,8 +58,14 @@ _DEFAULT_POOL = [
     "sambanova:Meta-Llama-3.3-70B-Instruct",
     "gemini:gemini-2.5-flash",
     "gemini:gemini-flash-lite-latest",
+    "openai:gpt-5-nano",
 ]
 _POOL = [s for s in env("POOL", ",".join(_DEFAULT_POOL)).split(",") if s.strip()]
+
+# the router's built-in table doesn't know newer models — they'd default to grade "fast" and get
+# skipped for narration. Register them as capable (top grade) + paid so they're eligible.
+for _m in ("gpt-5-nano", "gpt-5-mini", "gpt-4.1-mini"):
+    llmrouter.CAPS.setdefault(_m, llmrouter.Caps(tier="paid", grade="capable"))
 
 ROUTER = Router(
     build_models(_POOL, _KEYS),
@@ -65,6 +73,22 @@ ROUTER = Router(
     cooldown=float(env("COOLDOWN", "8.0")),
     cost_in_per_m=float(env("COST_IN_PER_M", "0.15")),
     cost_out_per_m=float(env("COST_OUT_PER_M", "0.60")),
+)
+
+# dedicated narration engine: the story beats (resolve_decision, plan_arc) route ONLY here, so they
+# consistently use one good model. Falls back to the free pool if the key/model isn't configured.
+_NARRATION_SPEC = env("NARRATION_MODEL", "openai:gpt-5-nano")
+_narration_models = build_models([_NARRATION_SPEC], _KEYS)
+NARRATION = (
+    Router(
+        _narration_models,
+        concurrency=int(env("CONCURRENCY", "6")),
+        cooldown=float(env("COOLDOWN", "8.0")),
+        cost_in_per_m=float(env("NARR_COST_IN_PER_M", "0.05")),
+        cost_out_per_m=float(env("NARR_COST_OUT_PER_M", "0.40")),
+    )
+    if _narration_models
+    else ROUTER
 )
 
 SPEND = ROUTER.spend
@@ -380,12 +404,13 @@ JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactio
         system="Respond only with valid JSON. No fantasy language.",
         user=prompt,
         min_grade="capable",
+        allow_paid=True,
     )
-    raw = await ROUTER.complete(req)
+    raw = await NARRATION.complete(req)
     parsed = parse_json(raw) or {}
     # the OUTCOME beat is required — retry once if the model left it empty
     if not _clean(parsed.get("narrative", "")):
-        retry = parse_json(await ROUTER.complete(req)) or {}
+        retry = parse_json(await NARRATION.complete(req)) or {}
         if _clean(retry.get("narrative", "")):
             parsed = retry
     try:
@@ -443,8 +468,10 @@ Plan this quest as a 5-beat story ARC — a real shape, not a flat list of simil
 5. resolution — the last hurdle to actually close it out
 Each beat: ONE specific present-tense sentence, about THE GOAL, ending on the obstacle.
 JSON: {{"beats":["...","...","...","...","..."]}}"""
-    req = Request(system="Respond only with valid JSON.", user=prompt, min_grade="capable")
-    raw = await ROUTER.complete(req)
+    req = Request(
+        system="Respond only with valid JSON.", user=prompt, min_grade="capable", allow_paid=True
+    )
+    raw = await NARRATION.complete(req)
     parsed = parse_json(raw) or {}
     beats = [_clean(b) for b in parsed.get("beats", []) if str(b).strip()][:6]
     return beats
