@@ -92,17 +92,18 @@
     background:linear-gradient(180deg,#1c1428 0%,#150e20 100%);
     border-top:3px solid var(--gold);box-shadow:0 -3px 14px rgba(0,0,0,.35)}
   /* ── cinematic narrative panel (now lives in the dock) ── */
-  #scene-panel{position:static;flex:0 0 auto;height:clamp(46px,8.5vh,72px);overflow-y:auto;overscroll-behavior:contain;
+  #scene-panel{position:static;flex:0 0 auto;height:clamp(68px,12vh,104px);overflow-y:auto;overscroll-behavior:contain;
     -webkit-overflow-scrolling:touch;pointer-events:auto;display:block;
     background:none;border:none;border-bottom:1px solid rgba(238,207,96,.12);
     padding:7px 18px 5px}
   #scene-panel:empty{padding:0;border:none}
-  .sbeat{font-family:"Courier Prime",monospace;font-size:clamp(13px,3.2vw,15px);line-height:1.55;
-    color:#e8e0cc;padding:0;transition:opacity .6s}
+  .sbeat{font-family:"Cormorant Garamond",Georgia,serif;font-size:clamp(16px,4.5vw,21px);line-height:1.5;
+    color:#efe7d6;letter-spacing:.004em;padding:0 0 8px;transition:opacity .7s}
+  .sbeat:last-child{padding-bottom:2px}
   .sbeat.live{opacity:1}
-  .sbeat.dim{opacity:.45;font-size:clamp(10px,2.5vw,12px);transition:opacity .6s,font-size .3s}
-  .sbeat .swho{display:block;font-size:clamp(7px,1.6vw,8px);letter-spacing:.34em;text-transform:uppercase;
-    color:var(--gold);opacity:.92;margin-bottom:3px;font-weight:700}
+  .sbeat.dim{opacity:.4;transition:opacity .7s}
+  .sbeat .swho{display:block;font-family:"Courier Prime",monospace;font-size:clamp(7px,1.7vw,9px);letter-spacing:.32em;
+    text-transform:uppercase;color:var(--gold);opacity:.82;margin-bottom:2px;font-weight:700}
   #cardzone{position:static;flex:1 1 auto;min-height:0;left:0;right:0;display:flex;align-items:flex-end;z-index:10;pointer-events:none}
   #drawpile{flex:0 0 25%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
     padding-bottom:calc(8px + env(safe-area-inset-bottom));pointer-events:auto;position:relative;overflow:visible}
@@ -259,7 +260,7 @@
     .target-npc{font-size:13px;padding:8px 10px}
     #caption{bottom:calc(var(--dock-h) + 6px)}
     #scene-panel{padding:6px 12px 4px}
-    .sbeat{font-size:clamp(12px,2.8vw,14px)}
+    .sbeat{font-size:clamp(15px,4.3vw,19px)}
   }
 
   /* ── Pokémon-style encounter overlay ── */
@@ -535,7 +536,7 @@ function makeIndoorTextures(s){
   }
 }
 const WALK_SPEED = 1.1;   // (legacy) route tiles per second
-const WALK_PX = 52;       // free-roam: pixels per second the sprite chases the server position
+const WALK_PX = 40;       // free-roam: pixels per second the sprite chases the server position
 const SPACING = 1.25;     // route-tile gap between followers
 const playerId = (()=>{ let p=localStorage.getItem("vq_pid"); if(!p){p="p"+Math.random().toString(36).slice(2,8);localStorage.setItem("vq_pid",p);} return p; })();
 
@@ -1174,7 +1175,7 @@ function showSceneBeat(text, who=''){
     body.textContent+=(i>0?" ":"")+words[i++];
     if(atBottom) panel.scrollTop=panel.scrollHeight; // follow newest unless user scrolled up
     if(i>=words.length){ clearInterval(_typingTimer); _typingTimer=null; }
-  }, 48);
+  }, 62);
 }
 function addLogEntry(text){ showSceneBeat(text); }
 

@@ -594,7 +594,7 @@ def _pos_msg(state: GameState) -> dict:
 
 async def _move_loop() -> None:
     while True:
-        await asyncio.sleep(0.42)
+        await asyncio.sleep(0.5)
         state = _state
         if state is None or not _clients or state.phase in ("resolving", "complete"):
             continue
@@ -632,7 +632,7 @@ async def _deal_loop() -> None:
         await _broadcast({"type": "deal_card", "card": _card_msg(_next_deal_card())})
 
 
-AGENT_INTERVAL = 3.5
+AGENT_INTERVAL = 8.0
 _agent_recent: deque[str] = deque(maxlen=3)
 
 
