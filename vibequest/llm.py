@@ -405,6 +405,7 @@ JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactio
         user=prompt,
         min_grade="capable",
         allow_paid=True,
+        temperature=1.0,  # gpt-5 reasoning models only accept the default temperature
     )
     raw = await NARRATION.complete(req)
     parsed = parse_json(raw) or {}
@@ -469,7 +470,11 @@ Plan this quest as a 5-beat story ARC — a real shape, not a flat list of simil
 Each beat: ONE specific present-tense sentence, about THE GOAL, ending on the obstacle.
 JSON: {{"beats":["...","...","...","...","..."]}}"""
     req = Request(
-        system="Respond only with valid JSON.", user=prompt, min_grade="capable", allow_paid=True
+        system="Respond only with valid JSON.",
+        user=prompt,
+        min_grade="capable",
+        allow_paid=True,
+        temperature=1.0,
     )
     raw = await NARRATION.complete(req)
     parsed = parse_json(raw) or {}
