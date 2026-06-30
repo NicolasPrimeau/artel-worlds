@@ -46,11 +46,14 @@ PRESSURE_DURATION = 3
 BATCH_WINDOW = (
     3.0  # decision point: gather the crowd's cards (duplicates add weight) before resolving
 )
-DECISION_TIMEOUT = 22.0  # time to read the encounter + play before the DM auto-resolves it
+DECISION_TIMEOUT = 44.0  # time to read the encounter + play before the DM auto-resolves it
 
 _rng = random.SystemRandom()
 _state: GameState | None = None
 _clients: set[WebSocket] = set()
+_ready: set[WebSocket] = (
+    set()
+)  # clients that dismissed the intro — the delve only runs when ≥1 is ready
 _lock = asyncio.Lock()
 _card_signal = asyncio.Event()
 
@@ -766,7 +769,7 @@ async def _move_loop() -> None:
     while True:
         await asyncio.sleep(0.33)  # smaller, more frequent steps -> smoother scroll
         state = _state
-        if state is None or not _clients or state.phase in ("resolving", "complete"):
+        if state is None or not _ready or state.phase in ("resolving", "complete"):
             continue
         # free-roam: follow the agent's dynamic path
         if step_path(state):
@@ -953,8 +956,8 @@ async def _window_loop() -> None:
                         log.error("_resolve_window crashed: %s", exc)
                         _state.window.resolving = False
                         _state.phase = "active"
-        elif _decision_at and (time.monotonic() - _decision_at) > DECISION_TIMEOUT:
-            # nobody played in time — the agent resolves the wall itself and the story moves on
+        elif _ready and _decision_at and (time.monotonic() - _decision_at) > DECISION_TIMEOUT:
+            # nobody played in time (and the room is ready) — the DM resolves it and the story moves on
             async with _lock:
                 if _state.phase == "active" and not _state.window.cards:
                     try:
@@ -1122,9 +1125,20 @@ def create_app() -> FastAPI:
                 await ws.send_text(json.dumps({"type": "deal_card", "card": _card_msg(card)}))
         try:
             while True:
-                await ws.receive_text()
+                msg = await ws.receive_text()
+                try:
+                    data = json.loads(msg)
+                except Exception:
+                    data = {}
+                if data.get("type") == "ready":
+                    first = not _ready
+                    _ready.add(ws)
+                    if first:  # the room just became ready — start the encounter clock fresh
+                        _decision_at = time.monotonic()
+                        _card_signal.set()
         except WebSocketDisconnect:
             _clients.discard(ws)
+            _ready.discard(ws)
 
     return app
 

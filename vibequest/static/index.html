@@ -1292,14 +1292,23 @@ function speakNPC(name,text){
 }
 function updateBubbles(){}
 function clearBubbles(){}
+let _ws=null, _introDismissed=false, _lastDecisionSeconds=44;
+function markReady(){
+  if(!_introDismissed){
+    _introDismissed=true;
+    try{ if(_ws && _ws.readyState===1) _ws.send(JSON.stringify({type:"ready"})); }catch(e){}
+  }
+  startDecisionTimer(_lastDecisionSeconds); // start the visible countdown fresh from dismissal
+}
 function showDecision(situation, seconds){
   const bar=document.getElementById("decision-bar"); if(!bar) return;
   if(!situation){ bar.style.display="none"; return; }
+  _lastDecisionSeconds=seconds||44;
   document.getElementById("decision-text").textContent=situation;
   document.getElementById("decision-cue").textContent="▶ YOUR MOVE";
   bar.classList.remove("resolving");
   bar.style.display="flex";
-  startDecisionTimer(seconds||14);
+  if(_introDismissed) startDecisionTimer(_lastDecisionSeconds); // hold the timer until the intro is dismissed
 }
 function startDecisionTimer(sec){
   const t=document.getElementById("decision-timer"); if(!t) return;
@@ -1942,6 +1951,8 @@ async function castVote(choice){
 function connect(){
   const proto=location.protocol==="https:"?"wss":"ws";
   const ws=new WebSocket(`${proto}://${location.host}/ws`);
+  _ws=ws;
+  ws.onopen=()=>{ if(_introDismissed){ try{ ws.send(JSON.stringify({type:"ready"})); }catch(e){} } }; // reconnect: re-arm
   ws.onclose=()=>{setTimeout(connect,1500);};
   ws.onmessage=ev=>{
     const m=JSON.parse(ev.data);
@@ -2022,7 +2033,7 @@ function connect(){
   const tc=document.getElementById("titlecard");
   tc.addEventListener("click",()=>tc.classList.toggle("expanded"));
   const ch=document.getElementById("chapter");
-  if(ch){ ch.addEventListener("click",hideChapter); }  // pointer-events only when .show (CSS), so it never blocks taps while hidden
+  if(ch){ ch.addEventListener("click",()=>{ hideChapter(); markReady(); }); }  // dismiss intro -> game starts
 })();
 
 (function(){
