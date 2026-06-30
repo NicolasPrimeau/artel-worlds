@@ -98,10 +98,12 @@
     border-radius:3px;padding:3px 7px;cursor:pointer}
   #copy-narr:hover{color:var(--gold);border-color:rgba(238,207,96,.5)}
   #copy-narr.done{color:#83d3a3;border-color:#83d3a3}
-  #decision-bar{flex:0 0 auto;pointer-events:auto;margin:7px 10px 3px;padding:7px 11px;
+  #decision-bar{position:relative;flex:0 0 auto;pointer-events:auto;margin:7px 10px 3px;padding:7px 11px 9px;
     background:rgba(238,207,96,.09);border:1px solid rgba(238,207,96,.42);border-radius:4px;
     font-family:"Cormorant Garamond",serif;font-size:clamp(13px,3.9vw,16px);color:#f3e6c4;line-height:1.25;
     display:flex;align-items:center;gap:10px;justify-content:space-between}
+  #decision-timer{position:absolute;left:0;bottom:0;height:2px;width:100%;background:var(--gold);transform-origin:left;border-radius:0 0 3px 3px}
+  #decision-bar.resolving #decision-timer{background:#83d3a3}
   #decision-bar.resolving{opacity:.55}
   #decision-text{flex:1}
   #decision-cue{font-family:"Courier Prime",monospace;font-size:8px;letter-spacing:.12em;color:var(--gold);white-space:nowrap;animation:cuePulse 1.1s ease-in-out infinite}
@@ -445,7 +447,7 @@
 <div id="encounter" class="ui"></div>
 <div id="dock" class="ui">
   <button id="copy-narr" title="Copy the full narrative">⧉ copy</button>
-  <div id="decision-bar" style="display:none"><span id="decision-text"></span><b id="decision-cue">▶ PLAY A CARD</b></div>
+  <div id="decision-bar" style="display:none"><span id="decision-text"></span><b id="decision-cue">▶ PLAY A CARD</b><div id="decision-timer"></div></div>
   <div id="scene-panel"></div>
   <div id="cardzone">
     <div id="drawpile"></div>
@@ -1248,17 +1250,29 @@ function speakNPC(name,text){
 }
 function updateBubbles(){}
 function clearBubbles(){}
-function showDecision(situation){
+function showDecision(situation, seconds){
   const bar=document.getElementById("decision-bar"); if(!bar) return;
   if(!situation){ bar.style.display="none"; return; }
   document.getElementById("decision-text").textContent=situation;
   document.getElementById("decision-cue").textContent="▶ PLAY A CARD";
   bar.classList.remove("resolving");
   bar.style.display="flex";
+  startDecisionTimer(seconds||14);
+}
+function startDecisionTimer(sec){
+  const t=document.getElementById("decision-timer"); if(!t) return;
+  t.style.transition="none"; t.style.transform="scaleX(1)";
+  void t.offsetWidth; // reflow so the drain animates from full
+  t.style.transition="transform "+sec+"s linear"; t.style.transform="scaleX(0)";
 }
 function decisionResolving(){
   const bar=document.getElementById("decision-bar");
-  if(bar && bar.style.display!=="none"){ bar.classList.add("resolving"); document.getElementById("decision-cue").textContent="RESOLVING…"; }
+  if(bar && bar.style.display!=="none"){
+    bar.classList.add("resolving");
+    document.getElementById("decision-cue").textContent="RESOLVING…";
+    const t=document.getElementById("decision-timer");
+    if(t){ const cur=getComputedStyle(t).transform; t.style.transition="none"; t.style.transform=cur==="none"?"scaleX(1)":cur; }
+  }
 }
 let _typingTimer=null;
 let _narrativeLog=[];   // full session narrative, for the copy button
@@ -1920,7 +1934,7 @@ function connect(){
       case "scene_beat": { if(m.text) showSceneBeat(m.text, m.who||''); break; }
       case "npc_speak": { speakNPC(m.npc_name,m.line,5000); break; }
       case "scene_event": { applyState(m.state); if(m.text) addLogEntry(m.text); break; }
-      case "decision": showDecision(m.situation); break;
+      case "decision": showDecision(m.situation, m.seconds); break;
       case "card_action": playCardAction(m); break;
       case "card_resolved": {
         applyState(m.state);

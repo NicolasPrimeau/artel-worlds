@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import random
+import time
 import uuid
 from collections import deque
 from pathlib import Path
@@ -32,7 +33,6 @@ from .engine import (
     make_quest,
     new_game,
     step_path,
-    sync_target,
 )
 from .world import find_path
 
@@ -45,6 +45,7 @@ PRESSURE_DURATION = 3
 BATCH_WINDOW = (
     3.0  # decision point: gather the crowd's cards (duplicates add weight) before resolving
 )
+DECISION_TIMEOUT = 14.0  # if nobody plays, the agent resolves the wall itself and moves on
 
 _rng = random.SystemRandom()
 _state: GameState | None = None
@@ -61,6 +62,7 @@ _travel_processed: set[str] = set()
 _vote_options: list[QuestState] | None = None
 _votes: dict[int, int] = {}
 _deal_type_idx: int = 0
+_decision_at: float = 0.0  # monotonic time the current wall opened (for the no-card timeout)
 
 
 def _character_desc(state: GameState) -> str:
@@ -192,12 +194,12 @@ async def _broadcast(msg: dict) -> None:
     _clients.difference_update(dead)
 
 
-async def _resolve_window(state: GameState) -> None:
+async def _resolve_window(state: GameState, auto: bool = False) -> None:
     global _travel_processed
     already_handled = set(_travel_processed)
     _travel_processed.clear()
     played = [c for c in advance_window(state, _rng) if c.id not in already_handled]
-    if not played:
+    if not played and not auto:
         return
 
     state.window.resolving = True
@@ -229,7 +231,7 @@ async def _resolve_window(state: GameState) -> None:
             target_npc_id = played_card.target_npc_id
 
     plays = list(weighted.values())
-    if not plays:
+    if not plays and not auto:
         state.window.resolving = False
         state.phase = "active"
         return
@@ -347,17 +349,18 @@ async def _resolve_window(state: GameState) -> None:
 
     state.quest.result_history.append(classify_window(prog_delta, mom_delta))
 
-    # cards trigger visible on-screen action: someone rushes the agent, who is helped or blocked
-    action_outcome = "help" if fit >= 55 else ("block" if fit < 35 else "glance")
-    await _broadcast(
-        {
-            "type": "card_action",
-            "kind": plays[0]["type"] if plays else "encounter",
-            "outcome": action_outcome,
-            "sprite": current_npc.sprite if current_npc else _rng.randint(1, 10),
-            "npc_id": current_npc.id if current_npc else "",
-        }
-    )
+    # a played card triggers the protagonist's visible reaction (skip when nobody played)
+    if plays:
+        action_outcome = "help" if fit >= 55 else ("block" if fit < 35 else "glance")
+        await _broadcast(
+            {
+                "type": "card_action",
+                "kind": plays[0]["type"],
+                "outcome": action_outcome,
+                "sprite": current_npc.sprite if current_npc else _rng.randint(1, 10),
+                "npc_id": current_npc.id if current_npc else "",
+            }
+        )
 
     await _broadcast(
         {
@@ -417,10 +420,13 @@ async def _resolve_window(state: GameState) -> None:
             path = path[1:]
         state.path = path
         state.agent_goal = next_npc.id
+    global _decision_at
+    _decision_at = time.monotonic()
     await _broadcast(
         {
             "type": "decision",
             "situation": next_situation,
+            "seconds": DECISION_TIMEOUT,
             "state": _state_snapshot(state, include_world=False),
         }
     )
@@ -651,10 +657,13 @@ async def _start_new_game(preset_quest: QuestState | None = None) -> None:
         {"type": "new_quest", "state": _state_snapshot(_state), "opening": opening_text}
     )
     await asyncio.sleep(2.0)
+    global _decision_at
+    _decision_at = time.monotonic()
     await _broadcast(
         {
             "type": "decision",
             "situation": first_situation,
+            "seconds": DECISION_TIMEOUT,
             "state": _state_snapshot(_state, include_world=False),
         }
     )
@@ -844,29 +853,36 @@ async def _agent_converse(state: GameState, npc) -> None:
 
 
 async def _window_loop() -> None:
-    global _state
     while True:
         try:
-            await asyncio.wait_for(_card_signal.wait(), timeout=5.0)
+            await asyncio.wait_for(_card_signal.wait(), timeout=1.0)
         except asyncio.TimeoutError:
             pass
         _card_signal.clear()
-        if _state is None or _state.phase == "resolving" or _state.phase == "complete":
+        st = _state
+        if st is None or not _clients or st.phase != "active":
             continue
-        if not _clients:
-            continue
-        sync_target(_state)
-        if not _state.window.cards:
-            continue
-        await asyncio.sleep(BATCH_WINDOW)
-        async with _lock:
-            if _state.window.cards and _state.phase == "active":
-                try:
-                    await _resolve_window(_state)
-                except Exception as exc:
-                    log.error("_resolve_window crashed: %s", exc)
-                    _state.window.resolving = False
-                    _state.phase = "active"
+        if st.window.cards:
+            # someone played: gather the crowd's cards briefly, then resolve the wall
+            await asyncio.sleep(BATCH_WINDOW)
+            async with _lock:
+                if _state.window.cards and _state.phase == "active":
+                    try:
+                        await _resolve_window(_state)
+                    except Exception as exc:
+                        log.error("_resolve_window crashed: %s", exc)
+                        _state.window.resolving = False
+                        _state.phase = "active"
+        elif _decision_at and (time.monotonic() - _decision_at) > DECISION_TIMEOUT:
+            # nobody played in time — the agent resolves the wall itself and the story moves on
+            async with _lock:
+                if _state.phase == "active" and not _state.window.cards:
+                    try:
+                        await _resolve_window(_state, auto=True)
+                    except Exception as exc:
+                        log.error("_auto_resolve crashed: %s", exc)
+                        _state.window.resolving = False
+                        _state.phase = "active"
 
 
 def create_app() -> FastAPI:

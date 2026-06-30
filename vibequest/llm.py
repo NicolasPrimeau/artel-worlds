@@ -324,10 +324,24 @@ async def resolve_decision(
     history = f"SO FAR: {story_so_far}" if story_so_far else ""
     mood_line = f"AGENT'S MOOD: {mood}" if mood else ""
     npc = f"AGENT IS WITH: {npc_context}" if npc_context else ""
-    card_lines = "\n".join(
-        f"- {c['name']} (played x{c.get('weight', 1)}, {_EVENT_KIND.get(c['type'], 'an event')}): {c['description']}"
-        for c in cards
-    )
+    if cards:
+        card_lines = "\n".join(
+            f"- {c['name']} (played x{c.get('weight', 1)}, {_EVENT_KIND.get(c['type'], 'an event')}): {c['description']}"
+            for c in cards
+        )
+        cards_block = (
+            "Cards the audience played to resolve it (x = how many people played it; higher = stronger pull):\n"
+            f"{card_lines}\n\n"
+            "Weigh the cards by their counts — heavier cards dominate; combine them if it makes sense. "
+            "Rate FIT 0-100: how well these cards resolve THIS wall, judged by whether they fit. "
+            "Be GENEROUS when they plausibly help (HIGH = the agent gets past the wall cleanly). "
+            "When they're the WRONG move for this wall, fit is LOW — the wall still resolves, but ABSURDLY; reality bends, deadpan, and it gets weirder."
+        )
+    else:
+        cards_block = (
+            "The audience played NO cards. The agent handles this wall on its own — modestly, plainly. "
+            "Rate FIT around 55-65 (ordinary progress, no big swing)."
+        )
     people = "\n".join(f"- [{n['id']}] {n['name']}, {n['role']}" for n in roster) if roster else ""
     reactions = (
         "Add 1-2 short reactions in quotes — the person present, then the agent (each ≤10 words)."
@@ -336,7 +350,7 @@ async def resolve_decision(
     )
     prompt = f"""{_TONE}
 
-THE GOAL: {quest_hook}
+THE GOAL (the spine — every wall is a step toward THIS, never drift): {quest_hook}
 THE AGENT: {protagonist}
 {mood_line}
 {npc}
@@ -344,16 +358,15 @@ THE AGENT: {protagonist}
 {history}
 REALITY: {_surreal_band(surreal)}
 
-DECISION POINT — the agent is stuck here, and the audience decides what happens:
+DECISION POINT — the agent is stuck here:
 "{situation}"
 
-Cards the audience played to resolve it (x = how many people played it; higher = stronger pull):
-{card_lines}
+{cards_block}
 
-Weigh the cards by their counts — heavier cards dominate; combine them if it makes sense. Then:
-1. Rate FIT 0-100: how well these cards resolve THIS situation. Be GENEROUS — if they plausibly help, it's HIGH and the agent gets PAST the wall and makes real progress. Low only if genuinely unrelated/impossible (then reality bends, surreal, deadpan).
+Then:
+1. (the FIT from above)
 2. Write a SHORT beat (1-2 sentences, ≤30 words): the concrete outcome FIRST, then a quick line. {reactions}
-3. Give the NEXT decision point: the agent progresses, then hits the next concrete wall toward the goal. ONE specific sentence. Don't repeat earlier walls.
+3. NEXT decision point: the agent progresses, then hits the next concrete wall — which MUST be a step toward THE GOAL above (finding/fixing the exact thing the goal names), never an unrelated office problem. ONE specific sentence. Don't repeat earlier walls.
 4. Pick next_npc_id: who the agent walks to next for that wall (an exact id from the list, or "").
 
 PEOPLE:
@@ -392,7 +405,7 @@ GOAL: {quest_hook}
 COMPLICATION: {complication}
 AGENT: {protagonist}
 
-State the FIRST concrete wall the agent runs into — the opening decision point the audience must resolve. ONE specific sentence, present tense, ending on the open question.
+State the FIRST concrete wall standing between the agent and THE GOAL above — a specific obstacle to achieving exactly what the goal names. ONE specific sentence, present tense, directly about the goal (not a generic office problem).
 JSON: {{"situation":"..."}}"""
     req = Request(system="Respond only with valid JSON.", user=prompt, min_grade="fast")
     raw = await ROUTER.complete(req)
