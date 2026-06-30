@@ -405,7 +405,7 @@
 
 <div id="chapter" class="ui">
   <div class="inner">
-    <div class="ch" id="chno">A VibeQuest</div>
+    <div class="ch" id="chno">An Office Delve</div>
     <div class="ti" id="chti"></div>
     <div class="hk" id="chhk"></div>
     <div class="pro" id="chpro"></div>
@@ -436,7 +436,7 @@
 <div id="encounter" class="ui"></div>
 <div id="dock" class="ui">
   <div id="scene-panel">
-    <div id="decision-bar" style="display:none"><span id="decision-text"></span><b id="decision-cue">▶ PLAY A CARD</b><div id="decision-timer"></div></div>
+    <div id="decision-bar" style="display:none"><span id="decision-text"></span><b id="decision-cue">▶ YOUR MOVE</b><div id="decision-timer"></div></div>
   </div>
   <div id="cardzone">
     <div id="drawpile"></div>
@@ -1274,7 +1274,7 @@ function showDecision(situation, seconds){
   const bar=document.getElementById("decision-bar"); if(!bar) return;
   if(!situation){ bar.style.display="none"; return; }
   document.getElementById("decision-text").textContent=situation;
-  document.getElementById("decision-cue").textContent="▶ PLAY A CARD";
+  document.getElementById("decision-cue").textContent="▶ YOUR MOVE";
   bar.classList.remove("resolving");
   bar.style.display="flex";
   startDecisionTimer(seconds||14);
@@ -1342,12 +1342,12 @@ function logEncounter(m){
 }
 
 const ENC_KIND={
-  encounter:{tag:"GUILE", emoji:"🃏", col:"#f5b94e"},
-  rival:{tag:"FORCE", emoji:"✊", col:"#ec858d"},
-  boon:{tag:"PROCESS", emoji:"📋", col:"#83d3a3"},
-  twist:{tag:"WILDCARD", emoji:"🎲", col:"#a896e2"},
+  encounter:{tag:"ARCANE", emoji:"🔮", col:"#f5b94e"},
+  rival:{tag:"MARTIAL", emoji:"⚔️", col:"#ec858d"},
+  boon:{tag:"SOCIAL", emoji:"💬", col:"#83d3a3"},
+  twist:{tag:"WILD", emoji:"🎲", col:"#a896e2"},
 };
-const TYPE_LABEL={encounter:"GUILE",rival:"FORCE",boon:"PROCESS",twist:"WILDCARD"};
+const TYPE_LABEL={encounter:"ARCANE",rival:"MARTIAL",boon:"SOCIAL",twist:"WILD"};
 function _heroSprite(idx,size){
   const n=String(idx).padStart(2,"0");
   const el=document.createElement("div"); el.className="enc-sprite";
@@ -1490,7 +1490,7 @@ function showChapter(snap, hold){
   const pro=document.getElementById("chpro");
   if(pro){
     if(c.name){
-      const verbs=["is on the case.","has been handed it.","has to sort it out.","takes it on.","picks up the file.","draws the short straw."];
+      const verbs=["descends into it.","takes up the quest.","draws their stapler.","answers the call.","enters the dungeon.","sets off, alone."];
       const v=verbs[c.name.length%verbs.length]; // stable per protagonist, no flicker
       pro.innerHTML=`<b>${c.name}</b> ${v}`;
       pro.style.display="";

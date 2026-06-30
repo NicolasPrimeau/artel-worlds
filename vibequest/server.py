@@ -251,7 +251,7 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
     # show the chosen move IMMEDIATELY — threads the card into the story and fills the resolve latency
     if plays:
         top = max(plays, key=lambda p: p["weight"])
-        trying = f"{state.character.name} goes with {top['name']}."
+        trying = f"{state.character.name} answers with {top['name']}!"
         state.quest.beats.append(trying)
         await _broadcast({"type": "scene_beat", "text": trying, "who": "", "pending": True})
 

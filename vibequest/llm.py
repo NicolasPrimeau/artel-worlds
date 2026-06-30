@@ -104,8 +104,12 @@ _TONE = (
 )
 
 _TONE_MINI = (
-    "Dry deadpan office comedy. SHORT — 1-2 plain sentences, present tense. "
-    "A ≤10-word line of dialogue is fine; no stage directions, no purple prose. An office, not fantasy."
+    "You are the DUNGEON MASTER of an office adventure. Narrate like a tabletop DM: present tense, SHORT "
+    "(1-2 sentences), treating mundane office things with EPIC, perilous gravity — a jammed printer is a beast, "
+    "the auditor is a boss, the 5pm all-hands is a doom clock, the break-room fish-smell is a hazard. "
+    "Deadpan: the comedy is the contrast between the heroic framing and the banal reality. "
+    "A ≤10-word line of dialogue is fine. No purple prose. It's an office dungeon, not actual fantasy — no swords or magic, "
+    "the 'spells' are emails/forms/coffee played straight-faced as if they were magic."
 )
 
 
@@ -371,32 +375,32 @@ async def resolve_decision(
     if cards:
         card_lines = "; ".join(f"{c['name']}×{c.get('weight', 1)}" for c in cards)
         cards_block = (
-            f"AUDIENCE TACTIC(S): {card_lines}. The agent uses the heaviest. "
-            "FIT 0-100 = how well it suits THIS wall: right tactic→HIGH (works, gets past cleanly); "
-            "wrong/absurd→LOW (agent does it anyway, it backfires, reality bends, deadpan)."
+            f"THE PARTY CASTS/USES: {card_lines}. The hero performs the heaviest one. "
+            "FIT 0-100 = how well that action suits THIS encounter: right move→HIGH (it lands, they clear it); "
+            "wrong/absurd move→LOW (they try it anyway, it backfires hilariously, the encounter gets worse/weirder)."
         )
     else:
-        cards_block = "No tactic chosen — the agent muddles through alone. FIT ~60."
+        cards_block = "The party hesitates — the hero acts on instinct. FIT ~60."
     people = ", ".join(f"{n['id']}={n['name']}" for n in roster) if roster else ""
     prompt = f"""{_TONE_MINI}
 
-GOAL (the spine, never drift): {quest_hook}
-AGENT: {protagonist}{mood_s}
+QUEST (the hero's goal, never drift): {quest_hook}
+HERO: {protagonist}{mood_s}
 {npc}
 {facts}
 {history}
-REALITY: {_surreal_band(surreal)}
+THE OFFICE-DUNGEON RIGHT NOW: {_surreal_band(surreal)}
 
-WALL — the agent is stuck here: "{situation}"
+ENCOUNTER — the hero faces this: "{situation}"
 {cards_block}
 
-Continue the ONE ongoing story — pick up from the wall and the tactic. Give JSON:
+You're the DM. Narrate this beat of the delve, picking up from the encounter and the action. Give JSON:
 - fit (int)
-- narrative: REQUIRED, 1-2 short sentences — the agent DOES the chosen tactic and the concrete RESULT (clear on its own, never left to the reaction).
+- narrative: REQUIRED, 1-2 short sentences in DM voice — the hero performs the chosen action and the concrete RESULT (clear on its own, never left to the reaction).
 - reactions: 0-1 quick ≤10-word quote ({{"name","line"}}).
-- breakthrough: true only if the agent clearly got PAST the wall (wrong/weak tactic → false, wall persists).
+- breakthrough: true only if the hero clearly CLEARED this encounter (a wrong/weak action → false, the encounter still blocks them).
 - established: 0-1 durable fact (or []).
-- if breakthrough — next_situation + next_npc_id. PLANNED next beat: "{planned_next}". Use it (reworded) if the move went cleanly; if the tactic was wrong/chaotic, set derailed=true and DEVIATE into the off-plan consequence instead. One sentence about the goal, not a repeat.
+- if breakthrough — next_situation + next_npc_id. PLANNED next encounter: "{planned_next}". Use it (reworded) if they cleared it cleanly; if the action was wrong/chaotic, set derailed=true and DEVIATE into the off-plan consequence instead. One sentence — the next encounter, still on the quest, not a repeat.
 - next_npc_id: an id from [{people}] or "".
 
 JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactions":[{{"name":"...","line":"..."}}],"next_situation":"...","next_npc_id":"","established":[]}}"""
@@ -432,20 +436,20 @@ JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactio
     parsed["reactions"] = rx
     # never leave the audience without an outcome — synthesize a plain one if needed
     if not parsed["narrative"]:
-        name = protagonist.split(":")[0].strip() or "The agent"
+        name = protagonist.split(":")[0].strip() or "The hero"
         tac = max(cards, key=lambda c: c.get("weight", 1))["name"] if cards else "their move"
-        parsed["narrative"] = f"{name} tries {tac}. It doesn't get them past this yet."
+        parsed["narrative"] = f"{name} tries {tac}. The encounter holds."
     return parsed
 
 
 async def first_decision(quest_hook: str, complication: str, protagonist: str) -> str:
     prompt = f"""{_TONE_MINI}
 
-GOAL: {quest_hook}
+QUEST: {quest_hook}
 COMPLICATION: {complication}
-AGENT: {protagonist}
+HERO: {protagonist}
 
-State the FIRST concrete wall standing between the agent and THE GOAL above — a specific obstacle to achieving exactly what the goal names. ONE specific sentence, present tense, directly about the goal (not a generic office problem).
+State the FIRST ENCOUNTER the hero meets on this delve — a specific office-as-dungeon obstacle between them and the quest (a foe, a gatekeeper, a hazard, a locked way). ONE present-tense sentence: a mundane office thing, framed with peril.
 JSON: {{"situation":"..."}}"""
     req = Request(system="Respond only with valid JSON.", user=prompt, min_grade="fast")
     raw = await ROUTER.complete(req)
@@ -457,17 +461,17 @@ async def plan_arc(quest_hook: str, complication: str, protagonist: str) -> list
     name = protagonist.split(":")[0]
     prompt = f"""{_TONE_MINI}
 
-GOAL: {quest_hook}
+QUEST: {quest_hook}
 COMPLICATION: {complication}
-AGENT: {name}
+HERO: {name}
 
-Plan this quest as a 5-beat story ARC — a real shape, not a flat list of similar errands. Each beat is a concrete WALL the agent runs into, and they ESCALATE toward a climax. Distinct beats, never rephrasings of each other. Shape:
-1. the opening snag
-2. it gets more tangled — a new wrinkle
-3. stakes rise — a real complication with a cost
-4. CLIMAX — the make-or-break moment (the deadline lands / the VIP arrives / the review starts / it all converges)
-5. resolution — the last hurdle to actually close it out
-Each beat: ONE specific present-tense sentence, about THE GOAL, ending on the obstacle.
+Plan this office DELVE as a 5-ENCOUNTER dungeon run — a real adventure shape, not a flat list of errands. Each beat is a concrete ENCOUNTER the hero must clear (a foe, a gatekeeper, a hazard, a locked way), ESCALATING deeper. Distinct encounters, never rephrasings. Shape:
+1. the threshold — the first obstacle barring the way
+2. deeper in — a new hazard or gatekeeper
+3. the gauntlet — a real danger with a cost
+4. THE BOSS / DOOM CLOCK — the make-or-break (the deadline lands, the auditor arrives, it all converges)
+5. the final lock — the last barrier before the prize
+Each beat: ONE present-tense sentence — a mundane office thing as a dungeon obstacle on THE QUEST, framed with peril.
 JSON: {{"beats":["...","...","...","...","..."]}}"""
     req = Request(
         system="Respond only with valid JSON.",
