@@ -261,7 +261,7 @@ First, rate FIT 0-100: how well do these events fit what the agent needs RIGHT N
   Note: an event that echoes the goal but is IMPOSSIBLE right now (a coffee round when there are no pods) is a CLASH — play the irony: it happens anyway, absurdly.
 Pick the fit honestly from the event-vs-need mismatch.
 
-Then write the beat as POKEMON text: 1-2 SHORT lines, max 3, ≤12 words each. Dramatize EXACTLY these events at this fit level. No flowery prose, no similes. {reactions} 0-2 established facts (on a LOW-fit clash, a fact may be rewritten/contradicted — that's fine). If an event introduces a new person or object, add it via world_changes.
+Then write the beat as POKEMON text: 1-2 SHORT lines, max 3, ≤12 words each. The FIRST line must state the CONCRETE CONSEQUENCE for the agent's goal — what just changed, plainly (e.g. "The form is signed!" / "Glen is sent back to the start." / "The auditor seizes the file."). No vague atmosphere, no flowery prose, no similes — make the card's impact unmistakable. {reactions} 0-2 established facts (on a LOW-fit clash, a fact may be rewritten/contradicted — that's fine). If an event introduces a new person or object, add it via world_changes.
 {_WORLD_ACTIONS}
 
 JSON: {{"fit":<0-100 int>,"narrative":"...","reactions":[{{"name":"...","role":"...","line":"..."}}],"established":["..."],"world_changes":[]}}"""

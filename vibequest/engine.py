@@ -2196,20 +2196,27 @@ def _clamp(v: int) -> int:
 # No dice, no fixed card effects. The LLM rates how well the played event fits the
 # current moment (0-100); fit drives progress, clash drives surreal.
 def apply_fit_effects(quest: QuestState, fit: int) -> None:
+    # cards hit HARD — one good play should visibly move the story, one clash should warp it
     fit = max(0, min(100, fit))
-    if fit >= 60:
-        # it slots in — the agent makes real progress
-        quest.scene_progress += 1
-        quest.momentum = _clamp(quest.momentum + 2)
+    if fit >= 80:
+        # a perfect play — it resolves the current step outright
+        quest.scene_progress = SCENE_THRESHOLD
+        quest.momentum = _clamp(quest.momentum + 4)
+    elif fit >= 55:
+        # a strong fit — real, chunky progress
+        quest.scene_progress += 2
+        quest.momentum = _clamp(quest.momentum + 3)
     elif fit >= 35:
-        # a near-fit — nudges along, a little weirdness
+        # a near-fit — still nudges along, a little weirdness
+        quest.scene_progress += 1
         quest.momentum = _clamp(quest.momentum + 1)
         quest.surreal = min(20, quest.surreal + 1)
         quest.tension = min(10, quest.tension + 1)
     else:
-        # a clash — the timeline bends to absorb it, progress stalls, zaniness rises
-        quest.momentum = _clamp(quest.momentum - 1)
-        quest.surreal = min(20, quest.surreal + 2)
+        # a clash — knocks the agent back and the timeline lurches surreal
+        quest.scene_progress = max(0, quest.scene_progress - 1)
+        quest.momentum = _clamp(quest.momentum - 3)
+        quest.surreal = min(20, quest.surreal + 3)
         quest.tension = min(10, quest.tension + 1)
 
 
