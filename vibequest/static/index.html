@@ -92,13 +92,7 @@
     display:flex;flex-direction:column;pointer-events:none;
     background:linear-gradient(180deg,#1c1428 0%,#150e20 100%);
     border-top:3px solid var(--gold);box-shadow:0 -3px 14px rgba(0,0,0,.35)}
-  #copy-narr{position:absolute;top:6px;right:8px;z-index:14;pointer-events:auto;
-    font-family:"Courier Prime",monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;
-    color:rgba(238,207,96,.7);background:rgba(0,0,0,.25);border:1px solid rgba(238,207,96,.25);
-    border-radius:3px;padding:3px 7px;cursor:pointer}
-  #copy-narr:hover{color:var(--gold);border-color:rgba(238,207,96,.5)}
-  #copy-narr.done{color:#83d3a3;border-color:#83d3a3}
-  #decision-bar{position:sticky;top:0;z-index:5;pointer-events:auto;margin:0 -12px 8px;padding:8px 54px 9px 12px;
+  #decision-bar{position:sticky;top:0;z-index:5;pointer-events:auto;margin:0 -12px 8px;padding:8px 12px 9px;
     background:#241838;border-bottom:1.5px solid rgba(238,207,96,.42);
     font-family:"Cormorant Garamond",serif;font-size:clamp(13px,3.9vw,16px);color:#f3e6c4;line-height:1.25;
     display:flex;align-items:center;gap:10px;justify-content:space-between}
@@ -129,7 +123,7 @@
   #cardzone{position:static;flex:0 0 auto;min-height:0;left:0;right:0;display:flex;align-items:flex-end;z-index:10;pointer-events:none}
   #drawpile{flex:0 0 25%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
     padding-bottom:calc(8px + env(safe-area-inset-bottom));pointer-events:auto;position:relative;overflow:visible}
-  #hand{flex:0 0 50%;position:relative;height:clamp(108px,30vw,150px);pointer-events:none;overflow:visible}
+  #hand{flex:0 0 50%;position:relative;height:clamp(142px,37vw,166px);pointer-events:none;overflow:visible}
   #pile{flex:0 0 25%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
     padding-bottom:calc(8px + env(safe-area-inset-bottom));pointer-events:auto;cursor:pointer;position:relative;overflow:visible;z-index:11}
   /* inner sized slot shared by both piles */
@@ -138,7 +132,7 @@
   /* hand cards anchored at center-bottom of #hand */
   .card{
     position:absolute;bottom:0;left:50%;
-    width:clamp(84px,23vw,104px);height:clamp(126px,34vw,154px);
+    width:clamp(80px,22vw,100px);height:clamp(112px,29vw,136px);
     border:2px solid var(--ink);border-radius:7px;
     background:var(--cream2);padding:clamp(6px,1.7vw,8px) clamp(7px,2vw,10px) clamp(7px,1.8vw,9px);
     display:flex;flex-direction:column;gap:3px;overflow:hidden;
@@ -441,7 +435,6 @@
 
 <div id="encounter" class="ui"></div>
 <div id="dock" class="ui">
-  <button id="copy-narr" title="Copy the full narrative">⧉ copy</button>
   <div id="scene-panel">
     <div id="decision-bar" style="display:none"><span id="decision-text"></span><b id="decision-cue">▶ PLAY A CARD</b><div id="decision-timer"></div></div>
   </div>
@@ -1983,16 +1976,6 @@ function connect(){
   tc.addEventListener("click",()=>tc.classList.toggle("expanded"));
   const ch=document.getElementById("chapter");
   if(ch){ ch.addEventListener("click",hideChapter); }  // pointer-events only when .show (CSS), so it never blocks taps while hidden
-  const cn=document.getElementById("copy-narr");
-  if(cn) cn.addEventListener("click",async()=>{
-    const q=(currentSnap&&currentSnap.quest)||{};
-    const head=[q.title?q.title.toUpperCase():"VIBEQUEST", q.hook||""].filter(Boolean).join("\n");
-    const payload=(head?head+"\n\n":"")+_narrativeLog.join("\n\n");
-    try{ await navigator.clipboard.writeText(payload); }
-    catch(_){ const ta=document.createElement("textarea"); ta.value=payload; document.body.appendChild(ta); ta.select(); try{ document.execCommand("copy"); }catch(__){} ta.remove(); }
-    cn.textContent="✓ copied"; cn.classList.add("done");
-    setTimeout(()=>{ cn.textContent="⧉ copy"; cn.classList.remove("done"); },1500);
-  });
 })();
 
 (function(){
