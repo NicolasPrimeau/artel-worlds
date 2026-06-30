@@ -757,7 +757,8 @@ async def _agent_pick_and_go(state: GameState) -> None:
     state.agent_goal = npc.id
     _agent_recent.append(npc.id)
     state.log_event("agent_move", intent, {"npc": npc.id})
-    await _broadcast({"type": "scene_beat", "text": intent, "who": state.character.name})
+    # intent is now third-person narration ("Donna heads to..."), so no speaker chip
+    await _broadcast({"type": "scene_beat", "text": intent, "who": ""})
 
 
 async def _agent_converse(state: GameState, npc) -> None:
