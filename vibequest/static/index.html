@@ -159,9 +159,8 @@
   .pile-card.resolving{animation:pileResolve 1s ease-in-out infinite}
   @keyframes pileResolve{0%,100%{filter:brightness(1);box-shadow:2px 3px 0 rgba(26,20,40,.14)}
     50%{filter:brightness(1.18);box-shadow:0 0 0 2px var(--gold),2px 3px 0 rgba(26,20,40,.14)}}
-  .pile-lbl.resolving{color:var(--gold)}
-  .pile-lbl.resolving::after{content:"";animation:pileDots 1.2s steps(4,end) infinite}
-  @keyframes pileDots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+  .pile-lbl.resolving{color:var(--gold);animation:lblGlow 1s ease-in-out infinite}
+  @keyframes lblGlow{0%,100%{text-shadow:none;opacity:.75}50%{text-shadow:0 0 7px var(--gold);opacity:1}}
   /* target picker */
   #target-picker{position:fixed;inset:0;z-index:850;display:flex;align-items:flex-end;justify-content:center;background:rgba(26,20,40,.44);padding-bottom:calc(clamp(130px,37vw,170px) + 12px)}
   #target-picker[hidden]{display:none}
