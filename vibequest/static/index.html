@@ -121,10 +121,10 @@
   .sbeat.event .ev-name{font-weight:700}
   .sbeat.event .ev-fx{font-family:"Courier Prime",monospace;font-size:clamp(7px,1.7vw,9px);letter-spacing:.06em;text-transform:uppercase;opacity:.95}
   #cardzone{position:static;flex:0 0 auto;min-height:0;left:0;right:0;display:flex;align-items:flex-end;z-index:20;pointer-events:none}
-  #drawpile{flex:0 0 25%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+  #drawpile{flex:0 0 19%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
     padding-bottom:calc(8px + env(safe-area-inset-bottom));pointer-events:auto;position:relative;overflow:visible}
-  #hand{flex:0 0 50%;position:relative;height:clamp(142px,37vw,166px);pointer-events:none;overflow:visible}
-  #pile{flex:0 0 25%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+  #hand{flex:0 0 62%;position:relative;height:clamp(142px,37vw,166px);pointer-events:none;overflow:visible}
+  #pile{flex:0 0 19%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
     padding-bottom:calc(8px + env(safe-area-inset-bottom));pointer-events:auto;cursor:pointer;position:relative;overflow:visible;z-index:11}
   /* inner sized slot shared by both piles */
   .pile-slot{position:relative;width:clamp(58px,15vw,72px);height:clamp(78px,21vw,96px);flex-shrink:0}
@@ -1653,7 +1653,7 @@ function showCardDetail(c){
 function _layoutHand(animUid){
   const n=_handItems.length;
   // consistent per-card spacing, centered on 0 — so few cards stay together in the middle
-  const spacing=Math.min(30, window.innerWidth*0.076);  // tight fan so it clears the draw/play piles
+  const spacing=Math.min(34, window.innerWidth*0.085);  // tight fan; hand zone widened so it clears the piles
   _handItems.forEach((item,i)=>{
     const el=_handEls.get(item.uid); if(!el) return;
     const ci=i-(n-1)/2;                    // centered index: 2 cards -> -.5,+.5 ; 5 -> -2..2
