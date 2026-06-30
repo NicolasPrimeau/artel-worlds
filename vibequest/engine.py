@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 import time
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -1042,6 +1043,222 @@ QUEST_CATEGORIES: dict[str, dict] = {
                     "Close the loop with the previous tenant and close the ticket",
                 ],
             },
+            {
+                "title": "The Mystery Smell",
+                "hook": "A smell has been spreading through the east wing since Monday. Nobody can find the source. A client tour is at 2pm.",
+                "objectives": [
+                    "Trace where the smell is strongest",
+                    "Find someone willing to investigate it",
+                    "Have it gone before the tour",
+                ],
+            },
+            {
+                "title": "The Locked Drawer",
+                "hook": "The drawer with the payroll files is locked and the only key is missing. Payroll runs at 4pm.",
+                "objectives": [
+                    "Find a spare key or a way in",
+                    "Get the files out without breaking the cabinet",
+                    "Hand them to payroll before the run",
+                ],
+            },
+            {
+                "title": "The Misspelled Banner",
+                "hook": "The welcome banner for the new director spells their name wrong. The director arrives at noon.",
+                "objectives": [
+                    "Confirm the correct spelling",
+                    "Get a corrected banner made or fixed",
+                    "Have it up before they walk in",
+                ],
+            },
+            {
+                "title": "The Fridge Thief",
+                "hook": "Labelled lunches keep disappearing from the break room fridge. Today someone's anniversary lunch is gone.",
+                "objectives": [
+                    "Establish when things go missing",
+                    "Find a way to catch or deter the culprit",
+                    "Recover or replace the lunch before 1pm",
+                ],
+            },
+            {
+                "title": "The Phantom Meeting",
+                "hook": "A meeting with no organiser and no agenda has appeared on the whole floor's calendar for 3pm. It cannot be declined.",
+                "objectives": [
+                    "Find out where the invite came from",
+                    "Get someone able to delete it",
+                    "Clear everyone's calendar before 3pm",
+                ],
+            },
+            {
+                "title": "The Stuck Visitor",
+                "hook": "A candidate's visitor badge won't scan and they're stranded in the lobby. Their interview started ten minutes ago.",
+                "objectives": [
+                    "Find out why the badge fails",
+                    "Get them a working pass or an escort",
+                    "Deliver them to the interview room",
+                ],
+            },
+            {
+                "title": "The Mystery Charge",
+                "hook": "The company card has a recurring charge from a vendor nobody recognises. Finance wants it explained before the audit.",
+                "objectives": [
+                    "Identify what the charge is for",
+                    "Find who set it up",
+                    "Cancel it or justify it before the audit",
+                ],
+            },
+            {
+                "title": "The Two Spreadsheets",
+                "hook": "Two versions of the master spreadsheet exist with different numbers. A report built on it is due at 5pm.",
+                "objectives": [
+                    "Work out which version is right",
+                    "Reconcile the differences",
+                    "Lock one version before the report goes out",
+                ],
+            },
+            {
+                "title": "The Broken Espresso Machine",
+                "hook": "The espresso machine is flashing an error nobody understands. The manual is in German. A client meeting needs coffee in 30 minutes.",
+                "objectives": [
+                    "Decode what the error means",
+                    "Get the machine working or find a backup",
+                    "Have coffee ready before the meeting",
+                ],
+            },
+            {
+                "title": "The Sticky-Note Resignation",
+                "hook": "Someone resigned on a sticky note and left at lunch. Three live projects now have no owner. A client expects an update today.",
+                "objectives": [
+                    "Find out what they were working on",
+                    "Get the projects reassigned",
+                    "Send the client an update before end of day",
+                ],
+            },
+            {
+                "title": "The Compliance Deadline",
+                "hook": "Everyone must finish the mandatory compliance training by 5pm. The training link is broken and the deadline can't move.",
+                "objectives": [
+                    "Find a working link or workaround",
+                    "Get the whole team through it",
+                    "Confirm completion with HR before 5pm",
+                ],
+            },
+            {
+                "title": "The Disputed Parking Spot",
+                "hook": "Two people have paperwork for the same reserved parking spot. Both are parked there. One is a director.",
+                "objectives": [
+                    "Work out which claim is valid",
+                    "Find a second spot for the other",
+                    "Get it agreed before either escalates it",
+                ],
+            },
+            {
+                "title": "The Frozen Account",
+                "hook": "Someone's account locked them out the morning a deliverable is due. The password reset is queued for tomorrow.",
+                "objectives": [
+                    "Find someone who can expedite the reset",
+                    "Get them temporary access",
+                    "Unblock them before the deadline passes",
+                ],
+            },
+            {
+                "title": "The Wrong Desk Move",
+                "hook": "Movers are arriving in thirty minutes to relocate a desk — the wrong person's desk. The right person is on holiday.",
+                "objectives": [
+                    "Reach someone who can confirm the correct move",
+                    "Redirect or cancel the movers",
+                    "Make sure no desk moves that shouldn't",
+                ],
+            },
+            {
+                "title": "The Echoing Town Hall",
+                "hook": "Every video call has a loud echo and the all-company town hall starts in an hour. Nobody knows which room is causing it.",
+                "objectives": [
+                    "Find the room or mic causing the echo",
+                    "Get it fixed or isolated",
+                    "Confirm clean audio before the town hall",
+                ],
+            },
+            {
+                "title": "The Overdue Spreadsheet Macro",
+                "hook": "A macro that finance relies on has stopped working. The person who wrote it left in 2021. Month-end is tomorrow.",
+                "objectives": [
+                    "Find out what the macro actually did",
+                    "Get it working or replaced",
+                    "Validate the numbers before month-end",
+                ],
+            },
+            {
+                "title": "The Unclaimed Cake",
+                "hook": "An unlabelled cake appeared in the kitchen this morning. Nobody admits ordering it. It is clearly for someone.",
+                "objectives": [
+                    "Find out who the cake is for",
+                    "Establish who ordered it",
+                    "Get it to the right person before it's eaten by the wrong ones",
+                ],
+            },
+            {
+                "title": "The Open Window",
+                "hook": "A window on the fourth floor won't close, it's raining, and it is directly above the server room.",
+                "objectives": [
+                    "Stop water reaching the servers",
+                    "Find someone who can close or seal the window",
+                    "Get it secured before the rain worsens",
+                ],
+            },
+            {
+                "title": "The Recurring Reminder",
+                "hook": "A calendar reminder for a task finished months ago won't stop firing, and it pings the entire department every hour.",
+                "objectives": [
+                    "Find whose calendar owns the reminder",
+                    "Get it deleted at the source",
+                    "Confirm it has stopped for everyone",
+                ],
+            },
+            {
+                "title": "The Wrong Toner",
+                "hook": "The big printer is out of toner, the only spare is the wrong model, and a signed contract must print before courier pickup.",
+                "objectives": [
+                    "Find compatible toner or another printer",
+                    "Get the contract printed",
+                    "Have it ready before the courier arrives",
+                ],
+            },
+            {
+                "title": "The Duplicate Employee",
+                "hook": "Payroll has found two records for the same person. One is being paid twice; the other not at all. Pay run is this afternoon.",
+                "objectives": [
+                    "Confirm which record is correct",
+                    "Get the duplicate merged or frozen",
+                    "Fix it before the pay run executes",
+                ],
+            },
+            {
+                "title": "The Mandatory Survey",
+                "hook": "Leadership wants 100% completion on the engagement survey by end of day. It is currently at 12% and the link expires at five.",
+                "objectives": [
+                    "Find out why nobody is filling it in",
+                    "Get the team to actually complete it",
+                    "Hit the target before the link expires",
+                ],
+            },
+            {
+                "title": "The Lobby Plant Emergency",
+                "hook": "The watering rota collapsed and the lobby plants are visibly dying. Someone has already made a passive-aggressive spreadsheet.",
+                "objectives": [
+                    "Revive the plants before they're past saving",
+                    "Rebuild a rota people will actually follow",
+                    "Defuse the spreadsheet before it reaches the group chat",
+                ],
+            },
+            {
+                "title": "The Sticky Keypad Door",
+                "hook": "The keypad on the supply room jammed and locked everyone out. The cleaning supplies for tonight's client event are inside.",
+                "objectives": [
+                    "Find someone with override access",
+                    "Get the door open without damaging it",
+                    "Retrieve the supplies before the event setup",
+                ],
+            },
         ],
         "complications": [],
     },
@@ -1586,10 +1803,16 @@ def _make_character(rng: random.Random) -> PartyMember:
     )
 
 
+_recent_quest_titles: deque[str] = deque(maxlen=18)
+
+
 def make_quest(rng: random.Random) -> tuple[QuestState, str]:
     cat_name = rng.choice(list(QUEST_CATEGORIES.keys()))
     cat = QUEST_CATEGORIES[cat_name]
-    task = rng.choice(cat["tasks"])
+    # avoid repeating recently-seen quests so the rotation feels fresh
+    fresh = [t for t in cat["tasks"] if t["title"] not in _recent_quest_titles]
+    task = rng.choice(fresh or cat["tasks"])
+    _recent_quest_titles.append(task["title"])
     quest_id = str(uuid.uuid4())[:8]
     quest = QuestState(
         id=quest_id,

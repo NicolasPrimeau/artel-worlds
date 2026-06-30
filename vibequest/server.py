@@ -41,7 +41,7 @@ log = logging.getLogger("vibequest")
 STATIC = Path(__file__).parent / "static"
 
 DEAL_INTERVAL = 10.0
-VOTE_TIMEOUT = 25.0
+VOTE_TIMEOUT = 16.0
 PRESSURE_DURATION = 3
 BATCH_WINDOW = (
     3.0  # decision point: gather the crowd's cards (duplicates add weight) before resolving
@@ -62,6 +62,7 @@ def _is_beat(text: object) -> bool:
 _travel_processed: set[str] = set()
 _vote_options: list[QuestState] | None = None
 _votes: dict[int, int] = {}
+_voted: dict[str, int] = {}  # player_id -> choice, so each viewer votes once (changeable)
 _deal_type_idx: int = 0
 _decision_at: float = 0.0  # monotonic time the current wall opened (for the no-card timeout)
 
@@ -504,7 +505,7 @@ async def _trigger_meltdown(state: GameState) -> None:
 
 
 async def _end_quest(state: GameState) -> None:
-    global _vote_options, _votes
+    global _vote_options, _votes, _voted
     state.phase = "complete"
     if artel.enabled():
         remaining = state.quest.artel_task_ids[state.quest.resolution_count :]
@@ -531,6 +532,7 @@ async def _end_quest(state: GameState) -> None:
     q2, _ = make_quest(_rng)
     _vote_options = [q1, q2]
     _votes = {0: 0, 1: 0, 2: 0}
+    _voted = {}
     await _broadcast(
         {
             "type": "quest_complete",
@@ -696,14 +698,25 @@ async def _start_new_game(preset_quest: QuestState | None = None) -> None:
                 tags=["vibequest", "quest-start"],
             )
         )
-        for obj in _state.quest.objectives:
-            task_id = await artel.create_task(
-                title=f"[{_state.quest.title}] {obj}",
-                description=_state.quest.hook,
-                tags=["vibequest", f"run:{_state.run_id}"],
-            )
-            if task_id:
-                _state.quest.artel_task_ids.append(task_id)
+
+        # never let Artel task creation block the new-quest transition (it had hung the end screen)
+        async def _make_artel_tasks(q: QuestState = _state.quest) -> None:
+            for obj in q.objectives:
+                try:
+                    task_id = await asyncio.wait_for(
+                        artel.create_task(
+                            title=f"[{q.title}] {obj}",
+                            description=q.hook,
+                            tags=["vibequest", f"run:{q.id}"],
+                        ),
+                        timeout=5.0,
+                    )
+                    if task_id:
+                        q.artel_task_ids.append(task_id)
+                except Exception:
+                    pass
+
+        asyncio.create_task(_make_artel_tasks())
     await _broadcast(
         {"type": "new_quest", "state": _state_snapshot(_state), "opening": opening_text}
     )
@@ -1019,8 +1032,15 @@ def create_app() -> FastAPI:
     async def vote(request_data: dict = Body(...)) -> JSONResponse:
         global _votes
         choice = request_data.get("choice")
+        pid = str(request_data.get("player_id") or "")
         if choice not in (0, 1, 2) or _vote_options is None:
             return JSONResponse({"error": "no vote active or invalid choice"}, status_code=400)
+        prev = _voted.get(pid)
+        if prev == choice:  # same player, same choice — no double counting
+            return JSONResponse({"ok": True, "votes": dict(_votes)})
+        if prev is not None and _votes.get(prev, 0) > 0:  # let them change their mind, once
+            _votes[prev] -= 1
+        _voted[pid] = choice
         _votes[choice] = _votes.get(choice, 0) + 1
         await _broadcast({"type": "vote_update", "votes": dict(_votes)})
         return JSONResponse({"ok": True, "votes": dict(_votes)})

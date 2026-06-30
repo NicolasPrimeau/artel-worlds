@@ -1886,7 +1886,7 @@ function showVote(options,timeout){
   let s=timeout; timerEl.textContent=s+"s";
   clearInterval(_voteTimer);
   _voteTimer=setInterval(()=>{
-    s--; timerEl.textContent=s>0?s+"s":"closed";
+    s--; timerEl.textContent=s>0?s+"s":"starting next quest…";
     if(s<=0)clearInterval(_voteTimer);
   },1000);
   options.forEach(opt=>{
@@ -1895,7 +1895,7 @@ function showVote(options,timeout){
     btn.addEventListener("click",()=>{
       document.querySelectorAll(".vote-btn").forEach(b=>b.classList.remove("voted"));
       btn.classList.add("voted");
-      castVote(opt.idx);
+      castVote(opt.idx); // server dedups by player_id, so re-clicking just moves your one vote
     });
     optEl.appendChild(btn);
   });
@@ -1909,7 +1909,7 @@ function updateVoteCounts(votes){
 }
 
 async function castVote(choice){
-  try{ await fetch("/vote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({choice})}); }catch(e){}
+  try{ await fetch("/vote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({choice,player_id:playerId})}); }catch(e){}
 }
 
 function connect(){
