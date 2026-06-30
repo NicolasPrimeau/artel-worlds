@@ -637,110 +637,95 @@ def _weighted_splits(total: int, weights: list[int]) -> list[int]:
     return pts
 
 
+_BULLPEN_NAMES: dict[str, list[str]] = {
+    "office": ["Sales", "Accounting", "Open Plan", "The Annex", "Operations", "Customer Service"],
+    "dark": ["The Pit", "Common Floor", "The Stacks", "The Hollow", "Gathering Floor"],
+    "pub": ["The Floor", "Long Tables", "By the Fire", "The Snug", "Bar Floor"],
+    "school": ["Study Hall", "The Commons", "Desk Rows", "The Wing", "Open Hall"],
+    "grocery": ["Center Aisles", "Checkout", "The Floor", "End Caps", "Back Aisles"],
+}
+
+
 def generate_indoor_world(
     rng: random.Random, theme: str = "office", step_count: int = 6
 ) -> WorldMap:
-    zone_names = INDOOR_ROOM_NAMES.get(theme, INDOOR_ROOM_NAMES["office"])
+    # A natural mid-sized office: a top row of small private rooms (with doors)
+    # opening onto a single open-plan bullpen full of desk clusters below.
+    pool = INDOOR_ROOM_NAMES.get(theme, INDOOR_ROOM_NAMES["office"])
     zone_def_map = _ZONE_DEF.get(theme, _ZONE_DEF["office"])
+    bull_pool = _BULLPEN_NAMES.get(theme, _BULLPEN_NAMES["office"])
 
-    n = min(len(zone_names), step_count + 1)
-    shuffled = zone_names.copy()
-    rng.shuffle(shuffled)
-    used_names = shuffled[:n]
+    n_total = max(4, min(len(pool) + len(bull_pool), step_count + 1))
+    perimeter_names = [nm for nm in pool if nm != "Open Plan"]
+    rng.shuffle(perimeter_names)
+    n_rooms = min(len(perimeter_names), max(2, (n_total + 1) // 2))
+    n_desks = max(1, n_total - n_rooms)
 
-    n_upper = (n + 1) // 2
-    n_lower = n // 2
+    ROOM_IW, ROOM_IH = 7, 4
+    div_row = ROOM_IH + 1  # wall line between the rooms and the bullpen
+    bull_y0 = div_row + 1
 
-    ROOM_INT_H = 9
-    CORRIDOR_H = 3
+    DESK_COLS = min(n_desks, 3)
+    DESK_ROWS = (n_desks + DESK_COLS - 1) // DESK_COLS
+    CLUS_W, CLUS_H = 9, 6
 
-    upper_bot = ROOM_INT_H + 1
-    corr_y0 = upper_bot + 1
-    corr_y1 = corr_y0 + CORRIDOR_H
-    lower_top = corr_y1
-    lower_bot = lower_top + ROOM_INT_H + 1
+    rooms_w = n_rooms * (ROOM_IW + 2) + 1
+    desks_w = DESK_COLS * CLUS_W + 3
+    w = max(rooms_w, desks_w, 30)
+    bull_h = DESK_ROWS * CLUS_H + 2
+    h = bull_y0 + bull_h + 1
 
-    w = 64
-    h = (lower_bot + 1) if n_lower > 0 else (upper_bot + 1)
     tiles = [HEDGE] * (w * h)
-
-    if n_lower > 0:
-        for y in range(corr_y0, corr_y1):
-            for x in range(1, w - 1):
-                tiles[_idx(w, x, y)] = PATH
+    for y in range(bull_y0, h - 1):
+        for x in range(1, w - 1):
+            tiles[_idx(w, x, y)] = FLOOR
 
     room_data: list[tuple[int, int, str, int, int, int]] = []
     waypoints: list[list[int]] = []
 
-    def add_room(
-        sx0: int,
-        sx1: int,
-        y_top: int,
-        y_bot: int,
-        door_y: int,
-        name: str,
-        anchor_bottom: bool = True,
-    ) -> tuple:
-        fl, _, rh_r = zone_def_map.get(name, (FLOOR, 18, 10))
-        cx = (sx0 + sx1) // 2
-        int_h = min(rh_r, y_bot - y_top - 2)
-        if anchor_bottom:
-            ry0 = y_bot - int_h - 1
-            ry1 = y_bot
-        else:
-            ry0 = y_top
-            ry1 = y_top + int_h + 1
-        cy = (ry0 + ry1) // 2
-        for y in range(ry0 + 1, ry1):
-            for x in range(sx0 + 1, sx1):
+    # top row of small private rooms, each with a door into the bullpen
+    cell_w = w / n_rooms
+    for i in range(n_rooms):
+        name = perimeter_names[i]
+        fl = zone_def_map.get(name, (FLOOR, 18, 10))[0]
+        cx = int((i + 0.5) * cell_w)
+        x0 = max(1, cx - ROOM_IW // 2)
+        x1 = min(w - 2, cx + ROOM_IW // 2)
+        for y in range(1, ROOM_IH + 1):
+            for x in range(x0, x1 + 1):
                 tiles[_idx(w, x, y)] = fl
-        for dx in (-1, 0, 1):
-            nx = cx + dx
-            if sx0 < nx < sx1 and 0 <= door_y < h:
-                tiles[_idx(w, nx, door_y)] = fl
-        return (cx, cy, name, fl, sx1 - sx0, ry1 - ry0)
+        tiles[_idx(w, cx, div_row)] = fl  # door
+        cy = 1 + ROOM_IH // 2
+        room_data.append((cx, cy, name, fl, x1 - x0 + 1, ROOM_IH))
+        waypoints.append([cx, cy])
 
-    upper_names = used_names[:n_upper]
-    lower_names = used_names[n_upper:]
-    upper_splits = _weighted_splits(
-        w, [zone_def_map.get(n, (FLOOR, 18, 10))[1] for n in upper_names]
-    )
-    lower_splits = (
-        _weighted_splits(w, [zone_def_map.get(n, (FLOOR, 18, 10))[1] for n in lower_names])
-        if lower_names
-        else []
-    )
-
-    for i in range(n_upper):
-        rd = add_room(
-            upper_splits[i],
-            upper_splits[i + 1],
-            0,
-            upper_bot,
-            upper_bot,
-            upper_names[i],
-            anchor_bottom=True,
-        )
-        room_data.append(rd)
-        waypoints.append([rd[0], rd[1]])
-
-    for i in range(n_lower - 1, -1, -1):
-        rd = add_room(
-            lower_splits[i],
-            lower_splits[i + 1],
-            lower_top,
-            lower_bot,
-            lower_top,
-            lower_names[i],
-            anchor_bottom=False,
-        )
-        room_data.append(rd)
-        waypoints.append([rd[0], rd[1]])
+    # open-plan bullpen: desk clusters laid out in a grid
+    inner_w = w - 4
+    for j in range(n_desks):
+        col = j % DESK_COLS
+        row = j // DESK_COLS
+        cx = 2 + int((col + 0.5) * (inner_w / DESK_COLS))
+        cy = min(bull_y0 + 1 + row * CLUS_H + CLUS_H // 2, h - 3)
+        name = bull_pool[j % len(bull_pool)]
+        room_data.append((cx, cy, name, FLOOR, CLUS_W, CLUS_H))
+        waypoints.append([cx, cy])
 
     occupied: set[tuple[int, int]] = {(cx, cy) for cx, cy, *_ in room_data}
     props: list[dict] = []
-    for cx, cy, name, fl, rw_r, rh_r in room_data:
-        _place_zone_props(rng, name, theme, cx, cy, rw_r, rh_r, props, occupied)
+    for cx, cy, name, fl, rw, rh in room_data[:n_rooms]:
+        _place_zone_props(rng, name, theme, cx, cy, rw, rh, props, occupied)
+
+    def _put(x: int, y: int, kind: str) -> None:
+        if 1 <= x < w - 1 and bull_y0 <= y < h - 1 and (x, y) not in occupied:
+            props.append({"x": x, "y": y, "kind": kind})
+            occupied.add((x, y))
+
+    for cx, cy, *_ in room_data[n_rooms:]:
+        _put(cx - 1, cy - 1, "desk")
+        _put(cx, cy - 1, "desk")
+        _put(cx - 1, cy + 1, "chair")
+        _put(cx, cy + 1, "chair")
+        _put(cx + 1, cy, "plant_pot")
 
     indoor_walkable = {FLOOR, PATH, PATH_LIGHT, LAVENDER}
     route: list[list[int]] = []
@@ -750,13 +735,12 @@ def generate_indoor_world(
             wp_route_idx.append(0)
             route.append([cx, cy])
             continue
-        prev_cx, prev_cy = room_data[i - 1][0], room_data[i - 1][1]
-        seg = _bfs(w, h, tiles, [prev_cx, prev_cy], [cx, cy], walkable=indoor_walkable)
+        prev = room_data[i - 1]
+        seg = _bfs(w, h, tiles, [prev[0], prev[1]], [cx, cy], walkable=indoor_walkable)
         wp_route_idx.append(len(route) - 1 + len(seg) - 1)
         route.extend(seg[1:])
 
     frames = INDOOR_TILE_FRAMES.get(theme, INDOOR_TILE_FRAMES["office"])
-
     return WorldMap(
         w=w,
         h=h,
