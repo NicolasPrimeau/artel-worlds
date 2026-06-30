@@ -8,8 +8,15 @@ from llmrouter import Request, Router, build_models, parse_json
 _THINK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 
-def _clean(text: str) -> str:
-    t = _THINK.sub("", text or "")
+def _as_text(v) -> str:
+    # the LLM sometimes returns a beat as a list of lines — join, don't stringify the list
+    if isinstance(v, list):
+        return " ".join(_as_text(x) for x in v if str(x).strip())
+    return str(v) if v is not None else ""
+
+
+def _clean(text) -> str:
+    t = _THINK.sub("", _as_text(text))
     i = t.lower().find("<think>")
     if i != -1:
         t = t[:i]
@@ -49,16 +56,13 @@ ROUTER = Router(
 SPEND = ROUTER.spend
 
 _TONE = (
-    "Narrate VibeQuest like POKEMON game text. SHORT, punchy, present tense. "
-    "ONE or TWO short lines per beat. NEVER more than three. Plain declarative sentences a kid reads in a second. Max ~12 words a line. "
-    "Light and a touch funny, but BRIEF above all — no flowery prose, no long sentences, no sub-clauses, no 'as if', no similes. "
-    "Good: 'Glen heads for Accounting.' "
-    "Good: 'An Auditor appears! It wants the asset register.' "
-    "Good: 'Margot checks the ledger. The invoice was approved twice.' "
-    "Good: 'It won't sign. Glen needs another way.' "
-    "Bad (too long): 'Our subject steps cautiously toward the humming photocopier, where the confidential sheet glints like a misplaced leaf.' "
-    "Keep a name or one key detail (a ticket number, a room) when useful — stated plainly, never dressed up. "
-    "NOT fantasy: no quest, realm, dungeon, adventurer, arcane. It is an office, in Pokemon-terse narration."
+    "Narrate VibeQuest like a tight workplace-comedy scene — natural and flowing, with REAL DIALOGUE in quotes. "
+    "Write 2-3 sentences that connect into one little moment: someone does something, someone says something back, it lands. NOT clipped one-line fragments, NOT a list of actions. People talk like real coworkers. "
+    'Good: \'Pam finds Ngozi half-buried in binders. "The south plant — who actually handles it?" Ngozi doesn\\\'t look up. "Facilities. They outsourced it in March and forgot to tell anyone."\' '
+    "Bad (robotic fragments): 'Pam approaches Ngozi. She asks about the plant. Pam is determined.' "
+    "Bad (flowery): 'Our subject steps cautiously toward the humming photocopier, where the sheet glints like a misplaced leaf.' "
+    "Dry, deadpan office humour. Grounded and specific to THIS moment and these people. No similes, no 'as if', no purple prose, no narrating the character's emotions as a flat statement. "
+    "NOT fantasy: no quest, realm, dungeon, adventurer, arcane. It is an office."
 )
 
 
@@ -177,9 +181,9 @@ JSON: {{"narrative":"...","consequence":"...","reactions":[{{"name":"...","role"
             "established": [],
             "world_changes": [],
         }
-    parsed["narrative"] = _clean(str(parsed.get("narrative", "")))
+    parsed["narrative"] = _clean(parsed.get("narrative", ""))
     if parsed.get("consequence"):
-        parsed["consequence"] = _clean(str(parsed["consequence"]))
+        parsed["consequence"] = _clean(parsed["consequence"])
     parsed.setdefault("established", [])
     parsed.setdefault("world_changes", [])
     return parsed
@@ -266,7 +270,7 @@ Pick the fit honestly from the event-vs-need mismatch.
 
 COHESION (most important): connect the event to THIS exact moment. Use the specific people, objects, room, and thread already in play (from the facts and what the agent was just doing). The event must land on the agent's CURRENT task — re-cast a generic event in terms of THIS goal (a "courier" arrives with THIS quest's document; a "fire drill" interrupts THIS specific negotiation). Never narrate it as a free-floating random thing. Even a clash happens HERE, to THIS agent, in THIS situation.
 
-Then write the beat as POKEMON text: 1-2 SHORT lines, max 3, ≤12 words each. The FIRST line must state the CONCRETE CONSEQUENCE for the agent's goal — what just changed, plainly (e.g. "The form is signed!" / "Glen is sent back to the start." / "The auditor seizes the file."). No vague atmosphere, no flowery prose, no similes. {reactions} 0-2 established facts (on a LOW-fit clash, a fact may be rewritten/contradicted — that's fine). If an event introduces a new person or object, add it via world_changes.
+Then write the beat as a short natural scene (2-3 sentences, with real DIALOGUE in quotes where it fits). It must OPEN with the concrete consequence for the agent's goal — what just changed (e.g. "The form is finally signed." / "Glen is sent back to square one." / "The auditor seizes the file.") — then show it landing in a line or two. No vague atmosphere, no flowery prose, no similes. {reactions} 0-2 established facts (on a LOW-fit clash, a fact may be rewritten/contradicted — that's fine). If an event introduces a new person or object, add it via world_changes.
 {_WORLD_ACTIONS}
 
 JSON: {{"fit":<0-100 int>,"narrative":"...","reactions":[{{"name":"...","role":"...","line":"..."}}],"established":["..."],"world_changes":[]}}"""
@@ -294,10 +298,14 @@ JSON: {{"fit":<0-100 int>,"narrative":"...","reactions":[{{"name":"...","role":"
         parsed["fit"] = max(0, min(100, int(parsed.get("fit", 50))))
     except (TypeError, ValueError):
         parsed["fit"] = 50
-    parsed["narrative"] = _clean(str(parsed.get("narrative", "")))
+    parsed["narrative"] = _clean(parsed.get("narrative", ""))
     parsed.setdefault("established", [])
     parsed.setdefault("world_changes", [])
-    parsed.setdefault("reactions", [])
+    rx = []
+    for r in parsed.get("reactions", []):
+        if isinstance(r, dict) and _as_text(r.get("line", "")).strip():
+            rx.append({"name": _as_text(r.get("name", "")), "line": _clean(r.get("line", ""))})
+    parsed["reactions"] = rx
     return parsed
 
 
@@ -491,6 +499,7 @@ async def agent_decide(
     story_so_far: str,
     npcs: list[dict],
     story_facts: list[str] | None = None,
+    agent_name: str = "The agent",
 ) -> dict:
     # npcs: [{"id","name","role"}] — the agent (in first person) picks who to approach next and why
     roster = "\n".join(f"- [{n['id']}] {n['name']}, {n['role']}" for n in npcs)
@@ -505,8 +514,8 @@ SO FAR: {story_so_far or "Just starting."}
 PEOPLE YOU COULD GO TALK TO:
 {roster}
 
-Pick the ONE person most useful to your goal right now. Then state, in first person, why you're going to them — name them, tie it to the goal, ≤16 words.
-JSON: {{"npc_id":"<exact id from the list>","intent":"I'll go ..."}}"""
+Pick the ONE person most useful to your goal right now. Then write ONE natural sentence, third person, describing {agent_name} heading off to them — like a line of narration, not a justification. Name them. ≤14 words. e.g. "Pam heads for Operations to track down who waters the south plant."
+JSON: {{"npc_id":"<exact id from the list>","intent":"<one natural narration sentence>"}}"""
     req = Request(
         system="Respond only with valid JSON. No fantasy language.", user=prompt, min_grade="fast"
     )
@@ -515,7 +524,7 @@ JSON: {{"npc_id":"<exact id from the list>","intent":"I'll go ..."}}"""
     valid = {n["id"] for n in npcs}
     if parsed.get("npc_id") not in valid:
         return {}
-    parsed["intent"] = _clean(str(parsed.get("intent", "")))
+    parsed["intent"] = _clean(parsed.get("intent", ""))
     return parsed
 
 
@@ -544,8 +553,8 @@ SO FAR: {story_so_far or "Just starting."}
 {mood_line}
 {npc_name} ({npc_role}) — {npc_personality}
 
-Write as POKEMON text, max 3 SHORT lines (≤12 words each): {agent_name} (in their mood) asks {npc_name} ONE specific thing about the goal; {npc_name} answers — helpful or obstructive, strictly ABOUT THE GOAL. Plain and brief, no flowery prose. Do NOT drift. The "line" field is {npc_name}'s ≤8-word reply.
-JSON: {{"narrative":"...","line":"<{npc_name}'s reply, ≤14 words>","established":["<one durable fact about the goal>"]}}"""
+Write the scene (2-3 sentences, natural, with real DIALOGUE in quotes): {agent_name} asks {npc_name} something specific about the goal, and {npc_name} answers in their own voice — helpful or obstructive, but strictly ABOUT THE GOAL. It should read like an actual exchange between two coworkers, not a summary. The "narrative" is the whole little scene (including both lines of dialogue). The "line" is just {npc_name}'s spoken reply on its own.
+JSON: {{"narrative":"the scene with dialogue","line":"<{npc_name}'s spoken reply>","established":["<one durable fact about the goal>"]}}"""
     req = Request(
         system="Respond only with valid JSON. No fantasy language.",
         user=prompt,
@@ -554,7 +563,7 @@ JSON: {{"narrative":"...","line":"<{npc_name}'s reply, ≤14 words>","establishe
     raw = await ROUTER.complete(req)
     parsed = parse_json(raw) or {}
     if parsed.get("narrative"):
-        parsed["narrative"] = _clean(str(parsed["narrative"]))
+        parsed["narrative"] = _clean(parsed["narrative"])
     parsed.setdefault("established", [])
     return parsed
 

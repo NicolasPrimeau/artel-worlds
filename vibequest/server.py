@@ -735,6 +735,7 @@ async def _agent_pick_and_go(state: GameState) -> None:
                     story_so_far=_story_so_far(state),
                     npcs=roster,
                     story_facts=list(state.quest.facts),
+                    agent_name=state.character.name,
                 ),
                 timeout=4.0,
             )
@@ -781,14 +782,12 @@ async def _agent_converse(state: GameState, npc) -> None:
         )
     except Exception:
         return
-    line = result.get("line", "")
     narrative = result.get("narrative", "")
     for f in result.get("established", [])[:1]:
         if isinstance(f, str) and f.strip() and len(state.quest.facts) < 24:
             state.quest.facts.append(f.strip())
-    if line:
-        await _broadcast({"type": "npc_speak", "npc_name": npc.name, "line": line})
     if narrative:
+        # the scene narrative already contains the dialogue — show it as one beat (no separate bubble)
         state.quest.beats.append(narrative)
         state.log_event("agent_talk", narrative, {"npc": npc.id})
         await _broadcast(
