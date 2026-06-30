@@ -1690,6 +1690,7 @@ document.getElementById("target-cancel").addEventListener("click",()=>{
 
 function addDealCard(card){
   if(_handItems.length>=MAX_HAND) return;
+  if(_handItems.some(it=>it.id===card.id)) return; // never two of the same card in hand
   const uid=String(_nextUid++);
   _handItems.push({uid,...card});
   const h=document.getElementById("hand");

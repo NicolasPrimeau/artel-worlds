@@ -1357,6 +1357,394 @@ CARD_LIBRARY = [
         "Both in Procurement.",
         0.7,
     ),
+    # ── more Encounters ───────────────────────────────────────────────────────
+    CardDef(
+        "enc_jam",
+        "The Photocopier Jams",
+        CardType.ENCOUNTER,
+        "A jam, somewhere deep in the machine. The diagram is unhelpful.",
+        "Tray 3. Always tray 3.",
+        1.0,
+    ),
+    CardDef(
+        "enc_inspection",
+        "Surprise Inspection",
+        CardType.ENCOUNTER,
+        "Health and safety walks the floor, unannounced, with a clipboard.",
+        "Unscheduled. Noted.",
+        0.9,
+    ),
+    CardDef(
+        "enc_wrongnum",
+        "Wrong Number",
+        CardType.ENCOUNTER,
+        "The desk phone rings. The call is for someone who retired.",
+        "Please hold.",
+        1.0,
+    ),
+    CardDef(
+        "enc_tour",
+        "A Tour Group",
+        CardType.ENCOUNTER,
+        "New hires are being shown around. They are watching everything.",
+        "Smile and wave.",
+        0.9,
+    ),
+    CardDef(
+        "enc_flicker",
+        "The Lights Flicker",
+        CardType.ENCOUNTER,
+        "A power blip. Everyone looks up at once. It passes.",
+        "Building Services notified.",
+        0.9,
+    ),
+    CardDef(
+        "enc_lost",
+        "Lost Visitor",
+        CardType.ENCOUNTER,
+        "Someone wanders in looking for an entirely different floor.",
+        "Third door on the left.",
+        1.0,
+    ),
+    CardDef(
+        "enc_cake",
+        "Cake in the Kitchen",
+        CardType.ENCOUNTER,
+        "A retirement cake appears. Whose retirement is unclear.",
+        "Help yourself.",
+        1.0,
+    ),
+    CardDef(
+        "enc_outage",
+        "Network Outage",
+        CardType.ENCOUNTER,
+        "The shared drive is unreachable. People stand up at their desks.",
+        "Have you tried the VPN.",
+        0.8,
+    ),
+    CardDef(
+        "enc_bird",
+        "A Bird in the Atrium",
+        CardType.ENCOUNTER,
+        "A bird got in somehow. Facilities has been notified.",
+        "It seems calm.",
+        0.7,
+    ),
+    CardDef(
+        "enc_alarm2",
+        "Someone's Phone Alarm",
+        CardType.ENCOUNTER,
+        "An alarm goes off in an empty office. Nobody has the passcode.",
+        "It will stop. Eventually.",
+        0.9,
+    ),
+    CardDef(
+        "enc_vending",
+        "The Vending Machine",
+        CardType.ENCOUNTER,
+        "Took the coins, gave nothing. An OUT OF ORDER sign appears.",
+        "Refunds at reception.",
+        0.9,
+    ),
+    CardDef(
+        "enc_meeting",
+        "The Meeting Ran Long",
+        CardType.ENCOUNTER,
+        "The boardroom is still occupied. The next booking is waiting outside.",
+        "Just five more minutes.",
+        1.0,
+    ),
+    # ── more Rivals ────────────────────────────────────────────────────────────
+    CardDef(
+        "riv_outofoffice",
+        "Out of Office",
+        CardType.RIVAL,
+        "The person you need is on leave until further notice.",
+        "Auto-reply engaged.",
+        1.1,
+    ),
+    CardDef(
+        "riv_approval2",
+        "Needs Approval",
+        CardType.RIVAL,
+        "Two levels up. The director is in meetings all day.",
+        "Try after 4.",
+        1.0,
+    ),
+    CardDef(
+        "riv_wrongform",
+        "Wrong Form",
+        CardType.RIVAL,
+        "Wrong version. The correct one was deprecated last spring.",
+        "See the intranet.",
+        1.0,
+    ),
+    CardDef(
+        "riv_closed",
+        "Already Closed",
+        CardType.RIVAL,
+        "The ticket was marked resolved. It was not resolved.",
+        "Reopen it, then.",
+        1.0,
+    ),
+    CardDef(
+        "riv_committee",
+        "The Committee",
+        CardType.RIVAL,
+        "It will be discussed at the next meeting. The meeting is quarterly.",
+        "Added to the agenda.",
+        0.9,
+    ),
+    CardDef(
+        "riv_portal",
+        "Submit a Request",
+        CardType.RIVAL,
+        "There's a portal for that. The portal needs a login you don't have.",
+        "Request access first.",
+        1.0,
+    ),
+    CardDef(
+        "riv_securityno",
+        "Security Won't Allow It",
+        CardType.RIVAL,
+        "A policy reason. Firm. Unexplained.",
+        "For your protection.",
+        0.9,
+    ),
+    CardDef(
+        "riv_freeze",
+        "Budget Freeze",
+        CardType.RIVAL,
+        "Nothing can be ordered until the new fiscal year.",
+        "Q1, at the earliest.",
+        0.9,
+    ),
+    CardDef(
+        "riv_doublebooked",
+        "Scheduling Conflict",
+        CardType.RIVAL,
+        "The only person who knows is double-booked all week.",
+        "Find a window.",
+        1.0,
+    ),
+    CardDef(
+        "riv_readdirective",
+        "Read the Directive",
+        CardType.RIVAL,
+        "You are pointed, kindly, to a forty-page PDF.",
+        "Section 7, subsection b.",
+        0.9,
+    ),
+    CardDef(
+        "riv_notme",
+        "That's Not My File",
+        CardType.RIVAL,
+        "A polite handoff to someone who will also hand it off.",
+        "Loop them in.",
+        1.0,
+    ),
+    CardDef(
+        "riv_quorum",
+        "No Quorum",
+        CardType.RIVAL,
+        "The decision needs three signatures. Two are away.",
+        "Reconvene Thursday.",
+        0.8,
+    ),
+    # ── more Boons ─────────────────────────────────────────────────────────────
+    CardDef(
+        "boon_email",
+        "A Helpful Email",
+        CardType.BOON,
+        "Someone cc's you the exact thing you needed.",
+        "As discussed.",
+        1.1,
+    ),
+    CardDef(
+        "boon_masterkey",
+        "The Master Key",
+        CardType.BOON,
+        "Facilities lends you the master key. Briefly.",
+        "Sign it out.",
+        1.0,
+    ),
+    CardDef(
+        "boon_aguy",
+        "Someone Knows a Guy",
+        CardType.BOON,
+        "A name, a desk number, a way in.",
+        "Tell them I sent you.",
+        1.0,
+    ),
+    CardDef(
+        "boon_override",
+        "The Override",
+        CardType.BOON,
+        "A manager waves it through, just this once.",
+        "Don't make a habit of it.",
+        0.9,
+    ),
+    CardDef(
+        "boon_manual",
+        "Found the Manual",
+        CardType.BOON,
+        "The actual documentation, in a drawer, current.",
+        "Page one, finally.",
+        1.0,
+    ),
+    CardDef(
+        "boon_quietword",
+        "A Quiet Word",
+        CardType.BOON,
+        "The right person, caught at the right moment, says yes.",
+        "Off the record.",
+        1.0,
+    ),
+    CardDef(
+        "boon_login",
+        "Spare Login",
+        CardType.BOON,
+        "A shared account, still active, on a sticky note.",
+        "Don't tell IT.",
+        0.9,
+    ),
+    CardDef(
+        "boon_backup",
+        "The Backup",
+        CardType.BOON,
+        "There was a copy all along. It's current.",
+        "Restored in full.",
+        1.0,
+    ),
+    CardDef(
+        "boon_favour",
+        "A Favour Returned",
+        CardType.BOON,
+        "Someone owes you one. They make good.",
+        "We're even now.",
+        1.0,
+    ),
+    CardDef(
+        "boon_fresheyes",
+        "Fresh Eyes",
+        CardType.BOON,
+        "A colleague spots the obvious thing you missed.",
+        "It was right there.",
+        1.0,
+    ),
+    CardDef(
+        "boon_fasttrack",
+        "Fast-Track Approved",
+        CardType.BOON,
+        "Turns out there's an expedited stream. You qualify.",
+        "Pre-cleared.",
+        0.9,
+    ),
+    CardDef(
+        "boon_donuts",
+        "Donuts",
+        CardType.BOON,
+        "Morale improves. A side door of goodwill opens.",
+        "Sprinkles included.",
+        1.0,
+    ),
+    # ── more Twists ────────────────────────────────────────────────────────────
+    CardDef(
+        "twist_movedteam",
+        "It's a Different Branch Now",
+        CardType.TWIST,
+        "The function moved last quarter. Nobody updated the intranet.",
+        "New reporting line.",
+        0.9,
+    ),
+    CardDef(
+        "twist_policychg",
+        "The Policy Changed",
+        CardType.TWIST,
+        "As of this morning. Backdated, naturally.",
+        "Effective last week.",
+        0.9,
+    ),
+    CardDef(
+        "twist_realissue",
+        "That's Not the Real Issue",
+        CardType.TWIST,
+        "The actual problem is somewhere else entirely.",
+        "Follow the thread.",
+        0.8,
+    ),
+    CardDef(
+        "twist_acting",
+        "Acting Capacity",
+        CardType.TWIST,
+        "The person in charge is only acting. The real one is on secondment.",
+        "Until further notice.",
+        0.9,
+    ),
+    CardDef(
+        "twist_neverapproved",
+        "It Was Never Approved",
+        CardType.TWIST,
+        "The thing everyone assumed was signed off, wasn't.",
+        "Check the record.",
+        0.9,
+    ),
+    CardDef(
+        "twist_renamed",
+        "Renamed Again",
+        CardType.TWIST,
+        "The system has a new name. Same system.",
+        "Now with a new acronym.",
+        0.9,
+    ),
+    CardDef(
+        "twist_deadline2",
+        "The Deadline Moved",
+        CardType.TWIST,
+        "Forward. By a lot. Effective immediately.",
+        "End of day, apparently.",
+        0.9,
+    ),
+    CardDef(
+        "twist_outofscope",
+        "Out of Scope",
+        CardType.TWIST,
+        "What you're doing was never part of this. It is now.",
+        "Scope creep, formalized.",
+        0.9,
+    ),
+    CardDef(
+        "twist_orgchart",
+        "The Org Chart Updated",
+        CardType.TWIST,
+        "Your contact reports to someone new as of today.",
+        "See the new chart.",
+        0.9,
+    ),
+    CardDef(
+        "twist_pilot",
+        "It Was a Pilot",
+        CardType.TWIST,
+        "The pilot ended. Nobody told operations.",
+        "Findings pending.",
+        0.8,
+    ),
+    CardDef(
+        "twist_review",
+        "Under Review",
+        CardType.TWIST,
+        "The whole process is being reviewed. Findings expected eventually.",
+        "Interim guidance to follow.",
+        0.9,
+    ),
+    CardDef(
+        "twist_fiscal",
+        "Different Fiscal Year",
+        CardType.TWIST,
+        "The rules you followed were last year's.",
+        "New rules, same forms.",
+        0.8,
+    ),
 ]
 
 CARD_BY_ID = {c.id: c for c in CARD_LIBRARY}
@@ -1753,15 +2141,21 @@ def deal_hand(rng: random.Random, size: int = 5) -> list[CardDef]:
     pool = []
     for card in CARD_LIBRARY:
         pool.extend([card] * max(1, round(card.weight * 10)))
-    seen_types: set[CardType] = set()
     hand: list[CardDef] = []
+    chosen_ids: set[str] = set()
+    type_counts: dict[CardType, int] = {}
     attempts = 0
-    while len(hand) < size and attempts < 100:
-        card = rng.choice(pool)
-        if card.type not in seen_types or len(hand) < 2:
-            hand.append(card)
-            seen_types.add(card.type)
+    while len(hand) < size and attempts < 400:
         attempts += 1
+        card = rng.choice(pool)
+        if card.id in chosen_ids:  # never the same card twice in a hand
+            continue
+        # loose type variety: discourage a third of any one type
+        if type_counts.get(card.type, 0) >= 2 and rng.random() < 0.7:
+            continue
+        hand.append(card)
+        chosen_ids.add(card.id)
+        type_counts[card.type] = type_counts.get(card.type, 0) + 1
     return hand
 
 

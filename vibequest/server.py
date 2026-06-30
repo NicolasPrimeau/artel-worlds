@@ -615,12 +615,18 @@ def _card_msg(card) -> dict:
 _DEAL_TYPE_CYCLE = [CardType.ENCOUNTER, CardType.RIVAL, CardType.BOON, CardType.TWIST]
 
 
+_recent_deals: deque[str] = deque(maxlen=6)  # avoid repeats within a hand-sized window
+
+
 def _next_deal_card():
     global _deal_type_idx
     target_type = _DEAL_TYPE_CYCLE[_deal_type_idx % len(_DEAL_TYPE_CYCLE)]
     _deal_type_idx += 1
     pool = [c for c in CARD_BY_ID.values() if c.type == target_type]
-    return _rng.choices(pool, weights=[c.weight for c in pool])[0]
+    fresh = [c for c in pool if c.id not in _recent_deals] or pool
+    card = _rng.choices(fresh, weights=[c.weight for c in fresh])[0]
+    _recent_deals.append(card.id)
+    return card
 
 
 async def _deal_loop() -> None:
