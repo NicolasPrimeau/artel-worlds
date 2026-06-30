@@ -132,7 +132,7 @@
   /* hand cards anchored at center-bottom of #hand */
   .card{
     position:absolute;bottom:0;left:50%;
-    width:clamp(80px,22vw,100px);height:clamp(112px,29vw,136px);
+    width:clamp(72px,19vw,90px);height:clamp(104px,26vw,126px);
     border:2px solid var(--ink);border-radius:7px;
     background:var(--cream2);padding:clamp(6px,1.7vw,8px) clamp(7px,2vw,10px) clamp(7px,1.8vw,9px);
     display:flex;flex-direction:column;gap:3px;overflow:hidden;
@@ -1653,7 +1653,7 @@ function showCardDetail(c){
 function _layoutHand(animUid){
   const n=_handItems.length;
   // consistent per-card spacing, centered on 0 — so few cards stay together in the middle
-  const spacing=Math.min(42, window.innerWidth*0.105);  // tight fan so it clears the draw/play piles
+  const spacing=Math.min(30, window.innerWidth*0.076);  // tight fan so it clears the draw/play piles
   _handItems.forEach((item,i)=>{
     const el=_handEls.get(item.uid); if(!el) return;
     const ci=i-(n-1)/2;                    // centered index: 2 cards -> -.5,+.5 ; 5 -> -2..2
