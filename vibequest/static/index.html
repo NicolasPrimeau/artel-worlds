@@ -1582,12 +1582,11 @@ let _pileResolving=false, _resolvingCount=0;
 let selectedCard=null;
 let _voteTimer=null;
 
-function cardTransform(t,drop,step){
-  const s=step??70;
-  const tx=t*s;                          // spread left→right
-  const rot=t*9;                         // gentler tilt = flatter fan
-  const ty=-(1-t*t)*11 - (drop?0:15);    // flatter arc + smaller raise so a selected card stays clear of the panel
-  return `translateX(calc(-50% + ${tx}px)) translateY(${ty}px) rotate(${rot}deg)`;
+// tnorm in [-1,1] drives the curve (tilt + arc); tx is the explicit horizontal offset
+function cardTransform(tnorm,drop,tx){
+  const rot=tnorm*9;                       // gentle tilt = flat fan
+  const ty=-(1-tnorm*tnorm)*11 - (drop?0:15);  // flat arc + small raise so a selected card stays clear
+  return `translateX(calc(-50% + ${tx||0}px)) translateY(${ty}px) rotate(${rot}deg)`;
 }
 
 function fanStep(n){
@@ -1619,25 +1618,28 @@ function showCardDetail(c){
 
 function _layoutHand(animUid){
   const n=_handItems.length;
-  const step=fanStep(n);
+  // consistent per-card spacing, centered on 0 — so few cards stay together in the middle
+  const spacing=Math.min(70, window.innerWidth*0.17);
   _handItems.forEach((item,i)=>{
     const el=_handEls.get(item.uid); if(!el) return;
-    const t=n>1?(i/(n-1))*2-1:0;
-    const defZ=n-Math.round(Math.abs(i-(n-1)/2)*2);
-    el._t=t; el._step=step; el._defZ=defZ;
+    const ci=i-(n-1)/2;                    // centered index: 2 cards -> -.5,+.5 ; 5 -> -2..2
+    const tx=ci*spacing;                   // horizontal offset
+    const tnorm=n>1 ? ci/((n-1)/2) : 0;    // [-1,1] for the curve
+    const defZ=n-Math.round(Math.abs(ci)*2);
+    el._t=tnorm; el._tx=tx; el._defZ=defZ;
     if(item.uid===animUid){
       el.style.transition="none";
-      el.style.transform=cardTransform(1,true,step)+" translateY(18px) scale(.82)";
+      el.style.transform=cardTransform(tnorm,true,tx)+" translateY(20px) scale(.85)";
       el.style.opacity="0";
       requestAnimationFrame(()=>requestAnimationFrame(()=>{
         el.style.transition="transform .28s cubic-bezier(.25,.8,.25,1), opacity .18s";
         el.style.opacity="1";
-        el.style.transform=cardTransform(el._t,true,el._step);
+        el.style.transform=cardTransform(el._t,true,el._tx);
         el.style.zIndex=String(el._defZ);
       }));
     } else if(el.style.position!=="fixed"){
       el.style.transition="transform .18s ease-out";
-      el.style.transform=cardTransform(t,true,step);
+      el.style.transform=cardTransform(tnorm,true,tx);
       el.style.zIndex=String(defZ);
     }
   });
@@ -1658,12 +1660,12 @@ function _attachCardHandlers(el,uid,c){
   let holdTimer=null,ptStart=null,dragging=false,dragMode=null,detailShown=false,_lastDy=0;
   const _applyRest=()=>{
     const tapped=(_raisedUid===uid);
-    el.style.transform=cardTransform(el._t,!tapped,el._step);
+    el.style.transform=cardTransform(el._t,!tapped,el._tx);
     el.style.boxShadow=tapped?"0 12px 24px rgba(26,20,40,.28)":"";
     el.style.zIndex=tapped?100:String(el._defZ);
   };
   el._applyRest=_applyRest;
-  const raiseFull=()=>{ el.style.transform=cardTransform(el._t,false,el._step); el.style.boxShadow="0 12px 24px rgba(26,20,40,.28)"; el.style.zIndex=100; };
+  const raiseFull=()=>{ el.style.transform=cardTransform(el._t,false,el._tx); el.style.boxShadow="0 12px 24px rgba(26,20,40,.28)"; el.style.zIndex=100; };
   const resetFixed=()=>{ el.style.position=""; el.style.left=""; el.style.top=""; el.style.width=""; el.style.height=""; el.style.margin=""; el.style.transition=""; el.style.opacity=""; };
   const play=()=>{
     if(el.classList.contains("played"))return;
@@ -1752,7 +1754,7 @@ function renderHand(cards){
     _handItems.push({uid,...c});
     const el=document.createElement("div"); el.className="card "+c.type;
     el.innerHTML=`<div class="ct">${TYPE_LABEL[c.type]||c.type}</div><div class="cn">${c.name}</div><div class="cd">${c.description}</div>`;
-    el._t=0; el._step=0; el._defZ=1; el.style.opacity="1";
+    el._t=0; el._tx=0; el._defZ=1; el.style.opacity="1";
     h.appendChild(el);
     _handEls.set(uid,el);
     _attachCardHandlers(el,uid,c);
@@ -1862,7 +1864,7 @@ function addDealCard(card){
   const h=document.getElementById("hand");
   const el=document.createElement("div"); el.className="card "+card.type;
   el.innerHTML=`<div class="ct">${TYPE_LABEL[card.type]||card.type}</div><div class="cn">${card.name}</div><div class="cd">${card.description}</div>`;
-  el.style.opacity="0"; el._t=0; el._step=0; el._defZ=1;
+  el.style.opacity="0"; el._t=0; el._tx=0; el._defZ=1;
   h.appendChild(el);
   _handEls.set(uid,el);
   _attachCardHandlers(el,uid,card);

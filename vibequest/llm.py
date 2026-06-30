@@ -15,6 +15,13 @@ def _as_text(v) -> str:
     return str(v) if v is not None else ""
 
 
+def _name(v) -> str:
+    # speaker labels must be a single clean token — models sometimes cram "Role\nName" in here
+    s = " ".join(_as_text(v).split())
+    s = s.split(",")[0].split("(")[0].strip()
+    return s[:32]
+
+
 def _clean(text) -> str:
     t = _THINK.sub("", _as_text(text))
     i = t.lower().find("<think>")
@@ -307,7 +314,7 @@ JSON: {{"fit":<0-100 int>,"narrative":"...","reactions":[{{"name":"...","role":"
     rx = []
     for r in parsed.get("reactions", []):
         if isinstance(r, dict) and _as_text(r.get("line", "")).strip():
-            rx.append({"name": _as_text(r.get("name", "")), "line": _clean(r.get("line", ""))})
+            rx.append({"name": _name(r.get("name", "")), "line": _clean(r.get("line", ""))})
     parsed["reactions"] = rx
     return parsed
 
@@ -412,7 +419,7 @@ JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactio
     rx = []
     for r in parsed.get("reactions", []):
         if isinstance(r, dict) and _as_text(r.get("line", "")).strip():
-            rx.append({"name": _as_text(r.get("name", "")), "line": _clean(r.get("line", ""))})
+            rx.append({"name": _name(r.get("name", "")), "line": _clean(r.get("line", ""))})
     parsed["reactions"] = rx
     # never leave the audience without an outcome — synthesize a plain one if needed
     if not parsed["narrative"]:
