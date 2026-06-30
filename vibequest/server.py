@@ -73,7 +73,7 @@ def _character_desc(state: GameState) -> str:
 
 
 def _story_so_far(state: GameState) -> str:
-    return " | ".join(state.quest.beats[-8:]) or "(just beginning)"
+    return " | ".join(state.quest.beats[-5:]) or "(just beginning)"
 
 
 def _scene_name(state: GameState) -> str:

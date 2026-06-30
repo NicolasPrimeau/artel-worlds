@@ -39,6 +39,9 @@ _KEYS = {
     "cerebras": env("CEREBRAS_KEY"),
     "sambanova": env("SAMBANOVA_KEY"),
     "gemini": env("LLM2_KEY"),
+    "openai": env(
+        "OPENAI_KEY"
+    ),  # set this + add "openai:gpt-4o-mini" to POOL for stronger narration
 }
 
 _DEFAULT_POOL = [
@@ -74,6 +77,11 @@ _TONE = (
     "Bad (a book): 'Susan leans over Jean-Guy\\'s desk and says, \"Jean-Guy, can we get ticket 214 escalated today so accounting stops breathing down our necks?\" Jean-Guy glances at his spreadsheet, sighs, and replies...' "
     "Dry, deadpan office humour. Specific to THIS moment. No similes, no purple prose, no narrating emotions flatly. "
     "NOT fantasy: it is an office."
+)
+
+_TONE_MINI = (
+    "Dry deadpan office comedy. SHORT — 1-2 plain sentences, present tense. "
+    "A ≤10-word line of dialogue is fine; no stage directions, no purple prose. An office, not fantasy."
 )
 
 
@@ -332,67 +340,42 @@ async def resolve_decision(
     story_facts: list[str] | None = None,
     planned_next: str = "",
 ) -> dict:
-    facts = ("TRUE:\n" + "\n".join(f"- {f}" for f in story_facts[-8:])) if story_facts else ""
-    history = f"SO FAR: {story_so_far}" if story_so_far else ""
-    mood_line = f"AGENT'S MOOD: {mood}" if mood else ""
-    npc = f"AGENT IS WITH: {npc_context}" if npc_context else ""
+    facts = ("KNOWN: " + " | ".join(story_facts[-4:])) if story_facts else ""
+    history = f"STORY SO FAR: {story_so_far}" if story_so_far else ""
+    mood_s = f" (mood: {mood})" if mood else ""
+    npc = f"WITH: {npc_context}" if npc_context else ""
     if cards:
-        card_lines = "\n".join(
-            f"- {c['name']} (chosen x{c.get('weight', 1)}): {c['description']}" for c in cards
-        )
+        card_lines = "; ".join(f"{c['name']}×{c.get('weight', 1)}" for c in cards)
         cards_block = (
-            "The audience chose these TACTICS for the agent to use on this wall "
-            "(x = how many people chose it; higher = stronger pull):\n"
-            f"{card_lines}\n\n"
-            "The agent USES the heaviest tactic (combine them if they blend). "
-            "Rate FIT 0-100: how well that tactic actually suits THIS wall. "
-            "RIGHT tactic for the wall = HIGH — it works, the agent gets past cleanly. "
-            "WRONG/absurd tactic for the wall = LOW — the agent does it anyway and it backfires; "
-            "the wall still 'resolves' but ABSURDLY, reality bends, deadpan, and it gets weirder. "
-            "Always narrate the agent actually DOING the chosen tactic."
+            f"AUDIENCE TACTIC(S): {card_lines}. The agent uses the heaviest. "
+            "FIT 0-100 = how well it suits THIS wall: right tactic→HIGH (works, gets past cleanly); "
+            "wrong/absurd→LOW (agent does it anyway, it backfires, reality bends, deadpan)."
         )
     else:
-        cards_block = (
-            "The audience chose NO tactic. The agent handles this wall on its own — modestly, plainly. "
-            "Rate FIT around 55-65 (ordinary progress, no big swing)."
-        )
-    people = "\n".join(f"- [{n['id']}] {n['name']}, {n['role']}" for n in roster) if roster else ""
-    reactions = (
-        "Add 1-2 short reactions in quotes — the person present, then the agent (each ≤10 words)."
-        if npc_context
-        else "Add one short reaction from the agent in quotes (≤10 words)."
-    )
-    prompt = f"""{_TONE}
+        cards_block = "No tactic chosen — the agent muddles through alone. FIT ~60."
+    people = ", ".join(f"{n['id']}={n['name']}" for n in roster) if roster else ""
+    prompt = f"""{_TONE_MINI}
 
-THE GOAL (the spine — every wall is a step toward THIS, never drift): {quest_hook}
-THE AGENT: {protagonist}
-{mood_line}
+GOAL (the spine, never drift): {quest_hook}
+AGENT: {protagonist}{mood_s}
 {npc}
 {facts}
 {history}
 REALITY: {_surreal_band(surreal)}
 
-DECISION POINT — the agent is stuck here:
-"{situation}"
-
+WALL — the agent is stuck here: "{situation}"
 {cards_block}
 
-This is ONE continuous story, not separate vignettes. The agent is stuck at the wall above and the audience just chose the tactic above to deal with it. Everything you write must read as the NEXT lines of that single unfolding story — pick up directly from the wall and the chosen tactic, in the agent's voice and mood.
-Then:
-1. (the FIT from above)
-2. NARRATIVE — REQUIRED, never empty. In 1-2 short sentences make it OBVIOUS what happened: the agent does the chosen tactic, and the concrete RESULT (did it work, what changed). A reader must understand the whole outcome from THIS line alone — never leave the "what happened" to the reactions. {reactions} (reactions are just quick quips AFTER; skip one rather than leave it blank or cryptic.)
-3. breakthrough: true ONLY if the tactic clearly got the agent PAST this wall. false if it only made partial headway / the wall still blocks them (a wrong or weak tactic should NOT break through — the wall persists for another round).
-4. NEXT decision point (only matters if breakthrough). There is a PLANNED next beat: "{planned_next}".
-   - If the agent's move went CLEANLY (right tactic, good fit), the next wall IS that planned beat — keep the story on its spine. Set next_situation to it (lightly reworded to flow) and derailed=false.
-   - If the cards forced something WRONG or chaotic (low fit / a wildcard / surreal high), DEVIATE: invent the off-plan consequence the cards actually caused instead — a genuinely different turn, weirder, off the rails. Set next_situation to that and derailed=true. The cards MUST be able to change the story; don't railroad back to the plan.
-   Either way: ONE specific sentence, still recognizably about THE GOAL. Don't repeat earlier walls.
-5. Pick next_npc_id: who the agent walks to next for that wall (an exact id from the list, or "").
+Continue the ONE ongoing story — pick up from the wall and the tactic. Give JSON:
+- fit (int)
+- narrative: REQUIRED, 1-2 short sentences — the agent DOES the chosen tactic and the concrete RESULT (clear on its own, never left to the reaction).
+- reactions: 0-1 quick ≤10-word quote ({{"name","line"}}).
+- breakthrough: true only if the agent clearly got PAST the wall (wrong/weak tactic → false, wall persists).
+- established: 0-1 durable fact (or []).
+- if breakthrough — next_situation + next_npc_id. PLANNED next beat: "{planned_next}". Use it (reworded) if the move went cleanly; if the tactic was wrong/chaotic, set derailed=true and DEVIATE into the off-plan consequence instead. One sentence about the goal, not a repeat.
+- next_npc_id: an id from [{people}] or "".
 
-PEOPLE:
-{people}
-
-JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactions":[{{"name":"...","line":"..."}}],"next_situation":"...","next_npc_id":"<id or empty>","established":["<one durable fact>"],"world_changes":[]}}
-{_WORLD_ACTIONS}"""
+JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactions":[{{"name":"...","line":"..."}}],"next_situation":"...","next_npc_id":"","established":[]}}"""
     req = Request(
         system="Respond only with valid JSON. No fantasy language.",
         user=prompt,
@@ -430,7 +413,7 @@ JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactio
 
 
 async def first_decision(quest_hook: str, complication: str, protagonist: str) -> str:
-    prompt = f"""{_TONE}
+    prompt = f"""{_TONE_MINI}
 
 GOAL: {quest_hook}
 COMPLICATION: {complication}
@@ -446,7 +429,7 @@ JSON: {{"situation":"..."}}"""
 
 async def plan_arc(quest_hook: str, complication: str, protagonist: str) -> list[str]:
     name = protagonist.split(":")[0]
-    prompt = f"""{_TONE}
+    prompt = f"""{_TONE_MINI}
 
 GOAL: {quest_hook}
 COMPLICATION: {complication}
