@@ -247,6 +247,13 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
         f"{current_npc.name} ({current_npc.role}): {current_npc.personality}" if current_npc else ""
     )
 
+    # show the chosen move IMMEDIATELY — threads the card into the story and fills the resolve latency
+    if plays:
+        top = max(plays, key=lambda p: p["weight"])
+        trying = f"{state.character.name} goes with {top['name']}."
+        state.quest.beats.append(trying)
+        await _broadcast({"type": "scene_beat", "text": trying, "who": "", "pending": True})
+
     # --- the LLM resolves the DECISION: weighs all played cards, narrates, sets the next wall ---
     situation = state.quest.decision_prompt or state.quest.complication or state.quest.hook
     roster = [{"id": n.id, "name": n.name, "role": n.role} for n in state.quest.npcs]

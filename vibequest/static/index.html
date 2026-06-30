@@ -681,6 +681,12 @@ class World extends Phaser.Scene{
     m.spr.setDepth(1000+m.spr.y);
     updateBubbles();
     updateCaption(m.moving);
+    // "thinking" dots above the agent while a card resolves
+    if(_thinking && _thinkObj){
+      _thinkObj.x=m.spr.x; _thinkObj.y=m.spr.y-17; _thinkObj.setDepth(7200);
+      _thinkT+=dt;
+      _thinkObj.setText('.'.repeat(1+(Math.floor(_thinkT/280)%3)));
+    }
     // NPCs turn to face the player when interacting (i.e. when the player is near)
     if(npcs && npcs.length){
       const cx=m.spr.x, cy=m.spr.y;
@@ -713,6 +719,19 @@ function routeXY(rp){
 function idle(m){
   m.spr.anims.stop();
   m.spr.setFrame(DIR_COL[m.dir||"up"]);
+}
+
+// ── "thinking" indicator while a card resolves (fills the latency) ──
+let _thinking=false, _thinkObj=null, _thinkT=0;
+function setThinking(on){
+  _thinking=on;
+  if(!scene||!character||!character.spr){ return; }
+  if(on){
+    if(!_thinkObj){
+      _thinkObj=scene.add.text(0,0,'•',{fontFamily:'"Courier Prime",monospace',fontSize:'10px',color:'#d83c38',stroke:'#fdf4e2',strokeThickness:3}).setOrigin(0.5).setDepth(7200).setResolution(4);
+    }
+    _thinkT=0; _thinkObj.setVisible(true);
+  } else if(_thinkObj){ _thinkObj.setVisible(false); }
 }
 
 // ── cards trigger visible on-screen action ──
@@ -1912,7 +1931,7 @@ function connect(){
         showDecision(m.state.quest && m.state.quest.decision);
         break;
       }
-      case "meltdown": startMeltdown(); break;
+      case "meltdown": setThinking(false); startMeltdown(); break;
       case "new_quest": {
         document.getElementById("endscreen").hidden=true;
         document.getElementById("vote-section").hidden=true;
@@ -1928,7 +1947,7 @@ function connect(){
       }
       case "deal_card": addDealCard(m.card); break;
       case "hand": myHand=m.cards; renderHand(myHand); break;
-      case "window_closing": _pileResolving=true; _resolvingCount=pileCards.length||1; renderPile(); decisionResolving(); break;
+      case "window_closing": _pileResolving=true; _resolvingCount=pileCards.length||1; renderPile(); decisionResolving(); setThinking(true); break;
       case "move": onMove(m.pos); break;
       case "scene": applyState(m.state);
         if(m.scene&&m.scene.opening){ const mem=memberFor(null,m.scene.speaker); speak(mem,mem&&mem.name,m.scene.opening,5200); }
@@ -1940,6 +1959,7 @@ function connect(){
       case "decision": showDecision(m.situation, m.seconds); break;
       case "card_action": playCardAction(m); break;
       case "card_resolved": {
+        setThinking(false);
         applyState(m.state);
         if(m.next_heading) setCaption(m.next_heading);
         if(m.events?.length) logEncounter(m);

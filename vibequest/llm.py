@@ -365,11 +365,12 @@ DECISION POINT — the agent is stuck here:
 
 {cards_block}
 
+This is ONE continuous story, not separate vignettes. The agent is stuck at the wall above and the audience just chose the tactic above to deal with it. Everything you write must read as the NEXT lines of that single unfolding story — pick up directly from the wall and the chosen tactic, in the agent's voice and mood.
 Then:
 1. (the FIT from above)
-2. Write a SHORT beat (1-2 sentences, ≤30 words): the concrete outcome FIRST, then a quick line. {reactions}
+2. Write a SHORT beat (1-2 sentences, ≤30 words) that continues the story: show the agent ACTUALLY DOING the chosen tactic on this wall, and what comes of it (concrete outcome first). {reactions}
 3. breakthrough: true ONLY if the tactic clearly got the agent PAST this wall. false if it only made partial headway / the wall still blocks them (a wrong or weak tactic should NOT break through — the wall persists for another round).
-4. NEXT decision point (only matters if breakthrough): the next concrete wall — a step toward THE GOAL above (finding/fixing the exact thing the goal names), never an unrelated office problem. ONE specific sentence. Don't repeat earlier walls.
+4. NEXT decision point (only matters if breakthrough): the next wall must follow as a DIRECT CONSEQUENCE of what just happened — the story flows, each obstacle caused by the last — and still a step toward THE GOAL above. ONE specific sentence. Don't repeat earlier walls.
 5. Pick next_npc_id: who the agent walks to next for that wall (an exact id from the list, or "").
 
 PEOPLE:
