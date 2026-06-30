@@ -56,13 +56,13 @@ ROUTER = Router(
 SPEND = ROUTER.spend
 
 _TONE = (
-    "Narrate VibeQuest like a tight workplace-comedy scene — natural and flowing, with REAL DIALOGUE in quotes. "
-    "Write 2-3 sentences that connect into one little moment: someone does something, someone says something back, it lands. NOT clipped one-line fragments, NOT a list of actions. People talk like real coworkers. "
-    'Good: \'Pam finds Ngozi half-buried in binders. "The south plant — who actually handles it?" Ngozi doesn\\\'t look up. "Facilities. They outsourced it in March and forgot to tell anyone."\' '
-    "Bad (robotic fragments): 'Pam approaches Ngozi. She asks about the plant. Pam is determined.' "
-    "Bad (flowery): 'Our subject steps cautiously toward the humming photocopier, where the sheet glints like a misplaced leaf.' "
-    "Dry, deadpan office humour. Grounded and specific to THIS moment and these people. No similes, no 'as if', no purple prose, no narrating the character's emotions as a flat statement. "
-    "NOT fantasy: no quest, realm, dungeon, adventurer, arcane. It is an office."
+    "Narrate VibeQuest in SHORT, punchy beats. ONE to TWO sentences, MAX. Present tense. This is a ticker, NOT a book — never a paragraph. "
+    "Natural and a little funny, like a quick workplace-comedy moment. A short line of dialogue is great, but keep each quote ≤10 words and CUT the stage directions ('glanced at his spreadsheet, sighed, and replied' → just the line). "
+    "Good: 'Susan asks Jean-Guy to escalate ticket 214. \"Vendor still hasn\\'t called back,\" he shrugs.' "
+    "Good: 'The plant is dead. Facilities outsourced watering in March — to nobody.' "
+    "Bad (a book): 'Susan leans over Jean-Guy\\'s desk and says, \"Jean-Guy, can we get ticket 214 escalated today so accounting stops breathing down our necks?\" Jean-Guy glances at his spreadsheet, sighs, and replies...' "
+    "Dry, deadpan office humour. Specific to THIS moment. No similes, no purple prose, no narrating emotions flatly. "
+    "NOT fantasy: it is an office."
 )
 
 
@@ -260,17 +260,16 @@ The agent is the character the audience roots for. Their reaction must sound lik
 The audience just threw these EVENTS at the agent:
 {event_lines}
 
-First, rate FIT 0-100: how well do these events fit what the agent needs RIGHT NOW?
-- HIGH fit (60-100): they slot in. The agent uses them and makes progress. Narrate that plainly.
-  IMPORTANT: if an event is basically THE THING THE GOAL NEEDS (e.g. a "coffee round" when the goal is the coffee shortage), that is a near-perfect fit — let it resolve the situation directly and satisfyingly. Don't play it as a generic boon.
-- MID fit (35-59): a near-miss. Partly useful, a little weird. Narrate the small wobble.
-- LOW fit (0-34): they DON'T belong. The timeline BENDS to absorb them — things happen out of order, causality loops, the impossible becomes procedure. Narrate the surreal result, deadpan. The mismatch IS the joke.
-  Note: an event that echoes the goal but is IMPOSSIBLE right now (a coffee round when there are no pods) is a CLASH — play the irony: it happens anyway, absurdly.
-Pick the fit honestly from the event-vs-need mismatch.
+First, rate FIT 0-100: how well do these events fit the agent's GOAL and SITUATION (not just the exact current step — judge against the whole goal generously).
+- HIGH fit (60-100): the event is plausibly useful to the goal. Be GENEROUS — if a reasonable person could see how it helps, it's HIGH and the agent USES it to make real, visible progress. Most relevant cards belong here.
+  If an event is basically THE THING THE GOAL NEEDS, that's near-perfect — let it RESOLVE the situation directly and satisfyingly.
+- MID fit (35-59): tangential — only loosely connected. A small nudge with a little weirdness.
+- LOW fit (0-34): genuinely unrelated/impossible here. Reality BENDS to absorb it — surreal, deadpan. The mismatch IS the joke.
+A relevant card must visibly MATTER — never shrug one off. When in doubt, rate it higher and let it move the story.
 
 COHESION (most important): connect the event to THIS exact moment. Use the specific people, objects, room, and thread already in play (from the facts and what the agent was just doing). The event must land on the agent's CURRENT task — re-cast a generic event in terms of THIS goal (a "courier" arrives with THIS quest's document; a "fire drill" interrupts THIS specific negotiation). Never narrate it as a free-floating random thing. Even a clash happens HERE, to THIS agent, in THIS situation.
 
-Then write the beat as a short natural scene (2-3 sentences, with real DIALOGUE in quotes where it fits). It must OPEN with the concrete consequence for the agent's goal — what just changed (e.g. "The form is finally signed." / "Glen is sent back to square one." / "The auditor seizes the file.") — then show it landing in a line or two. No vague atmosphere, no flowery prose, no similes. {reactions} 0-2 established facts (on a LOW-fit clash, a fact may be rewritten/contradicted — that's fine). If an event introduces a new person or object, add it via world_changes.
+Then write a SHORT beat (1-2 sentences, ≤30 words). It must OPEN with the concrete consequence for the goal — what just changed (e.g. "The form is finally signed." / "Glen is sent back to square one." / "The auditor seizes the file."). One quick line of dialogue is fine (≤10 words). No paragraphs, no padding, no similes. {reactions} 0-2 established facts (on a LOW-fit clash, a fact may be rewritten/contradicted). If an event introduces a new person or object, add it via world_changes.
 {_WORLD_ACTIONS}
 
 JSON: {{"fit":<0-100 int>,"narrative":"...","reactions":[{{"name":"...","role":"...","line":"..."}}],"established":["..."],"world_changes":[]}}"""
@@ -553,8 +552,8 @@ SO FAR: {story_so_far or "Just starting."}
 {mood_line}
 {npc_name} ({npc_role}) — {npc_personality}
 
-Write the scene (2-3 sentences, natural, with real DIALOGUE in quotes): {agent_name} asks {npc_name} something specific about the goal, and {npc_name} answers in their own voice — helpful or obstructive, but strictly ABOUT THE GOAL. It should read like an actual exchange between two coworkers, not a summary. The "narrative" is the whole little scene (including both lines of dialogue). The "line" is just {npc_name}'s spoken reply on its own.
-JSON: {{"narrative":"the scene with dialogue","line":"<{npc_name}'s spoken reply>","established":["<one durable fact about the goal>"]}}"""
+Write ONE short beat (1-2 sentences, ≤30 words total): {agent_name} asks {npc_name} a quick specific thing about the goal; {npc_name} answers in their voice — helpful or obstructive, ABOUT THE GOAL. Keep {npc_name}'s quote ≤10 words. Don't repeat questions already asked earlier. Tight, no stage-direction padding. The "narrative" is the beat; "line" is just {npc_name}'s short spoken reply.
+JSON: {{"narrative":"short beat with the reply","line":"<{npc_name}'s reply, ≤10 words>","established":["<one durable fact about the goal>"]}}"""
     req = Request(
         system="Respond only with valid JSON. No fantasy language.",
         user=prompt,
