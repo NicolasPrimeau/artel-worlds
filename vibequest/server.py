@@ -46,7 +46,7 @@ PRESSURE_DURATION = 3
 BATCH_WINDOW = (
     3.0  # decision point: gather the crowd's cards (duplicates add weight) before resolving
 )
-DECISION_TIMEOUT = 14.0  # if nobody plays, the agent resolves the wall itself and moves on
+DECISION_TIMEOUT = 22.0  # time to read the encounter + play before the DM auto-resolves it
 
 _rng = random.SystemRandom()
 _state: GameState | None = None

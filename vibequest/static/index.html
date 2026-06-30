@@ -252,11 +252,8 @@
   #infobtn{pointer-events:auto;top:calc(8px + env(safe-area-inset-top));right:10px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;
     font-family:"Cormorant Garamond",serif;font-weight:700;font-size:16px;color:var(--ink);background:var(--cream);border:1.5px solid var(--ink);border-radius:50%;cursor:pointer;box-shadow:2px 2px 0 rgba(26,20,40,.18)}
   #infobtn:hover{background:var(--cream2)}
-  #stakes{pointer-events:none;z-index:40;top:calc(8px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);
-    display:flex;align-items:center;gap:9px;background:var(--cream);border:2px solid var(--ink);border-radius:20px;
-    padding:3px 12px;box-shadow:3px 3px 0 rgba(26,20,40,.2);font-family:"Courier Prime",monospace;
-    font-size:clamp(11px,3vw,14px);letter-spacing:.04em;white-space:nowrap}
-  #stakes[hidden]{display:none}
+  .tc-stakes{display:flex;align-items:center;gap:9px;margin-top:4px;font-family:"Courier Prime",monospace;
+    font-size:clamp(11px,3vw,13px);letter-spacing:.04em}
   #hp-pips{color:var(--coral);letter-spacing:.06em}
   #doom-pip{color:var(--ink);font-weight:700}
   #doom-pip.low{color:var(--coral);animation:doomPulse .8s ease-in-out infinite}
@@ -357,8 +354,9 @@
   <div id="titlecard">
     <div class="tc-header">
       <div>
-        <div class="label">VibeQuest</div>
+        <div class="label">An Office Delve</div>
         <div class="title" id="qtitle">—</div>
+        <div class="tc-stakes"><span id="hp-pips"></span><span id="doom-pip"></span></div>
       </div>
       <span class="tc-toggle">▼</span>
     </div>
@@ -380,8 +378,6 @@
 <div id="caption" class="ui"></div>
 
 <button id="infobtn" class="ui" type="button" aria-label="info">i</button>
-
-<div id="stakes" class="ui" hidden><span id="hp-pips"></span><span id="doom-pip"></span></div>
 
 <div id="info" class="ui" hidden><div class="infobox">
   <div class="infoh"><b>VibeQuest</b><button id="infoClose" type="button" aria-label="close">✕</button></div>
@@ -1009,16 +1005,14 @@ function setHud(snap){
   document.getElementById("qtitle").textContent=q.title||"VibeQuest";
   document.getElementById("qhook").textContent=q.hook||"";
   setSurrealLevel(q.surreal);
-  // stakes HUD: composure (HP) + doom clock
-  const st0=document.getElementById("stakes");
-  if(st0 && q.hp!=null){
+  // stakes (in the quest card): composure (HP) + doom clock
+  if(q.hp!=null && document.getElementById("hp-pips")){
     const hpMax=q.hp_max||5, hp=Math.max(0,Math.min(hpMax,q.hp));
     document.getElementById("hp-pips").textContent="♥".repeat(hp)+"♡".repeat(Math.max(0,hpMax-hp));
     const doom=Math.max(0,q.doom||0);
     const dp=document.getElementById("doom-pip");
     dp.textContent="⏳"+doom;
     dp.classList.toggle("low", doom<=4);
-    st0.hidden = !!q.outcome; // hide once the delve is over
   }
 
   // scene progress toward the next objective (always visible)
