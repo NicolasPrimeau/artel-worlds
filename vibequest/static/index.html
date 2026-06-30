@@ -98,11 +98,11 @@
     border-radius:3px;padding:3px 7px;cursor:pointer}
   #copy-narr:hover{color:var(--gold);border-color:rgba(238,207,96,.5)}
   #copy-narr.done{color:#83d3a3;border-color:#83d3a3}
-  #decision-bar{position:relative;z-index:14;flex:0 0 auto;pointer-events:auto;margin:7px 10px 3px;padding:7px 11px 9px;
-    background:#221634;border:1px solid rgba(238,207,96,.42);border-radius:4px;
+  #decision-bar{position:sticky;top:0;z-index:5;pointer-events:auto;margin:0 -12px 8px;padding:8px 54px 9px 12px;
+    background:#241838;border-bottom:1.5px solid rgba(238,207,96,.42);
     font-family:"Cormorant Garamond",serif;font-size:clamp(13px,3.9vw,16px);color:#f3e6c4;line-height:1.25;
     display:flex;align-items:center;gap:10px;justify-content:space-between}
-  #decision-timer{position:absolute;left:0;bottom:0;height:2px;width:100%;background:var(--gold);transform-origin:left;border-radius:0 0 3px 3px}
+  #decision-timer{position:absolute;left:0;bottom:0;height:2px;width:100%;background:var(--gold);transform-origin:left}
   #decision-bar.resolving #decision-timer{background:#83d3a3}
   #decision-bar.resolving{opacity:.55}
   #decision-text{flex:1}
@@ -110,10 +110,10 @@
   @keyframes cuePulse{0%,100%{opacity:.45}50%{opacity:1}}
   #decision-bar.resolving #decision-cue{animation:none;color:#83d3a3}
   /* ── cinematic narrative panel (now lives in the dock) ── */
-  #scene-panel{position:relative;z-index:13;flex:1 1 auto;min-height:clamp(60px,11vh,96px);max-height:38vh;overflow-y:auto;overscroll-behavior:contain;
+  #scene-panel{position:relative;z-index:13;flex:1 1 auto;min-height:clamp(64px,12vh,104px);max-height:42vh;overflow-y:auto;overscroll-behavior:contain;
     -webkit-overflow-scrolling:touch;pointer-events:auto;display:block;
-    background:linear-gradient(180deg,#1c1428 0%,#150e20 100%);border:none;border-bottom:1px solid rgba(238,207,96,.12);
-    padding:7px 18px 5px}
+    background:linear-gradient(180deg,#1c1428 0%,#150e20 100%);border:none;
+    padding:0 12px 6px}
   .sbeat{font-family:"Cormorant Garamond",Georgia,serif;font-size:clamp(16px,4.5vw,21px);line-height:1.5;
     color:#efe7d6;letter-spacing:.004em;padding:0 0 8px;transition:opacity .7s}
   .sbeat:last-child{padding-bottom:2px}
@@ -288,7 +288,7 @@
     .target-box{padding:10px 12px 12px}
     .target-npc{font-size:13px;padding:8px 10px}
     #caption{bottom:calc(var(--dock-h) + 6px)}
-    #scene-panel{padding:6px 12px 4px}
+    #scene-panel{padding:0 12px 5px}
     .sbeat{font-size:clamp(15px,4.3vw,19px)}
   }
 
@@ -442,8 +442,9 @@
 <div id="encounter" class="ui"></div>
 <div id="dock" class="ui">
   <button id="copy-narr" title="Copy the full narrative">⧉ copy</button>
-  <div id="decision-bar" style="display:none"><span id="decision-text"></span><b id="decision-cue">▶ PLAY A CARD</b><div id="decision-timer"></div></div>
-  <div id="scene-panel"></div>
+  <div id="scene-panel">
+    <div id="decision-bar" style="display:none"><span id="decision-text"></span><b id="decision-cue">▶ PLAY A CARD</b><div id="decision-timer"></div></div>
+  </div>
   <div id="cardzone">
     <div id="drawpile"></div>
     <div id="hand"></div>
