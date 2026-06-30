@@ -194,13 +194,16 @@ _EVENT_KIND = {
 
 
 def _surreal_band(surreal: int) -> str:
-    if surreal <= 2:
-        return "Reality is normal. Things obey cause and effect."
-    if surreal <= 6:
-        return "Reality has bent a little. Small impossibilities are now routine; nobody remarks on them."
+    # stay grounded until it's genuinely off the rails; then build gradually
+    if surreal <= 5:
+        return "Reality is normal. Things obey cause and effect. Keep it grounded and realistic."
+    if surreal <= 8:
+        return (
+            "Reality has bent slightly. One small impossibility has crept in; nobody remarks on it."
+        )
     if surreal <= 11:
         return (
-            "Reality is loose. Time and causality are negotiable; the impossible is just procedure."
+            "Reality is loose now. Causality is negotiable; the impossible is becoming procedure."
         )
     return "Reality has come undone. Events happen out of order, the timeline contradicts itself, everyone carries on regardless."
 
@@ -261,7 +264,9 @@ First, rate FIT 0-100: how well do these events fit what the agent needs RIGHT N
   Note: an event that echoes the goal but is IMPOSSIBLE right now (a coffee round when there are no pods) is a CLASH — play the irony: it happens anyway, absurdly.
 Pick the fit honestly from the event-vs-need mismatch.
 
-Then write the beat as POKEMON text: 1-2 SHORT lines, max 3, ≤12 words each. The FIRST line must state the CONCRETE CONSEQUENCE for the agent's goal — what just changed, plainly (e.g. "The form is signed!" / "Glen is sent back to the start." / "The auditor seizes the file."). No vague atmosphere, no flowery prose, no similes — make the card's impact unmistakable. {reactions} 0-2 established facts (on a LOW-fit clash, a fact may be rewritten/contradicted — that's fine). If an event introduces a new person or object, add it via world_changes.
+COHESION (most important): connect the event to THIS exact moment. Use the specific people, objects, room, and thread already in play (from the facts and what the agent was just doing). The event must land on the agent's CURRENT task — re-cast a generic event in terms of THIS goal (a "courier" arrives with THIS quest's document; a "fire drill" interrupts THIS specific negotiation). Never narrate it as a free-floating random thing. Even a clash happens HERE, to THIS agent, in THIS situation.
+
+Then write the beat as POKEMON text: 1-2 SHORT lines, max 3, ≤12 words each. The FIRST line must state the CONCRETE CONSEQUENCE for the agent's goal — what just changed, plainly (e.g. "The form is signed!" / "Glen is sent back to the start." / "The auditor seizes the file."). No vague atmosphere, no flowery prose, no similes. {reactions} 0-2 established facts (on a LOW-fit clash, a fact may be rewritten/contradicted — that's fine). If an event introduces a new person or object, add it via world_changes.
 {_WORLD_ACTIONS}
 
 JSON: {{"fit":<0-100 int>,"narrative":"...","reactions":[{{"name":"...","role":"...","line":"..."}}],"established":["..."],"world_changes":[]}}"""
