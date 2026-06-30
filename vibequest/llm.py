@@ -82,7 +82,7 @@ _WORLD_ACTIONS = """\
 world_changes actions (0-3, specific real names and labels):
 add_prop: {"action":"add_prop","id":"snake_id","label":"≤4 words","description":"exact","waypoint_idx":N}
 remove_prop/prop_update: {"action":"remove_prop","id":"id"} / {"action":"prop_update","id":"id","label":"...","description":"..."}
-add_npc: {"action":"add_npc","name":"Full Name","role":"Title","personality":"deadpan 1-sentence fact","waypoint_idx":N,"behavior":"stationary"}
+add_npc: {"action":"add_npc","name":"Full Name (Canadian public servant — French-Canadian, Anglo, or immigrant name)","role":"Civil-service title (Policy Analyst, Program Officer, ATIP Officer, Records, etc.)","personality":"deadpan 1-sentence fact","waypoint_idx":N,"behavior":"stationary"}
 move_npc/remove_npc: {"action":"move_npc","npc_id":"id","waypoint_idx":N} / {"action":"remove_npc","npc_id":"id"}
 npc_say: {"action":"npc_say","npc_id":"id","line":"≤15 words in their voice"}
 schedule: {"action":"schedule","delay":30,"event":"one sentence","world_changes":[...]}"""
