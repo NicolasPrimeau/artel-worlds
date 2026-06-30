@@ -1566,8 +1566,8 @@ let _voteTimer=null;
 function cardTransform(t,drop,step){
   const s=step??70;
   const tx=t*s;                          // spread left→right
-  const rot=t*15;                        // edges tilt outward
-  const ty=-(1-t*t)*26 - (drop?0:34);    // center raised, edges arc down toward the bottom
+  const rot=t*9;                         // gentler tilt = flatter fan
+  const ty=-(1-t*t)*11 - (drop?0:15);    // flatter arc + smaller raise so a selected card stays clear of the panel
   return `translateX(calc(-50% + ${tx}px)) translateY(${ty}px) rotate(${rot}deg)`;
 }
 
