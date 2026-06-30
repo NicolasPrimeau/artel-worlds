@@ -20,6 +20,10 @@ def _clean(text) -> str:
     i = t.lower().find("<think>")
     if i != -1:
         t = t[:i]
+    t = t.strip()
+    # strip stray markdown emphasis the model sometimes leaks (*word*, _word_, **word**)
+    t = re.sub(r"\*{1,3}([^*\n]+?)\*{1,3}", r"\1", t)
+    t = re.sub(r"(?<!\w)_([^_\n]+?)_(?!\w)", r"\1", t)
     return t.strip()
 
 
