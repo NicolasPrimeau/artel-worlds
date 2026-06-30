@@ -22,13 +22,13 @@ INDOOR_THEMES = {"office", "dark", "pub", "school", "grocery"}
 INDOOR_ROOM_NAMES: dict[str, list[str]] = {
     "office": [
         "Open Plan",
-        "Conference Room",
+        "Briefing Room",
         "Break Room",
         "Reception",
-        "Print Bay",
-        "Manager's Office",
+        "Print Room",
+        "Director's Office",
         "Server Room",
-        "Supply Closet",
+        "Records Room",
     ],
     "dark": [
         "Hall",
@@ -258,13 +258,13 @@ THEMES = {
 _ZONE_DEF: dict[str, dict[str, tuple[int, int, int]]] = {
     "office": {
         "Open Plan": (FLOOR, 22, 12),
-        "Conference Room": (LAVENDER, 22, 12),
+        "Briefing Room": (LAVENDER, 22, 12),
         "Break Room": (PATH_LIGHT, 18, 10),
         "Reception": (PATH, 18, 10),
-        "Print Bay": (PATH_LIGHT, 18, 10),
-        "Manager's Office": (FLOOR, 18, 10),
+        "Print Room": (PATH_LIGHT, 18, 10),
+        "Director's Office": (FLOOR, 18, 10),
         "Server Room": (PATH, 16, 8),
-        "Supply Closet": (PATH_LIGHT, 16, 8),
+        "Records Room": (PATH_LIGHT, 16, 8),
     },
     "dark": {
         "Hall": (FLOOR, 22, 12),
@@ -655,7 +655,7 @@ def _furnish_room(
             occupied.add((x, y))
 
     low = name.lower()
-    if "conference" in low or "meeting" in low or "assembly" in low:
+    if "conference" in low or "meeting" in low or "assembly" in low or "briefing" in low:
         for x in range(x0 + 1, x1):
             put(x, 2, "desk")  # long table
         for x in range(x0 + 1, x1, 2):
@@ -687,7 +687,15 @@ def _furnish_room(
         put(x1, 1, "cabinet")
         put(x0, 3, "cabinet")
         put(x1, 3, "cabinet")
-    elif "supply" in low or "closet" in low or "storage" in low or "store" in low or "vault" in low:
+    elif (
+        "supply" in low
+        or "closet" in low
+        or "storage" in low
+        or "store" in low
+        or "vault" in low
+        or "records" in low
+        or "registry" in low
+    ):
         for x in range(x0, x1 + 1, 2):
             put(x, 1, "cabinet")
             put(x, 3, "cabinet")
@@ -699,7 +707,14 @@ def _furnish_room(
 
 
 _BULLPEN_NAMES: dict[str, list[str]] = {
-    "office": ["Sales", "Accounting", "Open Plan", "The Annex", "Operations", "Customer Service"],
+    "office": [
+        "Policy",
+        "Programs",
+        "Corporate Services",
+        "The Registry",
+        "Operations",
+        "Regional Office",
+    ],
     "dark": ["The Pit", "Common Floor", "The Stacks", "The Hollow", "Gathering Floor"],
     "pub": ["The Floor", "Long Tables", "By the Fire", "The Snug", "Bar Floor"],
     "school": ["Study Hall", "The Commons", "Desk Rows", "The Wing", "Open Hall"],
