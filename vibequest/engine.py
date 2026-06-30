@@ -1204,6 +1204,7 @@ class QuestState:
     momentum: int = 0
     tension: int = 0
     scene_progress: int = 0
+    surreal: int = 0  # accumulates from clashing (wrong-for-the-moment) events
     outcome: str | None = None
     scene_rounds: int = 0
     scene_beat_start: int = 0
@@ -1505,25 +1506,24 @@ def _clamp(v: int) -> int:
     return max(-10, min(10, v))
 
 
-# No dice. Each card TYPE has a fixed, legible job on the shared meters.
-def apply_card_effects(card_def: CardDef, quest: QuestState) -> None:
-    if card_def.type == CardType.BOON:
-        # something helps the agent — morale up, a step closer
+# No dice, no fixed card effects. The LLM rates how well the played event fits the
+# current moment (0-100); fit drives progress, clash drives surreal.
+def apply_fit_effects(quest: QuestState, fit: int) -> None:
+    fit = max(0, min(100, fit))
+    if fit >= 60:
+        # it slots in — the agent makes real progress
         quest.scene_progress += 1
         quest.momentum = _clamp(quest.momentum + 2)
-    elif card_def.type == CardType.ENCOUNTER:
-        # a wild event — eventful, nudges things along but disruptive
-        quest.scene_progress += 1
+    elif fit >= 35:
+        # a near-fit — nudges along, a little weirdness
+        quest.momentum = _clamp(quest.momentum + 1)
+        quest.surreal = min(20, quest.surreal + 1)
         quest.tension = min(10, quest.tension + 1)
+    else:
+        # a clash — the timeline bends to absorb it, progress stalls, zaniness rises
         quest.momentum = _clamp(quest.momentum - 1)
-    elif card_def.type == CardType.RIVAL:
-        # blocks or challenges the agent — a setback to overcome
-        quest.scene_progress = max(0, quest.scene_progress - 1)
+        quest.surreal = min(20, quest.surreal + 2)
         quest.tension = min(10, quest.tension + 1)
-        quest.momentum = _clamp(quest.momentum - 2)
-    elif card_def.type == CardType.TWIST:
-        # reframes the situation — swings morale to the current extreme
-        quest.momentum = _clamp(quest.momentum + (2 if quest.momentum >= 0 else -2))
 
 
 def classify_window(progress_delta: int, momentum_delta: int) -> str:

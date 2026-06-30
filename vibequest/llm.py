@@ -193,73 +193,72 @@ _EVENT_KIND = {
 }
 
 
+def _surreal_band(surreal: int) -> str:
+    if surreal <= 2:
+        return "Reality is normal. Things obey cause and effect."
+    if surreal <= 6:
+        return "Reality has bent a little. Small impossibilities are now routine; nobody remarks on them."
+    if surreal <= 11:
+        return (
+            "Reality is loose. Time and causality are negotiable; the impossible is just procedure."
+        )
+    return "Reality has come undone. Events happen out of order, the timeline contradicts itself, everyone carries on regardless."
+
+
 async def narrate_event(
     plays: list[dict],
-    progress: int,
-    progress_delta: int,
-    scene_threshold: int,
-    momentum: int,
-    momentum_delta: int,
     quest_hook: str,
     complication: str,
     protagonist: str,
+    current_step: str = "",
+    surreal: int = 0,
     npc_context: str = "",
     story_so_far: str = "",
     story_facts: list[str] | None = None,
-    register: str = "a warm wildlife documentary",
     memory_context: str = "",
     scene_context: str = "",
-    resolution_count: int = 0,
-    max_resolutions: int = 8,
-    scene_resolved: bool = False,
 ) -> dict:
     facts = ("TRUE:\n" + "\n".join(f"- {f}" for f in story_facts[-8:])) if story_facts else ""
     history = f"WHAT THE AGENT WAS DOING: {story_so_far}" if story_so_far else ""
     stage = f"STAGE:\n{scene_context}" if scene_context else ""
     npc = f"AGENT IS WITH: {npc_context}" if npc_context else ""
+    step = f"WHAT THE AGENT NEEDS RIGHT NOW: {current_step}" if current_step else ""
 
     event_lines = "\n".join(
         f"- {p['name']} ({_EVENT_KIND.get(p['type'], 'an event')}): {p['description']}"
         for p in plays
     )
-    mom_desc = (
-        f"{'up' if momentum_delta > 0 else 'down'} {abs(momentum_delta)}"
-        if momentum_delta
-        else "unchanged"
-    )
-    prog_desc = f"{progress}/{scene_threshold}"
-    if progress_delta:
-        prog_desc += f" ({'+' if progress_delta > 0 else ''}{progress_delta} this round)"
-    outcome_line = (
-        "This pushes the agent through the current step — it gets where it was trying to go."
-        if scene_resolved
-        else "The agent is still mid-task."
-    )
 
     reactions = (
-        "2 reactions — whoever the agent is with, in their voice (≤12 words), then the agent (≤12 words)."
+        "2 reactions — whoever the agent is with, in their voice (≤10 words), then the agent (≤10 words)."
         if npc_context
-        else "1 reaction from the agent (≤12 words)."
+        else "1 reaction from the agent (≤10 words)."
     )
 
     prompt = f"""{_TONE}
 
-{_escalation(resolution_count, max_resolutions)}
 THE AGENT'S GOAL: {quest_hook} | COMPLICATION: {complication}
 {npc}
-THE AGENT: {protagonist} | MORALE: {momentum} ({mom_desc})
+THE AGENT: {protagonist}
+{step}
 {facts}
 {history}
 {stage}
+REALITY RIGHT NOW: {_surreal_band(surreal)}
 
-The audience just threw these EVENTS at the agent mid-playthrough:
+The audience just threw these EVENTS at the agent:
 {event_lines}
-RESULT: progress {prog_desc}, morale {mom_desc}. {outcome_line}
 
-Write the beat as POKEMON text: 1-2 SHORT lines, max 3, ≤12 words each. The events INTERRUPT the agent — say plainly what crashes in and how the agent reacts. Dramatize EXACTLY the events above, nothing unrelated. No flowery prose, no similes. {reactions} 0-2 established facts. If an event introduces a new person or object, add it via world_changes.
+First, rate FIT 0-100: how well do these events fit what the agent needs RIGHT NOW?
+- HIGH fit (60-100): they slot in. The agent uses them and makes progress. Narrate that plainly.
+- MID fit (35-59): a near-miss. Partly useful, a little weird. Narrate the small wobble.
+- LOW fit (0-34): they DON'T belong. The timeline BENDS to absorb them — things happen out of order, causality loops, the impossible becomes procedure. Narrate the surreal result, deadpan. The mismatch IS the joke.
+Pick the fit honestly from the event-vs-need mismatch.
+
+Then write the beat as POKEMON text: 1-2 SHORT lines, max 3, ≤12 words each. Dramatize EXACTLY these events at this fit level. No flowery prose, no similes. {reactions} 0-2 established facts (on a LOW-fit clash, a fact may be rewritten/contradicted — that's fine). If an event introduces a new person or object, add it via world_changes.
 {_WORLD_ACTIONS}
 
-JSON: {{"narrative":"...","consequence":"...","reactions":[{{"name":"...","role":"...","line":"..."}}],"established":["..."],"world_changes":[]}}"""
+JSON: {{"fit":<0-100 int>,"narrative":"...","reactions":[{{"name":"...","role":"...","line":"..."}}],"established":["..."],"world_changes":[]}}"""
 
     req = Request(
         system="Respond only with valid JSON. No fantasy language.",
@@ -274,15 +273,17 @@ JSON: {{"narrative":"...","consequence":"...","reactions":[{{"name":"...","role"
     if not parsed or "narrative" not in parsed:
         moves = ", ".join(p["name"] for p in plays) or "nothing"
         return {
-            "narrative": f"The agent is interrupted by {moves}. It is handled, procedurally.",
-            "consequence": "",
+            "fit": 50,
+            "narrative": f"{moves} happens. The agent takes it in stride.",
             "reactions": [],
             "established": [],
             "world_changes": [],
         }
+    try:
+        parsed["fit"] = max(0, min(100, int(parsed.get("fit", 50))))
+    except (TypeError, ValueError):
+        parsed["fit"] = 50
     parsed["narrative"] = _clean(str(parsed.get("narrative", "")))
-    if parsed.get("consequence"):
-        parsed["consequence"] = _clean(str(parsed["consequence"]))
     parsed.setdefault("established", [])
     parsed.setdefault("world_changes", [])
     parsed.setdefault("reactions", [])

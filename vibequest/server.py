@@ -22,7 +22,7 @@ from .engine import (
     GameState,
     PlayedCard,
     QuestState,
-    apply_card_effects,
+    apply_fit_effects,
     apply_world_changes,
     advance_window,
     classify_window,
@@ -123,6 +123,7 @@ def _state_snapshot(state: GameState, include_world: bool = True) -> dict:
             "pressure_count": len(state.quest.pressure_pool),
             "scene_progress": state.quest.scene_progress,
             "scene_threshold": SCENE_THRESHOLD,
+            "surreal": state.quest.surreal,
             "npcs": [
                 {
                     "id": n.id,
@@ -199,16 +200,16 @@ async def _resolve_window(state: GameState) -> None:
     await _broadcast({"type": "window_closing", "card_count": len(played)})
     await asyncio.sleep(0.3)
 
-    # --- apply every played card to the shared meters (no dice) ---
+    # --- gather the played events (effects come AFTER the LLM rates fit) ---
     mom_before = state.quest.momentum
     prog_before = state.quest.scene_progress
+    surreal_before = state.quest.surreal
     plays: list[dict] = []
     target_npc_id: str | None = None
     for played_card in played:
         card_def = CARD_BY_ID.get(played_card.card_id)
         if not card_def:
             continue
-        apply_card_effects(card_def, state.quest)
         plays.append(
             {
                 "name": card_def.name,
@@ -224,12 +225,7 @@ async def _resolve_window(state: GameState) -> None:
         state.phase = "active"
         return
 
-    mom_delta = state.quest.momentum - mom_before
-    prog_delta = state.quest.scene_progress - prog_before
-
-    scene_resolved = state.quest.scene_progress >= SCENE_THRESHOLD
-
-    # --- the event interrupts the agent where it currently is ---
+    # --- the event lands on the agent where it currently is ---
     current_npc = None
     if target_npc_id:
         current_npc = next((n for n in state.quest.npcs if n.id == target_npc_id), None)
@@ -252,10 +248,10 @@ async def _resolve_window(state: GameState) -> None:
         except Exception:
             pass
 
-    # --- one beat for the whole window, bound to the cards + result ---
+    # --- the LLM rates how well the events FIT the moment, and narrates accordingly ---
     result: dict = {
+        "fit": 50,
         "narrative": "",
-        "consequence": "",
         "reactions": [],
         "established": [],
         "world_changes": [],
@@ -264,26 +260,27 @@ async def _resolve_window(state: GameState) -> None:
         try:
             result = await llm.narrate_event(
                 plays=plays,
-                progress=state.quest.scene_progress,
-                progress_delta=prog_delta,
-                scene_threshold=SCENE_THRESHOLD,
-                momentum=state.quest.momentum,
-                momentum_delta=mom_delta,
                 quest_hook=state.quest.hook,
                 complication=state.quest.complication,
                 protagonist=_character_desc(state),
+                current_step=_scene_goal(state),
+                surreal=state.quest.surreal,
                 npc_context=npc_context,
                 story_so_far=_story_so_far(state),
                 story_facts=list(state.quest.facts),
-                register=state.quest.register,
                 memory_context=memory_ctx,
                 scene_context=_scene_context(state),
-                resolution_count=state.quest.resolution_count,
-                max_resolutions=MAX_RESOLUTIONS,
-                scene_resolved=scene_resolved,
             )
         except Exception as exc:
             log.warning("narrate_event failed: %s", exc)
+
+    # fit drives the meters: high fit -> progress, clash -> surreal
+    fit = int(result.get("fit", 50))
+    apply_fit_effects(state.quest, fit)
+    mom_delta = state.quest.momentum - mom_before
+    prog_delta = state.quest.scene_progress - prog_before
+    surreal_delta = state.quest.surreal - surreal_before
+    scene_resolved = state.quest.scene_progress >= SCENE_THRESHOLD
 
     new_facts = [f for f in result.get("established", []) if isinstance(f, str)][:2]
     state.quest.facts.extend(new_facts)
@@ -361,6 +358,8 @@ async def _resolve_window(state: GameState) -> None:
             "events": [{"name": p["name"], "kind": p["type"]} for p in plays],
             "momentum_delta": mom_delta,
             "progress_delta": prog_delta,
+            "fit": fit,
+            "surreal_delta": surreal_delta,
             "agent_sprite": state.character.sprite,
             "npc_sprite": current_npc.sprite if current_npc else 0,
             "state": _state_snapshot(state, include_world=False),

@@ -1208,14 +1208,20 @@ function logEncounter(m){
   const more=m.events.length>1?` +${m.events.length-1}`:"";
   panel.querySelectorAll(".sbeat.live").forEach(e=>{ e.classList.remove("live"); e.classList.add("dim"); });
   const all=panel.querySelectorAll(".sbeat"); for(let k=0;k<all.length-18;k++) all[k].remove();
-  const md=m.momentum_delta||0, pd=m.progress_delta||0;
-  const chips=[];
+  const md=m.momentum_delta||0, pd=m.progress_delta||0, fit=(m.fit==null?50:m.fit), sd=m.surreal_delta||0;
+  // fit badge: how well the event matched the moment
+  let fitTag;
+  if(fit>=60) fitTag=`<span style="color:var(--sage2)">✓ FITS</span>`;
+  else if(fit>=35) fitTag=`<span style="color:var(--gold)">~ OFF</span>`;
+  else fitTag=`<span style="color:var(--lav)">⚡ CLASH</span>`;
+  const chips=[fitTag];
   if(pd) chips.push(`<span style="color:${pd>0?'var(--sage2)':'var(--rose2)'}">${pd>0?'▲':'▼'} progress</span>`);
   if(md) chips.push(`<span style="color:${md>0?'var(--sage2)':'var(--rose2)'}">${md>0?'+':''}${md} morale</span>`);
+  if(sd>0) chips.push(`<span style="color:var(--lav)">surreal +${sd}</span>`);
   const el=document.createElement("div"); el.className="sbeat event live";
-  el.style.borderLeft=`3px solid ${kind.col}`;
+  el.style.borderLeft=`3px solid ${fit<35?'var(--lav)':kind.col}`;
   el.innerHTML=`<span class="ev-tag" style="color:${kind.col};border-color:${kind.col}">${kind.emoji} ${kind.tag}</span> <span class="ev-name">${ev.name}${more}</span>`
-    +(chips.length?`<span class="ev-fx">${chips.join(" · ")}</span>`:"");
+    +`<span class="ev-fx">${chips.join(" · ")}</span>`;
   panel.appendChild(el);
   panel.scrollTop=panel.scrollHeight;
   if(m.narrative) addLogEntry(m.narrative);
