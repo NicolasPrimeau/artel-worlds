@@ -167,6 +167,11 @@ class Router:
                 {"role": "user", "content": user},
             ],
         }
+        if "gpt-5" in m.model:
+            # gpt-5 reasoning models reject custom temperature, and reason for thousands of tokens by
+            # default (slow + costly). Force the default temp and minimal reasoning for chat use.
+            payload["temperature"] = 1
+            payload["reasoning_effort"] = "minimal"
         if req.tools:
             payload["tools"] = req.tools
             payload["tool_choice"] = "auto"
