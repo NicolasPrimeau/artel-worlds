@@ -323,6 +323,7 @@ async def resolve_decision(
     npc_context: str = "",
     story_so_far: str = "",
     story_facts: list[str] | None = None,
+    planned_next: str = "",
 ) -> dict:
     facts = ("TRUE:\n" + "\n".join(f"- {f}" for f in story_facts[-8:])) if story_facts else ""
     history = f"SO FAR: {story_so_far}" if story_so_far else ""
@@ -374,13 +375,16 @@ Then:
 1. (the FIT from above)
 2. Write a SHORT beat (1-2 sentences, ≤30 words) that continues the story: show the agent ACTUALLY DOING the chosen tactic on this wall, and what comes of it (concrete outcome first). {reactions}
 3. breakthrough: true ONLY if the tactic clearly got the agent PAST this wall. false if it only made partial headway / the wall still blocks them (a wrong or weak tactic should NOT break through — the wall persists for another round).
-4. NEXT decision point (only matters if breakthrough): the next wall must follow as a DIRECT CONSEQUENCE of what just happened — the story flows, each obstacle caused by the last — and still a step toward THE GOAL above. ONE specific sentence. Don't repeat earlier walls.
+4. NEXT decision point (only matters if breakthrough). There is a PLANNED next beat: "{planned_next}".
+   - If the agent's move went CLEANLY (right tactic, good fit), the next wall IS that planned beat — keep the story on its spine. Set next_situation to it (lightly reworded to flow) and derailed=false.
+   - If the cards forced something WRONG or chaotic (low fit / a wildcard / surreal high), DEVIATE: invent the off-plan consequence the cards actually caused instead — a genuinely different turn, weirder, off the rails. Set next_situation to that and derailed=true. The cards MUST be able to change the story; don't railroad back to the plan.
+   Either way: ONE specific sentence, still recognizably about THE GOAL. Don't repeat earlier walls.
 5. Pick next_npc_id: who the agent walks to next for that wall (an exact id from the list, or "").
 
 PEOPLE:
 {people}
 
-JSON: {{"fit":int,"breakthrough":bool,"narrative":"...","reactions":[{{"name":"...","line":"..."}}],"next_situation":"...","next_npc_id":"<id or empty>","established":["<one durable fact>"],"world_changes":[]}}
+JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactions":[{{"name":"...","line":"..."}}],"next_situation":"...","next_npc_id":"<id or empty>","established":["<one durable fact>"],"world_changes":[]}}
 {_WORLD_ACTIONS}"""
     req = Request(
         system="Respond only with valid JSON. No fantasy language.",
@@ -394,6 +398,7 @@ JSON: {{"fit":int,"breakthrough":bool,"narrative":"...","reactions":[{{"name":".
     except (TypeError, ValueError):
         parsed["fit"] = 60
     parsed["breakthrough"] = bool(parsed.get("breakthrough", False))
+    parsed["derailed"] = bool(parsed.get("derailed", False))
     parsed["narrative"] = _clean(parsed.get("narrative", ""))
     parsed["next_situation"] = _clean(parsed.get("next_situation", ""))
     parsed.setdefault("next_npc_id", "")
@@ -420,6 +425,29 @@ JSON: {{"situation":"..."}}"""
     raw = await ROUTER.complete(req)
     parsed = parse_json(raw) or {}
     return _clean(parsed.get("situation", "")) or complication or quest_hook
+
+
+async def plan_arc(quest_hook: str, complication: str, protagonist: str) -> list[str]:
+    name = protagonist.split(":")[0]
+    prompt = f"""{_TONE}
+
+GOAL: {quest_hook}
+COMPLICATION: {complication}
+AGENT: {name}
+
+Plan this quest as a 5-beat story ARC — a real shape, not a flat list of similar errands. Each beat is a concrete WALL the agent runs into, and they ESCALATE toward a climax. Distinct beats, never rephrasings of each other. Shape:
+1. the opening snag
+2. it gets more tangled — a new wrinkle
+3. stakes rise — a real complication with a cost
+4. CLIMAX — the make-or-break moment (the deadline lands / the VIP arrives / the review starts / it all converges)
+5. resolution — the last hurdle to actually close it out
+Each beat: ONE specific present-tense sentence, about THE GOAL, ending on the obstacle.
+JSON: {{"beats":["...","...","...","...","..."]}}"""
+    req = Request(system="Respond only with valid JSON.", user=prompt, min_grade="capable")
+    raw = await ROUTER.complete(req)
+    parsed = parse_json(raw) or {}
+    beats = [_clean(b) for b in parsed.get("beats", []) if str(b).strip()][:6]
+    return beats
 
 
 async def narrate_meltdown(

@@ -1467,6 +1467,8 @@ class QuestState:
     scene_progress: int = 0
     surreal: int = 0  # accumulates from clashing (wrong-for-the-moment) events
     decision_prompt: str = ""  # the current wall the audience is deciding on (Telltale-style)
+    arc: list[str] = field(default_factory=list)  # planned beat spine: setup..climax..resolution
+    arc_pos: int = 0  # which planned beat we're on (cards can deviate from it)
     outcome: str | None = None
     scene_rounds: int = 0
     scene_beat_start: int = 0

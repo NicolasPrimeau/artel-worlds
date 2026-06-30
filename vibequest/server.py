@@ -257,6 +257,13 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
     # --- the LLM resolves the DECISION: weighs all played cards, narrates, sets the next wall ---
     situation = state.quest.decision_prompt or state.quest.complication or state.quest.hook
     roster = [{"id": n.id, "name": n.name, "role": n.role} for n in state.quest.npcs]
+    arc = state.quest.arc
+    nxt = state.quest.arc_pos + 1
+    planned_next = (
+        arc[nxt]
+        if 0 <= nxt < len(arc)
+        else "(this is the last beat — the agent finally closes out the goal)"
+    )
     result: dict = {
         "fit": 60,
         "narrative": "",
@@ -279,6 +286,7 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
                 npc_context=npc_context,
                 story_so_far=_story_so_far(state),
                 story_facts=list(state.quest.facts),
+                planned_next=planned_next,
             )
         except Exception as exc:
             log.warning("resolve_decision failed: %s", exc)
@@ -417,22 +425,27 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
             _card_signal.set()
         return
 
-    # the wall gives way: tick a step toward the goal, set the NEXT wall
+    # the wall gives way: advance along the planned ARC (cards may have DERAILED it into chaos)
     state.quest.scene_rounds = 0
     state.quest.scene_beat_start = len(state.quest.beats)
     _complete_artel_objective(state, state.quest.resolution_count)
     state.quest.resolution_count += 1
+    state.quest.arc_pos += 1
 
-    total_scenes = max(len(state.quest.objectives), MIN_RESOLUTIONS)
-    if (
-        state.quest.resolution_count >= total_scenes
-        or state.quest.resolution_count >= MAX_RESOLUTIONS
-    ):
+    arc_len = len(state.quest.arc) or MIN_RESOLUTIONS
+    if state.quest.arc_pos >= arc_len or state.quest.resolution_count >= MAX_RESOLUTIONS:
         state.quest.outcome = "success" if state.quest.momentum >= 0 else "failure"
         await _end_quest(state)
         return
 
-    next_situation = result.get("next_situation", "") or "The agent looks for another angle."
+    # next wall: the LLM's next_situation (the planned beat, or a chaotic deviation if the cards forced one)
+    if state.quest.arc and 0 <= state.quest.arc_pos < len(state.quest.arc):
+        planned = state.quest.arc[state.quest.arc_pos]
+    else:
+        planned = ""
+    next_situation = (
+        result.get("next_situation", "") or planned or "The agent looks for another angle."
+    )
     state.quest.decision_prompt = next_situation
     state.quest.beats.append(next_situation)
     next_npc = next(
@@ -635,9 +648,21 @@ async def _start_new_game(preset_quest: QuestState | None = None) -> None:
             pass
     _state.quest.complication = complication
 
-    # the opening decision point (the first wall the audience resolves)
-    first_situation = complication or _state.quest.hook
+    # plan the quest's ARC (a real story spine: setup -> escalation -> climax -> resolution).
+    # the cards can deviate from it — the arc is a backbone, not a rail.
+    arc: list[str] = []
     if llm.enabled():
+        try:
+            arc = await asyncio.wait_for(
+                llm.plan_arc(_state.quest.hook, complication, _character_desc(_state)),
+                timeout=6.0,
+            )
+        except Exception:
+            pass
+    _state.quest.arc = arc
+    _state.quest.arc_pos = 0
+    first_situation = arc[0] if arc else (complication or _state.quest.hook)
+    if not arc and llm.enabled():
         try:
             first_situation = (
                 await asyncio.wait_for(
