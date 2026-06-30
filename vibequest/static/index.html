@@ -1362,11 +1362,21 @@ function showCardAdded(m){
   },2500);
 }
 
-function showChapter(snap){
+let _chapterTimer=null, _chapterHolding=false;
+function showChapter(snap, hold){
+  if(!snap||!snap.quest) return;
   document.getElementById("chti").textContent=snap.quest.title||"";
   document.getElementById("chhk").textContent=snap.quest.hook||"";
   const el=document.getElementById("chapter"); el.classList.add("show");
-  setTimeout(()=>el.classList.remove("show"),3800);
+  clearTimeout(_chapterTimer);
+  _chapterHolding=!!hold;
+  // hold the intro up while the LLM warms up; otherwise the usual brief flash
+  _chapterTimer=setTimeout(()=>{ el.classList.remove("show"); _chapterHolding=false; }, hold?16000:3800);
+}
+function hideChapter(){
+  if(!document.getElementById("chapter").classList.contains("show")) return;
+  _chapterHolding=false; clearTimeout(_chapterTimer);
+  document.getElementById("chapter").classList.remove("show");
 }
 
 function showEndScreen(snap,closing){
@@ -1780,10 +1790,13 @@ function connect(){
     const m=JSON.parse(ev.data);
     switch(m.type){
       case "state": {
+        const fresh=!world; // first time we're seeing this quest on this client
         applyState(m.state);
         snapCharacter(m.state.pos);   // hard-snap on (re)connect — no stroll from a stale spot
         const _opening = m.state.log && m.state.log.find(e => e.kind === 'opening');
         if(_opening) addLogEntry(_opening.text);
+        // pop the quest name + hook immediately so there's something to read while the LLM warms up
+        if(fresh && m.state.phase!=="complete") showChapter(m.state, true);
         break;
       }
       case "meltdown": startMeltdown(); break;
@@ -1794,8 +1807,8 @@ function connect(){
         document.body.classList.remove("meltdown");
         document.getElementById("endscreen").classList.remove("meltdown");
         resetHand();
-        applyState(m.state); showChapter(m.state);
-        if(m.opening){ addLogEntry(m.opening); setTimeout(()=>{ const mem=memberFor(null,null); speak(mem,null,m.opening,5200); },3900); }
+        applyState(m.state); showChapter(m.state, true);
+        if(m.opening){ addLogEntry(m.opening); }
         break;
       }
       case "deal_card": addDealCard(m.card); break;
@@ -1806,10 +1819,11 @@ function connect(){
         if(m.scene&&m.scene.opening){ const mem=memberFor(null,m.scene.speaker); speak(mem,mem&&mem.name,m.scene.opening,5200); }
         break;
       case "travel_event": { addLogEntry(m.text); break; }
-      case "scene_beat": { if(m.text) showSceneBeat(m.text, m.who||''); break; }
-      case "npc_speak": { speakNPC(m.npc_name,m.line,5000); break; }
-      case "scene_event": { applyState(m.state); if(m.text) addLogEntry(m.text); break; }
+      case "scene_beat": { hideChapter(); if(m.text) showSceneBeat(m.text, m.who||''); break; }
+      case "npc_speak": { hideChapter(); speakNPC(m.npc_name,m.line,5000); break; }
+      case "scene_event": { hideChapter(); applyState(m.state); if(m.text) addLogEntry(m.text); break; }
       case "card_resolved": {
+        hideChapter();
         applyState(m.state);
         if(m.next_heading) setCaption(m.next_heading);
         if(m.events?.length) logEncounter(m);
@@ -1844,6 +1858,8 @@ function connect(){
 (function(){
   const tc=document.getElementById("titlecard");
   tc.addEventListener("click",()=>tc.classList.toggle("expanded"));
+  const ch=document.getElementById("chapter");
+  if(ch){ ch.style.pointerEvents="auto"; ch.addEventListener("click",hideChapter); }
 })();
 
 (function(){
