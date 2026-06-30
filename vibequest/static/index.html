@@ -240,18 +240,18 @@
   #endscreen{top:0;left:0;right:0;bottom:0;z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;pointer-events:auto;background:rgba(223,215,196,.9);opacity:0;transition:opacity .7s}
   #endscreen.show{opacity:1}
   #endscreen[hidden]{display:none!important}
-  .endbox{background:var(--cream);border:2px solid var(--ink);border-radius:6px;padding:clamp(24px,7vw,40px) clamp(28px,8vw,52px);text-align:center;box-shadow:8px 8px 0 rgba(26,20,40,.22);max-width:min(420px,90vw)}
-  .endbox .stamp{font-size:clamp(9px,2.5vw,11px);letter-spacing:.5em;text-transform:uppercase;color:var(--rose2);margin-bottom:8px}
-  .endbox .verdict{font-family:"Cormorant Garamond",serif;font-size:clamp(30px,9vw,44px);font-weight:700;letter-spacing:.04em;margin:4px 0 12px}
-  .endbox .hook{font-family:"Cormorant Garamond",serif;font-size:clamp(14px,4vw,17px);font-style:italic;color:var(--ink2);margin-bottom:16px}
-  .endbox .closing{font-size:clamp(12px,3.2vw,14px);color:var(--ink);line-height:1.55;border-top:1.5px solid rgba(26,20,40,.15);padding-top:14px;margin-top:2px}
-  .endbox .newquest{margin-top:20px;padding:10px 22px;background:var(--ink);color:var(--cream);border:none;border-radius:3px;font-family:"Courier Prime",monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer}
-  .endbox .newquest:hover{background:var(--rose2)}
-  .vote-section{margin-top:18px;border-top:1.5px solid rgba(26,20,40,.15);padding-top:14px;text-align:left}
-  .vote-label{font-size:9px;letter-spacing:.45em;text-transform:uppercase;color:var(--ink2);margin-bottom:8px}
-  .vote-timer{font-size:10px;letter-spacing:.1em;color:var(--rose2);margin-bottom:10px;font-family:"Courier Prime",monospace}
-  .vote-options{display:flex;flex-direction:column;gap:7px}
-  .vote-btn{padding:8px 12px;background:transparent;border:1.5px solid var(--ink);border-radius:3px;font-family:"Cormorant Garamond",serif;font-size:13px;cursor:pointer;color:var(--ink);text-align:left;line-height:1.4;transition:background .15s,color .15s}
+  .endbox{background:var(--cream);border:2px solid var(--ink);border-radius:6px;padding:clamp(16px,4.5vw,30px) clamp(20px,6vw,40px);text-align:center;box-shadow:8px 8px 0 rgba(26,20,40,.22);max-width:min(420px,92vw);max-height:94vh;overflow:hidden;display:flex;flex-direction:column;justify-content:center}
+  .endbox .stamp{font-size:clamp(8px,2.3vw,10px);letter-spacing:.45em;text-transform:uppercase;color:var(--rose2);margin-bottom:4px}
+  .endbox .verdict{font-family:"Cormorant Garamond",serif;font-size:clamp(22px,6.5vw,36px);font-weight:700;letter-spacing:.04em;margin:1px 0 7px;line-height:1}
+  .endbox .hook{font-family:"Courier Prime",monospace;font-size:clamp(9px,2.5vw,11px);letter-spacing:.18em;text-transform:uppercase;color:var(--ink);margin-bottom:7px}
+  .endbox .closing{font-size:clamp(11px,3vw,13px);color:var(--ink2);font-style:italic;line-height:1.4;border-top:1.5px solid rgba(26,20,40,.15);padding-top:9px}
+  .vote-section{margin-top:11px;border-top:1.5px solid rgba(26,20,40,.15);padding-top:10px;text-align:left}
+  .vote-label{font-size:9px;letter-spacing:.4em;text-transform:uppercase;color:var(--ink2);margin-bottom:8px;display:flex;justify-content:space-between;align-items:baseline}
+  .vote-timer{font-size:10px;letter-spacing:.1em;color:var(--rose2);font-family:"Courier Prime",monospace}
+  .vote-options{display:flex;flex-direction:column;gap:6px}
+  .vote-btn{padding:6px 11px;background:transparent;border:1.5px solid var(--ink);border-radius:3px;font-family:"Cormorant Garamond",serif;font-size:13px;cursor:pointer;color:var(--ink);text-align:left;line-height:1.3;transition:background .15s,color .15s}
+  .vote-btn .vh{display:block;font-size:11px;font-style:italic;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .vote-btn:hover .vh,.vote-btn.voted .vh{color:rgba(255,255,255,.8)}
   .vote-btn:hover,.vote-btn.voted{background:var(--ink);color:var(--cream)}
   .vote-count{font-size:10px;font-family:"Courier Prime",monospace;letter-spacing:.08em;opacity:.7}
 
@@ -282,11 +282,9 @@
   @media (max-width:480px){
     #hud{max-width:min(58vw,180px)}
     .bubble{max-width:clamp(90px,44vw,120px);font-size:10px}
-    #endscreen{padding:10px;align-items:flex-start;overflow-y:auto}
-    .endbox{max-width:100%;padding:20px 18px;max-height:none}
-    .endbox .verdict{font-size:clamp(24px,8vw,36px)}
-    .vote-section{margin-top:14px}
-    .vote-btn{font-size:12px;padding:7px 10px}
+    #endscreen{padding:8px;align-items:center;overflow:hidden}
+    .endbox{max-width:100%;padding:16px 16px;max-height:96vh}
+    .vote-btn{font-size:12.5px;padding:6px 10px}
     #target-picker{padding-bottom:calc(var(--dock-h) + 6px)}
     .target-box{padding:10px 12px 12px}
     .target-npc{font-size:13px;padding:8px 10px}
@@ -428,11 +426,9 @@
     <div class="hook" id="end-hook"></div>
     <div class="closing" id="end-closing"></div>
     <div id="vote-section" class="vote-section" hidden>
-      <div class="vote-label">What's next?</div>
-      <div class="vote-timer" id="vote-timer"></div>
+      <div class="vote-label">What's next? <span class="vote-timer" id="vote-timer"></span></div>
       <div class="vote-options" id="vote-options"></div>
     </div>
-    <button class="newquest" onclick="document.getElementById('endscreen').hidden=true">Skip</button>
   </div>
 </div>
 
@@ -1488,7 +1484,7 @@ function hideChapter(){
   document.getElementById("chapter").classList.remove("show");
 }
 
-function showEndScreen(snap,closing){
+function showEndScreen(snap,closing,vote,title){
   const outcome=snap.quest?.outcome||"success";
   const success=outcome==="success";
   const meltdown=outcome==="meltdown";
@@ -1496,11 +1492,12 @@ function showEndScreen(snap,closing){
   el.classList.toggle("meltdown", meltdown);
   document.getElementById("end-stamp").textContent=meltdown?"Reality: Unrecoverable":(success?"Case Closed":"Filed Under: Unresolved");
   document.getElementById("end-verdict").textContent=meltdown?"It Came Apart.":(success?"Done.":"Still Pending.");
-  document.getElementById("end-hook").textContent=snap.quest?.hook||"";
+  document.getElementById("end-hook").textContent=title||snap.quest?.title||snap.quest?.hook||"";
   document.getElementById("end-closing").textContent=closing||(meltdown?"Everyone agreed this was fine.":"The matter was considered handled.");
   el.hidden=false;
   requestAnimationFrame(()=>el.classList.add("show"));
   sndComplete(success&&!meltdown);
+  if(vote && vote.options) showVote(vote.options, vote.timeout);
 }
 
 function startMeltdown(){
@@ -1862,15 +1859,15 @@ function showVote(options,timeout){
   const optEl=document.getElementById("vote-options");
   const timerEl=document.getElementById("vote-timer");
   section.hidden=false; optEl.innerHTML="";
-  let s=timeout; timerEl.textContent=s+"s to vote";
+  let s=timeout; timerEl.textContent=s+"s";
   clearInterval(_voteTimer);
   _voteTimer=setInterval(()=>{
-    s--; timerEl.textContent=s>0?s+"s to vote":"voting closed";
+    s--; timerEl.textContent=s>0?s+"s":"closed";
     if(s<=0)clearInterval(_voteTimer);
   },1000);
   options.forEach(opt=>{
     const btn=document.createElement("button"); btn.className="vote-btn"; btn.dataset.idx=opt.idx;
-    btn.innerHTML=`<strong>${opt.title}</strong><br><span style="font-size:12px;font-style:italic">${opt.hook}</span><span class="vote-count" id="vc-${opt.idx}"></span>`;
+    btn.innerHTML=`<strong>${opt.title}</strong><span class="vote-count" id="vc-${opt.idx}"></span><span class="vh">${opt.hook}</span>`;
     btn.addEventListener("click",()=>{
       document.querySelectorAll(".vote-btn").forEach(b=>b.classList.remove("voted"));
       btn.classList.add("voted");
@@ -1948,7 +1945,7 @@ function connect(){
         break;
       }
       case "quest_complete": applyState(m.state);
-        showEndScreen(m.state,m.closing); break;
+        showEndScreen(m.state,m.closing,m.vote,m.title); break;
       case "vote_start": showVote(m.options,m.timeout); break;
       case "vote_update": updateVoteCounts(m.votes); break;
       case "card_played": {

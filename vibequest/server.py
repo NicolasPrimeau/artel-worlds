@@ -486,30 +486,29 @@ async def _end_quest(state: GameState) -> None:
             outcome=state.quest.outcome or "unclear",
             momentum=state.quest.momentum,
             protagonist=_character_desc(state),
+            story_so_far=_story_so_far(state),
         )
     state.log_event("quest_end", closing or f"The quest concludes. Outcome: {state.quest.outcome}.")
-    await _broadcast(
-        {
-            "type": "quest_complete",
-            "outcome": state.quest.outcome,
-            "closing": closing,
-            "state": _state_snapshot(state, include_world=False),
-        }
-    )
-    await asyncio.sleep(5.0)
+    # build the next-quest vote up front so the end screen shows verdict + recap + options together
     q1, _ = make_quest(_rng)
     q2, _ = make_quest(_rng)
     _vote_options = [q1, q2]
     _votes = {0: 0, 1: 0, 2: 0}
     await _broadcast(
         {
-            "type": "vote_start",
-            "timeout": int(VOTE_TIMEOUT),
-            "options": [
-                {"idx": 0, "title": q1.title, "hook": q1.hook},
-                {"idx": 1, "title": q2.title, "hook": q2.hook},
-                {"idx": 2, "title": "Surprise Me", "hook": "A completely random quest."},
-            ],
+            "type": "quest_complete",
+            "outcome": state.quest.outcome,
+            "closing": closing,
+            "title": state.quest.title,
+            "vote": {
+                "timeout": int(VOTE_TIMEOUT),
+                "options": [
+                    {"idx": 0, "title": q1.title, "hook": q1.hook},
+                    {"idx": 1, "title": q2.title, "hook": q2.hook},
+                    {"idx": 2, "title": "Surprise Me", "hook": "A completely random quest."},
+                ],
+            },
+            "state": _state_snapshot(state, include_world=False),
         }
     )
     await asyncio.sleep(VOTE_TIMEOUT)
@@ -592,7 +591,10 @@ async def _do_pick_next_waypoint(state: GameState) -> int | None:
 
 
 async def _start_new_game(preset_quest: QuestState | None = None) -> None:
-    global _state
+    global _state, _decision_at
+    # pause when no one is watching — don't spin up an LLM quest for an empty room
+    while not _clients:
+        await asyncio.sleep(2.0)
     _state = new_game(_rng, preset_quest=preset_quest)
 
     complication = ""
@@ -1013,8 +1015,14 @@ def create_app() -> FastAPI:
 
     @app.websocket("/ws")
     async def websocket_endpoint(ws: WebSocket) -> None:
+        global _decision_at
         await ws.accept()
+        was_empty = not _clients
         _clients.add(ws)
+        if was_empty:
+            # resuming from a paused (no-viewers) state — give the room a fresh decision window
+            _decision_at = time.monotonic()
+            _card_signal.set()
         if _state:
             await ws.send_text(json.dumps({"type": "state", "state": _state_snapshot(_state)}))
             for card in deal_hand(_rng, size=5):

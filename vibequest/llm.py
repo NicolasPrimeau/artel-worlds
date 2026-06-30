@@ -562,12 +562,15 @@ Reply with only the index number."""
         return None
 
 
-async def narrate_quest_end(quest_hook: str, outcome: str, momentum: int, protagonist: str) -> str:
+async def narrate_quest_end(
+    quest_hook: str, outcome: str, momentum: int, protagonist: str, story_so_far: str = ""
+) -> str:
+    history = f"WHAT HAPPENED: {story_so_far}" if story_so_far else ""
     prompt = f"""{_TONE}
 
-Closing: 2 sentences. Outcome: {outcome}. Morale: {momentum}. Flat administrative tone regardless of result.
-SITUATION: {quest_hook} | PROTAGONIST: {protagonist}
-Under 50 words. No em dashes."""
+Recap how this quest went in 2 short sentences — what {protagonist.split(":")[0]} was after, and how it actually ended ({outcome}). Dry, deadpan, specific to what happened. Under 45 words. No em dashes.
+GOAL: {quest_hook}
+{history}"""
 
     req = Request(system="Respond in plain prose. No fantasy language.", user=prompt)
     return _clean(await ROUTER.complete(req))
