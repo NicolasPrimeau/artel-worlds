@@ -251,8 +251,10 @@ The audience just threw these EVENTS at the agent:
 
 First, rate FIT 0-100: how well do these events fit what the agent needs RIGHT NOW?
 - HIGH fit (60-100): they slot in. The agent uses them and makes progress. Narrate that plainly.
+  IMPORTANT: if an event is basically THE THING THE GOAL NEEDS (e.g. a "coffee round" when the goal is the coffee shortage), that is a near-perfect fit — let it resolve the situation directly and satisfyingly. Don't play it as a generic boon.
 - MID fit (35-59): a near-miss. Partly useful, a little weird. Narrate the small wobble.
 - LOW fit (0-34): they DON'T belong. The timeline BENDS to absorb them — things happen out of order, causality loops, the impossible becomes procedure. Narrate the surreal result, deadpan. The mismatch IS the joke.
+  Note: an event that echoes the goal but is IMPOSSIBLE right now (a coffee round when there are no pods) is a CLASH — play the irony: it happens anyway, absurdly.
 Pick the fit honestly from the event-vs-need mismatch.
 
 Then write the beat as POKEMON text: 1-2 SHORT lines, max 3, ≤12 words each. Dramatize EXACTLY these events at this fit level. No flowery prose, no similes. {reactions} 0-2 established facts (on a LOW-fit clash, a fact may be rewritten/contradicted — that's fine). If an event introduces a new person or object, add it via world_changes.
