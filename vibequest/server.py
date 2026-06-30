@@ -632,7 +632,7 @@ def _pos_msg(state: GameState) -> dict:
 
 async def _move_loop() -> None:
     while True:
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.33)  # smaller, more frequent steps -> smoother scroll
         state = _state
         if state is None or not _clients or state.phase in ("resolving", "complete"):
             continue

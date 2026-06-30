@@ -211,7 +211,7 @@
 
   /* chapter intro */
   #chapter{top:0;left:0;right:0;bottom:var(--dock-h);z-index:50;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .5s;pointer-events:none;padding:0 16px}
-  #chapter.show{opacity:1;background:rgba(223,215,196,.55)}
+  #chapter.show{opacity:1;background:rgba(223,215,196,.55);pointer-events:auto}
   #chapter .inner{background:var(--cream);border:2px solid var(--ink);border-radius:4px;padding:clamp(18px,5vw,26px) clamp(22px,7vw,40px);text-align:center;box-shadow:6px 6px 0 rgba(26,20,40,.2);max-width:90vw}
   #chapter .ch{font-size:clamp(10px,2.8vw,11px);letter-spacing:.5em;text-transform:uppercase;color:var(--rose2)}
   #chapter .ti{font-family:"Cormorant Garamond",serif;font-size:clamp(24px,7vw,34px);font-weight:700;margin:8px 0;letter-spacing:.04em}
@@ -579,7 +579,7 @@ function makeIndoorTextures(s){
   }
 }
 const WALK_SPEED = 1.1;   // (legacy) route tiles per second
-const WALK_PX = 40;       // free-roam: pixels per second the sprite chases the server position
+const WALK_PX = 50;       // free-roam: pixels per second the sprite chases the server position
 const SPACING = 1.25;     // route-tile gap between followers
 const playerId = (()=>{ let p=localStorage.getItem("vq_pid"); if(!p){p="p"+Math.random().toString(36).slice(2,8);localStorage.setItem("vq_pid",p);} return p; })();
 
@@ -739,7 +739,7 @@ function buildCharacter(snap){
   const m={spr,shadow,id:pm.id,name:pm.name,role:pm.role,sprite:pm.sprite,status:pm.status,moving:false,dir:"down",tx:px,ty:py};
   idle(m); character=m;
   const cam=scene.cameras.main;
-  cam.startFollow(spr,true,0.09,0.09);
+  cam.startFollow(spr,false,0.12,0.12); // roundPixels off → smooth sub-pixel camera scroll
   cam.setFollowOffset(0,_camOffsetY());
   scheduleAmbient();
 }
@@ -1873,7 +1873,7 @@ function connect(){
   const tc=document.getElementById("titlecard");
   tc.addEventListener("click",()=>tc.classList.toggle("expanded"));
   const ch=document.getElementById("chapter");
-  if(ch){ ch.style.pointerEvents="auto"; ch.addEventListener("click",hideChapter); }
+  if(ch){ ch.addEventListener("click",hideChapter); }  // pointer-events only when .show (CSS), so it never blocks taps while hidden
 })();
 
 (function(){
