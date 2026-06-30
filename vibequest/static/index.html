@@ -98,6 +98,15 @@
     border-radius:3px;padding:3px 7px;cursor:pointer}
   #copy-narr:hover{color:var(--gold);border-color:rgba(238,207,96,.5)}
   #copy-narr.done{color:#83d3a3;border-color:#83d3a3}
+  #decision-bar{flex:0 0 auto;pointer-events:auto;margin:7px 10px 3px;padding:7px 11px;
+    background:rgba(238,207,96,.09);border:1px solid rgba(238,207,96,.42);border-radius:4px;
+    font-family:"Cormorant Garamond",serif;font-size:clamp(13px,3.9vw,16px);color:#f3e6c4;line-height:1.25;
+    display:flex;align-items:center;gap:10px;justify-content:space-between}
+  #decision-bar.resolving{opacity:.55}
+  #decision-text{flex:1}
+  #decision-cue{font-family:"Courier Prime",monospace;font-size:8px;letter-spacing:.12em;color:var(--gold);white-space:nowrap;animation:cuePulse 1.1s ease-in-out infinite}
+  @keyframes cuePulse{0%,100%{opacity:.45}50%{opacity:1}}
+  #decision-bar.resolving #decision-cue{animation:none;color:#83d3a3}
   /* ── cinematic narrative panel (now lives in the dock) ── */
   #scene-panel{position:static;flex:0 0 auto;height:clamp(68px,12vh,104px);overflow-y:auto;overscroll-behavior:contain;
     -webkit-overflow-scrolling:touch;pointer-events:auto;display:block;
@@ -436,6 +445,7 @@
 <div id="encounter" class="ui"></div>
 <div id="dock" class="ui">
   <button id="copy-narr" title="Copy the full narrative">⧉ copy</button>
+  <div id="decision-bar" style="display:none"><span id="decision-text"></span><b id="decision-cue">▶ PLAY A CARD</b></div>
   <div id="scene-panel"></div>
   <div id="cardzone">
     <div id="drawpile"></div>
@@ -712,34 +722,28 @@ function floatText(txt,x,y,col){
 function flashSprite(spr,col){ if(!spr) return; try{ spr.setTintFill(col); }catch(e){} scene.time.delayedCall(120,()=>{ try{spr.clearTint();}catch(e){} }); }
 function endAction(aspr){ if(aspr){ try{aspr.destroy();}catch(e){} } _actionPaused=false; if(_actionSafety){ _actionSafety.remove(false); _actionSafety=null; } }
 function playCardAction(m){
+  // the PROTAGONIST visibly reacts to the card in place — surge forward when helped,
+  // recoil/stagger when blocked. No random stranger rushing in.
   if(!scene||!character||!character.spr) return;
+  const help=m.outcome==='help', block=m.outcome==='block';
+  if(!help && !block) return; // neutral glance: nothing to show
   _actionPaused=true;
   if(_actionSafety) _actionSafety.remove(false);
-  _actionSafety=scene.time.delayedCall(3200,()=>{ _actionPaused=false; }); // never freeze forever
-  const px=character.spr.x, py=character.spr.y, cam=scene.cameras.main;
-  const side=(Math.random()<.5?-1:1);
-  const ex=px+side*92, ey=py-8;
-  const sn=m.sprite||2;
-  const aspr=scene.add.sprite(ex,ey,"hero"+sn).setDepth(6000);
-  const indir=side>0?"left":"right";
-  try{ aspr.play(`h${sn}-${indir}`,true); }catch(e){}
-  const dvx=px-ex, dvy=py-ey, dd=Math.hypot(dvx,dvy)||1;
-  scene.tweens.add({targets:aspr,x:px-dvx/dd*15,y:py-dvy/dd*15,duration:430,ease:'Cubic.easeIn',onComplete:()=>{
-    try{ aspr.anims.stop(); }catch(e){}
-    const help=m.outcome==='help', block=m.outcome==='block';
-    cam.shake(block?180:130, block?0.008:0.005);
-    floatText(help?'✦ HELPED':block?'✋ BLOCKED':'• …', px, py-20, help?'#83d3a3':block?'#ec858d':'#e8d8a0');
-    if(block){
-      scene.tweens.add({targets:[character.spr,character.shadow],x:px-dvx/dd*12,duration:110,yoyo:true,repeat:1,ease:'Quad.easeOut'});
-      flashSprite(character.spr,0xec858d);
-    } else if(help){
-      scene.tweens.add({targets:[character.spr,character.shadow],y:'-=9',duration:150,yoyo:true,ease:'Quad.easeOut'});
-      flashSprite(character.spr,0x83d3a3);
-    }
-    scene.time.delayedCall(650,()=>{
-      scene.tweens.add({targets:aspr,x:ex,y:ey,alpha:0,duration:430,ease:'Cubic.easeOut',onComplete:()=>endAction(aspr)});
-    });
-  }});
+  _actionSafety=scene.time.delayedCall(2200,()=>{ _actionPaused=false; });
+  const spr=character.spr, sh=character.shadow, px=spr.x, py=spr.y, cam=scene.cameras.main;
+  floatText(help?'✦ HELPED':'✋ BLOCKED', px, py-20, help?'#83d3a3':'#ec858d');
+  flashSprite(spr, help?0x83d3a3:0xec858d);
+  if(block){
+    cam.shake(170,0.007);
+    // stagger backward and settle
+    scene.tweens.add({targets:[spr,sh],x:px-9,duration:90,yoyo:true,repeat:1,ease:'Quad.easeOut',
+      onComplete:()=>{ spr.x=px; sh.x=px; scene.time.delayedCall(250,()=>{ spr.x=px; spr.y=py; sh.x=px; sh.y=py+6; _actionPaused=false; }); }});
+  } else {
+    cam.shake(70,0.003);
+    // eager surge up-forward and back
+    scene.tweens.add({targets:[spr,sh],y:'-=11',duration:170,yoyo:true,ease:'Back.easeOut',
+      onComplete:()=>{ spr.y=py; sh.y=py+6; scene.time.delayedCall(200,()=>{ spr.x=px; spr.y=py; sh.x=px; sh.y=py+6; _actionPaused=false; }); }});
+  }
 }
 
 function buildWorld(W){
@@ -1244,6 +1248,18 @@ function speakNPC(name,text){
 }
 function updateBubbles(){}
 function clearBubbles(){}
+function showDecision(situation){
+  const bar=document.getElementById("decision-bar"); if(!bar) return;
+  if(!situation){ bar.style.display="none"; return; }
+  document.getElementById("decision-text").textContent=situation;
+  document.getElementById("decision-cue").textContent="▶ PLAY A CARD";
+  bar.classList.remove("resolving");
+  bar.style.display="flex";
+}
+function decisionResolving(){
+  const bar=document.getElementById("decision-bar");
+  if(bar && bar.style.display!=="none"){ bar.classList.add("resolving"); document.getElementById("decision-cue").textContent="RESOLVING…"; }
+}
 let _typingTimer=null;
 let _narrativeLog=[];   // full session narrative, for the copy button
 function recordNarrative(line){ if(line) _narrativeLog.push(line); }
@@ -1873,9 +1889,10 @@ function connect(){
         applyState(m.state);
         snapCharacter(m.state.pos);   // hard-snap on (re)connect — no stroll from a stale spot
         const _opening = m.state.log && m.state.log.find(e => e.kind === 'opening');
-        if(_opening) addLogEntry(_opening.text);
+        if(fresh && _opening) addLogEntry(_opening.text); // only once — was re-injecting the hook on every reconnect
         // pop the quest name + hook immediately so there's something to read while the LLM warms up
         if(fresh && m.state.phase!=="complete") showChapter(m.state, true);
+        showDecision(m.state.quest && m.state.quest.decision);
         break;
       }
       case "meltdown": startMeltdown(); break;
@@ -1888,12 +1905,13 @@ function connect(){
         _narrativeLog=[];
         resetHand();
         applyState(m.state); showChapter(m.state, true);
+        showDecision(m.state.quest && m.state.quest.decision);
         if(m.opening){ addLogEntry(m.opening); }
         break;
       }
       case "deal_card": addDealCard(m.card); break;
       case "hand": myHand=m.cards; renderHand(myHand); break;
-      case "window_closing": _pileResolving=true; _resolvingCount=pileCards.length||1; renderPile(); break;
+      case "window_closing": _pileResolving=true; _resolvingCount=pileCards.length||1; renderPile(); decisionResolving(); break;
       case "move": onMove(m.pos); break;
       case "scene": applyState(m.state);
         if(m.scene&&m.scene.opening){ const mem=memberFor(null,m.scene.speaker); speak(mem,mem&&mem.name,m.scene.opening,5200); }
@@ -1902,6 +1920,7 @@ function connect(){
       case "scene_beat": { if(m.text) showSceneBeat(m.text, m.who||''); break; }
       case "npc_speak": { speakNPC(m.npc_name,m.line,5000); break; }
       case "scene_event": { applyState(m.state); if(m.text) addLogEntry(m.text); break; }
+      case "decision": showDecision(m.situation); break;
       case "card_action": playCardAction(m); break;
       case "card_resolved": {
         applyState(m.state);

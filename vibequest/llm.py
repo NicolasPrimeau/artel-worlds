@@ -308,6 +308,98 @@ JSON: {{"fit":<0-100 int>,"narrative":"...","reactions":[{{"name":"...","role":"
     return parsed
 
 
+async def resolve_decision(
+    situation: str,
+    cards: list[dict],
+    quest_hook: str,
+    protagonist: str,
+    roster: list[dict] | None = None,
+    mood: str = "",
+    surreal: int = 0,
+    npc_context: str = "",
+    story_so_far: str = "",
+    story_facts: list[str] | None = None,
+) -> dict:
+    facts = ("TRUE:\n" + "\n".join(f"- {f}" for f in story_facts[-8:])) if story_facts else ""
+    history = f"SO FAR: {story_so_far}" if story_so_far else ""
+    mood_line = f"AGENT'S MOOD: {mood}" if mood else ""
+    npc = f"AGENT IS WITH: {npc_context}" if npc_context else ""
+    card_lines = "\n".join(
+        f"- {c['name']} (played x{c.get('weight', 1)}, {_EVENT_KIND.get(c['type'], 'an event')}): {c['description']}"
+        for c in cards
+    )
+    people = "\n".join(f"- [{n['id']}] {n['name']}, {n['role']}" for n in roster) if roster else ""
+    reactions = (
+        "Add 1-2 short reactions in quotes — the person present, then the agent (each ≤10 words)."
+        if npc_context
+        else "Add one short reaction from the agent in quotes (≤10 words)."
+    )
+    prompt = f"""{_TONE}
+
+THE GOAL: {quest_hook}
+THE AGENT: {protagonist}
+{mood_line}
+{npc}
+{facts}
+{history}
+REALITY: {_surreal_band(surreal)}
+
+DECISION POINT — the agent is stuck here, and the audience decides what happens:
+"{situation}"
+
+Cards the audience played to resolve it (x = how many people played it; higher = stronger pull):
+{card_lines}
+
+Weigh the cards by their counts — heavier cards dominate; combine them if it makes sense. Then:
+1. Rate FIT 0-100: how well these cards resolve THIS situation. Be GENEROUS — if they plausibly help, it's HIGH and the agent gets PAST the wall and makes real progress. Low only if genuinely unrelated/impossible (then reality bends, surreal, deadpan).
+2. Write a SHORT beat (1-2 sentences, ≤30 words): the concrete outcome FIRST, then a quick line. {reactions}
+3. Give the NEXT decision point: the agent progresses, then hits the next concrete wall toward the goal. ONE specific sentence. Don't repeat earlier walls.
+4. Pick next_npc_id: who the agent walks to next for that wall (an exact id from the list, or "").
+
+PEOPLE:
+{people}
+
+JSON: {{"fit":int,"narrative":"...","reactions":[{{"name":"...","line":"..."}}],"next_situation":"...","next_npc_id":"<id or empty>","established":["<one durable fact>"],"world_changes":[]}}
+{_WORLD_ACTIONS}"""
+    req = Request(
+        system="Respond only with valid JSON. No fantasy language.",
+        user=prompt,
+        min_grade="capable",
+    )
+    raw = await ROUTER.complete(req)
+    parsed = parse_json(raw) or {}
+    try:
+        parsed["fit"] = max(0, min(100, int(parsed.get("fit", 60))))
+    except (TypeError, ValueError):
+        parsed["fit"] = 60
+    parsed["narrative"] = _clean(parsed.get("narrative", ""))
+    parsed["next_situation"] = _clean(parsed.get("next_situation", ""))
+    parsed.setdefault("next_npc_id", "")
+    parsed.setdefault("established", [])
+    parsed.setdefault("world_changes", [])
+    rx = []
+    for r in parsed.get("reactions", []):
+        if isinstance(r, dict) and _as_text(r.get("line", "")).strip():
+            rx.append({"name": _as_text(r.get("name", "")), "line": _clean(r.get("line", ""))})
+    parsed["reactions"] = rx
+    return parsed
+
+
+async def first_decision(quest_hook: str, complication: str, protagonist: str) -> str:
+    prompt = f"""{_TONE}
+
+GOAL: {quest_hook}
+COMPLICATION: {complication}
+AGENT: {protagonist}
+
+State the FIRST concrete wall the agent runs into — the opening decision point the audience must resolve. ONE specific sentence, present tense, ending on the open question.
+JSON: {{"situation":"..."}}"""
+    req = Request(system="Respond only with valid JSON.", user=prompt, min_grade="fast")
+    raw = await ROUTER.complete(req)
+    parsed = parse_json(raw) or {}
+    return _clean(parsed.get("situation", "")) or complication or quest_hook
+
+
 async def narrate_meltdown(
     quest_hook: str,
     protagonist: str,

@@ -1886,6 +1886,7 @@ class QuestState:
     tension: int = 0
     scene_progress: int = 0
     surreal: int = 0  # accumulates from clashing (wrong-for-the-moment) events
+    decision_prompt: str = ""  # the current wall the audience is deciding on (Telltale-style)
     outcome: str | None = None
     scene_rounds: int = 0
     scene_beat_start: int = 0

@@ -42,7 +42,9 @@ STATIC = Path(__file__).parent / "static"
 DEAL_INTERVAL = 10.0
 VOTE_TIMEOUT = 25.0
 PRESSURE_DURATION = 3
-BATCH_WINDOW = 0.5
+BATCH_WINDOW = (
+    3.0  # decision point: gather the crowd's cards (duplicates add weight) before resolving
+)
 
 _rng = random.SystemRandom()
 _state: GameState | None = None
@@ -126,6 +128,7 @@ def _state_snapshot(state: GameState, include_world: bool = True) -> dict:
             "scene_progress": state.quest.scene_progress,
             "scene_threshold": SCENE_THRESHOLD,
             "surreal": state.quest.surreal,
+            "decision": state.quest.decision_prompt,
             "npcs": [
                 {
                     "id": n.id,
@@ -202,26 +205,30 @@ async def _resolve_window(state: GameState) -> None:
     await _broadcast({"type": "window_closing", "card_count": len(played)})
     await asyncio.sleep(0.3)
 
-    # --- gather the played events (effects come AFTER the LLM rates fit) ---
+    # --- gather the played cards, WEIGHTING duplicates (more players => stronger pull) ---
     mom_before = state.quest.momentum
     prog_before = state.quest.scene_progress
     surreal_before = state.quest.surreal
-    plays: list[dict] = []
+    weighted: dict[str, dict] = {}
     target_npc_id: str | None = None
     for played_card in played:
         card_def = CARD_BY_ID.get(played_card.card_id)
         if not card_def:
             continue
-        plays.append(
-            {
+        slot = weighted.get(card_def.id)
+        if slot:
+            slot["weight"] += 1
+        else:
+            weighted[card_def.id] = {
                 "name": card_def.name,
                 "type": card_def.type.value,
                 "description": card_def.description,
+                "weight": 1,
             }
-        )
         if played_card.target_npc_id and not target_npc_id:
             target_npc_id = played_card.target_npc_id
 
+    plays = list(weighted.values())
     if not plays:
         state.window.resolving = False
         state.phase = "active"
@@ -237,45 +244,34 @@ async def _resolve_window(state: GameState) -> None:
         f"{current_npc.name} ({current_npc.role}): {current_npc.personality}" if current_npc else ""
     )
 
-    memory_ctx = ""
-    if artel.enabled():
-        try:
-            names = " ".join(p["name"] for p in plays)
-            memory_ctx = await asyncio.wait_for(
-                asyncio.shield(
-                    asyncio.create_task(artel.search_memory(f"{state.quest.hook} {names}"))
-                ),
-                timeout=0.6,
-            )
-        except Exception:
-            pass
-
-    # --- the LLM rates how well the events FIT the moment, and narrates accordingly ---
+    # --- the LLM resolves the DECISION: weighs all played cards, narrates, sets the next wall ---
+    situation = state.quest.decision_prompt or state.quest.complication or state.quest.hook
+    roster = [{"id": n.id, "name": n.name, "role": n.role} for n in state.quest.npcs]
     result: dict = {
-        "fit": 50,
+        "fit": 60,
         "narrative": "",
         "reactions": [],
+        "next_situation": "",
+        "next_npc_id": "",
         "established": [],
         "world_changes": [],
     }
     if llm.enabled():
         try:
-            result = await llm.narrate_event(
-                plays=plays,
+            result = await llm.resolve_decision(
+                situation=situation,
+                cards=plays,
                 quest_hook=state.quest.hook,
-                complication=state.quest.complication,
                 protagonist=_character_desc(state),
-                current_step=_scene_goal(state),
-                surreal=state.quest.surreal,
+                roster=roster,
                 mood=agent_mood(state.quest),
+                surreal=state.quest.surreal,
                 npc_context=npc_context,
                 story_so_far=_story_so_far(state),
                 story_facts=list(state.quest.facts),
-                memory_context=memory_ctx,
-                scene_context=_scene_context(state),
             )
         except Exception as exc:
-            log.warning("narrate_event failed: %s", exc)
+            log.warning("resolve_decision failed: %s", exc)
 
     # fit drives the meters: high fit -> progress, clash -> surreal
     fit = int(result.get("fit", 50))
@@ -283,7 +279,6 @@ async def _resolve_window(state: GameState) -> None:
     mom_delta = state.quest.momentum - mom_before
     prog_delta = state.quest.scene_progress - prog_before
     surreal_delta = state.quest.surreal - surreal_before
-    scene_resolved = state.quest.scene_progress >= SCENE_THRESHOLD
 
     new_facts = [f for f in result.get("established", []) if isinstance(f, str)][:2]
     state.quest.facts.extend(new_facts)
@@ -387,23 +382,11 @@ async def _resolve_window(state: GameState) -> None:
         await _trigger_meltdown(state)
         return
 
-    # --- scene / objective resolution via progress ---
-    if scene_resolved:
-        state.quest.scene_progress = 0
-        state.quest.scene_beat_start = len(state.quest.beats)
-        _complete_artel_objective(state, state.quest.resolution_count)
-        state.quest.resolution_count += 1
-        if llm.enabled():
-            try:
-                chosen = await asyncio.wait_for(
-                    asyncio.shield(asyncio.create_task(_do_pick_next_waypoint(state))),
-                    timeout=1.5,
-                )
-                if chosen is not None:
-                    state.quest.next_waypoint_override = chosen
-            except Exception:
-                pass
-        sync_target(state)
+    # --- every decision advances the story: tick a step, set the NEXT wall ---
+    state.quest.scene_progress = 0
+    state.quest.scene_beat_start = len(state.quest.beats)
+    _complete_artel_objective(state, state.quest.resolution_count)
+    state.quest.resolution_count += 1
 
     # --- deterministic quest completion ---
     total_scenes = max(len(state.quest.objectives), MIN_RESOLUTIONS)
@@ -413,18 +396,37 @@ async def _resolve_window(state: GameState) -> None:
     ):
         state.quest.outcome = "success" if state.quest.momentum >= 0 else "failure"
 
-    if scene_resolved and not state.quest.outcome:
-        asyncio.create_task(_escalate_complication(state))
-
     state.window.resolving = False
     state.phase = "active"
-
-    if state.window.cards:
-        _card_signal.set()
 
     if state.quest.outcome:
         await _end_quest(state)
         return
+
+    # set the next decision point and visibly send the agent toward it
+    next_situation = result.get("next_situation", "") or "The agent looks for another angle."
+    state.quest.decision_prompt = next_situation
+    state.quest.beats.append(next_situation)
+    next_npc = next(
+        (n for n in state.quest.npcs if n.id == result.get("next_npc_id")), None
+    ) or _npc_near_agent(state)
+    if next_npc and state.world is not None:
+        tx, ty = _npc_tile(state, next_npc)
+        path = find_path(state.world, state.lx, state.ly, tx, ty)
+        if path and path[0] == [state.lx, state.ly]:
+            path = path[1:]
+        state.path = path
+        state.agent_goal = next_npc.id
+    await _broadcast(
+        {
+            "type": "decision",
+            "situation": next_situation,
+            "state": _state_snapshot(state, include_world=False),
+        }
+    )
+
+    if state.window.cards:
+        _card_signal.set()
 
 
 async def _trigger_meltdown(state: GameState) -> None:
@@ -601,6 +603,30 @@ async def _start_new_game(preset_quest: QuestState | None = None) -> None:
             pass
     _state.quest.complication = complication
 
+    # the opening decision point (the first wall the audience resolves)
+    first_situation = complication or _state.quest.hook
+    if llm.enabled():
+        try:
+            first_situation = (
+                await asyncio.wait_for(
+                    llm.first_decision(_state.quest.hook, complication, _character_desc(_state)),
+                    timeout=5.0,
+                )
+                or first_situation
+            )
+        except Exception:
+            pass
+    _state.quest.decision_prompt = first_situation
+    # send the agent to someone relevant so the first decision has a stage
+    if _state.quest.npcs and _state.world is not None:
+        npc0 = _npc_near_agent(_state) or _state.quest.npcs[0]
+        tx, ty = _npc_tile(_state, npc0)
+        path = find_path(_state.world, _state.lx, _state.ly, tx, ty)
+        if path and path[0] == [_state.lx, _state.ly]:
+            path = path[1:]
+        _state.path = path
+        _state.agent_goal = npc0.id
+
     opening_text = _state.quest.hook
     _state.log_event("opening", opening_text)
     if complication:
@@ -624,9 +650,14 @@ async def _start_new_game(preset_quest: QuestState | None = None) -> None:
     await _broadcast(
         {"type": "new_quest", "state": _state_snapshot(_state), "opening": opening_text}
     )
-    if complication:
-        await asyncio.sleep(2.5)
-        await _broadcast({"type": "scene_beat", "text": complication, "who": ""})
+    await asyncio.sleep(2.0)
+    await _broadcast(
+        {
+            "type": "decision",
+            "situation": first_situation,
+            "state": _state_snapshot(_state, include_world=False),
+        }
+    )
 
 
 def _pos_msg(state: GameState) -> dict:
@@ -849,7 +880,7 @@ def create_app() -> FastAPI:
         asyncio.create_task(_window_loop())
         asyncio.create_task(_move_loop())
         asyncio.create_task(_deal_loop())
-        asyncio.create_task(_agent_loop())
+        # no _agent_loop: pure decision points — the story advances only when cards resolve a wall
 
     app.mount("/assets", StaticFiles(directory=STATIC / "assets"), name="assets")
 
