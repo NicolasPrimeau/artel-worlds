@@ -44,7 +44,7 @@ DEAL_INTERVAL = 10.0
 VOTE_TIMEOUT = 16.0
 PRESSURE_DURATION = 3
 BATCH_WINDOW = (
-    3.0  # decision point: gather the crowd's cards (duplicates add weight) before resolving
+    4.5  # decision point: gather the crowd's cards (duplicates add weight) before resolving
 )
 DECISION_TIMEOUT = 44.0  # time to read the encounter + play before the DM auto-resolves it
 
@@ -402,7 +402,7 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
             "state": _state_snapshot(state, include_world=False),
         }
     )
-    await asyncio.sleep(0.6)
+    await asyncio.sleep(2.4)  # let the table read the outcome before the next encounter lands
 
     # --- reality meltdown: chaos has won, the run ends in a surreal collapse ---
     if state.quest.surreal >= MELTDOWN_THRESHOLD and not state.quest.outcome:

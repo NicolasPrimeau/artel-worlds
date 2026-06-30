@@ -1806,14 +1806,18 @@ def _make_character(rng: random.Random) -> PartyMember:
 
 
 _recent_quest_titles: deque[str] = deque(maxlen=18)
+_quest_rng = (
+    random.SystemRandom()
+)  # OS-entropy CSPRNG: truly random every pick, restart-proof, unseedable
 
 
 def make_quest(rng: random.Random) -> tuple[QuestState, str]:
-    cat_name = rng.choice(list(QUEST_CATEGORIES.keys()))
+    # always pick with a fresh cryptographic draw so quests never repeat a pattern across restarts
+    cat_name = _quest_rng.choice(list(QUEST_CATEGORIES.keys()))
     cat = QUEST_CATEGORIES[cat_name]
     # avoid repeating recently-seen quests so the rotation feels fresh
     fresh = [t for t in cat["tasks"] if t["title"] not in _recent_quest_titles]
-    task = rng.choice(fresh or cat["tasks"])
+    task = _quest_rng.choice(fresh or cat["tasks"])
     _recent_quest_titles.append(task["title"])
     quest_id = str(uuid.uuid4())[:8]
     quest = QuestState(

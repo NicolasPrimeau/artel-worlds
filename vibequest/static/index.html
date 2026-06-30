@@ -1653,7 +1653,7 @@ function showCardDetail(c){
 function _layoutHand(animUid){
   const n=_handItems.length;
   // consistent per-card spacing, centered on 0 — so few cards stay together in the middle
-  const spacing=Math.min(70, window.innerWidth*0.17);
+  const spacing=Math.min(42, window.innerWidth*0.105);  // tight fan so it clears the draw/play piles
   _handItems.forEach((item,i)=>{
     const el=_handEls.get(item.uid); if(!el) return;
     const ci=i-(n-1)/2;                    // centered index: 2 cards -> -.5,+.5 ; 5 -> -2..2
