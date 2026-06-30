@@ -1322,11 +1322,12 @@ function logEncounter(m){
 }
 
 const ENC_KIND={
-  encounter:{tag:"WILD ENCOUNTER", emoji:"📋", col:"#f5b94e"},
-  rival:{tag:"RIVAL APPROACHES", emoji:"✋", col:"#ec858d"},
-  boon:{tag:"A BOON", emoji:"✨", col:"#83d3a3"},
-  twist:{tag:"A TWIST", emoji:"🔄", col:"#a896e2"},
+  encounter:{tag:"GUILE", emoji:"🃏", col:"#f5b94e"},
+  rival:{tag:"FORCE", emoji:"✊", col:"#ec858d"},
+  boon:{tag:"PROCESS", emoji:"📋", col:"#83d3a3"},
+  twist:{tag:"WILDCARD", emoji:"🎲", col:"#a896e2"},
 };
+const TYPE_LABEL={encounter:"GUILE",rival:"FORCE",boon:"PROCESS",twist:"WILDCARD"};
 function _heroSprite(idx,size){
   const n=String(idx).padStart(2,"0");
   const el=document.createElement("div"); el.className="enc-sprite";
@@ -1589,7 +1590,7 @@ function renderDrawPile(count){
 function showCardDetail(c){
   const ov=document.createElement("div"); ov.className="card-detail-overlay";
   const card=document.createElement("div"); card.className="card "+c.type;
-  card.innerHTML=`<div class="ct">${c.type}</div><div class="cn">${c.name}</div><div class="cd">${c.description}</div>${c.flavor?`<div class="flavor">${c.flavor}</div>`:""}`;
+  card.innerHTML=`<div class="ct">${TYPE_LABEL[c.type]||c.type}</div><div class="cn">${c.name}</div><div class="cd">${c.description}</div>${c.flavor?`<div class="flavor">${c.flavor}</div>`:""}`;
   ov.appendChild(card);
   ov.addEventListener("pointerup",()=>ov.remove(),{once:true});
   document.body.appendChild(ov);

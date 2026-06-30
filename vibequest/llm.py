@@ -326,20 +326,22 @@ async def resolve_decision(
     npc = f"AGENT IS WITH: {npc_context}" if npc_context else ""
     if cards:
         card_lines = "\n".join(
-            f"- {c['name']} (played x{c.get('weight', 1)}, {_EVENT_KIND.get(c['type'], 'an event')}): {c['description']}"
-            for c in cards
+            f"- {c['name']} (chosen x{c.get('weight', 1)}): {c['description']}" for c in cards
         )
         cards_block = (
-            "Cards the audience played to resolve it (x = how many people played it; higher = stronger pull):\n"
+            "The audience chose these TACTICS for the agent to use on this wall "
+            "(x = how many people chose it; higher = stronger pull):\n"
             f"{card_lines}\n\n"
-            "Weigh the cards by their counts — heavier cards dominate; combine them if it makes sense. "
-            "Rate FIT 0-100: how well these cards resolve THIS wall, judged by whether they fit. "
-            "Be GENEROUS when they plausibly help (HIGH = the agent gets past the wall cleanly). "
-            "When they're the WRONG move for this wall, fit is LOW — the wall still resolves, but ABSURDLY; reality bends, deadpan, and it gets weirder."
+            "The agent USES the heaviest tactic (combine them if they blend). "
+            "Rate FIT 0-100: how well that tactic actually suits THIS wall. "
+            "RIGHT tactic for the wall = HIGH — it works, the agent gets past cleanly. "
+            "WRONG/absurd tactic for the wall = LOW — the agent does it anyway and it backfires; "
+            "the wall still 'resolves' but ABSURDLY, reality bends, deadpan, and it gets weirder. "
+            "Always narrate the agent actually DOING the chosen tactic."
         )
     else:
         cards_block = (
-            "The audience played NO cards. The agent handles this wall on its own — modestly, plainly. "
+            "The audience chose NO tactic. The agent handles this wall on its own — modestly, plainly. "
             "Rate FIT around 55-65 (ordinary progress, no big swing)."
         )
     people = "\n".join(f"- [{n['id']}] {n['name']}, {n['role']}" for n in roster) if roster else ""
