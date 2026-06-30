@@ -2199,13 +2199,15 @@ def apply_fit_effects(quest: QuestState, fit: int) -> None:
     # cards hit HARD — one good play should visibly move the story, one clash should warp it
     fit = max(0, min(100, fit))
     if fit >= 80:
-        # a perfect play — it resolves the current step outright
+        # a perfect play — resolves the step AND pulls reality back toward normal
         quest.scene_progress = SCENE_THRESHOLD
         quest.momentum = _clamp(quest.momentum + 4)
+        quest.surreal = max(0, quest.surreal - 2)
     elif fit >= 55:
-        # a strong fit — real, chunky progress
+        # a strong fit — chunky progress, calms the world a little
         quest.scene_progress += 2
         quest.momentum = _clamp(quest.momentum + 3)
+        quest.surreal = max(0, quest.surreal - 1)
     elif fit >= 35:
         # a near-fit — still nudges along, a little weirdness
         quest.scene_progress += 1
