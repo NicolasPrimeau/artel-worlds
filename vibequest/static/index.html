@@ -104,6 +104,11 @@
   .sbeat.dim{opacity:.4;transition:opacity .7s}
   .sbeat .swho{display:block;font-family:"Courier Prime",monospace;font-size:clamp(7px,1.7vw,9px);letter-spacing:.32em;
     text-transform:uppercase;color:var(--gold);opacity:.82;margin-bottom:2px;font-weight:700}
+  .sbeat.event{padding-left:8px;display:flex;align-items:baseline;flex-wrap:wrap;gap:6px}
+  .sbeat.event .ev-tag{font-family:"Courier Prime",monospace;font-size:clamp(7px,1.7vw,9px);letter-spacing:.18em;text-transform:uppercase;font-weight:700;
+    border:1px solid;border-radius:3px;padding:1px 5px;flex-shrink:0}
+  .sbeat.event .ev-name{font-weight:700}
+  .sbeat.event .ev-fx{font-family:"Courier Prime",monospace;font-size:clamp(7px,1.7vw,9px);letter-spacing:.06em;text-transform:uppercase;opacity:.95}
   #cardzone{position:static;flex:1 1 auto;min-height:0;left:0;right:0;display:flex;align-items:flex-end;z-index:10;pointer-events:none}
   #drawpile{flex:0 0 25%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
     padding-bottom:calc(8px + env(safe-area-inset-bottom));pointer-events:auto;position:relative;overflow:visible}
@@ -1194,6 +1199,29 @@ function showSceneBeat(text, who=''){
 }
 function addLogEntry(text){ showSceneBeat(text); }
 
+// encounters live in the chat now (persistent, no screen-covering overlay):
+// a styled header line (kind tag + event name + effect), then the beat + reactions
+function logEncounter(m){
+  const panel=document.getElementById("scene-panel"); if(!panel) return;
+  const ev=(m.events&&m.events[0])||{name:"Something",kind:"encounter"};
+  const kind=ENC_KIND[ev.kind]||ENC_KIND.encounter;
+  const more=m.events.length>1?` +${m.events.length-1}`:"";
+  panel.querySelectorAll(".sbeat.live").forEach(e=>{ e.classList.remove("live"); e.classList.add("dim"); });
+  const all=panel.querySelectorAll(".sbeat"); for(let k=0;k<all.length-18;k++) all[k].remove();
+  const md=m.momentum_delta||0, pd=m.progress_delta||0;
+  const chips=[];
+  if(pd) chips.push(`<span style="color:${pd>0?'var(--sage2)':'var(--rose2)'}">${pd>0?'▲':'▼'} progress</span>`);
+  if(md) chips.push(`<span style="color:${md>0?'var(--sage2)':'var(--rose2)'}">${md>0?'+':''}${md} morale</span>`);
+  const el=document.createElement("div"); el.className="sbeat event live";
+  el.style.borderLeft=`3px solid ${kind.col}`;
+  el.innerHTML=`<span class="ev-tag" style="color:${kind.col};border-color:${kind.col}">${kind.emoji} ${kind.tag}</span> <span class="ev-name">${ev.name}${more}</span>`
+    +(chips.length?`<span class="ev-fx">${chips.join(" · ")}</span>`:"");
+  panel.appendChild(el);
+  panel.scrollTop=panel.scrollHeight;
+  if(m.narrative) addLogEntry(m.narrative);
+  (m.reactions||[]).forEach(r=>{ if(r&&r.line) showSceneBeat(`"${r.line}"`, r.name); });
+}
+
 const ENC_KIND={
   encounter:{tag:"WILD ENCOUNTER", emoji:"📋", col:"#f5b94e"},
   rival:{tag:"RIVAL APPROACHES", emoji:"✋", col:"#ec858d"},
@@ -1766,7 +1794,7 @@ function connect(){
       case "card_resolved": {
         applyState(m.state);
         if(m.next_heading) setCaption(m.next_heading);
-        if(m.events?.length) showEncounter(m);
+        if(m.events?.length) logEncounter(m);
         else { if(m.narrative) addLogEntry(m.narrative); if(m.reactions?.length) showReactions(m.reactions,m.state,m.npc_name||null); }
         break;
       }
