@@ -49,16 +49,15 @@ ROUTER = Router(
 SPEND = ROUTER.spend
 
 _TONE = (
-    "Narrate VibeQuest like a Wes Anderson HR bulletin co-authored by someone who has been on garden leave since 2022 and nobody noticed. "
-    "The comedy is not in weirdness — it is in forensic precision applied to the wrong thing. "
-    "Good: 'The printer on level three has been enrolled in the asset disposal programme since February. The printer is still printing. Facilities has not been informed.' "
-    "Good: 'Martin from Procurement holds the door open. Martin has been on gardening leave since April. Nobody says anything because this is the wrong time.' "
-    "Bad: 'Something strange happened. Nobody said a word. The air felt heavy.' (atmospheric, vague, not funny) "
-    "The joke is always in the specific wrong detail — a name, a ticket number, a date, a process — and how someone nearby immediately responds with the correct professional behaviour for a slightly different problem. "
-    "They cc the right people. They flag it. They will circle back after the all-hands. They do not acknowledge that the situation is impossible. "
-    "NOT atmosphere, NOT dread, NOT mood. Ban: lone, quiet, ticking, shadow, stillness, 'something felt wrong', 'the air changed'. "
-    "NOT fantasy: quest, realm, dungeon, adventurer, arcane, legendary, brave, slay. "
-    "USE: per my last email, actioned, flagged, going forward, cc'd, loop in, noted for the record, as per, bandwidth, action item."
+    "Narrate VibeQuest as a warm wildlife documentary that observes office life as if it were nature. "
+    "The narrator follows the protagonist — 'our subject' — with genuine affection and quiet amusement, the way a naturalist follows a clever animal through its habitat. Root for the subject. "
+    "Observe office things as fauna and terrain: the open-plan is a habitat, the printer a watering hole, a meeting a migration, a manager defends territory, a courier passes like weather. Use this framing LIGHTLY — a touch per beat, never every sentence, never strained. "
+    "Voice: warm, curious, gently funny, present tense, on the subject's side. "
+    "Good: 'Our subject approaches the watering hole, where the printer has produced nothing since Tuesday. She waits anyway. Hope, in this species, is remarkably persistent.' "
+    "Good: 'A courier enters the clearing. The herd does not look up — they have learned that couriers, like seasons, simply pass.' "
+    "Bad: cold deadpan, bureaucratic recitation, a forced 'wrong detail' jammed into every line, dread, or vague mood ('the air felt heavy'). "
+    "A real detail — a name, a ticket number, a date — is welcome when it lands, as fond observation, not as the whole joke. "
+    "NOT fantasy: never use quest, realm, dungeon, adventurer, arcane, legendary, slay. It is an office, observed with a naturalist's delight."
 )
 
 
@@ -106,7 +105,7 @@ async def narrate_card(
     memory_context: str,
     story_so_far: str = "",
     story_facts: list[str] | None = None,
-    register: str = "a deadpan documentary",
+    register: str = "a warm wildlife documentary",
     npc_context: str = "",
     pressure_context: list[str] | None = None,
     scene_context: str = "",
@@ -206,7 +205,7 @@ async def narrate_event(
     npc_context: str = "",
     story_so_far: str = "",
     story_facts: list[str] | None = None,
-    register: str = "a deadpan documentary",
+    register: str = "a warm wildlife documentary",
     memory_context: str = "",
     scene_context: str = "",
     resolution_count: int = 0,
@@ -256,7 +255,7 @@ The audience just threw these EVENTS at the agent mid-playthrough:
 {event_lines}
 RESULT: progress {prog_desc}, morale {mom_desc}. {outcome_line}
 
-Write ONE beat (2-3 sentences) in the {register} register where these events INTERRUPT the agent and it reacts in character, continuing directly from what it was doing. Dramatize EXACTLY the events above — the interruption crashing in, the block landing, the help arriving, the reframe shifting things. Do not invent unrelated events. Include one specific, exactly wrong detail (name, date, ticket number, or process) being professionally mishandled. {reactions} 0-2 established facts. If an event introduces a new person or object, add it via world_changes.
+Write ONE beat (2-3 sentences) where these events INTERRUPT our subject and it reacts, continuing directly from what it was doing — observed by the documentary narrator. Dramatize EXACTLY the events above: the interruption entering the clearing, the block landing, the help arriving, the reframe shifting things. Do not invent unrelated events. A real detail (a name, a ticket number) is welcome as fond observation, not as the point. {reactions} 0-2 established facts. If an event introduces a new person or object, add it via world_changes.
 {_WORLD_ACTIONS}
 
 JSON: {{"narrative":"...","consequence":"...","reactions":[{{"name":"...","role":"...","line":"..."}}],"established":["..."],"world_changes":[]}}"""
@@ -297,7 +296,7 @@ async def assess_arc(
     momentum: int,
     resolution_count: int,
     min_resolutions: int,
-    register: str = "a deadpan documentary",
+    register: str = "a warm wildlife documentary",
     story_facts: list[str] | None = None,
 ) -> dict:
     forced = resolution_count >= min_resolutions * 2 + 2
@@ -492,7 +491,7 @@ SO FAR: {story_so_far or "Just starting."}
 {facts}
 {npc_name} ({npc_role}) — {npc_personality}
 
-Write ONE beat (2 sentences): {agent_name} asks {npc_name} something SPECIFIC about the goal, and {npc_name} responds in their voice — helpful or obstructive, but strictly ABOUT THE GOAL. Include one exactly-wrong detail (a ticket number, date, or process). Do NOT drift to unrelated matters. End with {npc_name}'s spoken reply.
+Write ONE beat (2 sentences), observed by the documentary narrator: our subject {agent_name} asks {npc_name} something SPECIFIC about the goal, and {npc_name} responds in their voice — helpful or obstructive, but strictly ABOUT THE GOAL. A real detail (a ticket number, a date) is welcome as fond observation, not as the point. Do NOT drift to unrelated matters. End with {npc_name}'s spoken reply.
 JSON: {{"narrative":"...","line":"<{npc_name}'s reply, ≤14 words>","established":["<one durable fact about the goal>"]}}"""
     req = Request(
         system="Respond only with valid JSON. No fantasy language.",

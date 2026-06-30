@@ -1170,11 +1170,11 @@ SCENE_THRESHOLD = 3  # net ACTION progress needed to resolve a scene / tick an o
 
 
 SURREAL_ARC = [
-    "a flat corporate procedural",
-    "a deadpan office memo that has noticed one small thing doesn't add up",
-    "an HR briefing calmly itemizing things that make no sense",
-    "the minutes of a meeting where the impossible is just another agenda item",
-    "a straight-faced status report from inside a situation that has stopped obeying logic",
+    "a gentle wildlife documentary on a calm morning in the habitat",
+    "a wildlife documentary that has begun to notice the habitat behaving a little oddly",
+    "a nature documentary narrating increasingly improbable office behaviour, fondly",
+    "a wildlife special where the ecosystem has quietly stopped following its own rules, observed with delight",
+    "an awe-struck nature documentary watching a creature thrive in conditions that should not exist",
 ]
 
 
@@ -1195,7 +1195,7 @@ class QuestState:
     title: str
     hook: str
     complication: str
-    register: str = "a deadpan documentary"
+    register: str = "a warm wildlife documentary"
     beats: list[str] = field(default_factory=list)
     result_history: list[str] = field(default_factory=list)
     objectives: list[str] = field(default_factory=list)
