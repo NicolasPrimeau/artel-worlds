@@ -212,6 +212,7 @@ async def narrate_event(
     protagonist: str,
     current_step: str = "",
     surreal: int = 0,
+    mood: str = "",
     npc_context: str = "",
     story_so_far: str = "",
     story_facts: list[str] | None = None,
@@ -223,6 +224,7 @@ async def narrate_event(
     stage = f"STAGE:\n{scene_context}" if scene_context else ""
     npc = f"AGENT IS WITH: {npc_context}" if npc_context else ""
     step = f"WHAT THE AGENT NEEDS RIGHT NOW: {current_step}" if current_step else ""
+    mood_line = f"AGENT'S MOOD RIGHT NOW: {mood}" if mood else ""
 
     event_lines = "\n".join(
         f"- {p['name']} ({_EVENT_KIND.get(p['type'], 'an event')}): {p['description']}"
@@ -230,9 +232,9 @@ async def narrate_event(
     )
 
     reactions = (
-        "2 reactions — whoever the agent is with, in their voice (≤10 words), then the agent (≤10 words)."
+        "2 reactions — whoever the agent is with, in their voice (≤10 words), then the AGENT in their own voice + mood (≤10 words)."
         if npc_context
-        else "1 reaction from the agent (≤10 words)."
+        else "1 reaction from the AGENT, in their own voice + mood (≤10 words)."
     )
 
     prompt = f"""{_TONE}
@@ -240,11 +242,13 @@ async def narrate_event(
 THE AGENT'S GOAL: {quest_hook} | COMPLICATION: {complication}
 {npc}
 THE AGENT: {protagonist}
+{mood_line}
 {step}
 {facts}
 {history}
 {stage}
 REALITY RIGHT NOW: {_surreal_band(surreal)}
+The agent is the character the audience roots for. Their reaction must sound like THEM — their personality and current mood — recurring and a little funny.
 
 The audience just threw these EVENTS at the agent:
 {event_lines}
@@ -290,6 +294,43 @@ JSON: {{"fit":<0-100 int>,"narrative":"...","reactions":[{{"name":"...","role":"
     parsed.setdefault("world_changes", [])
     parsed.setdefault("reactions", [])
     return parsed
+
+
+async def narrate_meltdown(
+    quest_hook: str,
+    protagonist: str,
+    story_so_far: str = "",
+    story_facts: list[str] | None = None,
+) -> list[str]:
+    facts = ("TRUE:\n" + "\n".join(f"- {f}" for f in story_facts[-6:])) if story_facts else ""
+    prompt = f"""{_TONE}
+
+REALITY MELTDOWN. The audience has tipped the world fully surreal. Causality is gone.
+THE AGENT: {protagonist}
+THE GOAL (now beyond saving): {quest_hook}
+{facts}
+SO FAR: {story_so_far or "It built to this."}
+
+Write the CLIMAX as 4 escalating beats — reality coming apart in this office, deadpan, each more impossible than the last, building to a final image. Office things become absurd (the photocopier holds a meeting, Tuesday is cancelled, the agent attends their own going-away party). Everyone treats it as normal. The LAST beat is the agent's own reaction, in their voice — they have made peace with it.
+Each beat: 1 SHORT line, ≤14 words, Pokemon-terse. No flowery prose.
+
+JSON: {{"beats":["...","...","...","..."]}}"""
+    req = Request(
+        system="Respond only with valid JSON. No fantasy language.",
+        user=prompt,
+        min_grade="capable",
+    )
+    raw = await ROUTER.complete(req)
+    parsed = parse_json(raw) or {}
+    beats = [_clean(str(b)) for b in parsed.get("beats", []) if str(b).strip()][:4]
+    if not beats:
+        beats = [
+            "The lights go out, then come back wrong.",
+            "The photocopier is chairing the meeting now.",
+            "Tuesday has been cancelled, retroactively.",
+            f"{protagonist.split(':')[0]} decides this is fine. Truly fine.",
+        ]
+    return beats
 
 
 async def assess_arc(
@@ -484,8 +525,10 @@ async def agent_converse(
     story_facts: list[str] | None = None,
     resolution_count: int = 0,
     max_resolutions: int = 8,
+    mood: str = "",
 ) -> dict:
     facts = ("TRUE:\n" + "\n".join(f"- {f}" for f in story_facts[-6:])) if story_facts else ""
+    mood_line = f"{agent_name}'s mood: {mood}." if mood else ""
     prompt = f"""{_TONE}
 
 {_escalation(resolution_count, max_resolutions)}
@@ -493,9 +536,10 @@ async def agent_converse(
 GOAL: {quest_hook} | COMPLICATION: {complication}
 SO FAR: {story_so_far or "Just starting."}
 {facts}
+{mood_line}
 {npc_name} ({npc_role}) — {npc_personality}
 
-Write as POKEMON text, max 3 SHORT lines (≤12 words each): {agent_name} asks {npc_name} ONE specific thing about the goal; {npc_name} answers — helpful or obstructive, strictly ABOUT THE GOAL. Plain and brief, no flowery prose. Do NOT drift. The "line" field is {npc_name}'s ≤8-word reply.
+Write as POKEMON text, max 3 SHORT lines (≤12 words each): {agent_name} (in their mood) asks {npc_name} ONE specific thing about the goal; {npc_name} answers — helpful or obstructive, strictly ABOUT THE GOAL. Plain and brief, no flowery prose. Do NOT drift. The "line" field is {npc_name}'s ≤8-word reply.
 JSON: {{"narrative":"...","line":"<{npc_name}'s reply, ≤14 words>","established":["<one durable fact about the goal>"]}}"""
     req = Request(
         system="Respond only with valid JSON. No fantasy language.",

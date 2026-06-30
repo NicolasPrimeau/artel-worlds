@@ -18,6 +18,8 @@ from .engine import (
     MIN_RESOLUTIONS,
     MAX_RESOLUTIONS,
     SCENE_THRESHOLD,
+    MELTDOWN_THRESHOLD,
+    agent_mood,
     CardType,
     GameState,
     PlayedCard,
@@ -265,6 +267,7 @@ async def _resolve_window(state: GameState) -> None:
                 protagonist=_character_desc(state),
                 current_step=_scene_goal(state),
                 surreal=state.quest.surreal,
+                mood=agent_mood(state.quest),
                 npc_context=npc_context,
                 story_so_far=_story_so_far(state),
                 story_facts=list(state.quest.facts),
@@ -367,6 +370,11 @@ async def _resolve_window(state: GameState) -> None:
     )
     await asyncio.sleep(0.6)
 
+    # --- reality meltdown: chaos has won, the run ends in a surreal collapse ---
+    if state.quest.surreal >= MELTDOWN_THRESHOLD and not state.quest.outcome:
+        await _trigger_meltdown(state)
+        return
+
     # --- scene / objective resolution via progress ---
     if scene_resolved:
         state.quest.scene_progress = 0
@@ -405,6 +413,37 @@ async def _resolve_window(state: GameState) -> None:
     if state.quest.outcome:
         await _end_quest(state)
         return
+
+
+async def _trigger_meltdown(state: GameState) -> None:
+    state.quest.outcome = "meltdown"
+    state.window.resolving = False
+    await _broadcast({"type": "meltdown"})
+    await asyncio.sleep(1.0)
+    beats: list[str] = []
+    if llm.enabled():
+        try:
+            beats = await llm.narrate_meltdown(
+                quest_hook=state.quest.hook,
+                protagonist=_character_desc(state),
+                story_so_far=_story_so_far(state),
+                story_facts=list(state.quest.facts),
+            )
+        except Exception:
+            pass
+    if not beats:
+        beats = [
+            "The lights go out, then come back wrong.",
+            "The photocopier is chairing the meeting now.",
+            "Tuesday has been cancelled, retroactively.",
+            f"{state.character.name} decides this is fine. Truly fine.",
+        ]
+    for b in beats[:4]:
+        state.quest.beats.append(b)
+        state.log_event("meltdown_beat", b)
+        await _broadcast({"type": "scene_beat", "text": b, "who": ""})
+        await asyncio.sleep(1.7)
+    await _end_quest(state)
 
 
 async def _end_quest(state: GameState) -> None:
@@ -736,6 +775,7 @@ async def _agent_converse(state: GameState, npc) -> None:
                 story_facts=list(state.quest.facts),
                 resolution_count=state.quest.resolution_count,
                 max_resolutions=MAX_RESOLUTIONS,
+                mood=agent_mood(state.quest),
             ),
             timeout=8.0,
         )

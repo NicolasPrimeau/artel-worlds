@@ -1831,6 +1831,23 @@ MIN_RESOLUTIONS = 3
 MAX_RESOLUTIONS = 8
 MAX_SCENE_ROUNDS = 3
 SCENE_THRESHOLD = 3  # net ACTION progress needed to resolve a scene / tick an objective
+MELTDOWN_THRESHOLD = 12  # surreal level at which reality comes apart and the run ends
+
+
+def agent_mood(quest: "QuestState") -> str:
+    # the protagonist's evolving state — feeds the narration so you root for them
+    s, m = quest.surreal, quest.momentum
+    if s >= 10:
+        return "numb; has stopped questioning anything that happens"
+    if s >= 6:
+        return "rattled, pretending hard that everything is normal"
+    if m <= -5:
+        return "exasperated, near the end of their patience"
+    if m <= -1:
+        return "frustrated but stubbornly still trying"
+    if m >= 5:
+        return "quietly hopeful — sensing this might actually work"
+    return "determined, taking it one step at a time"
 
 
 SURREAL_ARC = [

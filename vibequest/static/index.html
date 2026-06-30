@@ -291,6 +291,22 @@
   #encounter .enc-banner .enc-name{font-family:"Cormorant Garamond",serif;font-size:clamp(13px,3.6vw,18px);font-weight:700;line-height:1.05;letter-spacing:.01em}
   @keyframes encDrop{from{transform:translate(-50%,-26px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
   .enc-sprite{image-rendering:pixelated;background-repeat:no-repeat;flex-shrink:0;filter:drop-shadow(2px 3px 0 rgba(0,0,0,.35))}
+  /* ── reality meltdown ── */
+  body.meltdown #game{animation:meltWorld 3.2s ease-in-out infinite}
+  @keyframes meltWorld{0%,100%{filter:hue-rotate(0deg) saturate(1)}25%{filter:hue-rotate(45deg) saturate(1.5)}
+    50%{filter:hue-rotate(-35deg) saturate(1.3) contrast(1.12)}75%{filter:hue-rotate(70deg) saturate(1.6)}}
+  body.meltdown::after{content:"";position:fixed;inset:0;z-index:25;pointer-events:none;
+    background:radial-gradient(circle at 50% 42%, transparent 26%, rgba(120,40,170,.18) 55%, rgba(80,16,130,.5) 100%);
+    animation:meltPulse 2.4s ease-in-out infinite}
+  @keyframes meltPulse{0%,100%{opacity:.55}50%{opacity:.95}}
+  #meltdown-banner{position:fixed;top:30%;left:50%;transform:translate(-50%,-50%);z-index:60;pointer-events:none;
+    font-family:"Courier Prime",monospace;font-size:clamp(20px,7vw,46px);font-weight:700;letter-spacing:.18em;
+    color:#fff;text-shadow:0 0 18px #c060ff,0 0 5px #000;white-space:nowrap;
+    animation:meltBanner .5s cubic-bezier(.34,1.56,.64,1),meltShake .2s linear infinite .5s}
+  #meltdown-banner.fade{transition:opacity 1s;opacity:0}
+  @keyframes meltBanner{from{transform:translate(-50%,-50%) scale(.3);opacity:0}to{transform:translate(-50%,-50%) scale(1);opacity:1}}
+  @keyframes meltShake{0%{transform:translate(-50%,-50%) rotate(-1.2deg)}50%{transform:translate(calc(-50% + 3px),-50%) rotate(1.2deg)}100%{transform:translate(-50%,-50%) rotate(-1.2deg)}}
+  #endscreen.meltdown .endbox{box-shadow:0 0 40px rgba(160,60,220,.6)}
   #encounter .enc-opp{position:absolute;top:clamp(34px,11vw,58px);right:9%;animation:encInR .4s ease-out}
   #encounter .enc-agent{position:absolute;bottom:6px;left:11%;animation:encInL .4s ease-out}
   @keyframes encInR{from{transform:translateX(50px);opacity:0}to{transform:translateX(0);opacity:1}}
@@ -1356,14 +1372,24 @@ function showChapter(snap){
 function showEndScreen(snap,closing){
   const outcome=snap.quest?.outcome||"success";
   const success=outcome==="success";
-  document.getElementById("end-stamp").textContent=success?"Case Closed":"Filed Under: Unresolved";
-  document.getElementById("end-verdict").textContent=success?"Done.":"Still Pending.";
-  document.getElementById("end-hook").textContent=snap.quest?.hook||"";
-  document.getElementById("end-closing").textContent=closing||"The matter was considered handled.";
+  const meltdown=outcome==="meltdown";
   const el=document.getElementById("endscreen");
+  el.classList.toggle("meltdown", meltdown);
+  document.getElementById("end-stamp").textContent=meltdown?"Reality: Unrecoverable":(success?"Case Closed":"Filed Under: Unresolved");
+  document.getElementById("end-verdict").textContent=meltdown?"It Came Apart.":(success?"Done.":"Still Pending.");
+  document.getElementById("end-hook").textContent=snap.quest?.hook||"";
+  document.getElementById("end-closing").textContent=closing||(meltdown?"Everyone agreed this was fine.":"The matter was considered handled.");
   el.hidden=false;
   requestAnimationFrame(()=>el.classList.add("show"));
-  sndComplete(success);
+  sndComplete(success&&!meltdown);
+}
+
+function startMeltdown(){
+  document.body.classList.add("meltdown");
+  const b=document.createElement("div"); b.id="meltdown-banner"; b.textContent="REALITY MELTDOWN";
+  document.body.appendChild(b);
+  try{ sndMeltdown&&sndMeltdown(); }catch(e){}
+  setTimeout(()=>{ b.classList.add("fade"); setTimeout(()=>b.remove(),1000); }, 2800);
 }
 
 let _audioCtx=null;
@@ -1760,10 +1786,13 @@ function connect(){
         if(_opening) addLogEntry(_opening.text);
         break;
       }
+      case "meltdown": startMeltdown(); break;
       case "new_quest": {
         document.getElementById("endscreen").hidden=true;
         document.getElementById("vote-section").hidden=true;
         clearInterval(_voteTimer);
+        document.body.classList.remove("meltdown");
+        document.getElementById("endscreen").classList.remove("meltdown");
         resetHand();
         applyState(m.state); showChapter(m.state);
         if(m.opening){ addLogEntry(m.opening); setTimeout(()=>{ const mem=memberFor(null,null); speak(mem,null,m.opening,5200); },3900); }
