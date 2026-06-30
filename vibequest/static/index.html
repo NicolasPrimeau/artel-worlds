@@ -1338,7 +1338,7 @@ function logEncounter(m){
   panel.appendChild(el);
   panel.scrollTop=panel.scrollHeight;
   if(m.narrative) addLogEntry(m.narrative);
-  (m.reactions||[]).forEach(r=>{ if(r&&r.line) showSceneBeat(`"${r.line}"`, r.name); });
+  (m.reactions||[]).forEach(r=>{ if(r&&r.line&&r.line.trim()) showSceneBeat(`"${r.line.trim()}"`, r.name); });
 }
 
 const ENC_KIND={

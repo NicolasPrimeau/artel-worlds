@@ -373,7 +373,7 @@ DECISION POINT — the agent is stuck here:
 This is ONE continuous story, not separate vignettes. The agent is stuck at the wall above and the audience just chose the tactic above to deal with it. Everything you write must read as the NEXT lines of that single unfolding story — pick up directly from the wall and the chosen tactic, in the agent's voice and mood.
 Then:
 1. (the FIT from above)
-2. Write a SHORT beat (1-2 sentences, ≤30 words) that continues the story: show the agent ACTUALLY DOING the chosen tactic on this wall, and what comes of it (concrete outcome first). {reactions}
+2. NARRATIVE — REQUIRED, never empty. In 1-2 short sentences make it OBVIOUS what happened: the agent does the chosen tactic, and the concrete RESULT (did it work, what changed). A reader must understand the whole outcome from THIS line alone — never leave the "what happened" to the reactions. {reactions} (reactions are just quick quips AFTER; skip one rather than leave it blank or cryptic.)
 3. breakthrough: true ONLY if the tactic clearly got the agent PAST this wall. false if it only made partial headway / the wall still blocks them (a wrong or weak tactic should NOT break through — the wall persists for another round).
 4. NEXT decision point (only matters if breakthrough). There is a PLANNED next beat: "{planned_next}".
    - If the agent's move went CLEANLY (right tactic, good fit), the next wall IS that planned beat — keep the story on its spine. Set next_situation to it (lightly reworded to flow) and derailed=false.
@@ -393,6 +393,11 @@ JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactio
     )
     raw = await ROUTER.complete(req)
     parsed = parse_json(raw) or {}
+    # the OUTCOME beat is required — retry once if the model left it empty
+    if not _clean(parsed.get("narrative", "")):
+        retry = parse_json(await ROUTER.complete(req)) or {}
+        if _clean(retry.get("narrative", "")):
+            parsed = retry
     try:
         parsed["fit"] = max(0, min(100, int(parsed.get("fit", 60))))
     except (TypeError, ValueError):
@@ -409,6 +414,11 @@ JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactio
         if isinstance(r, dict) and _as_text(r.get("line", "")).strip():
             rx.append({"name": _as_text(r.get("name", "")), "line": _clean(r.get("line", ""))})
     parsed["reactions"] = rx
+    # never leave the audience without an outcome — synthesize a plain one if needed
+    if not parsed["narrative"]:
+        name = protagonist.split(":")[0].strip() or "The agent"
+        tac = max(cards, key=lambda c: c.get("weight", 1))["name"] if cards else "their move"
+        parsed["narrative"] = f"{name} tries {tac}. It doesn't get them past this yet."
     return parsed
 
 
