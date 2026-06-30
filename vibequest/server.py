@@ -133,6 +133,10 @@ def _state_snapshot(state: GameState, include_world: bool = True) -> dict:
             "scene_threshold": SCENE_THRESHOLD,
             "surreal": state.quest.surreal,
             "decision": state.quest.decision_prompt,
+            "hp": state.quest.hp,
+            "hp_max": 5,
+            "doom": state.quest.doom,
+            "doom_max": 14,
             "npcs": [
                 {
                     "id": n.id,
@@ -402,8 +406,20 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
         await _trigger_meltdown(state)
         return
 
-    # --- a wall takes MULTIPLE rounds: it only gives way on a breakthrough (or after a cap) ---
+    # --- STAKES: every round burns a tick off the deadline; HP/doom at 0 ends the delve ---
     global _decision_at
+    state.quest.doom = max(0, state.quest.doom - 1)
+    if state.quest.hp <= 0 and not state.quest.outcome:
+        state.quest.outcome = "fired"
+    elif state.quest.doom <= 0 and not state.quest.outcome:
+        state.quest.outcome = "expired"
+    if state.quest.outcome:
+        state.window.resolving = False
+        state.phase = "active"
+        await _end_quest(state)
+        return
+
+    # --- a wall takes MULTIPLE rounds: it only gives way on a breakthrough (or after a cap) ---
     state.quest.scene_progress = 0
     state.quest.scene_rounds += 1
     wall_broken = bool(result.get("breakthrough")) or state.quest.scene_rounds >= MAX_SCENE_ROUNDS

@@ -252,6 +252,15 @@
   #infobtn{pointer-events:auto;top:calc(8px + env(safe-area-inset-top));right:10px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;
     font-family:"Cormorant Garamond",serif;font-weight:700;font-size:16px;color:var(--ink);background:var(--cream);border:1.5px solid var(--ink);border-radius:50%;cursor:pointer;box-shadow:2px 2px 0 rgba(26,20,40,.18)}
   #infobtn:hover{background:var(--cream2)}
+  #stakes{pointer-events:none;z-index:40;top:calc(8px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);
+    display:flex;align-items:center;gap:9px;background:var(--cream);border:2px solid var(--ink);border-radius:20px;
+    padding:3px 12px;box-shadow:3px 3px 0 rgba(26,20,40,.2);font-family:"Courier Prime",monospace;
+    font-size:clamp(11px,3vw,14px);letter-spacing:.04em;white-space:nowrap}
+  #stakes[hidden]{display:none}
+  #hp-pips{color:var(--coral);letter-spacing:.06em}
+  #doom-pip{color:var(--ink);font-weight:700}
+  #doom-pip.low{color:var(--coral);animation:doomPulse .8s ease-in-out infinite}
+  @keyframes doomPulse{0%,100%{opacity:.55}50%{opacity:1}}
   #info{top:0;left:0;right:0;bottom:0;z-index:30;display:flex;align-items:center;justify-content:center;background:rgba(223,215,196,.72);padding:18px;pointer-events:auto}
   #info[hidden]{display:none}
   .infobox{width:min(540px,94vw);max-height:86vh;overflow:auto;background:var(--cream);border:2px solid var(--ink);border-radius:6px;box-shadow:7px 7px 0 rgba(26,20,40,.22)}
@@ -371,6 +380,8 @@
 <div id="caption" class="ui"></div>
 
 <button id="infobtn" class="ui" type="button" aria-label="info">i</button>
+
+<div id="stakes" class="ui" hidden><span id="hp-pips"></span><span id="doom-pip"></span></div>
 
 <div id="info" class="ui" hidden><div class="infobox">
   <div class="infoh"><b>VibeQuest</b><button id="infoClose" type="button" aria-label="close">✕</button></div>
@@ -687,16 +698,22 @@ class World extends Phaser.Scene{
       _thinkT+=dt;
       _thinkObj.setText('.'.repeat(1+(Math.floor(_thinkT/280)%3)));
     }
-    // NPCs turn to face the player when interacting (i.e. when the player is near)
+    // face-to-face: NPCs turn to the player when near, and a STOPPED player turns to the nearest NPC
     if(npcs && npcs.length){
       const cx=m.spr.x, cy=m.spr.y;
+      let near=null, nearD=1e9;
       for(const n of npcs){
         if(!n.spr) continue;
-        const dx=cx-n.spr.x, dy=cy-n.spr.y;
-        if(Math.hypot(dx,dy) < TILE*2.6){
+        const dx=cx-n.spr.x, dy=cy-n.spr.y, d=Math.hypot(dx,dy);
+        if(d < TILE*2.6){
           const dir = Math.abs(dx)>Math.abs(dy) ? (dx>0?"right":"left") : (dy>0?"down":"up");
           if(n.dir!==dir){ n.dir=dir; try{ n.spr.anims.stop(); }catch(e){} n.spr.setFrame(DIR_COL[dir]); }
         }
+        if(d<nearD){ nearD=d; near=n; }
+      }
+      if(!m.moving && near && nearD < TILE*3){
+        const dir = Math.abs(near.spr.x-cx)>Math.abs(near.spr.y-cy) ? (near.spr.x>cx?"right":"left") : (near.spr.y>cy?"down":"up");
+        if(m.dir!==dir){ m.dir=dir; m.spr.setFrame(DIR_COL[dir]); }
       }
     }
   }
@@ -992,6 +1009,17 @@ function setHud(snap){
   document.getElementById("qtitle").textContent=q.title||"VibeQuest";
   document.getElementById("qhook").textContent=q.hook||"";
   setSurrealLevel(q.surreal);
+  // stakes HUD: composure (HP) + doom clock
+  const st0=document.getElementById("stakes");
+  if(st0 && q.hp!=null){
+    const hpMax=q.hp_max||5, hp=Math.max(0,Math.min(hpMax,q.hp));
+    document.getElementById("hp-pips").textContent="♥".repeat(hp)+"♡".repeat(Math.max(0,hpMax-hp));
+    const doom=Math.max(0,q.doom||0);
+    const dp=document.getElementById("doom-pip");
+    dp.textContent="⏳"+doom;
+    dp.classList.toggle("low", doom<=4);
+    st0.hidden = !!q.outcome; // hide once the delve is over
+  }
 
   // scene progress toward the next objective (always visible)
   const sp=q.scene_progress||0, st=q.scene_threshold||3;
@@ -1512,12 +1540,15 @@ function showEndScreen(snap,closing,vote,title){
   const outcome=snap.quest?.outcome||"success";
   const success=outcome==="success";
   const meltdown=outcome==="meltdown";
+  const STAMP={success:"Quest Complete",meltdown:"Reality: Unrecoverable",fired:"Escorted Out",expired:"Deadline Missed",failure:"Filed Under: Unresolved"};
+  const VERDICT={success:"Victory.",meltdown:"It Came Apart.",fired:"Fired.",expired:"Out of Time.",failure:"Still Pending."};
+  const CLOSE={success:"The delve is cleared.",meltdown:"Everyone agreed this was fine.",fired:"Security walked them out by 4.",expired:"The deadline passed without mercy."};
   const el=document.getElementById("endscreen");
   el.classList.toggle("meltdown", meltdown);
-  document.getElementById("end-stamp").textContent=meltdown?"Reality: Unrecoverable":(success?"Case Closed":"Filed Under: Unresolved");
-  document.getElementById("end-verdict").textContent=meltdown?"It Came Apart.":(success?"Done.":"Still Pending.");
+  document.getElementById("end-stamp").textContent=STAMP[outcome]||STAMP.failure;
+  document.getElementById("end-verdict").textContent=VERDICT[outcome]||VERDICT.failure;
   document.getElementById("end-hook").textContent=title||snap.quest?.title||snap.quest?.hook||"";
-  document.getElementById("end-closing").textContent=closing||(meltdown?"Everyone agreed this was fine.":"The matter was considered handled.");
+  document.getElementById("end-closing").textContent=closing||CLOSE[outcome]||CLOSE.failure;
   el.hidden=false;
   requestAnimationFrame(()=>el.classList.add("show"));
   sndComplete(success&&!meltdown);

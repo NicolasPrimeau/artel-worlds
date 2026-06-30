@@ -1686,6 +1686,8 @@ class QuestState:
     decision_prompt: str = ""  # the current wall the audience is deciding on (Telltale-style)
     arc: list[str] = field(default_factory=list)  # planned beat spine: setup..climax..resolution
     arc_pos: int = 0  # which planned beat we're on (cards can deviate from it)
+    hp: int = 5  # composure pips — 0 means the hero is fired (a loss)
+    doom: int = 14  # rounds left before the deadline — 0 means out of time (a loss)
     outcome: str | None = None
     scene_rounds: int = 0
     scene_beat_start: int = 0
@@ -2021,11 +2023,12 @@ def apply_fit_effects(quest: QuestState, fit: int) -> None:
         quest.surreal = min(20, quest.surreal + 1)
         quest.tension = min(10, quest.tension + 1)
     else:
-        # a clash — knocks the agent back and the timeline lurches surreal
+        # a clash — the encounter hits back: lose composure (HP) and the dungeon warps
         quest.scene_progress = max(0, quest.scene_progress - 1)
         quest.momentum = _clamp(quest.momentum - 3)
         quest.surreal = min(20, quest.surreal + 3)
         quest.tension = min(10, quest.tension + 1)
+        quest.hp = max(0, quest.hp - 1)
 
 
 def classify_window(progress_delta: int, momentum_delta: int) -> str:
