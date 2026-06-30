@@ -92,6 +92,12 @@
     display:flex;flex-direction:column;pointer-events:none;
     background:linear-gradient(180deg,#1c1428 0%,#150e20 100%);
     border-top:3px solid var(--gold);box-shadow:0 -3px 14px rgba(0,0,0,.35)}
+  #copy-narr{position:absolute;top:6px;right:8px;z-index:14;pointer-events:auto;
+    font-family:"Courier Prime",monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;
+    color:rgba(238,207,96,.7);background:rgba(0,0,0,.25);border:1px solid rgba(238,207,96,.25);
+    border-radius:3px;padding:3px 7px;cursor:pointer}
+  #copy-narr:hover{color:var(--gold);border-color:rgba(238,207,96,.5)}
+  #copy-narr.done{color:#83d3a3;border-color:#83d3a3}
   /* ── cinematic narrative panel (now lives in the dock) ── */
   #scene-panel{position:static;flex:0 0 auto;height:clamp(68px,12vh,104px);overflow-y:auto;overscroll-behavior:contain;
     -webkit-overflow-scrolling:touch;pointer-events:auto;display:block;
@@ -429,6 +435,7 @@
 
 <div id="encounter" class="ui"></div>
 <div id="dock" class="ui">
+  <button id="copy-narr" title="Copy the full narrative">⧉ copy</button>
   <div id="scene-panel"></div>
   <div id="cardzone">
     <div id="drawpile"></div>
@@ -1197,8 +1204,11 @@ function speakNPC(name,text){
 function updateBubbles(){}
 function clearBubbles(){}
 let _typingTimer=null;
+let _narrativeLog=[];   // full session narrative, for the copy button
+function recordNarrative(line){ if(line) _narrativeLog.push(line); }
 function showSceneBeat(text, who=''){
   if(!text) return;
+  recordNarrative(who?`${who}: ${text}`:text);
   const panel=document.getElementById("scene-panel"); if(!panel) return;
   panel.querySelectorAll(".sbeat.live").forEach(e=>{ e.classList.remove("live"); e.classList.add("dim"); });
   // keep a scrollable history; trim only very old beats
@@ -1230,6 +1240,7 @@ function logEncounter(m){
   const more=m.events.length>1?` +${m.events.length-1}`:"";
   panel.querySelectorAll(".sbeat.live").forEach(e=>{ e.classList.remove("live"); e.classList.add("dim"); });
   const all=panel.querySelectorAll(".sbeat"); for(let k=0;k<all.length-18;k++) all[k].remove();
+  recordNarrative(`— ${kind.tag}: ${ev.name}${more} —`);
   const el=document.createElement("div"); el.className="sbeat event live";
   el.style.borderLeft=`3px solid ${kind.col}`;
   el.innerHTML=`<span class="ev-tag" style="color:${kind.col};border-color:${kind.col}">${kind.emoji} ${kind.tag}</span> <span class="ev-name">${ev.name}${more}</span>`;
@@ -1817,6 +1828,7 @@ function connect(){
     switch(m.type){
       case "state": {
         const fresh=!world; // first time we're seeing this quest on this client
+        if(fresh && m.state.quest && Array.isArray(m.state.quest.beats)) _narrativeLog = m.state.quest.beats.slice();
         applyState(m.state);
         snapCharacter(m.state.pos);   // hard-snap on (re)connect — no stroll from a stale spot
         const _opening = m.state.log && m.state.log.find(e => e.kind === 'opening');
@@ -1832,6 +1844,7 @@ function connect(){
         clearInterval(_voteTimer);
         document.body.classList.remove("meltdown");
         document.getElementById("endscreen").classList.remove("meltdown");
+        _narrativeLog=[];
         resetHand();
         applyState(m.state); showChapter(m.state, true);
         if(m.opening){ addLogEntry(m.opening); }
@@ -1885,6 +1898,16 @@ function connect(){
   tc.addEventListener("click",()=>tc.classList.toggle("expanded"));
   const ch=document.getElementById("chapter");
   if(ch){ ch.addEventListener("click",hideChapter); }  // pointer-events only when .show (CSS), so it never blocks taps while hidden
+  const cn=document.getElementById("copy-narr");
+  if(cn) cn.addEventListener("click",async()=>{
+    const q=(currentSnap&&currentSnap.quest)||{};
+    const head=[q.title?q.title.toUpperCase():"VIBEQUEST", q.hook||""].filter(Boolean).join("\n");
+    const payload=(head?head+"\n\n":"")+_narrativeLog.join("\n\n");
+    try{ await navigator.clipboard.writeText(payload); }
+    catch(_){ const ta=document.createElement("textarea"); ta.value=payload; document.body.appendChild(ta); ta.select(); try{ document.execCommand("copy"); }catch(__){} ta.remove(); }
+    cn.textContent="✓ copied"; cn.classList.add("done");
+    setTimeout(()=>{ cn.textContent="⧉ copy"; cn.classList.remove("done"); },1500);
+  });
 })();
 
 (function(){
