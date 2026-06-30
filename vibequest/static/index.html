@@ -1377,7 +1377,7 @@ function showChapter(snap, hold){
     if(c.name){
       const verbs=["is on the case.","has been handed it.","has to sort it out.","takes it on.","picks up the file.","draws the short straw."];
       const v=verbs[c.name.length%verbs.length]; // stable per protagonist, no flicker
-      pro.innerHTML=`<b>${c.name}</b>${c.role?", "+c.role+",":""} ${v}`;
+      pro.innerHTML=`<b>${c.name}</b> ${v}`;
       pro.style.display="";
     } else { pro.style.display="none"; }
   }
