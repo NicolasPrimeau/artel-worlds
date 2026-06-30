@@ -890,8 +890,17 @@ def create_app() -> FastAPI:
         # advance_window's copy+clear); avoids hanging on the long resolve lock.
         _state.window.cards.append(played)
         _card_signal.set()
+        cdef = CARD_BY_ID[card_id]
         await _broadcast(
-            {"type": "card_played", "card_id": card_id, "card_count": len(_state.window.cards)}
+            {
+                "type": "card_played",
+                "card_id": card_id,
+                "player_id": player_id,
+                "card_name": cdef.name,
+                "card_type": cdef.type.value,
+                "card_description": cdef.description,
+                "card_count": len(_state.window.cards),
+            }
         )
         # refill: deal a replacement so the hand stays full instead of draining
         await _broadcast({"type": "deal_card", "card": _card_msg(_next_deal_card())})
