@@ -19,6 +19,7 @@ from .engine import (
     MIN_RESOLUTIONS,
     MAX_RESOLUTIONS,
     SCENE_THRESHOLD,
+    MAX_SCENE_ROUNDS,
     MELTDOWN_THRESHOLD,
     agent_mood,
     CardType,
@@ -385,28 +386,45 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
         await _trigger_meltdown(state)
         return
 
-    # --- every decision advances the story: tick a step, set the NEXT wall ---
+    # --- a wall takes MULTIPLE rounds: it only gives way on a breakthrough (or after a cap) ---
+    global _decision_at
     state.quest.scene_progress = 0
+    state.quest.scene_rounds += 1
+    wall_broken = bool(result.get("breakthrough")) or state.quest.scene_rounds >= MAX_SCENE_ROUNDS
+
+    state.window.resolving = False
+    state.phase = "active"
+
+    if not wall_broken:
+        # same wall, another round — the agent stays here, more cards/interactions land
+        _decision_at = time.monotonic()
+        await _broadcast(
+            {
+                "type": "decision",
+                "situation": state.quest.decision_prompt,
+                "seconds": DECISION_TIMEOUT,
+                "state": _state_snapshot(state, include_world=False),
+            }
+        )
+        if state.window.cards:
+            _card_signal.set()
+        return
+
+    # the wall gives way: tick a step toward the goal, set the NEXT wall
+    state.quest.scene_rounds = 0
     state.quest.scene_beat_start = len(state.quest.beats)
     _complete_artel_objective(state, state.quest.resolution_count)
     state.quest.resolution_count += 1
 
-    # --- deterministic quest completion ---
     total_scenes = max(len(state.quest.objectives), MIN_RESOLUTIONS)
     if (
         state.quest.resolution_count >= total_scenes
         or state.quest.resolution_count >= MAX_RESOLUTIONS
     ):
         state.quest.outcome = "success" if state.quest.momentum >= 0 else "failure"
-
-    state.window.resolving = False
-    state.phase = "active"
-
-    if state.quest.outcome:
         await _end_quest(state)
         return
 
-    # set the next decision point and visibly send the agent toward it
     next_situation = result.get("next_situation", "") or "The agent looks for another angle."
     state.quest.decision_prompt = next_situation
     state.quest.beats.append(next_situation)
@@ -420,7 +438,6 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
             path = path[1:]
         state.path = path
         state.agent_goal = next_npc.id
-    global _decision_at
     _decision_at = time.monotonic()
     await _broadcast(
         {

@@ -687,6 +687,18 @@ class World extends Phaser.Scene{
     m.spr.setDepth(1000+m.spr.y);
     updateBubbles();
     updateCaption(m.moving);
+    // NPCs turn to face the player when interacting (i.e. when the player is near)
+    if(npcs && npcs.length){
+      const cx=m.spr.x, cy=m.spr.y;
+      for(const n of npcs){
+        if(!n.spr) continue;
+        const dx=cx-n.spr.x, dy=cy-n.spr.y;
+        if(Math.hypot(dx,dy) < TILE*2.6){
+          const dir = Math.abs(dx)>Math.abs(dy) ? (dx>0?"right":"left") : (dy>0?"down":"up");
+          if(n.dir!==dir){ n.dir=dir; try{ n.spr.anims.stop(); }catch(e){} n.spr.setFrame(DIR_COL[dir]); }
+        }
+      }
+    }
   }
 }
 

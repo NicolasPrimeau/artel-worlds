@@ -368,13 +368,14 @@ DECISION POINT — the agent is stuck here:
 Then:
 1. (the FIT from above)
 2. Write a SHORT beat (1-2 sentences, ≤30 words): the concrete outcome FIRST, then a quick line. {reactions}
-3. NEXT decision point: the agent progresses, then hits the next concrete wall — which MUST be a step toward THE GOAL above (finding/fixing the exact thing the goal names), never an unrelated office problem. ONE specific sentence. Don't repeat earlier walls.
-4. Pick next_npc_id: who the agent walks to next for that wall (an exact id from the list, or "").
+3. breakthrough: true ONLY if the tactic clearly got the agent PAST this wall. false if it only made partial headway / the wall still blocks them (a wrong or weak tactic should NOT break through — the wall persists for another round).
+4. NEXT decision point (only matters if breakthrough): the next concrete wall — a step toward THE GOAL above (finding/fixing the exact thing the goal names), never an unrelated office problem. ONE specific sentence. Don't repeat earlier walls.
+5. Pick next_npc_id: who the agent walks to next for that wall (an exact id from the list, or "").
 
 PEOPLE:
 {people}
 
-JSON: {{"fit":int,"narrative":"...","reactions":[{{"name":"...","line":"..."}}],"next_situation":"...","next_npc_id":"<id or empty>","established":["<one durable fact>"],"world_changes":[]}}
+JSON: {{"fit":int,"breakthrough":bool,"narrative":"...","reactions":[{{"name":"...","line":"..."}}],"next_situation":"...","next_npc_id":"<id or empty>","established":["<one durable fact>"],"world_changes":[]}}
 {_WORLD_ACTIONS}"""
     req = Request(
         system="Respond only with valid JSON. No fantasy language.",
@@ -387,6 +388,7 @@ JSON: {{"fit":int,"narrative":"...","reactions":[{{"name":"...","line":"..."}}],
         parsed["fit"] = max(0, min(100, int(parsed.get("fit", 60))))
     except (TypeError, ValueError):
         parsed["fit"] = 60
+    parsed["breakthrough"] = bool(parsed.get("breakthrough", False))
     parsed["narrative"] = _clean(parsed.get("narrative", ""))
     parsed["next_situation"] = _clean(parsed.get("next_situation", ""))
     parsed.setdefault("next_npc_id", "")

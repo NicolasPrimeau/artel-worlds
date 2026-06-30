@@ -1407,9 +1407,9 @@ class CardResolution:
     consequence: str
 
 
-MIN_RESOLUTIONS = 3
-MAX_RESOLUTIONS = 8
-MAX_SCENE_ROUNDS = 3
+MIN_RESOLUTIONS = 5
+MAX_RESOLUTIONS = 12
+MAX_SCENE_ROUNDS = 3  # rounds of cards/interaction at one wall before it gives way
 SCENE_THRESHOLD = 3  # net ACTION progress needed to resolve a scene / tick an objective
 MELTDOWN_THRESHOLD = 12  # surreal level at which reality comes apart and the run ends
 
