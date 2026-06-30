@@ -425,6 +425,7 @@ const PROP = {
   coffee:    { tex:"coffee",    ox:-2, oy:-2 },
   copier:    { tex:"copier",    ox:-8, oy:-4,  footprint:2 },
   plant_pot: { tex:"plant_pot", ox:-2, oy:-4 },
+  window:    { tex:"window",    ox:0,  oy:1 },
 };
 const PROP_COLS = 20;
 
@@ -508,6 +509,16 @@ function makeProps(s){
   g.fillStyle(0x6a9a50,1); g.fillEllipse(6,6,11,9);
   g.fillStyle(0x8ab868,1); g.fillEllipse(4,4,6,5); g.fillEllipse(8,5,5,4);
   g.generateTexture("plant_pot",12,16); g.destroy();
+
+  // window — a glazed pane set into the wall (sky outside)
+  g=s.add.graphics();
+  g.fillStyle(0x2c2c3a,1); g.fillRect(0,0,16,13);            // frame
+  g.fillStyle(0x86bbe2,1); g.fillRect(2,2,12,9);             // glass
+  g.fillStyle(0xa9d6f0,1); g.fillRect(2,2,12,4);             // brighter sky at top
+  g.fillStyle(0xc8e6f6,1); g.fillRect(3,3,4,2);              // glint
+  g.fillStyle(0x252533,1); g.fillRect(7,2,2,9); g.fillRect(2,6,12,2); // mullions
+  g.fillStyle(0x55556a,1); g.fillRect(-1,11,18,3);           // sill
+  g.generateTexture("window",16,14); g.destroy();
 }
 
 function makeIndoorTextures(s){

@@ -49,15 +49,16 @@ ROUTER = Router(
 SPEND = ROUTER.spend
 
 _TONE = (
-    "Narrate VibeQuest as a warm wildlife documentary that observes office life as if it were nature. "
-    "The narrator follows the protagonist — 'our subject' — with genuine affection and quiet amusement, the way a naturalist follows a clever animal through its habitat. Root for the subject. "
-    "Observe office things as fauna and terrain: the open-plan is a habitat, the printer a watering hole, a meeting a migration, a manager defends territory, a courier passes like weather. Use this framing LIGHTLY — a touch per beat, never every sentence, never strained. "
-    "Voice: warm, curious, gently funny, present tense, on the subject's side. "
-    "Good: 'Our subject approaches the watering hole, where the printer has produced nothing since Tuesday. She waits anyway. Hope, in this species, is remarkably persistent.' "
-    "Good: 'A courier enters the clearing. The herd does not look up — they have learned that couriers, like seasons, simply pass.' "
-    "Bad: cold deadpan, bureaucratic recitation, a forced 'wrong detail' jammed into every line, dread, or vague mood ('the air felt heavy'). "
-    "A real detail — a name, a ticket number, a date — is welcome when it lands, as fond observation, not as the whole joke. "
-    "NOT fantasy: never use quest, realm, dungeon, adventurer, arcane, legendary, slay. It is an office, observed with a naturalist's delight."
+    "Narrate VibeQuest like POKEMON game text. SHORT, punchy, present tense. "
+    "ONE or TWO short lines per beat. NEVER more than three. Plain declarative sentences a kid reads in a second. Max ~12 words a line. "
+    "Light and a touch funny, but BRIEF above all — no flowery prose, no long sentences, no sub-clauses, no 'as if', no similes. "
+    "Good: 'Glen heads for Accounting.' "
+    "Good: 'An Auditor appears! It wants the asset register.' "
+    "Good: 'Margot checks the ledger. The invoice was approved twice.' "
+    "Good: 'It won't sign. Glen needs another way.' "
+    "Bad (too long): 'Our subject steps cautiously toward the humming photocopier, where the confidential sheet glints like a misplaced leaf.' "
+    "Keep a name or one key detail (a ticket number, a room) when useful — stated plainly, never dressed up. "
+    "NOT fantasy: no quest, realm, dungeon, adventurer, arcane. It is an office, in Pokemon-terse narration."
 )
 
 
@@ -255,7 +256,7 @@ The audience just threw these EVENTS at the agent mid-playthrough:
 {event_lines}
 RESULT: progress {prog_desc}, morale {mom_desc}. {outcome_line}
 
-Write ONE beat (2-3 sentences) where these events INTERRUPT our subject and it reacts, continuing directly from what it was doing — observed by the documentary narrator. Dramatize EXACTLY the events above: the interruption entering the clearing, the block landing, the help arriving, the reframe shifting things. Do not invent unrelated events. A real detail (a name, a ticket number) is welcome as fond observation, not as the point. {reactions} 0-2 established facts. If an event introduces a new person or object, add it via world_changes.
+Write the beat as POKEMON text: 1-2 SHORT lines, max 3, ≤12 words each. The events INTERRUPT the agent — say plainly what crashes in and how the agent reacts. Dramatize EXACTLY the events above, nothing unrelated. No flowery prose, no similes. {reactions} 0-2 established facts. If an event introduces a new person or object, add it via world_changes.
 {_WORLD_ACTIONS}
 
 JSON: {{"narrative":"...","consequence":"...","reactions":[{{"name":"...","role":"...","line":"..."}}],"established":["..."],"world_changes":[]}}"""
@@ -491,7 +492,7 @@ SO FAR: {story_so_far or "Just starting."}
 {facts}
 {npc_name} ({npc_role}) — {npc_personality}
 
-Write ONE beat (2 sentences), observed by the documentary narrator: our subject {agent_name} asks {npc_name} something SPECIFIC about the goal, and {npc_name} responds in their voice — helpful or obstructive, but strictly ABOUT THE GOAL. A real detail (a ticket number, a date) is welcome as fond observation, not as the point. Do NOT drift to unrelated matters. End with {npc_name}'s spoken reply.
+Write as POKEMON text, max 3 SHORT lines (≤12 words each): {agent_name} asks {npc_name} ONE specific thing about the goal; {npc_name} answers — helpful or obstructive, strictly ABOUT THE GOAL. Plain and brief, no flowery prose. Do NOT drift. The "line" field is {npc_name}'s ≤8-word reply.
 JSON: {{"narrative":"...","line":"<{npc_name}'s reply, ≤14 words>","established":["<one durable fact about the goal>"]}}"""
     req = Request(
         system="Respond only with valid JSON. No fantasy language.",

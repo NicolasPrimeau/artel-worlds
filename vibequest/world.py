@@ -637,6 +637,67 @@ def _weighted_splits(total: int, weights: list[int]) -> list[int]:
     return pts
 
 
+def _furnish_room(
+    name: str,
+    cx: int,
+    rw: int,
+    room_ih: int,
+    props: list[dict],
+    occupied: set[tuple[int, int]],
+) -> None:
+    # credible, function-appropriate furniture for a small room (rows 1..room_ih)
+    x0 = cx - rw // 2
+    x1 = cx + rw // 2
+
+    def put(x: int, y: int, kind: str) -> None:
+        if x0 <= x <= x1 and 1 <= y <= room_ih and (x, y) not in occupied:
+            props.append({"x": x, "y": y, "kind": kind})
+            occupied.add((x, y))
+
+    low = name.lower()
+    if "conference" in low or "meeting" in low or "assembly" in low:
+        for x in range(x0 + 1, x1):
+            put(x, 2, "desk")  # long table
+        for x in range(x0 + 1, x1, 2):
+            put(x, 1, "chair")
+            put(x, 3, "chair")
+        put(x1, 1, "whiteboard")
+    elif "break" in low or "lounge" in low or "kitchen" in low or "cafeteria" in low:
+        put(x0, 1, "coffee")
+        put(x0 + 1, 1, "cabinet")
+        put(cx, 2, "desk")
+        put(cx - 1, 3, "chair")
+        put(cx + 1, 3, "chair")
+        put(x1, 1, "plant_pot")
+    elif "reception" in low or "lobby" in low or "common" in low:
+        put(cx - 1, 1, "desk")
+        put(cx, 1, "desk")
+        put(cx, 3, "chair")
+        put(x0, 3, "plant_pot")
+        put(x1, 3, "plant_pot")
+    elif "manager" in low or "principal" in low or "office" in low or "den" in low:
+        put(cx, 1, "desk")
+        put(cx, 2, "chair")
+        put(x0, 1, "cabinet")
+        put(x1, 1, "plant_pot")
+        put(x1, 3, "chair")
+    elif "print" in low or "server" in low or "equipment" in low or "bay" in low or "lab" in low:
+        put(cx - 1, 1, "copier")
+        put(x0, 1, "cabinet")
+        put(x1, 1, "cabinet")
+        put(x0, 3, "cabinet")
+        put(x1, 3, "cabinet")
+    elif "supply" in low or "closet" in low or "storage" in low or "store" in low or "vault" in low:
+        for x in range(x0, x1 + 1, 2):
+            put(x, 1, "cabinet")
+            put(x, 3, "cabinet")
+    else:
+        put(cx, 1, "desk")
+        put(cx, 2, "chair")
+        put(x1, 1, "cabinet")
+        put(x0, 1, "plant_pot")
+
+
 _BULLPEN_NAMES: dict[str, list[str]] = {
     "office": ["Sales", "Accounting", "Open Plan", "The Annex", "Operations", "Customer Service"],
     "dark": ["The Pit", "Common Floor", "The Stacks", "The Hollow", "Gathering Floor"],
@@ -713,7 +774,7 @@ def generate_indoor_world(
     occupied: set[tuple[int, int]] = {(cx, cy) for cx, cy, *_ in room_data}
     props: list[dict] = []
     for cx, cy, name, fl, rw, rh in room_data[:n_rooms]:
-        _place_zone_props(rng, name, theme, cx, cy, rw, rh, props, occupied)
+        _furnish_room(name, cx, rw, ROOM_IH, props, occupied)
 
     def _put(x: int, y: int, kind: str) -> None:
         if 1 <= x < w - 1 and bull_y0 <= y < h - 1 and (x, y) not in occupied:
@@ -739,6 +800,13 @@ def generate_indoor_world(
                 continue
             if rng.random() < 0.62:
                 _put(gx, gy, rng.choice(_filler))
+
+    # windows set into the exterior walls (top + both sides)
+    for x in range(3, w - 3, 4):
+        props.append({"x": x, "y": 0, "kind": "window"})
+    for y in range(bull_y0 + 1, h - 2, 4):
+        props.append({"x": 0, "y": y, "kind": "window"})
+        props.append({"x": w - 1, "y": y, "kind": "window"})
 
     indoor_walkable = {FLOOR, PATH, PATH_LIGHT, LAVENDER}
     route: list[list[int]] = []
