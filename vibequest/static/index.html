@@ -1730,7 +1730,7 @@ function renderHand(cards){
     const uid=String(_nextUid++);
     _handItems.push({uid,...c});
     const el=document.createElement("div"); el.className="card "+c.type;
-    el.innerHTML=`<div class="ct">${c.type}</div><div class="cn">${c.name}</div><div class="cd">${c.description}</div>`;
+    el.innerHTML=`<div class="ct">${TYPE_LABEL[c.type]||c.type}</div><div class="cn">${c.name}</div><div class="cd">${c.description}</div>`;
     el._t=0; el._step=0; el._defZ=1; el.style.opacity="1";
     h.appendChild(el);
     _handEls.set(uid,el);
@@ -1772,7 +1772,7 @@ function renderPile(){
     // the cards being resolved this round pulse; ones queued after don't
     const isResolving=_pileResolving && i<_resolvingCount;
     const p=document.createElement("div"); p.className="pile-card "+c.type+(isResolving?" resolving":"");
-    p.innerHTML=`<div class="ct">${c.type}</div><div class="cn">${c.name}</div>`;
+    p.innerHTML=`<div class="ct">${TYPE_LABEL[c.type]||c.type}</div><div class="cn">${c.name}</div>`;
     const rot=PILE_ROTS[i%PILE_ROTS.length];
     p.style.transform=`rotate(${rot}deg) translateY(${-i*2}px)`;
     p.style.zIndex=i;
@@ -1791,7 +1791,7 @@ function renderPile(){
       const card=document.createElement("div");
       card.className="card "+c.type;
       card.style.cssText="position:relative;left:auto;bottom:auto;width:min(220px,70vw);height:auto;min-height:0;padding:14px 16px;transform:none;pointer-events:none;flex-shrink:0";
-      card.innerHTML=`<div class="ct">${c.type}</div><div class="cn">${c.name}</div><div class="cd" style="display:block;overflow:visible;-webkit-line-clamp:unset">${c.description}</div>`;
+      card.innerHTML=`<div class="ct">${TYPE_LABEL[c.type]||c.type}</div><div class="cn">${c.name}</div><div class="cd" style="display:block;overflow:visible;-webkit-line-clamp:unset">${c.description}</div>`;
       ov.appendChild(card);
     }
     ov.addEventListener("pointerup",()=>ov.remove(),{once:true});
@@ -1840,7 +1840,7 @@ function addDealCard(card){
   _handItems.push({uid,...card});
   const h=document.getElementById("hand");
   const el=document.createElement("div"); el.className="card "+card.type;
-  el.innerHTML=`<div class="ct">${card.type}</div><div class="cn">${card.name}</div><div class="cd">${card.description}</div>`;
+  el.innerHTML=`<div class="ct">${TYPE_LABEL[card.type]||card.type}</div><div class="cn">${card.name}</div><div class="cd">${card.description}</div>`;
   el.style.opacity="0"; el._t=0; el._step=0; el._defZ=1;
   h.appendChild(el);
   _handEls.set(uid,el);
