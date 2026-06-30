@@ -325,7 +325,6 @@
     <div class="prog-row" id="qprogress"></div>
     <div id="tc-body">
       <div class="hook" id="qhook"></div>
-      <ul class="objectives" id="qobjectives"></ul>
     </div>
   </div>
 </div>
@@ -880,23 +879,6 @@ function setHud(snap){
   const q=snap.quest;
   document.getElementById("qtitle").textContent=q.title||"VibeQuest";
   document.getElementById("qhook").textContent=q.hook||"";
-
-  const ol=document.getElementById("qobjectives");
-  ol.innerHTML="";
-  const objs=q.objectives||[];
-  const done=q.outcome?objs.length:(q.resolution_count||0);
-  if(objs.length){
-    objs.forEach((obj,i)=>{
-      const li=document.createElement("li");
-      const box=document.createElement("span");
-      box.className="ob";
-      box.textContent=i<done?"✓":"□";
-      li.appendChild(box);
-      li.appendChild(document.createTextNode(obj));
-      if(i<done) li.classList.add("done");
-      ol.appendChild(li);
-    });
-  }
 
   // scene progress toward the next objective (always visible)
   const sp=q.scene_progress||0, st=q.scene_threshold||3;
