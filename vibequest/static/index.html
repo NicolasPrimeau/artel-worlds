@@ -216,6 +216,9 @@
   #chapter .ch{font-size:clamp(10px,2.8vw,11px);letter-spacing:.5em;text-transform:uppercase;color:var(--rose2)}
   #chapter .ti{font-family:"Cormorant Garamond",serif;font-size:clamp(24px,7vw,34px);font-weight:700;margin:8px 0;letter-spacing:.04em}
   #chapter .hk{font-family:"Cormorant Garamond",serif;font-size:clamp(15px,4.4vw,18px);font-style:italic;color:var(--ink2)}
+  #chapter .pro{margin-top:clamp(10px,2.6vw,14px);padding-top:clamp(8px,2vw,11px);border-top:1px solid rgba(26,20,40,.16);
+    font-family:"Courier Prime",monospace;font-size:clamp(11px,3vw,13px);letter-spacing:.02em;color:var(--ink)}
+  #chapter .pro b{color:var(--rose2);letter-spacing:.04em}
 
   /* quest completion screen */
   #endscreen{top:0;left:0;right:0;bottom:0;z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;pointer-events:auto;background:rgba(223,215,196,.9);opacity:0;transition:opacity .7s}
@@ -393,6 +396,7 @@
     <div class="ch" id="chno">A VibeQuest</div>
     <div class="ti" id="chti"></div>
     <div class="hk" id="chhk"></div>
+    <div class="pro" id="chpro"></div>
   </div>
 </div>
 
@@ -1367,6 +1371,16 @@ function showChapter(snap, hold){
   if(!snap||!snap.quest) return;
   document.getElementById("chti").textContent=snap.quest.title||"";
   document.getElementById("chhk").textContent=snap.quest.hook||"";
+  const c=snap.character||{};
+  const pro=document.getElementById("chpro");
+  if(pro){
+    if(c.name){
+      const verbs=["is on the case.","has been handed it.","has to sort it out.","takes it on.","picks up the file.","draws the short straw."];
+      const v=verbs[c.name.length%verbs.length]; // stable per protagonist, no flicker
+      pro.innerHTML=`<b>${c.name}</b>${c.role?", "+c.role+",":""} ${v}`;
+      pro.style.display="";
+    } else { pro.style.display="none"; }
+  }
   const el=document.getElementById("chapter"); el.classList.add("show");
   clearTimeout(_chapterTimer);
   _chapterHolding=!!hold;
