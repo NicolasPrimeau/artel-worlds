@@ -635,7 +635,7 @@ class World extends Phaser.Scene{
     m.shadow.x=m.spr.x; m.shadow.y=m.spr.y+6;
     m.spr.setDepth(1000+m.spr.y);
     updateBubbles();
-    updateCaption(moving);
+    updateCaption(m.moving);
   }
 }
 
