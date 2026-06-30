@@ -352,6 +352,18 @@ async def _resolve_window(state: GameState) -> None:
 
     state.quest.result_history.append(classify_window(prog_delta, mom_delta))
 
+    # cards trigger visible on-screen action: someone rushes the agent, who is helped or blocked
+    action_outcome = "help" if fit >= 55 else ("block" if fit < 35 else "glance")
+    await _broadcast(
+        {
+            "type": "card_action",
+            "kind": plays[0]["type"] if plays else "encounter",
+            "outcome": action_outcome,
+            "sprite": current_npc.sprite if current_npc else _rng.randint(1, 10),
+            "npc_id": current_npc.id if current_npc else "",
+        }
+    )
+
     await _broadcast(
         {
             "type": "card_resolved",

@@ -661,6 +661,7 @@ class World extends Phaser.Scene{
   update(_,dt){
     if(!character) return;
     const m=character;
+    if(_actionPaused){ m.shadow.x=m.spr.x; m.shadow.y=m.spr.y+6; m.spr.setDepth(1000+m.spr.y); return; }
     if(m.tx==null){ m.tx=m.spr.x; m.ty=m.spr.y; }
     const dx=m.tx-m.spr.x, dy=m.ty-m.spr.y;
     const dist=Math.hypot(dx,dy);
@@ -699,6 +700,46 @@ function routeXY(rp){
 function idle(m){
   m.spr.anims.stop();
   m.spr.setFrame(DIR_COL[m.dir||"up"]);
+}
+
+// ── cards trigger visible on-screen action ──
+let _actionPaused=false, _actionSafety=null;
+function floatText(txt,x,y,col){
+  if(!scene) return;
+  const t=scene.add.text(x,y,txt,{fontFamily:'"Courier Prime",monospace',fontSize:'8px',color:col,stroke:'#1c1428',strokeThickness:3}).setOrigin(0.5).setDepth(7000).setResolution(4);
+  scene.tweens.add({targets:t,y:y-20,alpha:0,duration:1200,ease:'Cubic.easeOut',onComplete:()=>t.destroy()});
+}
+function flashSprite(spr,col){ if(!spr) return; try{ spr.setTintFill(col); }catch(e){} scene.time.delayedCall(120,()=>{ try{spr.clearTint();}catch(e){} }); }
+function endAction(aspr){ if(aspr){ try{aspr.destroy();}catch(e){} } _actionPaused=false; if(_actionSafety){ _actionSafety.remove(false); _actionSafety=null; } }
+function playCardAction(m){
+  if(!scene||!character||!character.spr) return;
+  _actionPaused=true;
+  if(_actionSafety) _actionSafety.remove(false);
+  _actionSafety=scene.time.delayedCall(3200,()=>{ _actionPaused=false; }); // never freeze forever
+  const px=character.spr.x, py=character.spr.y, cam=scene.cameras.main;
+  const side=(Math.random()<.5?-1:1);
+  const ex=px+side*92, ey=py-8;
+  const sn=m.sprite||2;
+  const aspr=scene.add.sprite(ex,ey,"hero"+sn).setDepth(6000);
+  const indir=side>0?"left":"right";
+  try{ aspr.play(`h${sn}-${indir}`,true); }catch(e){}
+  const dvx=px-ex, dvy=py-ey, dd=Math.hypot(dvx,dvy)||1;
+  scene.tweens.add({targets:aspr,x:px-dvx/dd*15,y:py-dvy/dd*15,duration:430,ease:'Cubic.easeIn',onComplete:()=>{
+    try{ aspr.anims.stop(); }catch(e){}
+    const help=m.outcome==='help', block=m.outcome==='block';
+    cam.shake(block?180:130, block?0.008:0.005);
+    floatText(help?'✦ HELPED':block?'✋ BLOCKED':'• …', px, py-20, help?'#83d3a3':block?'#ec858d':'#e8d8a0');
+    if(block){
+      scene.tweens.add({targets:[character.spr,character.shadow],x:px-dvx/dd*12,duration:110,yoyo:true,repeat:1,ease:'Quad.easeOut'});
+      flashSprite(character.spr,0xec858d);
+    } else if(help){
+      scene.tweens.add({targets:[character.spr,character.shadow],y:'-=9',duration:150,yoyo:true,ease:'Quad.easeOut'});
+      flashSprite(character.spr,0x83d3a3);
+    }
+    scene.time.delayedCall(650,()=>{
+      scene.tweens.add({targets:aspr,x:ex,y:ey,alpha:0,duration:430,ease:'Cubic.easeOut',onComplete:()=>endAction(aspr)});
+    });
+  }});
 }
 
 function buildWorld(W){
@@ -1861,6 +1902,7 @@ function connect(){
       case "scene_beat": { if(m.text) showSceneBeat(m.text, m.who||''); break; }
       case "npc_speak": { speakNPC(m.npc_name,m.line,5000); break; }
       case "scene_event": { applyState(m.state); if(m.text) addLogEntry(m.text); break; }
+      case "card_action": playCardAction(m); break;
       case "card_resolved": {
         applyState(m.state);
         if(m.next_heading) setCaption(m.next_heading);
