@@ -104,12 +104,14 @@ _TONE = (
 )
 
 _TONE_MINI = (
-    "You are the DUNGEON MASTER of an office adventure. Narrate like a tabletop DM: present tense, SHORT "
-    "(1-2 sentences), treating mundane office things with EPIC, perilous gravity — a jammed printer is a beast, "
-    "the auditor is a boss, the 5pm all-hands is a doom clock, the break-room fish-smell is a hazard. "
-    "Deadpan: the comedy is the contrast between the heroic framing and the banal reality. "
-    "A ≤10-word line of dialogue is fine. No purple prose. It's an office dungeon, not actual fantasy — no swords or magic, "
-    "the 'spells' are emails/forms/coffee played straight-faced as if they were magic."
+    "You are the DUNGEON MASTER of an office adventure. Narrate like a tabletop DM setting a scene: present "
+    "tense, SHORT (1-2 sentences), PLAIN and literal. Describe what is ACTUALLY there — a jammed printer, a "
+    "locked supply closet, a manager who won't sign the form — and what it blocks. The tension comes from real "
+    "STAKES (what's in the way, who you must get past, the clock), NOT from renaming office things as monsters "
+    "or magic. NEVER invent fantasy nouns ('gate', 'sentinel', 'beast', 'ward', 'phantom'); say the real thing "
+    "in plain words. A clueless reader must understand exactly what's happening. Deadpan office humour; the "
+    "comedy is treating a mundane blocker with a straight, quest-like seriousness. ≤10-word dialogue is fine. "
+    "No purple prose. It's a real office played like a quest — the 'spells' are just emails, forms, and coffee."
 )
 
 
@@ -396,11 +398,11 @@ ENCOUNTER — the hero faces this: "{situation}"
 
 You're the DM. Narrate this beat of the delve, picking up from the encounter and the action. Give JSON:
 - fit (int)
-- narrative: REQUIRED, 1-2 short sentences in DM voice — the hero performs the chosen action and the concrete RESULT (clear on its own, never left to the reaction). Plain and specific: name the real office thing, ONE light metaphor at most, NEVER stack them.
+- narrative: REQUIRED, 1-2 short sentences in DM voice — the hero performs the chosen action and the concrete RESULT (clear on its own, never left to the reaction). Plain literal language: say the real office thing and what happens; NEVER invent fantasy nouns (no 'gate', 'sentinel', 'beast', 'ward') — a clueless reader must understand exactly what happened.
 - reactions: 0-1 quick ≤10-word quote ({{"name","line"}}).
 - breakthrough: true only if the hero clearly CLEARED this encounter (a wrong/weak action → false, the encounter still blocks them).
 - established: 0-1 durable fact (or []).
-- if breakthrough — next_situation + next_npc_id. PLANNED next encounter: "{planned_next}". Use it (reworded) if they cleared it cleanly; if the action was wrong/chaotic, set derailed=true and DEVIATE into the off-plan consequence instead. One plain sentence, ≤14 words — the next encounter, still on the quest, not a repeat, no stacked metaphors.
+- if breakthrough — next_situation + next_npc_id. PLANNED next encounter: "{planned_next}". Use it (reworded) if they cleared it cleanly; if the action was wrong/chaotic, set derailed=true and DEVIATE into the off-plan consequence instead. One plain literal sentence, ≤14 words — the next obstacle, still on the quest, not a repeat, no invented fantasy nouns.
 - next_npc_id: an id from [{people}] or "".
 
 JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactions":[{{"name":"...","line":"..."}}],"next_situation":"...","next_npc_id":"","established":[]}}"""
@@ -449,7 +451,7 @@ QUEST: {quest_hook}
 COMPLICATION: {complication}
 HERO: {protagonist}
 
-State the FIRST ENCOUNTER the hero meets on this delve — a specific office-as-dungeon obstacle between them and the quest (a foe, a gatekeeper, a hazard, a locked way). ONE present-tense sentence, ≤14 words: name a real office thing plainly with ONE light touch of peril, no stacked metaphors.
+State the FIRST OBSTACLE the hero meets on this delve — a specific thing standing between them and the quest (a person who won't help, a locked room, a broken thing, a required sign-off). ONE present-tense sentence, ≤14 words, plain literal language a DM would say out loud: the real office thing and what it blocks. No invented fantasy nouns.
 JSON: {{"situation":"..."}}"""
     req = Request(system="Respond only with valid JSON.", user=prompt, min_grade="fast")
     raw = await ROUTER.complete(req)
@@ -465,15 +467,16 @@ QUEST: {quest_hook}
 COMPLICATION: {complication}
 HERO: {name}
 
-Plan this office DELVE as a 5-ENCOUNTER dungeon run — a real adventure shape, not a flat list of errands. Each beat is a concrete ENCOUNTER the hero must clear (a foe, a gatekeeper, a hazard, a locked way), ESCALATING deeper. Distinct encounters, never rephrasings. Shape:
-1. the threshold — the first obstacle barring the way
-2. deeper in — a new hazard or gatekeeper
-3. the gauntlet — a real danger with a cost
-4. THE BOSS / DOOM CLOCK — the make-or-break (the deadline lands, the auditor arrives, it all converges)
-5. the final lock — the last barrier before the prize
-Each beat: ONE short present-tense sentence, ≤14 words. Name ONE real office obstacle plainly (a person, a form, a locked door, a meeting) and give it ONE light touch of peril — no more. NEVER stack metaphors.
-Good: "The IT ticket queue guards the password reset — and Dwight won't budge without a form."
-Bad (stacked metaphors, unclear): "The phantom jam reappears as Mark's reply floods the inbox, turning the coffee machine into a sentinel guarding the forms gate."
+Plan this office DELVE as a 5-ENCOUNTER quest — a real adventure shape, not a flat list of errands. Each beat is a concrete obstacle the hero must get past (a person who won't help, a locked room, a broken thing, a required sign-off), ESCALATING deeper. Distinct encounters, never rephrasings. Shape (escalation only — DO NOT write these labels in the beats):
+1. first obstacle barring the way
+2. a new blocker, harder
+3. a real setback with a cost
+4. the make-or-break — the deadline lands / the auditor arrives / it all converges
+5. the last barrier before the goal
+Each beat: ONE short present-tense sentence, ≤14 words, PLAIN literal language a DM would say out loud. State the real office thing and what it blocks. NO stage labels, NO invented fantasy nouns.
+Good: "The supply closet is locked, and only Karen from Facilities has the key."
+Good: "Legal won't approve the budget until Dave signs off — and Dave is out sick."
+Bad (invented fantasy noun, unclear): "The printer jams again; Facilities claims it's a misprint gate."
 JSON: {{"beats":["...","...","...","...","..."]}}"""
     req = Request(
         system="Respond only with valid JSON.",
