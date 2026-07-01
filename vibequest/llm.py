@@ -396,11 +396,11 @@ ENCOUNTER — the hero faces this: "{situation}"
 
 You're the DM. Narrate this beat of the delve, picking up from the encounter and the action. Give JSON:
 - fit (int)
-- narrative: REQUIRED, 1-2 short sentences in DM voice — the hero performs the chosen action and the concrete RESULT (clear on its own, never left to the reaction).
+- narrative: REQUIRED, 1-2 short sentences in DM voice — the hero performs the chosen action and the concrete RESULT (clear on its own, never left to the reaction). Plain and specific: name the real office thing, ONE light metaphor at most, NEVER stack them.
 - reactions: 0-1 quick ≤10-word quote ({{"name","line"}}).
 - breakthrough: true only if the hero clearly CLEARED this encounter (a wrong/weak action → false, the encounter still blocks them).
 - established: 0-1 durable fact (or []).
-- if breakthrough — next_situation + next_npc_id. PLANNED next encounter: "{planned_next}". Use it (reworded) if they cleared it cleanly; if the action was wrong/chaotic, set derailed=true and DEVIATE into the off-plan consequence instead. One sentence — the next encounter, still on the quest, not a repeat.
+- if breakthrough — next_situation + next_npc_id. PLANNED next encounter: "{planned_next}". Use it (reworded) if they cleared it cleanly; if the action was wrong/chaotic, set derailed=true and DEVIATE into the off-plan consequence instead. One plain sentence, ≤14 words — the next encounter, still on the quest, not a repeat, no stacked metaphors.
 - next_npc_id: an id from [{people}] or "".
 
 JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactions":[{{"name":"...","line":"..."}}],"next_situation":"...","next_npc_id":"","established":[]}}"""
@@ -449,7 +449,7 @@ QUEST: {quest_hook}
 COMPLICATION: {complication}
 HERO: {protagonist}
 
-State the FIRST ENCOUNTER the hero meets on this delve — a specific office-as-dungeon obstacle between them and the quest (a foe, a gatekeeper, a hazard, a locked way). ONE present-tense sentence: a mundane office thing, framed with peril.
+State the FIRST ENCOUNTER the hero meets on this delve — a specific office-as-dungeon obstacle between them and the quest (a foe, a gatekeeper, a hazard, a locked way). ONE present-tense sentence, ≤14 words: name a real office thing plainly with ONE light touch of peril, no stacked metaphors.
 JSON: {{"situation":"..."}}"""
     req = Request(system="Respond only with valid JSON.", user=prompt, min_grade="fast")
     raw = await ROUTER.complete(req)
