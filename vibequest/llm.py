@@ -375,7 +375,7 @@ async def resolve_decision(
     story_facts: list[str] | None = None,
     planned_next: str = "",
 ) -> dict:
-    facts = ("KNOWN: " + " | ".join(story_facts[-4:])) if story_facts else ""
+    facts = ("KNOWN: " + " | ".join(story_facts[-8:])) if story_facts else ""
     history = f"STORY SO FAR: {story_so_far}" if story_so_far else ""
     mood_s = f" (mood: {mood})" if mood else ""
     npc = f"WITH: {npc_context}" if npc_context else ""
@@ -384,12 +384,9 @@ async def resolve_decision(
             f"{c['name']} — {c.get('description', '')} (×{c.get('weight', 1)})" for c in cards
         )
         cards_block = (
-            f"THE PARTY PLAYS: {card_lines}. The hero performs the heaviest, and its STATED EFFECT MUST "
-            "actually happen in the scene — a card ALWAYS changes something real; NEVER 'nothing happens' or "
-            "the blocker left 'unmoved'. A big disruptive card (fire alarm, sabotage, go rogue) visibly upends "
-            "the scene even if it doesn't fully clear the obstacle. "
-            "FIT 0-100 = how well the move FITS this encounter: a fitting move lands and clears it→HIGH; a "
-            "wrong/absurd move still HAPPENS but backfires or complicates→LOW."
+            f"THE PARTY PLAYS: {card_lines}. The hero performs the heaviest; its stated effect MUST actually "
+            "happen — a card ALWAYS changes the scene, NEVER 'nothing happens' or the blocker 'unmoved'. "
+            "FIT 0-100 = how well it FITS: fitting move clears it→HIGH; wrong move still happens but backfires→LOW."
         )
     else:
         cards_block = "The party hesitates — the hero acts on instinct. FIT ~60."
@@ -406,13 +403,13 @@ THE OFFICE-DUNGEON RIGHT NOW: {_surreal_band(surreal)}
 ENCOUNTER — the hero faces this: "{situation}"
 {cards_block}
 
-You're the DM. Narrate this beat of the delve, picking up from the encounter and the action. Give JSON:
-- fit (int)
-- narrative: REQUIRED, 1-2 short sentences in DM voice — the hero performs the chosen action and the concrete RESULT (clear on its own, never left to the reaction). Plain literal language: say the real office thing and what happens; NEVER invent fantasy nouns (no 'gate', 'sentinel', 'beast', 'ward') — a clueless reader must understand exactly what happened. If breakthrough is false but the move SEEMED to work (someone agreed, a barrier gave a little), the narrative MUST name the CATCH — why the hero still isn't through (they can't actually deliver, lack the authority/access, a new snag) — never leave a positive reaction unexplained.
-- reactions: 0-1 quick ≤10-word quote ({{"name","line"}}). It must match the narrative — no "sure, done!" when the encounter still blocks them.
-- breakthrough: true only if the hero clearly CLEARED this encounter (a wrong/weak action → false, the encounter still blocks them).
+You're the DM. Narrate this beat as JSON:
+- fit (int 0-100)
+- narrative: REQUIRED. 1-2 sentences — the hero's action and its concrete RESULT, clear on its own. If breakthrough is false but the move SEEMED to work (someone agreed, a barrier gave), NAME THE CATCH — why they're still stuck.
+- reactions: 0-1 ≤10-word quote ({{"name","line"}}), consistent with the narrative (no "sure, done!" while still blocked).
+- breakthrough: true only if the encounter is clearly CLEARED.
 - established: 0-1 durable fact (or []).
-- next_situation: REQUIRED, MUST be DIFFERENT from the encounter above, and MUST FOLLOW from the narrative's result (the catch or the win) — never appear out of nowhere. If they CLEARED it (breakthrough), this is the NEXT obstacle: use PLANNED next "{planned_next}" reworded, or if their move was wrong/chaotic set derailed=true and deviate into the off-plan consequence. If they did NOT clear it, this is the SAME obstacle but VISIBLY CHANGED by what they just did — the catch it just hit, an escalation, or the blocker reacting a new way. Never restate the encounter unchanged. One plain literal sentence, ≤14 words — a PERSON to get past or a thing to force/slip past (a tactic can act on it), no invented fantasy nouns.
+- next_situation: REQUIRED, ≤14 words, DIFFERENT from the encounter and FOLLOWING from the result. If CLEARED: the next obstacle (rework PLANNED "{planned_next}"; if the move was wrong/chaotic set derailed=true and deviate). If NOT: the SAME obstacle visibly changed by the catch/escalation. Never restate it unchanged.
 - next_npc_id: an id from [{people}] or "".
 - next_opening: the ≤10-word line the NEXT blocker says to the hero the moment they walk up, setting up next_situation (or "").
 

@@ -83,7 +83,8 @@ def _character_desc(state: GameState) -> str:
 
 
 def _story_so_far(state: GameState) -> str:
-    return " | ".join(state.quest.beats[-5:]) or "(just beginning)"
+    # trimmed-but-generous history: the recent arc INCLUDING outcomes, so each turn follows from the last
+    return " | ".join(state.quest.beats[-12:]) or "(just beginning)"
 
 
 def _scene_name(state: GameState) -> str:
@@ -359,6 +360,8 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
                 asyncio.create_task(_delayed())
 
     narrative = result.get("narrative", "")
+    if _is_beat(narrative):  # the actual RESULT is part of the story — future turns must see it
+        state.quest.beats.append(narrative)
     if _is_beat(result.get("consequence")):
         state.quest.beats.append(result["consequence"])
     state.log_event(
