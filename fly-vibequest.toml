@@ -4,6 +4,9 @@ primary_region = "yyz"
 [build]
   dockerfile = "Dockerfile.vibequest"
 
+[env]
+  VIBEQUEST_NARRATION_MODEL = "groq:openai/gpt-oss-120b"
+
 [http_service]
   internal_port = 8000
   force_https = true

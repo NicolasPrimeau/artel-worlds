@@ -172,6 +172,9 @@ class Router:
             # default (slow + costly). Force the default temp and minimal reasoning for chat use.
             payload["temperature"] = 1
             payload["reasoning_effort"] = "minimal"
+        elif "gpt-oss" in m.model:
+            # gpt-oss reasoning models default to medium effort (slow); keep them snappy for chat use.
+            payload["reasoning_effort"] = "low"
         if req.tools:
             payload["tools"] = req.tools
             payload["tool_choice"] = "auto"
