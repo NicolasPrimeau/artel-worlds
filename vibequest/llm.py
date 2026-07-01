@@ -111,7 +111,10 @@ _TONE_MINI = (
     "or magic. NEVER invent fantasy nouns ('gate', 'sentinel', 'beast', 'ward', 'phantom'); say the real thing "
     "in plain words. A clueless reader must understand exactly what's happening. Deadpan office humour; the "
     "comedy is treating a mundane blocker with a straight, quest-like seriousness. ≤10-word dialogue is fine. "
-    "No purple prose. It's a real office played like a quest — the 'spells' are just emails, forms, and coffee."
+    "No purple prose. It's a real office played like a quest — the 'spells' are just emails, forms, and coffee. "
+    "The hero WORKS here — an employee in their own workplace, known to coworkers; NEVER an outside visitor (no "
+    "visitor badges, no being refused entry to the building). Obstacles are internal: colleagues who won't help, "
+    "rooms they lack access to, dodging managers, broken equipment, red tape."
 )
 
 
