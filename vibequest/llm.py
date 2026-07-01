@@ -381,11 +381,16 @@ async def resolve_decision(
     mood_s = f" (mood: {mood})" if mood else ""
     npc = f"WITH: {npc_context}" if npc_context else ""
     if cards:
-        card_lines = "; ".join(f"{c['name']}×{c.get('weight', 1)}" for c in cards)
+        card_lines = "; ".join(
+            f"{c['name']} — {c.get('description', '')} (×{c.get('weight', 1)})" for c in cards
+        )
         cards_block = (
-            f"THE PARTY CASTS/USES: {card_lines}. The hero performs the heaviest one. "
-            "FIT 0-100 = how well that action suits THIS encounter: right move→HIGH (it lands, they clear it); "
-            "wrong/absurd move→LOW (they try it anyway, it backfires hilariously, the encounter gets worse/weirder)."
+            f"THE PARTY PLAYS: {card_lines}. The hero performs the heaviest, and its STATED EFFECT MUST "
+            "actually happen in the scene — a card ALWAYS changes something real; NEVER 'nothing happens' or "
+            "the blocker left 'unmoved'. A big disruptive card (fire alarm, sabotage, go rogue) visibly upends "
+            "the scene even if it doesn't fully clear the obstacle. "
+            "FIT 0-100 = how well the move FITS this encounter: a fitting move lands and clears it→HIGH; a "
+            "wrong/absurd move still HAPPENS but backfires or complicates→LOW."
         )
     else:
         cards_block = "The party hesitates — the hero acts on instinct. FIT ~60."
