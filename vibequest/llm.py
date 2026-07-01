@@ -471,7 +471,9 @@ Plan this office DELVE as a 5-ENCOUNTER dungeon run — a real adventure shape, 
 3. the gauntlet — a real danger with a cost
 4. THE BOSS / DOOM CLOCK — the make-or-break (the deadline lands, the auditor arrives, it all converges)
 5. the final lock — the last barrier before the prize
-Each beat: ONE present-tense sentence — a mundane office thing as a dungeon obstacle on THE QUEST, framed with peril.
+Each beat: ONE short present-tense sentence, ≤14 words. Name ONE real office obstacle plainly (a person, a form, a locked door, a meeting) and give it ONE light touch of peril — no more. NEVER stack metaphors.
+Good: "The IT ticket queue guards the password reset — and Dwight won't budge without a form."
+Bad (stacked metaphors, unclear): "The phantom jam reappears as Mark's reply floods the inbox, turning the coffee machine into a sentinel guarding the forms gate."
 JSON: {{"beats":["...","...","...","...","..."]}}"""
     req = Request(
         system="Respond only with valid JSON.",
