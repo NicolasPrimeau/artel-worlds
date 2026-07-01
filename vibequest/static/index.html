@@ -101,6 +101,8 @@
   #decision-bar.resolving{opacity:.7}
   #decision-text{flex:1}
   #decision-cue{font-family:"Courier Prime",monospace;font-size:8px;letter-spacing:.12em;color:var(--coral);white-space:nowrap;animation:cuePulse 1.1s ease-in-out infinite}
+  #decision-clock{font-family:"Courier Prime",monospace;font-size:10px;font-weight:700;color:var(--ink2);white-space:nowrap;margin-left:2px;font-variant-numeric:tabular-nums}
+  #decision-clock.urgent{color:var(--coral);animation:doomPulse .8s ease-in-out infinite}
   @keyframes cuePulse{0%,100%{opacity:.5}50%{opacity:1}}
   #decision-bar.resolving #decision-cue{animation:none;color:var(--mint2,#1ea868)}
   /* ── cinematic narrative panel (now lives in the dock) ── */
@@ -383,8 +385,9 @@
   <div class="infoh"><b>VibeQuest</b><button id="infoClose" type="button" aria-label="close">✕</button></div>
   <div class="infobody">
     <p><b>VibeQuest</b> is a small open world where an AI character navigates a mundane office situation that has become, somehow, a quest. Everyone watching shapes what happens next.</p>
-    <p><b>Play cards.</b> Each card introduces something into the scene — pressure, an event, a complication, a shift. Cards batch up and resolve on a d20: high rolls go well, low rolls go badly, and a natural 1 or 20 really swings things.</p>
-    <p><b>It's written live.</b> Every beat is generated in the moment by a language model reacting to the cards, the dice, and everything that's happened so far. No two quests play the same.</p>
+    <p><b>Play cards.</b> Each card is a tactic — charm, bribe, confront, improvise — the hero uses to get past whoever's blocking them. Cards batch up and resolve together: a strong fit clears the obstacle, a weak one backfires.</p>
+    <p><b>Stakes.</b> <span style="color:var(--coral)">♥ Composure</span> is your health — you lose a heart when a card badly backfires (a clash). At zero hearts you're fired and the quest ends. <span style="color:var(--coral)">⏱ The clock</span> ticks down one every round; if it hits zero, time's up. Clear the encounters before either runs out.</p>
+    <p><b>It's written live.</b> Every beat is generated in the moment by a language model reacting to the cards and everything that's happened so far. No two quests play the same.</p>
     <p>It all runs on <span class="k">Artel</span>, the shared layer the agents coordinate over.</p>
   </div>
   <div class="infofoot">
@@ -443,7 +446,7 @@
 <div id="encounter" class="ui"></div>
 <div id="dock" class="ui">
   <div id="scene-panel">
-    <div id="decision-bar" style="display:none"><span id="decision-text"></span><b id="decision-cue">▶ YOUR MOVE</b><div id="decision-timer"></div></div>
+    <div id="decision-bar" style="display:none"><span id="decision-text"></span><b id="decision-cue">▶ YOUR MOVE</b><span id="decision-clock"></span><div id="decision-timer"></div></div>
   </div>
   <div id="cardzone">
     <div id="drawpile"></div>
@@ -1285,17 +1288,31 @@ function showDecision(situation, seconds){
   bar.style.display="flex";
   if(_introDismissed) startDecisionTimer(_lastDecisionSeconds); // hold the timer until the intro is dismissed
 }
+let _decisionCountdown=null;
 function startDecisionTimer(sec){
-  const t=document.getElementById("decision-timer"); if(!t) return;
-  t.style.transition="none"; t.style.transform="scaleX(1)";
-  void t.offsetWidth; // reflow so the drain animates from full
-  t.style.transition="transform "+sec+"s linear"; t.style.transform="scaleX(0)";
+  const t=document.getElementById("decision-timer");
+  if(t){
+    t.style.transition="none"; t.style.transform="scaleX(1)";
+    void t.offsetWidth; // reflow so the drain animates from full
+    t.style.transition="transform "+sec+"s linear"; t.style.transform="scaleX(0)";
+  }
+  // a visible clock counting down the seconds, next to YOUR MOVE
+  const clk=document.getElementById("decision-clock");
+  if(clk){
+    clearInterval(_decisionCountdown);
+    let left=Math.max(0,Math.round(sec));
+    const tick=()=>{ clk.textContent="⏱ "+left+"s"; clk.classList.toggle("urgent",left<=10); };
+    tick();
+    _decisionCountdown=setInterval(()=>{ left--; if(left<=0){ left=0; clearInterval(_decisionCountdown); } tick(); },1000);
+  }
 }
 function decisionResolving(){
   const bar=document.getElementById("decision-bar");
   if(bar && bar.style.display!=="none"){
     bar.classList.add("resolving");
     document.getElementById("decision-cue").textContent="RESOLVING…";
+    clearInterval(_decisionCountdown);
+    const clk=document.getElementById("decision-clock"); if(clk){ clk.textContent=""; clk.classList.remove("urgent"); }
     const t=document.getElementById("decision-timer");
     if(t){ const cur=getComputedStyle(t).transform; t.style.transition="none"; t.style.transform=cur==="none"?"scaleX(1)":cur; }
   }

@@ -410,8 +410,9 @@ You're the DM. Narrate this beat of the delve, picking up from the encounter and
 - established: 0-1 durable fact (or []).
 - next_situation: REQUIRED, MUST be DIFFERENT from the encounter above, and MUST FOLLOW from the narrative's result (the catch or the win) — never appear out of nowhere. If they CLEARED it (breakthrough), this is the NEXT obstacle: use PLANNED next "{planned_next}" reworded, or if their move was wrong/chaotic set derailed=true and deviate into the off-plan consequence. If they did NOT clear it, this is the SAME obstacle but VISIBLY CHANGED by what they just did — the catch it just hit, an escalation, or the blocker reacting a new way. Never restate the encounter unchanged. One plain literal sentence, ≤14 words — a PERSON to get past or a thing to force/slip past (a tactic can act on it), no invented fantasy nouns.
 - next_npc_id: an id from [{people}] or "".
+- next_opening: the ≤10-word line the NEXT blocker says to the hero the moment they walk up, setting up next_situation (or "").
 
-JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactions":[{{"name":"...","line":"..."}}],"next_situation":"...","next_npc_id":"","established":[]}}"""
+JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactions":[{{"name":"...","line":"..."}}],"next_situation":"...","next_npc_id":"","next_opening":"","established":[]}}"""
     req = Request(
         system="Respond only with valid JSON. No fantasy language.",
         user=prompt,
@@ -434,6 +435,7 @@ JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactio
     parsed["derailed"] = bool(parsed.get("derailed", False))
     parsed["narrative"] = _clean(parsed.get("narrative", ""))
     parsed["next_situation"] = _clean(parsed.get("next_situation", ""))
+    parsed["next_opening"] = _clean(parsed.get("next_opening", ""))
     parsed.setdefault("next_npc_id", "")
     parsed.setdefault("established", [])
     parsed.setdefault("world_changes", [])
@@ -457,7 +459,7 @@ JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactio
     return parsed
 
 
-async def first_decision(quest_hook: str, complication: str, protagonist: str) -> str:
+async def first_decision(quest_hook: str, complication: str, protagonist: str) -> tuple[str, str]:
     prompt = f"""{_TONE_MINI}
 
 QUEST: {quest_hook}
@@ -465,11 +467,13 @@ COMPLICATION: {complication}
 HERO: {protagonist}
 
 State the FIRST OBSTACLE the hero meets on this delve — a specific thing standing in THE HERO'S OWN way to the quest. The hero must be the one blocked and the one who has to act. Make it something they beat by ACTING on a clear target — usually a PERSON blocking or refusing them (someone to persuade, pressure, outrank, or bribe), sometimes a physical thing to force or slip past. NEVER an abstract "confirm / verify / find out" task with no one to act on. ONE present-tense sentence, ≤14 words, plain literal language a DM would say out loud. No invented fantasy nouns.
-JSON: {{"situation":"..."}}"""
+Also give "opening": the ≤10-word line the blocker says to the hero the moment they walk up.
+JSON: {{"situation":"...","opening":"..."}}"""
     req = Request(system="Respond only with valid JSON.", user=prompt, min_grade="fast")
     raw = await ROUTER.complete(req)
     parsed = parse_json(raw) or {}
-    return _clean(parsed.get("situation", "")) or complication or quest_hook
+    situation = _clean(parsed.get("situation", "")) or complication or quest_hook
+    return situation, _clean(parsed.get("opening", ""))
 
 
 async def plan_arc(quest_hook: str, complication: str, protagonist: str) -> list[str]:

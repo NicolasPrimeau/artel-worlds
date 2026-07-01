@@ -71,6 +71,10 @@ _votes: dict[int, int] = {}
 _voted: dict[str, int] = {}  # player_id -> choice, so each viewer votes once (changeable)
 _deal_type_idx: int = 0
 _decision_at: float = 0.0  # monotonic time the current wall opened (for the no-card timeout)
+_pending_opening: str = (
+    ""  # the NPC's setup line, spoken when the agent arrives at the next encounter
+)
+_pending_opening_npc: str = ""
 
 
 def _character_desc(state: GameState) -> str:
@@ -478,9 +482,12 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
     next_npc = next(
         (n for n in state.quest.npcs if n.id == result.get("next_npc_id")), None
     ) or _npc_near_agent(state)
+    global _pending_opening, _pending_opening_npc
+    _pending_opening, _pending_opening_npc = "", ""
     if next_npc and state.world is not None:
         state.path = _path_to_npc(state, next_npc)
         state.agent_goal = next_npc.id
+        _pending_opening, _pending_opening_npc = result.get("next_opening", ""), next_npc.id
     _decision_at = time.monotonic()
     await _broadcast(
         {
@@ -490,6 +497,9 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
             "state": _state_snapshot(state, include_world=False),
         }
     )
+    # if the next NPC is one we're already standing beside, no walk happens — set up the event now
+    if not state.path and _pending_opening:
+        await _emit_arrival_setup(state)
 
     if state.window.cards:
         _card_signal.set()
@@ -686,23 +696,25 @@ async def _start_new_game(preset_quest: QuestState | None = None) -> None:
     _state.quest.arc = arc
     _state.quest.arc_pos = 0
     first_situation = arc[0] if arc else (complication or _state.quest.hook)
+    first_opening = ""
     if not arc and llm.enabled():
         try:
-            first_situation = (
-                await asyncio.wait_for(
-                    llm.first_decision(_state.quest.hook, complication, _character_desc(_state)),
-                    timeout=5.0,
-                )
-                or first_situation
+            sit, first_opening = await asyncio.wait_for(
+                llm.first_decision(_state.quest.hook, complication, _character_desc(_state)),
+                timeout=5.0,
             )
+            first_situation = sit or first_situation
         except Exception:
             pass
     _state.quest.decision_prompt = first_situation
     # send the agent to someone relevant so the first decision has a stage
+    global _pending_opening, _pending_opening_npc
+    _pending_opening, _pending_opening_npc = "", ""
     if _state.quest.npcs and _state.world is not None:
         npc0 = _npc_near_agent(_state) or _state.quest.npcs[0]
         _state.path = _path_to_npc(_state, npc0)
         _state.agent_goal = npc0.id
+        _pending_opening, _pending_opening_npc = first_opening, npc0.id
 
     opening_text = _state.quest.hook
     _state.log_event("opening", opening_text)
@@ -767,6 +779,16 @@ def _pos_msg(state: GameState) -> dict:
     }
 
 
+async def _emit_arrival_setup(state: GameState) -> None:
+    # the agent reached the encounter's NPC — that NPC speaks a short line to set up the event
+    global _pending_opening, _pending_opening_npc
+    line = _pending_opening
+    npc = next((n for n in state.quest.npcs if n.id == _pending_opening_npc), None)
+    _pending_opening, _pending_opening_npc = "", ""
+    if npc and line:
+        await _broadcast({"type": "npc_speak", "npc_name": npc.name, "line": line})
+
+
 async def _move_loop() -> None:
     while True:
         await asyncio.sleep(0.33)  # smaller, more frequent steps -> smoother scroll
@@ -776,6 +798,9 @@ async def _move_loop() -> None:
         # free-roam: follow the agent's dynamic path
         if step_path(state):
             await _broadcast(_pos_msg(state))
+            # arrived at the encounter's NPC — let them set up the event
+            if not state.path and _pending_opening and state.agent_goal == _pending_opening_npc:
+                await _emit_arrival_setup(state)
 
 
 def _card_msg(card) -> dict:
