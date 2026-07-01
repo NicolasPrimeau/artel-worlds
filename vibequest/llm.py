@@ -467,21 +467,15 @@ QUEST: {quest_hook}
 COMPLICATION: {complication}
 HERO: {name}
 
-Plan this office DELVE as a 5-ENCOUNTER quest — a real adventure shape, not a flat list of errands. Each beat is a concrete obstacle the hero must get past (a person who won't help, a locked room, a broken thing, a required sign-off), ESCALATING deeper. Distinct encounters, never rephrasings. Shape (escalation only — DO NOT write these labels in the beats):
-1. first obstacle barring the way
-2. a new blocker, harder
-3. a real setback with a cost
-4. the make-or-break — the deadline lands / the auditor arrives / it all converges
-5. the last barrier before the goal
-Every obstacle must stand in THE HERO'S OWN way to the goal — something THEY have to get past — never a bystander's errand.
-Each obstacle is a HURDLE ON THE WAY to the goal, NOT the goal itself restated. If the quest is "file Form 2309-B", the obstacles are the people and things between the hero and filing it — never "get the form signed" again.
-CRUCIAL: the hero beats each obstacle by ACTING on a clear target — usually a PERSON blocking or refusing them (someone to persuade, pressure, outrank, or bribe), sometimes a physical thing to force, bypass, or slip past. NEVER an abstract "confirm / verify / find out / check" task with no one to act on and nothing to push against.
-Each beat: ONE short present-tense sentence, ≤14 words, PLAIN literal language a DM would say out loud. State the real office thing and how it blocks the hero. NO stage labels, NO invented fantasy nouns.
-The examples below show FORMAT ONLY — invent obstacles specific to THIS quest; never reuse their names or objects.
-Good shape: "The receptionist won't buzz you in without a badge you don't have yet."
-Good shape: "The one printer with the right toner is jammed and IT is at lunch."
-Bad (just restates the quest goal): quest is "file the form" and the beat is "get the form signed".
-Bad (abstract task, nothing to act on): "The calendar shows a 3pm meeting; confirm it has a host."
+Plan this office quest as 5 ESCALATING encounters — a real adventure shape, not errands. Each is a DISTINCT obstacle, never a rephrasing. Escalation only (don't write these labels): 1) first blocker 2) harder blocker 3) a setback with a cost 4) make-or-break — deadline lands / auditor arrives 5) last barrier before the goal.
+Each obstacle must:
+- block THE HERO'S own way (never a bystander's errand) and be a HURDLE EN ROUTE, never the quest goal restated.
+- have a TARGET to act on: a person to persuade/pressure/outrank/bribe, or a thing to force/slip past. NEVER an abstract confirm/verify/find-out task.
+- be ONE plain present-tense sentence, ≤14 words, in a DM's spoken voice — no stage labels, no invented fantasy nouns.
+Examples are FORMAT ONLY — invent obstacles specific to THIS quest, never reuse their nouns.
+Good: "The receptionist won't buzz you in without a badge you don't have."
+Bad (restates the goal): quest "file the form" → beat "get the form signed".
+Bad (nothing to act on): "Confirm the 3pm meeting has a host."
 JSON: {{"beats":["...","...","...","...","..."]}}"""
     req = Request(
         system="Respond only with valid JSON.",
