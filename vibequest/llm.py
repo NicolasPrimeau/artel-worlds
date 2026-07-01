@@ -474,12 +474,14 @@ Plan this office DELVE as a 5-ENCOUNTER quest — a real adventure shape, not a 
 4. the make-or-break — the deadline lands / the auditor arrives / it all converges
 5. the last barrier before the goal
 Every obstacle must stand in THE HERO'S OWN way to the goal — something THEY have to get past — never a bystander's errand.
+Each obstacle is a HURDLE ON THE WAY to the goal, NOT the goal itself restated. If the quest is "file Form 2309-B", the obstacles are the people and things between the hero and filing it — never "get the form signed" again.
 CRUCIAL: the hero beats each obstacle by ACTING on a clear target — usually a PERSON blocking or refusing them (someone to persuade, pressure, outrank, or bribe), sometimes a physical thing to force, bypass, or slip past. NEVER an abstract "confirm / verify / find out / check" task with no one to act on and nothing to push against.
 Each beat: ONE short present-tense sentence, ≤14 words, PLAIN literal language a DM would say out loud. State the real office thing and how it blocks the hero. NO stage labels, NO invented fantasy nouns.
-Good: "Karen guards the supply closet you need and won't unlock it without a form."
-Good: "Dave must sign your budget, but he's dodging you and hiding in meetings."
-Bad (abstract task, nothing to act on): "The calendar shows a 3pm meeting with no organizer; confirm it has a host."
-Bad (blocks a bystander, not the hero): "The coffee machine jams, blocking Becky from serving a coffee run."
+The examples below show FORMAT ONLY — invent obstacles specific to THIS quest; never reuse their names or objects.
+Good shape: "The receptionist won't buzz you in without a badge you don't have yet."
+Good shape: "The one printer with the right toner is jammed and IT is at lunch."
+Bad (just restates the quest goal): quest is "file the form" and the beat is "get the form signed".
+Bad (abstract task, nothing to act on): "The calendar shows a 3pm meeting; confirm it has a host."
 JSON: {{"beats":["...","...","...","...","..."]}}"""
     req = Request(
         system="Respond only with valid JSON.",
