@@ -814,11 +814,12 @@ function buildCharacter(snap){
   scheduleAmbient();
 }
 
-// place NPCs so they never sit on the protagonist (waypoint centre) or each other
+// place NPCs at the waypoint centre (room centre) — the player now stops one tile short, so NPCs
+// no longer need to dodge downward (which shoved them into the doorway of short rooms)
 function npcSlotPos(wp,slot,total){
   const cx=wp[0]*TILE+TILE/2, cy=wp[1]*TILE+TILE/2;
-  const GAP=20; // > sprite width so no overlap
-  return [cx+(slot-(total-1)/2)*GAP, cy+22]; // stand below the path centre, clear of the player
+  const GAP=20; // > sprite width so co-located NPCs don't overlap
+  return [cx+(slot-(total-1)/2)*GAP, cy];
 }
 
 function buildNPCs(snap){

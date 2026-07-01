@@ -442,11 +442,18 @@ JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactio
         if isinstance(r, dict) and _as_text(r.get("line", "")).strip():
             rx.append({"name": _name(r.get("name", "")), "line": _clean(r.get("line", ""))})
     parsed["reactions"] = rx
-    # never leave the audience without an outcome — synthesize a plain one if needed
+    # never leave the audience without an outcome — synthesize one that MATCHES the fit, so the
+    # result line can't contradict a reaction (e.g. a "Fine, I'll do it" quote with "it holds")
     if not parsed["narrative"]:
         name = protagonist.split(":")[0].strip() or "The hero"
         tac = max(cards, key=lambda c: c.get("weight", 1))["name"] if cards else "their move"
-        parsed["narrative"] = f"{name} tries {tac}. The encounter holds."
+        fit = parsed["fit"]
+        if fit >= 55:
+            parsed["narrative"] = f"{name} plays {tac} — it works, and the way opens."
+        elif fit < 35:
+            parsed["narrative"] = f"{name} plays {tac}, but it backfires and the block holds."
+        else:
+            parsed["narrative"] = f"{name} plays {tac}; it shifts things but doesn't break through."
     return parsed
 
 

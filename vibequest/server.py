@@ -479,11 +479,7 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
         (n for n in state.quest.npcs if n.id == result.get("next_npc_id")), None
     ) or _npc_near_agent(state)
     if next_npc and state.world is not None:
-        tx, ty = _npc_tile(state, next_npc)
-        path = find_path(state.world, state.lx, state.ly, tx, ty)
-        if path and path[0] == [state.lx, state.ly]:
-            path = path[1:]
-        state.path = path
+        state.path = _path_to_npc(state, next_npc)
         state.agent_goal = next_npc.id
     _decision_at = time.monotonic()
     await _broadcast(
@@ -705,11 +701,7 @@ async def _start_new_game(preset_quest: QuestState | None = None) -> None:
     # send the agent to someone relevant so the first decision has a stage
     if _state.quest.npcs and _state.world is not None:
         npc0 = _npc_near_agent(_state) or _state.quest.npcs[0]
-        tx, ty = _npc_tile(_state, npc0)
-        path = find_path(_state.world, _state.lx, _state.ly, tx, ty)
-        if path and path[0] == [_state.lx, _state.ly]:
-            path = path[1:]
-        _state.path = path
+        _state.path = _path_to_npc(_state, npc0)
         _state.agent_goal = npc0.id
 
     opening_text = _state.quest.hook
@@ -844,6 +836,18 @@ def _npc_tile(state: GameState, npc) -> tuple[int, int]:
     return wp[0], wp[1]
 
 
+def _path_to_npc(state: GameState, npc) -> list:
+    # walk TOWARD the npc but stop on the tile just before them (adjacent, face-to-face) — never
+    # onto their tile, so the player doesn't walk through / overlap the npc in a doorway
+    tx, ty = _npc_tile(state, npc)
+    path = find_path(state.world, state.lx, state.ly, tx, ty)
+    if path and path[0] == [state.lx, state.ly]:
+        path = path[1:]
+    if path:
+        path = path[:-1]  # drop the final step onto the npc's own tile
+    return path
+
+
 def _npc_near_agent(state: GameState):
     if not state.quest.npcs or state.world is None:
         return None
@@ -907,11 +911,7 @@ async def _agent_pick_and_go(state: GameState) -> None:
         npc = _rng.choice(options)
     if not intent:
         intent = f"{state.character.name} sets off to find {npc.name}, {npc.role}."
-    tx, ty = _npc_tile(state, npc)
-    path = find_path(state.world, state.lx, state.ly, tx, ty)
-    if path and path[0] == [state.lx, state.ly]:
-        path = path[1:]
-    state.path = path
+    state.path = _path_to_npc(state, npc)
     state.agent_goal = npc.id
     _agent_recent.append(npc.id)
     state.log_event("agent_move", intent, {"npc": npc.id})
