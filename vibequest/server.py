@@ -46,7 +46,7 @@ PRESSURE_DURATION = 3
 BATCH_WINDOW = (
     4.5  # decision point: gather the crowd's cards (duplicates add weight) before resolving
 )
-DECISION_TIMEOUT = 88.0  # time to read the encounter + play before the DM auto-resolves it
+DECISION_TIMEOUT = 60.0  # time to read the encounter + play before the DM auto-resolves it
 
 _rng = random.SystemRandom()
 _state: GameState | None = None
