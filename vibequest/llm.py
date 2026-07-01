@@ -112,12 +112,11 @@ _TONE_MINI = (
     "in plain words. A clueless reader must understand exactly what's happening. Deadpan office humour; the "
     "comedy is treating a mundane blocker with a straight, quest-like seriousness. ≤10-word dialogue is fine. "
     "No purple prose. It's a real office played like a quest — the 'spells' are just emails, forms, and coffee. "
-    "The hero WORKS here — an employee in their own workplace, known to coworkers; NEVER an outside visitor (no "
-    "visitor badges, no being refused entry to the building). "
-    "Every obstacle is embodied by a PERSON the hero meets FACE-TO-FACE right now and must get past — a coworker, "
-    "gatekeeper, or manager to persuade, pressure, outrank, or bribe. NEVER a solo desk task the hero does alone "
-    "(composing an email, filling a form, looking something up): if access needs a request, personify it — the "
-    "person who controls that access is standing there refusing."
+    "The hero WORKS here: a known employee with their own badge and building access. NEVER an outsider — NO "
+    "receptionist/front-desk check-in, NO visitor badge, NO 'signing in', NO being refused entry to the building "
+    "or main floor. Access hurdles are INTERNAL: a manager withholding sign-off, IT gatekeeping a system, a "
+    "colleague who won't share, a keycard that won't open ONE restricted room. Every obstacle is a PERSON met "
+    "FACE-TO-FACE to persuade, pressure, outrank, or bribe — never a solo desk task (email, form, lookup)."
 )
 
 
