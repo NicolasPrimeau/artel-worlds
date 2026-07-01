@@ -56,6 +56,9 @@ _ready: set[WebSocket] = (
 )  # clients that dismissed the intro — the delve only runs when ≥1 is ready
 _lock = asyncio.Lock()
 _card_signal = asyncio.Event()
+_resolve_now = (
+    asyncio.Event()
+)  # every ready viewer has played — resolve without waiting out BATCH_WINDOW
 
 
 def _is_beat(text: object) -> bool:
@@ -946,8 +949,13 @@ async def _window_loop() -> None:
         if st is None or not _clients or st.phase != "active":
             continue
         if st.window.cards:
-            # someone played: gather the crowd's cards briefly, then resolve the wall
-            await asyncio.sleep(BATCH_WINDOW)
+            # someone played: gather the crowd's cards briefly, then resolve the wall — but if
+            # every ready viewer has already played (e.g. a solo player), resolve at once.
+            try:
+                await asyncio.wait_for(_resolve_now.wait(), timeout=BATCH_WINDOW)
+            except asyncio.TimeoutError:
+                pass
+            _resolve_now.clear()
             async with _lock:
                 if _state.window.cards and _state.phase == "active":
                     try:
@@ -1093,6 +1101,10 @@ def create_app() -> FastAPI:
         # advance_window's copy+clear); avoids hanging on the long resolve lock.
         _state.window.cards.append(played)
         _card_signal.set()
+        # if everyone who's watching has now played, don't make them wait out the batch window
+        players_played = {c.player_id for c in _state.window.cards}
+        if _ready and len(players_played) >= len(_ready):
+            _resolve_now.set()
         cdef = CARD_BY_ID[card_id]
         await _broadcast(
             {
