@@ -112,11 +112,14 @@ _TONE_MINI = (
     "in plain words. A clueless reader must understand exactly what's happening. Deadpan office humour; the "
     "comedy is treating a mundane blocker with a straight, quest-like seriousness. ≤10-word dialogue is fine. "
     "No purple prose. It's a real office played like a quest — the 'spells' are just emails, forms, and coffee. "
-    "The hero WORKS here: a known employee with their own badge and building access. NEVER an outsider — NO "
-    "receptionist/front-desk check-in, NO visitor badge, NO 'signing in', NO being refused entry to the building "
-    "or main floor. Access hurdles are INTERNAL: a manager withholding sign-off, IT gatekeeping a system, a "
-    "colleague who won't share, a keycard that won't open ONE restricted room. Every obstacle is a PERSON met "
-    "FACE-TO-FACE to persuade, pressure, outrank, or bribe — never a solo desk task (email, form, lookup)."
+    "The hero WORKS here: a known employee with their own badge and building access — NEVER an outsider (no "
+    "receptionist, no visitor badge, no being refused entry). "
+    "VARY the obstacles — do NOT default to 'someone demands a form/signature'. Mix two kinds: (a) a PERSON "
+    "blocking the hero, to persuade, pressure, outrank, or bribe; (b) a THING with nobody around — a jammed or "
+    "broken machine, a locked or empty room, a crashed system, a buried-in-process mess, a confusing layout — "
+    "tangible, that the hero must fix, force, bypass, or search (not an abstract paperwork chore). Each obstacle "
+    "must fit THIS quest's real premise (a mystery → dig into it; a theft → catch it), not a generic gate that "
+    "ignores the hook."
 )
 
 
@@ -406,12 +409,12 @@ ENCOUNTER — the hero faces this: "{situation}"
 You're the DM. Narrate this beat as JSON:
 - fit (int 0-100)
 - narrative: REQUIRED. 1-2 sentences — the hero's action and its concrete RESULT, clear on its own. If breakthrough is false but the move SEEMED to work (someone agreed, a barrier gave), NAME THE CATCH — why they're still stuck.
-- reactions: 0-1 ≤10-word quote ({{"name","line"}}), consistent with the narrative (no "sure, done!" while still blocked).
+- reactions: 0-1 ≤10-word quote ({{"name","line"}}), consistent with the narrative. [] if no person is involved (a thing/environment obstacle) — never invent a bystander.
 - breakthrough: true only if the encounter is clearly CLEARED.
 - established: 0-1 durable fact (or []).
 - next_situation: REQUIRED, ≤14 words, DIFFERENT from the encounter and FOLLOWING from the result. If CLEARED: the next obstacle (rework PLANNED "{planned_next}"; if the move was wrong/chaotic set derailed=true and deviate). If NOT: the SAME obstacle visibly changed by the catch/escalation. Never restate it unchanged.
-- next_npc_id: an id from [{people}] or "".
-- next_opening: the ≤10-word line the NEXT blocker says to the hero the moment they walk up, setting up next_situation (or "").
+- next_npc_id: id from [{people}] if next_situation is a PERSON; "" if it's a thing/environment (nobody there).
+- next_opening: if a person, their ≤10-word line as the hero walks up; if a thing, a ≤10-word note on what the hero finds; or "".
 
 JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactions":[{{"name":"...","line":"..."}}],"next_situation":"...","next_npc_id":"","next_opening":"","established":[]}}"""
     req = Request(

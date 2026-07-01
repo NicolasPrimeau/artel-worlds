@@ -257,8 +257,11 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
     current_npc = None
     if target_npc_id:
         current_npc = next((n for n in state.quest.npcs if n.id == target_npc_id), None)
-    if current_npc is None:
-        current_npc = _npc_near_agent(state)
+    if current_npc is None and state.agent_goal:
+        # agent_goal is the encounter's target — an NPC (person) or a prop (thing/environment)
+        current_npc = next((n for n in state.quest.npcs if n.id == state.agent_goal), None)
+    if current_npc is None and not state.agent_goal:
+        current_npc = _npc_near_agent(state)  # legacy fallback only when nothing is targeted
     npc_context = (
         f"{current_npc.name} ({current_npc.role}): {current_npc.personality}" if current_npc else ""
     )
@@ -482,15 +485,17 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
     )
     state.quest.decision_prompt = next_situation
     state.quest.beats.append(next_situation)
-    next_npc = next(
-        (n for n in state.quest.npcs if n.id == result.get("next_npc_id")), None
-    ) or _npc_near_agent(state)
+    nid = result.get("next_npc_id", "")
+    next_npc = next((n for n in state.quest.npcs if n.id == nid), None) if nid else None
     global _pending_opening, _pending_opening_npc
     _pending_opening, _pending_opening_npc = "", ""
-    if next_npc and state.world is not None:
-        state.path = _path_to_npc(state, next_npc)
-        state.agent_goal = next_npc.id
-        _pending_opening, _pending_opening_npc = result.get("next_opening", ""), next_npc.id
+    if state.world is not None:
+        # a person to face, or — when the model returns no npc — a thing/environment staged at a prop
+        target = next_npc or _nearest_prop(state)
+        if target:
+            state.path = _path_to_npc(state, target)
+            state.agent_goal = target.id
+            _pending_opening, _pending_opening_npc = result.get("next_opening", ""), target.id
     _decision_at = time.monotonic()
     await _broadcast(
         {
@@ -783,13 +788,17 @@ def _pos_msg(state: GameState) -> dict:
 
 
 async def _emit_arrival_setup(state: GameState) -> None:
-    # the agent reached the encounter's NPC — that NPC speaks a short line to set up the event
+    # the agent reached the encounter — a PERSON speaks a setup line; a THING gets a plain scene note
     global _pending_opening, _pending_opening_npc
-    line = _pending_opening
-    npc = next((n for n in state.quest.npcs if n.id == _pending_opening_npc), None)
+    line, tid = _pending_opening, _pending_opening_npc
     _pending_opening, _pending_opening_npc = "", ""
-    if npc and line:
+    if not line:
+        return
+    npc = next((n for n in state.quest.npcs if n.id == tid), None)
+    if npc:
         await _broadcast({"type": "npc_speak", "npc_name": npc.name, "line": line})
+    else:
+        await _broadcast({"type": "scene_beat", "text": line, "who": ""})
 
 
 async def _move_loop() -> None:
@@ -885,6 +894,19 @@ def _npc_near_agent(state: GameState):
         d = abs(tx - state.lx) + abs(ty - state.ly)
         if d < best_d:
             best, best_d = n, d
+    return best
+
+
+def _nearest_prop(state: GameState):
+    # a thing/environment obstacle stages at the nearest prop (a machine, door, desk) — no NPC needed
+    if not state.quest.props or state.world is None:
+        return None
+    best, best_d = None, 1e9
+    for p in state.quest.props:
+        tx, ty = _npc_tile(state, p)  # props carry waypoint_idx too
+        d = abs(tx - state.lx) + abs(ty - state.ly)
+        if d < best_d:
+            best, best_d = p, d
     return best
 
 
