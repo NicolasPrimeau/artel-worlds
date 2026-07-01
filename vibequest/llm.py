@@ -402,7 +402,7 @@ You're the DM. Narrate this beat of the delve, picking up from the encounter and
 - reactions: 0-1 quick ≤10-word quote ({{"name","line"}}).
 - breakthrough: true only if the hero clearly CLEARED this encounter (a wrong/weak action → false, the encounter still blocks them).
 - established: 0-1 durable fact (or []).
-- if breakthrough — next_situation + next_npc_id. PLANNED next encounter: "{planned_next}". Use it (reworded) if they cleared it cleanly; if the action was wrong/chaotic, set derailed=true and DEVIATE into the off-plan consequence instead. One plain literal sentence, ≤14 words — the next obstacle, still on the quest, not a repeat, no invented fantasy nouns.
+- if breakthrough — next_situation + next_npc_id. PLANNED next encounter: "{planned_next}". Use it (reworded) if they cleared it cleanly; if the action was wrong/chaotic, set derailed=true and DEVIATE into the off-plan consequence instead. One plain literal sentence, ≤14 words — the next obstacle standing in THE HERO'S OWN way to the goal (never a bystander's errand), not a repeat, no invented fantasy nouns.
 - next_npc_id: an id from [{people}] or "".
 
 JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactions":[{{"name":"...","line":"..."}}],"next_situation":"...","next_npc_id":"","established":[]}}"""
@@ -451,7 +451,7 @@ QUEST: {quest_hook}
 COMPLICATION: {complication}
 HERO: {protagonist}
 
-State the FIRST OBSTACLE the hero meets on this delve — a specific thing standing between them and the quest (a person who won't help, a locked room, a broken thing, a required sign-off). ONE present-tense sentence, ≤14 words, plain literal language a DM would say out loud: the real office thing and what it blocks. No invented fantasy nouns.
+State the FIRST OBSTACLE the hero meets on this delve — a specific thing standing in THE HERO'S OWN way to the quest (a person who won't help THEM, a locked room THEY need, a broken thing THEY must fix, a sign-off THEY need). The hero must be the one blocked and the one who has to act — never a bystander's errand. ONE present-tense sentence, ≤14 words, plain literal language a DM would say out loud: the real office thing and how it blocks the hero. No invented fantasy nouns.
 JSON: {{"situation":"..."}}"""
     req = Request(system="Respond only with valid JSON.", user=prompt, min_grade="fast")
     raw = await ROUTER.complete(req)
@@ -473,9 +473,11 @@ Plan this office DELVE as a 5-ENCOUNTER quest — a real adventure shape, not a 
 3. a real setback with a cost
 4. the make-or-break — the deadline lands / the auditor arrives / it all converges
 5. the last barrier before the goal
-Each beat: ONE short present-tense sentence, ≤14 words, PLAIN literal language a DM would say out loud. State the real office thing and what it blocks. NO stage labels, NO invented fantasy nouns.
-Good: "The supply closet is locked, and only Karen from Facilities has the key."
-Good: "Legal won't approve the budget until Dave signs off — and Dave is out sick."
+Every obstacle must stand in THE HERO'S OWN way to the goal — something THEY have to get past — never a bystander's errand.
+Each beat: ONE short present-tense sentence, ≤14 words, PLAIN literal language a DM would say out loud. State the real office thing and how it blocks the hero. NO stage labels, NO invented fantasy nouns.
+Good: "The supply closet you need is locked, and only Karen has the key."
+Good: "Legal won't approve your budget until Dave signs off — and Dave is out sick."
+Bad (blocks a bystander, not the hero): "The coffee machine jams, blocking Becky from serving a coffee run."
 Bad (invented fantasy noun, unclear): "The printer jams again; Facilities claims it's a misprint gate."
 JSON: {{"beats":["...","...","...","...","..."]}}"""
     req = Request(
