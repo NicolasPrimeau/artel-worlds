@@ -113,8 +113,11 @@ _TONE_MINI = (
     "comedy is treating a mundane blocker with a straight, quest-like seriousness. ≤10-word dialogue is fine. "
     "No purple prose. It's a real office played like a quest — the 'spells' are just emails, forms, and coffee. "
     "The hero WORKS here — an employee in their own workplace, known to coworkers; NEVER an outside visitor (no "
-    "visitor badges, no being refused entry to the building). Obstacles are internal: colleagues who won't help, "
-    "rooms they lack access to, dodging managers, broken equipment, red tape."
+    "visitor badges, no being refused entry to the building). "
+    "Every obstacle is embodied by a PERSON the hero meets FACE-TO-FACE right now and must get past — a coworker, "
+    "gatekeeper, or manager to persuade, pressure, outrank, or bribe. NEVER a solo desk task the hero does alone "
+    "(composing an email, filling a form, looking something up): if access needs a request, personify it — the "
+    "person who controls that access is standing there refusing."
 )
 
 

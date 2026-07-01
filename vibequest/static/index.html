@@ -969,14 +969,9 @@ function applyState(snap){
   setHud(snap);
 }
 
-// the surreal level physically warps the world — the office IS the meter
+// surreal build-up warp disabled — no hue-shift/wobble as the meter climbs (meltdown handled separately)
 function setSurrealLevel(s){
-  s=s||0;
-  // only warps once it's genuinely off the rails; 12 = meltdown (handled separately)
-  const lvl = s>=9?2 : s>=6?1 : 0;
-  const b=document.body;
-  if(b.classList.contains("meltdown")){ b.classList.remove("sr-1","sr-2"); return; }
-  ["sr-1","sr-2"].forEach((c,i)=>b.classList.toggle(c, lvl===i+1));
+  document.body.classList.remove("sr-1","sr-2");
 }
 
 function setHud(snap){
