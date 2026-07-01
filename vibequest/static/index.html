@@ -757,28 +757,12 @@ function floatText(txt,x,y,col){
 function flashSprite(spr,col){ if(!spr) return; try{ spr.setTintFill(col); }catch(e){} scene.time.delayedCall(120,()=>{ try{spr.clearTint();}catch(e){} }); }
 function endAction(aspr){ if(aspr){ try{aspr.destroy();}catch(e){} } _actionPaused=false; if(_actionSafety){ _actionSafety.remove(false); _actionSafety=null; } }
 function playCardAction(m){
-  // the PROTAGONIST visibly reacts to the card in place — surge forward when helped,
-  // recoil/stagger when blocked. No random stranger rushing in.
+  // quiet in-place feedback only — a floating HELPED/BLOCKED tag, no sprite motion or flash
   if(!scene||!character||!character.spr) return;
   const help=m.outcome==='help', block=m.outcome==='block';
   if(!help && !block) return; // neutral glance: nothing to show
-  _actionPaused=true;
-  if(_actionSafety) _actionSafety.remove(false);
-  _actionSafety=scene.time.delayedCall(2200,()=>{ _actionPaused=false; });
-  const spr=character.spr, sh=character.shadow, px=spr.x, py=spr.y, cam=scene.cameras.main;
-  floatText(help?'✦ HELPED':'✋ BLOCKED', px, py-20, help?'#83d3a3':'#ec858d');
-  flashSprite(spr, help?0x83d3a3:0xec858d);
-  if(block){
-    cam.shake(170,0.007);
-    // stagger backward and settle
-    scene.tweens.add({targets:[spr,sh],x:px-9,duration:90,yoyo:true,repeat:1,ease:'Quad.easeOut',
-      onComplete:()=>{ spr.x=px; sh.x=px; scene.time.delayedCall(250,()=>{ spr.x=px; spr.y=py; sh.x=px; sh.y=py+6; _actionPaused=false; }); }});
-  } else {
-    cam.shake(70,0.003);
-    // eager surge up-forward and back
-    scene.tweens.add({targets:[spr,sh],y:'-=11',duration:170,yoyo:true,ease:'Back.easeOut',
-      onComplete:()=>{ spr.y=py; sh.y=py+6; scene.time.delayedCall(200,()=>{ spr.x=px; spr.y=py; sh.x=px; sh.y=py+6; _actionPaused=false; }); }});
-  }
+  const spr=character.spr;
+  floatText(help?'✦ HELPED':'✋ BLOCKED', spr.x, spr.y-20, help?'#83d3a3':'#ec858d');
 }
 
 function buildWorld(W){
