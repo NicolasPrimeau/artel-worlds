@@ -742,6 +742,9 @@ async def _start_new_game(preset_quest: QuestState | None = None) -> None:
     await _broadcast(
         {"type": "new_quest", "state": _state_snapshot(_state), "opening": opening_text}
     )
+    await (
+        _deal_full_hand()
+    )  # new_quest reset the hand — refill it so the delve starts with a full 5
     await asyncio.sleep(2.0)
     global _decision_at
     _decision_at = time.monotonic()
@@ -804,6 +807,19 @@ def _next_deal_card():
     card = _rng.choices(fresh, weights=[c.weight for c in fresh])[0]
     _recent_deals.append(card.id)
     return card
+
+
+async def _deal_full_hand() -> None:
+    # every client gets its own fresh 5-card hand — after a new quest resets the hand to empty,
+    # so players start the delve with a full hand instead of trickling in from the deal loop
+    dead = set()
+    for ws in _clients:
+        try:
+            for card in deal_hand(_rng, size=5):
+                await ws.send_text(json.dumps({"type": "deal_card", "card": _card_msg(card)}))
+        except Exception:
+            dead.add(ws)
+    _clients.difference_update(dead)
 
 
 async def _deal_loop() -> None:
