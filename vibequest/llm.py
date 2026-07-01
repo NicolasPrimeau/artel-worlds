@@ -402,7 +402,7 @@ You're the DM. Narrate this beat of the delve, picking up from the encounter and
 - reactions: 0-1 quick ≤10-word quote ({{"name","line"}}).
 - breakthrough: true only if the hero clearly CLEARED this encounter (a wrong/weak action → false, the encounter still blocks them).
 - established: 0-1 durable fact (or []).
-- if breakthrough — next_situation + next_npc_id. PLANNED next encounter: "{planned_next}". Use it (reworded) if they cleared it cleanly; if the action was wrong/chaotic, set derailed=true and DEVIATE into the off-plan consequence instead. One plain literal sentence, ≤14 words — the next obstacle in THE HERO'S OWN way: a PERSON to get past or a thing to force/slip past (something a tactic can act on, never an abstract confirm/verify task), not a repeat, no invented fantasy nouns.
+- next_situation: REQUIRED, and it MUST be DIFFERENT from the encounter above — the card always changes something. If they CLEARED it (breakthrough), this is the NEXT obstacle: use PLANNED next "{planned_next}" reworded, or if their move was wrong/chaotic set derailed=true and deviate into the off-plan consequence. If they did NOT clear it, this is the SAME obstacle but VISIBLY CHANGED by what they just did — it escalates, a new wrinkle appears, or the blocker reacts a new way. Never restate the encounter unchanged. One plain literal sentence, ≤14 words — a PERSON to get past or a thing to force/slip past (a tactic can act on it), no invented fantasy nouns.
 - next_npc_id: an id from [{people}] or "".
 
 JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactions":[{{"name":"...","line":"..."}}],"next_situation":"...","next_npc_id":"","established":[]}}"""

@@ -434,12 +434,16 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
     state.phase = "active"
 
     if not wall_broken:
-        # same wall, another round — the agent stays here, more cards/interactions land
+        # same wall, another round — but it must have CHANGED, so the scene never repeats.
+        # the agent stays here; the situation text reflects how the card just shifted things.
+        evolved = result.get("next_situation", "") or state.quest.decision_prompt
+        state.quest.decision_prompt = evolved
+        state.quest.beats.append(evolved)
         _decision_at = time.monotonic()
         await _broadcast(
             {
                 "type": "decision",
-                "situation": state.quest.decision_prompt,
+                "situation": evolved,
                 "seconds": DECISION_TIMEOUT,
                 "state": _state_snapshot(state, include_world=False),
             }

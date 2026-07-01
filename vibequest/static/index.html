@@ -757,12 +757,7 @@ function floatText(txt,x,y,col){
 function flashSprite(spr,col){ if(!spr) return; try{ spr.setTintFill(col); }catch(e){} scene.time.delayedCall(120,()=>{ try{spr.clearTint();}catch(e){} }); }
 function endAction(aspr){ if(aspr){ try{aspr.destroy();}catch(e){} } _actionPaused=false; if(_actionSafety){ _actionSafety.remove(false); _actionSafety=null; } }
 function playCardAction(m){
-  // quiet in-place feedback only — a floating HELPED/BLOCKED tag, no sprite motion or flash
-  if(!scene||!character||!character.spr) return;
-  const help=m.outcome==='help', block=m.outcome==='block';
-  if(!help && !block) return; // neutral glance: nothing to show
-  const spr=character.spr;
-  floatText(help?'✦ HELPED':'✋ BLOCKED', spr.x, spr.y-20, help?'#83d3a3':'#ec858d');
+  // no on-screen animation — a card's impact shows in the narrative text, not sprite effects
 }
 
 function buildWorld(W){
