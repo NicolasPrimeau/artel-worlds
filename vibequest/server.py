@@ -313,6 +313,10 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
     # fit drives the meters: high fit -> progress, clash -> surreal
     fit = int(result.get("fit", 50))
     apply_fit_effects(state.quest, fit)
+    # reality-bend cost: an absurd card that only worked by warping the office pushes toward meltdown
+    bend = max(0, min(3, int(result.get("surreal", 0) or 0)))
+    if bend:
+        state.quest.surreal = min(20, state.quest.surreal + bend)
     mom_delta = state.quest.momentum - mom_before
     prog_delta = state.quest.scene_progress - prog_before
     surreal_delta = state.quest.surreal - surreal_before

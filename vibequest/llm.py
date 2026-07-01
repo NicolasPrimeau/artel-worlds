@@ -387,9 +387,11 @@ async def resolve_decision(
             f"{c['name']} — {c.get('description', '')} (×{c.get('weight', 1)})" for c in cards
         )
         cards_block = (
-            f"THE PARTY PLAYS: {card_lines}. The hero performs the heaviest; its stated effect MUST actually "
-            "happen — a card ALWAYS changes the scene, NEVER 'nothing happens' or the blocker 'unmoved'. "
-            "FIT 0-100 = how well it FITS: fitting move clears it→HIGH; wrong move still happens but backfires→LOW."
+            f"THE PARTY PLAYS: {card_lines}. The hero performs the heaviest; its stated effect MUST happen — "
+            "NEVER 'nothing happens' or the blocker 'unmoved'. If the move CAN'T logically apply (bribing or "
+            "charming an OBJECT, a person-tactic on a thing), DON'T fail it — reality BENDS: the office turns "
+            "briefly SURREAL and it works in an absurd, deadpan way (the copier pockets the bribe and hums to life). "
+            "FIT 0-100 = how well it works. surreal 0-3 = how much reality had to bend (0 sane fit, 3 fully absurd)."
         )
     else:
         cards_block = "The party hesitates — the hero acts on instinct. FIT ~60."
@@ -411,12 +413,13 @@ You're the DM. Narrate this beat as JSON:
 - narrative: REQUIRED. 1-2 sentences — the hero's action and its concrete RESULT, clear on its own. If breakthrough is false but the move SEEMED to work (someone agreed, a barrier gave), NAME THE CATCH — why they're still stuck.
 - reactions: 0-1 ≤10-word quote ({{"name","line"}}), consistent with the narrative. [] if no person is involved (a thing/environment obstacle) — never invent a bystander.
 - breakthrough: true only if the encounter is clearly CLEARED.
+- surreal: 0-3, how much reality had to bend to make the move work (0 = a sane, fitting move; 3 = a person-tactic forced onto an object). When >0, narrate the absurdity deadpan.
 - established: 0-1 durable fact (or []).
 - next_situation: REQUIRED, ≤14 words, DIFFERENT from the encounter and FOLLOWING from the result. If CLEARED: the next obstacle (rework PLANNED "{planned_next}"; if the move was wrong/chaotic set derailed=true and deviate). If NOT: the SAME obstacle visibly changed by the catch/escalation. Never restate it unchanged.
 - next_npc_id: id from [{people}] if next_situation is a PERSON; "" if it's a thing/environment (nobody there).
 - next_opening: if a person, their ≤10-word line as the hero walks up; if a thing, a ≤10-word note on what the hero finds; or "".
 
-JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactions":[{{"name":"...","line":"..."}}],"next_situation":"...","next_npc_id":"","next_opening":"","established":[]}}"""
+JSON: {{"fit":int,"surreal":0,"breakthrough":bool,"derailed":bool,"narrative":"...","reactions":[{{"name":"...","line":"..."}}],"next_situation":"...","next_npc_id":"","next_opening":"","established":[]}}"""
     req = Request(
         system="Respond only with valid JSON. No fantasy language.",
         user=prompt,
@@ -435,6 +438,10 @@ JSON: {{"fit":int,"breakthrough":bool,"derailed":bool,"narrative":"...","reactio
         parsed["fit"] = max(0, min(100, int(parsed.get("fit", 60))))
     except (TypeError, ValueError):
         parsed["fit"] = 60
+    try:
+        parsed["surreal"] = max(0, min(3, int(parsed.get("surreal", 0))))
+    except (TypeError, ValueError):
+        parsed["surreal"] = 0
     parsed["breakthrough"] = bool(parsed.get("breakthrough", False))
     parsed["derailed"] = bool(parsed.get("derailed", False))
     parsed["narrative"] = _clean(parsed.get("narrative", ""))
