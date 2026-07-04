@@ -32,6 +32,10 @@ class Request:
         "fast"  # "fast" | "balanced" | "capable" — filters to models at or above this tier
     )
     tools: list | None = None  # OpenAI tool schemas; when set, act() returns the model's tool call
+    max_tokens: int | None = None  # cap on completion length; None = provider default (unbounded)
+    deadline: float | None = (
+        None  # overall wall-clock budget (s) across all retries; None = no bound
+    )
 
 
 class RateLimited(Exception):
@@ -175,6 +179,11 @@ class Router:
         elif "gpt-oss" in m.model:
             # gpt-oss reasoning models default to medium effort (slow); keep them snappy for chat use.
             payload["reasoning_effort"] = "low"
+        if req.max_tokens:
+            # OpenAI reasoning models (gpt-5) reject `max_tokens` and require `max_completion_tokens`
+            # (which also budgets reasoning tokens); other OpenAI-compatible providers take max_tokens.
+            key = "max_completion_tokens" if "gpt-5" in m.model else "max_tokens"
+            payload[key] = req.max_tokens
         if req.tools:
             payload["tools"] = req.tools
             payload["tool_choice"] = "auto"
@@ -195,8 +204,13 @@ class Router:
         if not eligible:
             return None, None
         tries = max(4, len(eligible) + 1)
+        start = time.monotonic()
         async with self._sem, httpx.AsyncClient(timeout=req.timeout) as h:
             for _ in range(tries):
+                # bound total latency: a large pool × per-attempt timeout can otherwise stack into
+                # minutes of retries. Stop starting new attempts once the deadline is exhausted.
+                if req.deadline is not None and time.monotonic() - start > req.deadline:
+                    break
                 m = await self._pick(eligible)
                 if m is None:
                     return None, None

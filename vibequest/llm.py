@@ -93,6 +93,16 @@ NARRATION = (
 
 SPEND = ROUTER.spend
 
+
+async def _narrate(req: Request) -> str:
+    # story beats route to the dedicated NARRATION engine first; if it yields nothing (its model is
+    # down or throttled), fail over to the full ROUTER pool rather than dropping to a templated stub.
+    raw = await NARRATION.complete(req)
+    if raw or NARRATION is ROUTER:
+        return raw
+    return await ROUTER.complete(req)
+
+
 _TONE = (
     "Narrate VibeQuest in SHORT, punchy beats. ONE to TWO sentences, MAX. Present tense. This is a ticker, NOT a book — never a paragraph. "
     "Natural and a little funny, like a quick workplace-comedy moment. A short line of dialogue is great, but keep each quote ≤10 words and CUT the stage directions ('glanced at his spreadsheet, sighed, and replied' → just the line). "
@@ -426,12 +436,14 @@ JSON: {{"fit":int,"surreal":0,"breakthrough":bool,"derailed":bool,"narrative":".
         min_grade="capable",
         allow_paid=True,
         temperature=1.0,  # gpt-5 reasoning models only accept the default temperature
+        max_tokens=768,  # a JSON beat, not an essay — cap runaway output
+        deadline=30.0,  # bound total retry latency so a beat can't hang the resolve for minutes
     )
-    raw = await NARRATION.complete(req)
+    raw = await _narrate(req)
     parsed = parse_json(raw) or {}
     # the OUTCOME beat is required — retry once if the model left it empty
     if not _clean(parsed.get("narrative", "")):
-        retry = parse_json(await NARRATION.complete(req)) or {}
+        retry = parse_json(await _narrate(req)) or {}
         if _clean(retry.get("narrative", "")):
             parsed = retry
     try:
@@ -511,8 +523,10 @@ JSON: {{"beats":["...","...","...","...","..."]}}"""
         min_grade="capable",
         allow_paid=True,
         temperature=1.0,
+        max_tokens=512,  # five short beats — cap runaway output
+        deadline=30.0,  # bound total retry latency
     )
-    raw = await NARRATION.complete(req)
+    raw = await _narrate(req)
     parsed = parse_json(raw) or {}
     beats = [_clean(b) for b in parsed.get("beats", []) if str(b).strip()][:6]
     return beats
