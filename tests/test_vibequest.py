@@ -159,10 +159,23 @@ def test_scene_progress_accumulates_across_rounds():
     from vibequest.engine import QuestState, apply_fit_effects, SCENE_THRESHOLD
 
     q = QuestState(id="x", template_id="t", title="T", hook="h", complication="c")
-    apply_fit_effects(q, 60)
-    assert 0 < q.scene_progress < SCENE_THRESHOLD  # one strong play: partway
-    apply_fit_effects(q, 60)
-    assert q.scene_progress >= SCENE_THRESHOLD  # two strong plays: bar full -> wall can break
+    apply_fit_effects(q, 60)  # a solid play (+2)
+    assert 0 < q.scene_progress < SCENE_THRESHOLD  # partway up the bar
+    apply_fit_effects(q, 85)  # a clean hit (+3) — bar fills
+    assert q.scene_progress >= SCENE_THRESHOLD  # wall can now break
+
+
+def test_awkward_play_stalls_and_warps():
+    # the wide good/bad gap: an ill-fitting play makes NO progress and raises surreal (the cost),
+    # while a clash actively backfires — this is what makes each card feel consequential.
+    from vibequest.engine import QuestState, apply_fit_effects
+
+    q = QuestState(id="x", template_id="t", title="T", hook="h", complication="c")
+    apply_fit_effects(q, 45)  # awkward (fit in [35,55))
+    assert q.scene_progress == 0 and q.surreal > 0 and q.momentum < 0
+    q2 = QuestState(id="y", template_id="t", title="T", hook="h", complication="c")
+    apply_fit_effects(q2, 20)  # clash
+    assert q2.hp < 5 and q2.surreal >= 4 and q2.momentum <= -4
 
 
 def test_tension_meter_removed():

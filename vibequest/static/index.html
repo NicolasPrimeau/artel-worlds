@@ -1404,11 +1404,15 @@ function showEncounter(m){
   const ag=_heroSprite(m.agent_sprite||1,agentSize); ag.classList.add("enc-agent"); scene.appendChild(ag);
   // effect chips
   const chips=document.createElement("div"); chips.className="enc-chips";
-  const md=m.momentum_delta||0, pd=m.progress_delta||0;
-  if(pd){ const c=document.createElement("div"); c.className="enc-chip"; c.style.color=pd>0?"var(--sage2)":"var(--rose2)"; c.textContent=(pd>0?"▲":"▼")+" progress"; chips.appendChild(c); }
-  if(md){ const c=document.createElement("div"); c.className="enc-chip"; c.style.color=md>0?"var(--sage2)":"var(--rose2)"; c.textContent=(md>0?"+":"")+md+" morale"; chips.appendChild(c); }
+  const md=m.momentum_delta||0, pd=m.progress_delta||0, sd=m.surreal_delta||0, fit=m.fit||0;
+  // headline: how hard the play landed — the reader's main impact cue
+  const lbl=fit>=80?"CLEAN HIT":fit>=55?"it lands":fit>=35?"awkward — no ground gained":"BACKFIRE";
+  const cf=document.createElement("div"); cf.className="enc-chip"; cf.style.fontWeight="700"; cf.style.color=fit>=55?"var(--sage2)":fit>=35?"var(--ink2)":"var(--rose2)"; cf.textContent=lbl; chips.appendChild(cf);
   const aff=m.affinity||0;
-  if(aff){ const c=document.createElement("div"); c.className="enc-chip"; c.style.color=aff>0?"var(--sage2)":"var(--rose2)"; c.textContent=aff>0?"✓ right tool":"✗ wrong tool — it bends"; chips.appendChild(c); }
+  if(aff){ const c=document.createElement("div"); c.className="enc-chip"; c.style.color=aff>0?"var(--sage2)":"var(--rose2)"; c.textContent=aff>0?"✓ right tool":"✗ wrong tool"; chips.appendChild(c); }
+  if(pd){ const c=document.createElement("div"); c.className="enc-chip"; c.style.color=pd>0?"var(--sage2)":"var(--rose2)"; c.textContent=(pd>0?"▲ +":"▼ ")+Math.abs(pd)+" wall"; chips.appendChild(c); }
+  if(md){ const c=document.createElement("div"); c.className="enc-chip"; c.style.color=md>0?"var(--sage2)":"var(--rose2)"; c.textContent=(md>0?"+":"")+md+" morale"; chips.appendChild(c); }
+  if(sd>0){ const c=document.createElement("div"); c.className="enc-chip"; c.style.color="var(--rose2)"; c.textContent="✦ +"+sd+" surreal"; chips.appendChild(c); }
   scene.appendChild(chips);
   const tap=document.createElement("div"); tap.className="enc-tap"; tap.textContent="tap ▾"; scene.appendChild(tap);
   ov.appendChild(scene);

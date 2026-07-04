@@ -1591,7 +1591,7 @@ class PlayedCard:
 MIN_RESOLUTIONS = 5
 MAX_RESOLUTIONS = 12
 MAX_SCENE_ROUNDS = 3  # rounds of cards/interaction at one wall before it gives way
-SCENE_THRESHOLD = 3  # net ACTION progress needed to resolve a scene / tick an objective
+SCENE_THRESHOLD = 5  # ACTION progress that fills the bar and breaks the wall (≈2 clean hits)
 MELTDOWN_THRESHOLD = 12  # surreal level at which reality comes apart and the run ends
 
 
@@ -1946,7 +1946,8 @@ def _clamp(v: int) -> int:
 
 # No dice, no fixed card effects. The LLM rates how well the played event fits the
 # current moment (0-100); fit drives progress, clash drives surreal.
-AFFINITY = 18  # fit swing for playing the right (or wrong) card type against an obstacle
+AFFINITY = 22  # fit swing for playing the right (or wrong) card type against an obstacle —
+# wide enough to push a matched card into a clean hit and a mismatched one into a stall/clash
 # a PERSON obstacle yields to social/confrontational tactics; a THING to improvised/disruptive ones.
 _PERSON_STRONG = {CardType.BOON.value, CardType.RIVAL.value}
 _THING_STRONG = {CardType.ENCOUNTER.value, CardType.TWIST.value}
@@ -1963,28 +1964,29 @@ def affinity_delta(card_type: str, kind: str) -> int:
 
 
 def apply_fit_effects(quest: QuestState, fit: int) -> None:
-    # cards hit HARD — one good play should visibly move the story, one clash should warp it
+    # cards hit HARD and DIFFERENTLY — a matched play is a satisfying blow that cracks the wall
+    # open; a wrong one visibly stalls, warps reality (surreal), and drags momentum down. The gap
+    # between good and bad is wide on purpose, so every card feels consequential.
     fit = max(0, min(100, fit))
     if fit >= 80:
-        # a perfect play — resolves the step AND pulls reality back toward normal
-        quest.scene_progress = SCENE_THRESHOLD
+        # a clean, well-matched hit — a big chunk off the wall, reality settles
+        quest.scene_progress += 3
         quest.momentum = _clamp(quest.momentum + 4)
-        quest.surreal = max(0, quest.surreal - 2)
+        quest.surreal = max(0, quest.surreal - 3)
     elif fit >= 55:
-        # a strong fit — chunky progress, calms the world a little
+        # a solid play — real progress
         quest.scene_progress += 2
-        quest.momentum = _clamp(quest.momentum + 3)
+        quest.momentum = _clamp(quest.momentum + 2)
         quest.surreal = max(0, quest.surreal - 1)
     elif fit >= 35:
-        # a near-fit — still nudges along, a little weirdness
-        quest.scene_progress += 1
-        quest.momentum = _clamp(quest.momentum + 1)
-        quest.surreal = min(20, quest.surreal + 1)
+        # an awkward, ill-fitting play — it STALLS (no progress) and reality bends a little
+        quest.momentum = _clamp(quest.momentum - 1)
+        quest.surreal = min(20, quest.surreal + 2)
     else:
-        # a clash — the encounter hits back: lose composure (HP) and the dungeon warps
+        # a clash — the wrong tool backfires: lose composure (HP), momentum craters, the office warps
         quest.scene_progress = max(0, quest.scene_progress - 1)
-        quest.momentum = _clamp(quest.momentum - 3)
-        quest.surreal = min(20, quest.surreal + 3)
+        quest.momentum = _clamp(quest.momentum - 4)
+        quest.surreal = min(20, quest.surreal + 4)
         quest.hp = max(0, quest.hp - 1)
 
 
