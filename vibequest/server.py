@@ -47,6 +47,8 @@ BATCH_WINDOW = (
     4.5  # decision point: gather the crowd's cards (duplicates add weight) before resolving
 )
 DECISION_TIMEOUT = 60.0  # time to read the encounter + play before the DM auto-resolves it
+MAX_AUTO_STREAK = 8  # consecutive DM-only auto-resolves (no human card) before pausing, to cap
+# idle LLM spend from an abandoned-but-open tab. A human /play or a new viewer resumes it.
 
 _rng = random.SystemRandom()
 _state: GameState | None = None
@@ -70,6 +72,7 @@ _votes: dict[int, int] = {}
 _voted: dict[str, int] = {}  # player_id -> choice, so each viewer votes once (changeable)
 _deal_type_idx: int = 0
 _decision_at: float = 0.0  # monotonic time the current wall opened (for the no-card timeout)
+_auto_streak: int = 0  # consecutive DM-only auto-resolves since the last human play / new viewer
 _pending_opening: str = (
     ""  # the NPC's setup line, spoken when the agent arrives at the next encounter
 )
@@ -202,7 +205,9 @@ def _state_snapshot(state: GameState, include_world: bool = True) -> dict:
 async def _broadcast(msg: dict) -> None:
     dead = set()
     payload = json.dumps(msg)
-    for ws in _clients:
+    # snapshot: a client can connect/disconnect during an await below, and mutating
+    # _clients mid-iteration would raise "Set changed size during iteration".
+    for ws in list(_clients):
         try:
             await ws.send_text(payload)
         except Exception:
@@ -799,15 +804,18 @@ async def _emit_arrival_setup(state: GameState) -> None:
 async def _move_loop() -> None:
     while True:
         await asyncio.sleep(0.33)  # smaller, more frequent steps -> smoother scroll
-        state = _state
-        if state is None or not _ready or state.phase in ("resolving", "complete"):
-            continue
-        # free-roam: follow the agent's dynamic path
-        if step_path(state):
-            await _broadcast(_pos_msg(state))
-            # arrived at the encounter's NPC — let them set up the event
-            if not state.path and _pending_opening and state.agent_goal == _pending_opening_npc:
-                await _emit_arrival_setup(state)
+        try:
+            state = _state
+            if state is None or not _ready or state.phase in ("resolving", "complete"):
+                continue
+            # free-roam: follow the agent's dynamic path
+            if step_path(state):
+                await _broadcast(_pos_msg(state))
+                # arrived at the encounter's NPC — let them set up the event
+                if not state.path and _pending_opening and state.agent_goal == _pending_opening_npc:
+                    await _emit_arrival_setup(state)
+        except Exception as exc:
+            log.error("_move_loop iteration failed: %s", exc)
 
 
 def _card_msg(card) -> dict:
@@ -841,7 +849,7 @@ async def _deal_full_hand() -> None:
     # every client gets its own fresh 5-card hand — after a new quest resets the hand to empty,
     # so players start the delve with a full hand instead of trickling in from the deal loop
     dead = set()
-    for ws in _clients:
+    for ws in list(_clients):
         try:
             for card in deal_hand(_rng, size=5):
                 await ws.send_text(json.dumps({"type": "deal_card", "card": _card_msg(card)}))
@@ -853,9 +861,12 @@ async def _deal_full_hand() -> None:
 async def _deal_loop() -> None:
     while True:
         await asyncio.sleep(DEAL_INTERVAL)
-        if not _clients or _state is None or _state.phase != "active":
-            continue
-        await _broadcast({"type": "deal_card", "card": _card_msg(_next_deal_card())})
+        try:
+            if not _clients or _state is None or _state.phase != "active":
+                continue
+            await _broadcast({"type": "deal_card", "card": _card_msg(_next_deal_card())})
+        except Exception as exc:
+            log.error("_deal_loop iteration failed: %s", exc)
 
 
 AGENT_INTERVAL = 8.0
@@ -1003,7 +1014,19 @@ async def _agent_converse(state: GameState, npc) -> None:
         )
 
 
+def _should_auto_resolve(now: float) -> bool:
+    # the DM auto-resolves a wall only when the room is ready, the read-timer elapsed, and we
+    # haven't already run a streak of DM-only resolves (idle cost cap — see MAX_AUTO_STREAK).
+    return (
+        bool(_ready)
+        and bool(_decision_at)
+        and (now - _decision_at) > DECISION_TIMEOUT
+        and _auto_streak < MAX_AUTO_STREAK
+    )
+
+
 async def _window_loop() -> None:
+    global _auto_streak
     while True:
         try:
             await asyncio.wait_for(_card_signal.wait(), timeout=1.0)
@@ -1029,12 +1052,14 @@ async def _window_loop() -> None:
                         log.error("_resolve_window crashed: %s", exc)
                         _state.window.resolving = False
                         _state.phase = "active"
-        elif _ready and _decision_at and (time.monotonic() - _decision_at) > DECISION_TIMEOUT:
-            # nobody played in time (and the room is ready) — the DM resolves it and the story moves on
+        elif _should_auto_resolve(time.monotonic()):
+            # nobody played in time (and the room is ready) — the DM resolves it and the story moves
+            # on. Capped by _auto_streak so an abandoned-but-open tab can't drive LLM cost forever.
             async with _lock:
                 if _state.phase == "active" and not _state.window.cards:
                     try:
                         await _resolve_window(_state, auto=True)
+                        _auto_streak += 1
                     except Exception as exc:
                         log.error("_auto_resolve crashed: %s", exc)
                         _state.window.resolving = False
@@ -1165,6 +1190,8 @@ def create_app() -> FastAPI:
         # bare append is race-free in single-threaded asyncio (no await between
         # advance_window's copy+clear); avoids hanging on the long resolve lock.
         _state.window.cards.append(played)
+        global _auto_streak
+        _auto_streak = 0  # a human is playing — clear the idle auto-resolve cap
         _card_signal.set()
         # if everyone who's watching has now played, don't make them wait out the batch window
         players_played = {c.player_id for c in _state.window.cards}
@@ -1182,16 +1209,20 @@ def create_app() -> FastAPI:
                 "card_count": len(_state.window.cards),
             }
         )
-        # refill: deal a replacement so the hand stays full instead of draining
-        await _broadcast({"type": "deal_card", "card": _card_msg(_next_deal_card())})
+        # refill: deal a replacement to the player who just played (tagged with for_player so
+        # spectators don't also accrue the card). Broadcast deals omit for_player and reach all.
+        await _broadcast(
+            {"type": "deal_card", "card": _card_msg(_next_deal_card()), "for_player": player_id}
+        )
         return JSONResponse({"ok": True, "card_count": len(_state.window.cards)})
 
     @app.websocket("/ws")
     async def websocket_endpoint(ws: WebSocket) -> None:
-        global _decision_at
+        global _decision_at, _auto_streak
         await ws.accept()
         was_empty = not _clients
         _clients.add(ws)
+        _auto_streak = 0  # a viewer just arrived — resume the story if it had idled out
         if was_empty:
             # resuming from a paused (no-viewers) state — give the room a fresh decision window
             _decision_at = time.monotonic()

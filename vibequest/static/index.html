@@ -1975,7 +1975,7 @@ function connect(){
         if(m.opening){ addLogEntry(m.opening); }
         break;
       }
-      case "deal_card": addDealCard(m.card); break;
+      case "deal_card": if(!m.for_player || m.for_player===playerId) addDealCard(m.card); break;
       case "hand": myHand=m.cards; renderHand(myHand); break;
       case "window_closing": _pileResolving=true; _resolvingCount=pileCards.length||1; renderPile(); decisionResolving(); setThinking(true); break;
       case "move": onMove(m.pos); break;
