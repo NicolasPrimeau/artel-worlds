@@ -1546,32 +1546,6 @@ CARD_LIBRARY = [
 
 CARD_BY_ID = {c.id: c for c in CARD_LIBRARY}
 
-# ── Dice ──────────────────────────────────────────────────────────────────────────────────────────
-
-
-class DiceResult(str, Enum):
-    NAT_1 = "nat_1"  # critical failure
-    LOW = "low"  # 2–6, things get worse
-    MID = "mid"  # 7–14, partial success
-    HIGH = "high"  # 15–19, clear success
-    NAT_20 = "nat_20"  # critical success
-
-
-def roll_d20(rng: random.Random) -> tuple[int, DiceResult]:
-    value = rng.randint(1, 20)
-    if value == 1:
-        result = DiceResult.NAT_1
-    elif value <= 6:
-        result = DiceResult.LOW
-    elif value <= 14:
-        result = DiceResult.MID
-    elif value <= 19:
-        result = DiceResult.HIGH
-    else:
-        result = DiceResult.NAT_20
-    return value, result
-
-
 # ── Game state ────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -1612,16 +1586,6 @@ class PlayedCard:
     player_id: str
     played_at: float = field(default_factory=time.time)
     target_npc_id: str | None = None
-
-
-@dataclass
-class CardResolution:
-    card: PlayedCard
-    card_def: CardDef
-    dice_value: int
-    dice_result: DiceResult
-    narrative: str
-    consequence: str
 
 
 MIN_RESOLUTIONS = 5
@@ -1765,7 +1729,6 @@ class WindowState:
     closes_at: float
     cards: list[PlayedCard] = field(default_factory=list)
     resolving: bool = False
-    resolutions: list[CardResolution] = field(default_factory=list)
 
 
 @dataclass
@@ -1914,28 +1877,6 @@ def at_station(state: GameState) -> bool:
     return state.rpos >= boundary
 
 
-TRAVEL_EVENTS = [
-    "Are we there yet?",
-    "I have a bad feeling about this corridor.",
-    "Stay close. And stay quiet.",
-    "Did anyone else hear that?",
-    "I'm putting this on my expense report.",
-    "We should've taken the elevator.",
-    "Keep moving. Don't look back.",
-    "This place wasn't on the map.",
-    "My feet hurt. Quest-grade pain.",
-    "If we make it back, I'm taking a long lunch.",
-]
-
-
-def maybe_travel_event(state: GameState, rng: random.Random) -> str | None:
-    if at_station(state):
-        return None
-    if rng.random() > 0.10:
-        return None
-    return rng.choice(TRAVEL_EVENTS)
-
-
 def step_path(state: GameState) -> bool:
     # free-roam: follow the agent's dynamic path one tile at a time
     if not state.path:
@@ -1997,7 +1938,6 @@ def advance_window(state: GameState, rng: random.Random) -> list[PlayedCard]:
     rng.shuffle(played)
     state.window.opened_at = now
     state.window.closes_at = now + CARD_WINDOW
-    state.window.resolutions = []
     return played
 
 
@@ -2041,33 +1981,3 @@ def classify_window(progress_delta: int, momentum_delta: int) -> str:
     if progress_delta < 0 or momentum_delta < 0:
         return "setback"
     return "mixed"
-
-
-def classify_result(resolutions: list[CardResolution]) -> str:
-    if not resolutions:
-        return "uneventful"
-    crit_hi = any(r.dice_result == DiceResult.NAT_20 for r in resolutions)
-    crit_lo = any(r.dice_result == DiceResult.NAT_1 for r in resolutions)
-    if crit_hi and crit_lo:
-        return "chaotic"
-    if crit_hi:
-        return "breakthrough"
-    if crit_lo:
-        return "disaster"
-    highs = sum(1 for r in resolutions if r.dice_result == DiceResult.HIGH)
-    lows = sum(1 for r in resolutions if r.dice_result == DiceResult.LOW)
-    net = highs - lows
-    if net >= 1:
-        return "triumph"
-    if net <= -1:
-        return "setback"
-    return "mixed"
-
-
-def apply_disaster(state: GameState, rng: random.Random) -> "PartyMember | None":
-    ch = state.character
-    if ch.status == "lost":
-        return None
-    ch.hp = max(0, ch.hp - 5)
-    ch.status = "lost" if ch.hp <= 0 else "rattled"
-    return ch

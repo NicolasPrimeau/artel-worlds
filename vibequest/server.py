@@ -65,7 +65,6 @@ def _is_beat(text: object) -> bool:
     return bool(text) and str(text).strip().lower() not in ("none", "null", "n/a", "na", "tbd")
 
 
-_travel_processed: set[str] = set()
 _vote_options: list[QuestState] | None = None
 _votes: dict[int, int] = {}
 _voted: dict[str, int] = {}  # player_id -> choice, so each viewer votes once (changeable)
@@ -212,10 +211,7 @@ async def _broadcast(msg: dict) -> None:
 
 
 async def _resolve_window(state: GameState, auto: bool = False) -> None:
-    global _travel_processed
-    already_handled = set(_travel_processed)
-    _travel_processed.clear()
-    played = [c for c in advance_window(state, _rng) if c.id not in already_handled]
+    played = advance_window(state, _rng)
     if not played and not auto:
         return
 
@@ -600,11 +596,6 @@ async def _end_quest(state: GameState) -> None:
     _vote_options = None
     _votes = {}
     await _start_new_game(preset_quest=chosen)
-
-
-async def _travel_card_loop() -> None:
-    # retired: all cards resolve through _resolve_window (window-level, no dice)
-    return
 
 
 def _complete_artel_objective(state: GameState, idx: int) -> None:
