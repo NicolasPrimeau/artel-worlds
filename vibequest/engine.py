@@ -1644,7 +1644,6 @@ class QuestState:
     npcs: list[NPC] = field(default_factory=list)
     resolution_count: int = 0
     momentum: int = 0
-    tension: int = 0
     scene_progress: int = 0
     surreal: int = 0  # accumulates from clashing (wrong-for-the-moment) events
     decision_prompt: str = ""  # the current wall the audience is deciding on (Telltale-style)
@@ -1947,6 +1946,22 @@ def _clamp(v: int) -> int:
 
 # No dice, no fixed card effects. The LLM rates how well the played event fits the
 # current moment (0-100); fit drives progress, clash drives surreal.
+AFFINITY = 18  # fit swing for playing the right (or wrong) card type against an obstacle
+# a PERSON obstacle yields to social/confrontational tactics; a THING to improvised/disruptive ones.
+_PERSON_STRONG = {CardType.BOON.value, CardType.RIVAL.value}
+_THING_STRONG = {CardType.ENCOUNTER.value, CardType.TWIST.value}
+
+
+def obstacle_kind(has_target_person: bool) -> str:
+    return "person" if has_target_person else "thing"
+
+
+def affinity_delta(card_type: str, kind: str) -> int:
+    # +AFFINITY for a matched card, -AFFINITY for a mismatch (which the narrator plays as surreal).
+    strong = _PERSON_STRONG if kind == "person" else _THING_STRONG
+    return AFFINITY if card_type in strong else -AFFINITY
+
+
 def apply_fit_effects(quest: QuestState, fit: int) -> None:
     # cards hit HARD — one good play should visibly move the story, one clash should warp it
     fit = max(0, min(100, fit))
@@ -1965,13 +1980,11 @@ def apply_fit_effects(quest: QuestState, fit: int) -> None:
         quest.scene_progress += 1
         quest.momentum = _clamp(quest.momentum + 1)
         quest.surreal = min(20, quest.surreal + 1)
-        quest.tension = min(10, quest.tension + 1)
     else:
         # a clash — the encounter hits back: lose composure (HP) and the dungeon warps
         quest.scene_progress = max(0, quest.scene_progress - 1)
         quest.momentum = _clamp(quest.momentum - 3)
         quest.surreal = min(20, quest.surreal + 3)
-        quest.tension = min(10, quest.tension + 1)
         quest.hp = max(0, quest.hp - 1)
 
 

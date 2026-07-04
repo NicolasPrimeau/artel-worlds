@@ -135,3 +135,39 @@ def test_narrate_no_double_call_when_narration_is_router(monkeypatch):
     monkeypatch.setattr(llm, "ROUTER", shared)
     out = asyncio.run(llm._narrate(llm.Request(system="s", user="u")))
     assert out == "" and shared.calls == 1  # same object -> don't call twice
+
+
+def test_affinity_matches_card_type_to_obstacle():
+    from vibequest import engine as e
+
+    # a PERSON yields to social/confrontation; a THING to improvise/disrupt
+    assert e.affinity_delta("boon", "person") == e.AFFINITY
+    assert e.affinity_delta("rival", "person") == e.AFFINITY
+    assert e.affinity_delta("twist", "person") == -e.AFFINITY
+    assert e.affinity_delta("encounter", "person") == -e.AFFINITY
+    # obstacle kind flips the affinities
+    assert e.affinity_delta("twist", "thing") == e.AFFINITY
+    assert e.affinity_delta("encounter", "thing") == e.AFFINITY
+    assert e.affinity_delta("boon", "thing") == -e.AFFINITY
+    assert e.obstacle_kind(True) == "person"
+    assert e.obstacle_kind(False) == "thing"
+
+
+def test_scene_progress_accumulates_across_rounds():
+    # the progress bar now means something: apply_fit_effects no longer zeroes it each round,
+    # so two strong plays fill it past the clear threshold (the server then breaks the wall).
+    from vibequest.engine import QuestState, apply_fit_effects, SCENE_THRESHOLD
+
+    q = QuestState(id="x", template_id="t", title="T", hook="h", complication="c")
+    apply_fit_effects(q, 60)
+    assert 0 < q.scene_progress < SCENE_THRESHOLD  # one strong play: partway
+    apply_fit_effects(q, 60)
+    assert q.scene_progress >= SCENE_THRESHOLD  # two strong plays: bar full -> wall can break
+
+
+def test_tension_meter_removed():
+    from vibequest.engine import QuestState
+
+    assert not hasattr(
+        QuestState(id="x", template_id="t", title="T", hook="h", complication="c"), "tension"
+    )

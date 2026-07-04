@@ -26,9 +26,11 @@ from .engine import (
     GameState,
     PlayedCard,
     QuestState,
+    affinity_delta,
     apply_fit_effects,
     apply_world_changes,
     advance_window,
+    obstacle_kind,
     classify_window,
     deal_hand,
     make_quest,
@@ -146,6 +148,9 @@ def _state_snapshot(state: GameState, include_world: bool = True) -> dict:
             "scene_threshold": SCENE_THRESHOLD,
             "surreal": state.quest.surreal,
             "decision": state.quest.decision_prompt,
+            "obstacle_kind": obstacle_kind(
+                bool(state.agent_goal) and any(n.id == state.agent_goal for n in state.quest.npcs)
+            ),
             "hp": state.quest.hp,
             "hp_max": 5,
             "doom": state.quest.doom,
@@ -313,6 +318,14 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
 
     # fit drives the meters: high fit -> progress, clash -> surreal
     fit = int(result.get("fit", 50))
+    # card-type affinity: the right tool for the obstacle lands cleaner, the wrong one has to bend
+    # reality (lower fit -> less progress, more surreal). This is what makes card CHOICE matter.
+    kind = obstacle_kind(current_npc is not None)
+    aff = 0
+    if plays:
+        top_type = max(plays, key=lambda p: p["weight"])["type"]
+        aff = affinity_delta(top_type, kind)
+        fit = max(0, min(100, fit + aff))
     apply_fit_effects(state.quest, fit)
     # reality-bend cost: an absurd card that only worked by warping the office pushes toward meltdown
     bend = max(0, min(3, int(result.get("surreal", 0) or 0)))
@@ -414,6 +427,8 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
             "momentum_delta": mom_delta,
             "progress_delta": prog_delta,
             "fit": fit,
+            "affinity": aff,
+            "obstacle_kind": kind,
             "surreal_delta": surreal_delta,
             "agent_sprite": state.character.sprite,
             "npc_sprite": current_npc.sprite if current_npc else 0,
@@ -440,10 +455,15 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
         await _end_quest(state)
         return
 
-    # --- a wall takes MULTIPLE rounds: it only gives way on a breakthrough (or after a cap) ---
-    state.quest.scene_progress = 0
+    # --- a wall takes MULTIPLE rounds: progress accumulates and the wall gives way when the bar
+    #     fills (scene_progress >= threshold), on an LLM breakthrough, or after a hard round cap so
+    #     a scene can never grind forever. The displayed progress bar now means what it shows. ---
     state.quest.scene_rounds += 1
-    wall_broken = bool(result.get("breakthrough")) or state.quest.scene_rounds >= MAX_SCENE_ROUNDS
+    wall_broken = (
+        state.quest.scene_progress >= SCENE_THRESHOLD
+        or bool(result.get("breakthrough"))
+        or state.quest.scene_rounds >= MAX_SCENE_ROUNDS
+    )
 
     state.window.resolving = False
     state.phase = "active"
@@ -469,6 +489,7 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
 
     # the wall gives way: advance along the planned ARC (cards may have DERAILED it into chaos)
     state.quest.scene_rounds = 0
+    state.quest.scene_progress = 0  # fresh bar for the next wall
     state.quest.scene_beat_start = len(state.quest.beats)
     _complete_artel_objective(state, state.quest.resolution_count)
     state.quest.resolution_count += 1
@@ -562,6 +583,14 @@ async def _end_quest(state: GameState) -> None:
                 asyncio.create_task(
                     artel.fail_task(task_id, outcome=f"Quest ended: {outcome_str}.")
                 )
+        # office memory: chronicle this delve so a later quest can recall it (see _start_new_game)
+        chron = (
+            f'CHRONICLE — "{state.quest.title}": {state.character.name}, '
+            f"{state.quest.hook.rstrip('.')}. Outcome: {outcome_str}."
+        )
+        if state.quest.facts:
+            chron += f" ({state.quest.facts[-1]})"
+        asyncio.create_task(artel.write_memory(chron, tags=["vibequest", "chronicle", outcome_str]))
     closing = ""
     if llm.enabled():
         closing = await llm.narrate_quest_end(
@@ -729,6 +758,22 @@ async def _start_new_game(preset_quest: QuestState | None = None) -> None:
     if complication:
         _state.log_event("complication", complication)
 
+    # office memory: recall a past delve related to this quest so the world remembers itself
+    callback_text = ""
+    if artel.enabled():
+        try:
+            past = await asyncio.wait_for(
+                artel.search_memory(_state.quest.hook, limit=5), timeout=3.0
+            )
+        except Exception:
+            past = ""
+        for line in (past or "").splitlines():
+            line = line.strip()
+            if line.startswith("CHRONICLE") and _state.quest.title not in line:
+                callback_text = "📁 The office remembers: " + line.split("—", 1)[-1].strip()
+                _state.log_event("memory", callback_text)
+                break
+
     if artel.enabled():
         asyncio.create_task(
             artel.write_memory(
@@ -756,7 +801,12 @@ async def _start_new_game(preset_quest: QuestState | None = None) -> None:
 
         asyncio.create_task(_make_artel_tasks())
     await _broadcast(
-        {"type": "new_quest", "state": _state_snapshot(_state), "opening": opening_text}
+        {
+            "type": "new_quest",
+            "state": _state_snapshot(_state),
+            "opening": opening_text,
+            "callback": callback_text,
+        }
     )
     await (
         _deal_full_hand()

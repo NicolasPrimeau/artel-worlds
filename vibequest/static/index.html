@@ -385,7 +385,7 @@
   <div class="infoh"><b>VibeQuest</b><button id="infoClose" type="button" aria-label="close">✕</button></div>
   <div class="infobody">
     <p><b>VibeQuest</b> is a small open world where an AI character navigates a mundane office situation that has become, somehow, a quest. Everyone watching shapes what happens next.</p>
-    <p><b>Play cards.</b> Each card is a tactic — charm, bribe, confront, improvise — the hero uses to get past whoever's blocking them. Cards batch up and resolve together: a strong fit clears the obstacle, a weak one backfires.</p>
+    <p><b>Play cards.</b> Each card is a tactic — charm, bribe, confront, improvise. <b>Match it to the obstacle:</b> 👤 a person yields to social &amp; confrontation cards; 🔧 a thing yields to improvise &amp; disrupt cards. The right tool lands clean and fills the progress bar; the wrong one still "works" — but reality bends, the office turns surreal, and things drift toward a meltdown. Cards batch up and resolve together.</p>
     <p><b>Stakes.</b> <span style="color:var(--coral)">♥ Composure</span> is your health — you lose a heart when a card badly backfires (a clash). At zero hearts you're fired and the quest ends. <span style="color:var(--coral)">⏱ The clock</span> ticks down one every round; if it hits zero, time's up. Clear the encounters before either runs out.</p>
     <p><b>It's written live.</b> Every beat is generated in the moment by a language model reacting to the cards and everything that's happened so far. No two quests play the same.</p>
     <p>It all runs on <span class="k">Artel</span>, the shared layer the agents coordinate over.</p>
@@ -1278,12 +1278,14 @@ function markReady(){
   }
   startDecisionTimer(_lastDecisionSeconds); // start the visible countdown fresh from dismissal
 }
-function showDecision(situation, seconds){
+function showDecision(situation, seconds, kind){
   const bar=document.getElementById("decision-bar"); if(!bar) return;
   if(!situation){ bar.style.display="none"; return; }
   _lastDecisionSeconds=seconds||44;
   document.getElementById("decision-text").textContent=situation;
-  document.getElementById("decision-cue").textContent="▶ YOUR MOVE";
+  const k=kind||(currentSnap&&currentSnap.quest&&currentSnap.quest.obstacle_kind);
+  const hint=k==="person"?" · 👤 charm / confront":k==="thing"?" · 🔧 improvise / disrupt":"";
+  document.getElementById("decision-cue").textContent="▶ YOUR MOVE"+hint;
   bar.classList.remove("resolving");
   bar.style.display="flex";
   if(_introDismissed) startDecisionTimer(_lastDecisionSeconds); // hold the timer until the intro is dismissed
@@ -1405,6 +1407,8 @@ function showEncounter(m){
   const md=m.momentum_delta||0, pd=m.progress_delta||0;
   if(pd){ const c=document.createElement("div"); c.className="enc-chip"; c.style.color=pd>0?"var(--sage2)":"var(--rose2)"; c.textContent=(pd>0?"▲":"▼")+" progress"; chips.appendChild(c); }
   if(md){ const c=document.createElement("div"); c.className="enc-chip"; c.style.color=md>0?"var(--sage2)":"var(--rose2)"; c.textContent=(md>0?"+":"")+md+" morale"; chips.appendChild(c); }
+  const aff=m.affinity||0;
+  if(aff){ const c=document.createElement("div"); c.className="enc-chip"; c.style.color=aff>0?"var(--sage2)":"var(--rose2)"; c.textContent=aff>0?"✓ right tool":"✗ wrong tool — it bends"; chips.appendChild(c); }
   scene.appendChild(chips);
   const tap=document.createElement("div"); tap.className="enc-tap"; tap.textContent="tap ▾"; scene.appendChild(tap);
   ov.appendChild(scene);
@@ -1972,6 +1976,7 @@ function connect(){
         resetHand();
         applyState(m.state); showChapter(m.state, true);
         showDecision(m.state.quest && m.state.quest.decision);
+        if(m.callback){ addLogEntry(m.callback); }
         if(m.opening){ addLogEntry(m.opening); }
         break;
       }
@@ -1986,7 +1991,7 @@ function connect(){
       case "scene_beat": { if(m.text) showSceneBeat(m.text, m.who||''); break; }
       case "npc_speak": { speakNPC(m.npc_name,m.line,5000); break; }
       case "scene_event": { applyState(m.state); if(m.text) addLogEntry(m.text); break; }
-      case "decision": showDecision(m.situation, m.seconds); break;
+      case "decision": showDecision(m.situation, m.seconds, m.state&&m.state.quest&&m.state.quest.obstacle_kind); break;
       case "card_action": playCardAction(m); break;
       case "card_resolved": {
         setThinking(false);
