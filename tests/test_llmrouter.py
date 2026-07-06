@@ -64,6 +64,40 @@ def test_no_token_cap_when_unset():
     assert "max_completion_tokens" not in h.last_json
 
 
+def _reasoning(model, provider="groq", **req):
+    r = Router([_model()])
+    h = _FakeHTTP()
+    asyncio.run(
+        r._call(h, _model(provider=provider, model=model), Request(system="s", user="u", **req))
+    )
+    return h.last_json.get("reasoning_effort", "<unset>")
+
+
+def test_reasoning_effort_maps_per_provider():
+    # gpt-oss accepts only low/medium/high — an off/none request clamps to its floor, never 400s
+    assert _reasoning("openai/gpt-oss-120b", reasoning_effort="none") == "low"
+    assert _reasoning("openai/gpt-oss-120b") == "low"  # default stays minimal
+    # llama/qwen/glm expose no knob — the field must be OMITTED even when asked, or the provider 400s
+    assert _reasoning("llama-3.3-70b-versatile", reasoning_effort="none") == "<unset>"
+    assert _reasoning("zai-glm-4.7", reasoning_effort="none") == "<unset>"
+    # gemini-2.5 thinks by default: off for tool calls (or when asked), untouched for plain text
+    assert _reasoning("gemini-2.5-flash", reasoning_effort="none", tools=[{"x": 1}]) == "none"
+    assert _reasoning("gemini-2.5-flash", tools=[{"x": 1}]) == "none"
+    assert _reasoning("gemini-2.5-flash") == "<unset>"  # plain-text caller keeps the model default
+
+
+def test_tool_choice_defaults_to_auto_and_honors_override():
+    r = Router([_model()])
+    h = _FakeHTTP()
+    tools = [{"type": "function", "function": {"name": "f", "parameters": {}}}]
+    asyncio.run(r._call(h, r.models[0], Request(system="s", user="u", tools=tools)))
+    assert h.last_json["tool_choice"] == "auto"
+    asyncio.run(
+        r._call(h, r.models[0], Request(system="s", user="u", tools=tools, tool_choice="required"))
+    )
+    assert h.last_json["tool_choice"] == "required"
+
+
 def test_run_stops_at_deadline(monkeypatch):
     r = Router([_model()])
     calls = {"n": 0}

@@ -61,6 +61,11 @@ _POOL = [s for s in _env("POOL", ",".join(_DEFAULT_POOL)).split(",") if s.strip(
 # never the fast/flash-lite tier. Override with PHALANX_MIN_GRADE.
 MIN_GRADE = _env("MIN_GRADE", "capable")
 
+# An arena turn is a single tool decision against a tight max_tokens — chain-of-thought is not
+# needed and, on gemini-2.5, hidden thinking eats the whole budget and returns an empty command.
+# Declare reasoning OFF; the router maps it to each provider's supported knob (or drops it).
+REASONING = _env("REASONING", "none")
+
 
 def _shape(user: str, model: str) -> str:
     # Qwen3 reasons unless told not to; centralise that quirk in the router, not the agent code.
@@ -129,6 +134,7 @@ async def act(
             max_tokens=max_tokens,
             tools=openai_tools(toolset),
             tool_choice="required",
+            reasoning_effort=REASONING,
         )
     )
 
@@ -149,5 +155,6 @@ async def complete(
             timeout=timeout,
             min_grade=MIN_GRADE,
             max_tokens=max_tokens,
+            reasoning_effort=REASONING,
         )
     )

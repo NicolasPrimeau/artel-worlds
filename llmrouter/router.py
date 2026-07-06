@@ -35,6 +35,9 @@ class Request:
     tool_choice: str | None = (
         None  # "auto" (default) | "required" | "none" — force a tool call when the caller needs one
     )
+    reasoning_effort: str | None = (
+        None  # request reasoning off/low/…; the router maps it to each provider's supported knob
+    )
     max_tokens: int | None = None  # cap on completion length; None = provider default (unbounded)
     deadline: float | None = (
         None  # overall wall-clock budget (s) across all retries; None = no bound
@@ -174,14 +177,28 @@ class Router:
                 {"role": "user", "content": user},
             ],
         }
+        # Reasoning control lives in the router: each provider exposes a DIFFERENT knob (or none),
+        # so a caller can't safely set one field itself. We keep reasoning minimal per provider by
+        # default; req.reasoning_effort overrides the effort where the target model supports it, and
+        # is silently dropped for models (llama/qwen/glm/…) that expose no knob — sending one 400s.
+        eff = req.reasoning_effort
         if "gpt-5" in m.model:
             # gpt-5 reasoning models reject custom temperature, and reason for thousands of tokens by
             # default (slow + costly). Force the default temp and minimal reasoning for chat use.
             payload["temperature"] = 1
-            payload["reasoning_effort"] = "minimal"
+            payload["reasoning_effort"] = eff or "minimal"
         elif "gpt-oss" in m.model:
-            # gpt-oss reasoning models default to medium effort (slow); keep them snappy for chat use.
-            payload["reasoning_effort"] = "low"
+            # gpt-oss reasoning models default to medium effort (slow); keep them snappy. Their knob
+            # accepts only low/medium/high — anything else (e.g. "none") 400s, so clamp to "low".
+            payload["reasoning_effort"] = eff if eff in ("low", "medium", "high") else "low"
+        elif "gemini-2.5" in m.model:
+            # gemini 2.5 THINKS by default; with a tight max_tokens the hidden reasoning eats the whole
+            # budget and returns an empty (tool) response. "none" turns thinking off. Do it for tool
+            # calls (or when the caller asks); leave plain-text callers on the model default.
+            if eff is not None:
+                payload["reasoning_effort"] = eff
+            elif req.tools:
+                payload["reasoning_effort"] = "none"
         if req.max_tokens:
             # OpenAI reasoning models (gpt-5) reject `max_tokens` and require `max_completion_tokens`
             # (which also budgets reasoning tokens); other OpenAI-compatible providers take max_tokens.
