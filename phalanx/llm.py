@@ -71,8 +71,15 @@ REASONING = _env("REASONING", "none")
 
 
 def _shape(user: str, model: str) -> str:
-    # Qwen3 reasons unless told not to; centralise that quirk in the router, not the agent code.
-    return user + ("\n/no_think" if "qwen" in model.lower() else "")
+    # Some models reason unless told not to IN THE PROMPT (no API knob): Qwen3 obeys /no_think,
+    # GLM obeys /nothink. Without it, thinking eats the tight max_tokens and the forced tool call
+    # 400s ("failed to generate tool_calls") — glm-4.7 failed 100% until this was added.
+    m = model.lower()
+    if "qwen" in m:
+        return user + "\n/no_think"
+    if "glm" in m:
+        return user + "\n/nothink"
+    return user
 
 
 ROUTER = Router(
