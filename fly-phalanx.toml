@@ -19,8 +19,10 @@ primary_region = "yyz"
     soft_limit = 150
 
 [[vm]]
-  size = "shared-cpu-2x"  # 2 shared vCPUs cut the Claude CLI cold-start / warmup window
-  memory = "1024mb"  # 3 resident Claude CLI commander sessions (claude-sdk provider)
+  # Commanders route over the shared llmrouter (stateless HTTP) — no local CLI to cold-start,
+  # so the arena just runs uvicorn + async httpx fan-out. A single shared vCPU is plenty.
+  size = "shared-cpu-1x"
+  memory = "512mb"
 
 [checks]
   [checks.health]

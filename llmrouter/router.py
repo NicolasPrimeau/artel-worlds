@@ -32,6 +32,9 @@ class Request:
         "fast"  # "fast" | "balanced" | "capable" — filters to models at or above this tier
     )
     tools: list | None = None  # OpenAI tool schemas; when set, act() returns the model's tool call
+    tool_choice: str | None = (
+        None  # "auto" (default) | "required" | "none" — force a tool call when the caller needs one
+    )
     max_tokens: int | None = None  # cap on completion length; None = provider default (unbounded)
     deadline: float | None = (
         None  # overall wall-clock budget (s) across all retries; None = no bound
@@ -186,7 +189,7 @@ class Router:
             payload[key] = req.max_tokens
         if req.tools:
             payload["tools"] = req.tools
-            payload["tool_choice"] = "auto"
+            payload["tool_choice"] = req.tool_choice or "auto"
         r = await h.post(m.url, headers={"Authorization": f"Bearer {m.key}"}, json=payload)
         if r.status_code == 429:
             raise RateLimited(float(r.headers.get("retry-after", "0") or 0))

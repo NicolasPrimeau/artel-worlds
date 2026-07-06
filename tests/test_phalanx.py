@@ -657,58 +657,43 @@ def test_sdk_extract_call_parses_json_orders():
     assert tool_instruction(None) == "Reply with plain text only."
 
 
-def test_chat_routes_claude_sdk_and_fails_over(monkeypatch):
+def test_command_decision_routes_through_router_as_forced_tool(monkeypatch):
     import asyncio
 
     from phalanx import agent as A
+    from phalanx import llm as L
 
-    sdk_ep = {"provider": "claude-sdk", "model": "haiku", "key": "tok", "cin": 0, "cout": 0}
-    gem_ep = dict(A.PRIMARY, key="gk")
-    monkeypatch.setattr(A, "_ENDPOINTS", [sdk_ep, gem_ep])
-    monkeypatch.setattr(A, "_down_until", {})
+    captured = {}
 
-    async def fake_sdk(ep, system, transcript, tools, session=""):
-        return "", [{"name": "command", "input": {"focus": 7}}], 10, 5, dict(ep, flat_cost=0.004)
+    class FakeRouter:
+        spend = {"usd": 0.0, "in": 0, "out": 0}
 
-    monkeypatch.setattr(A, "sdk_chat", fake_sdk)
-    text, calls, tin, tout, ep = asyncio.run(
-        A._chat(None, "sys", [{"role": "user", "text": "brief"}], True, A.TOOLS)
-    )
-    assert calls[0]["input"]["focus"] == 7
-    assert ep["flat_cost"] == 0.004  # SDK-reported credit cost wins over token math
+        def enabled(self):
+            return True
 
-    async def broken_sdk(ep, system, transcript, tools, session=""):
-        raise RuntimeError("credit exhausted")
+        async def act(self, req):
+            captured["req"] = req
+            return {"name": "command", "args": {"focus": 7}}
 
-    posted = {}
+    monkeypatch.setattr(L, "ROUTER", FakeRouter())
 
-    async def fake_post(url, headers=None, json=None):
-        posted["url"] = url
+    out = asyncio.run(L.act("sys", "brief", A.TOOLS))
+    assert out == {"name": "command", "args": {"focus": 7}}
 
-        class R:
-            status_code = 200
-
-            @staticmethod
-            def json():
-                return {"choices": [{"message": {"content": "ok"}}], "usage": {}}
-
-        return R()
-
-    class H:
-        post = staticmethod(fake_post)
-
-    monkeypatch.setattr(A, "sdk_chat", broken_sdk)
-    monkeypatch.setattr(A, "_down_until", {})
-    asyncio.run(A._chat(H(), "sys", [{"role": "user", "text": "brief"}], True, A.TOOLS))
-    assert posted["url"] == gem_ep["url"]  # failed SDK rolled to the Gemini endpoint
-    assert A._down_until.get("haiku", 0) > 0  # and the SDK endpoint was benched
+    req = captured["req"]
+    # the standing-orders decision must be a FORCED tool call on the capable grade — the old
+    # force_act semantics, now owned by the router.
+    assert req.requires_tools is True
+    assert req.tool_choice == "required"
+    assert req.min_grade == L.MIN_GRADE == "capable"
+    assert req.tools[0]["function"]["name"] == "command"  # phalanx schema -> OpenAI tool shape
 
 
 def test_spend_cap_is_monthly(monkeypatch):
     from phalanx import agent as A
     from phalanx.agent import SPEND_CAP_USD, Squad
 
-    monkeypatch.setattr(A, "LLM_KEY", "test-key")  # the cap, not key presence, is under test
+    monkeypatch.setattr(A.llm, "enabled", lambda: True)  # the cap, not key presence, is under test
     sq = Squad(solo=True)
     sq.agents = [{"id": "x", "key": "k"}]
     sq.month, sq.month_spent = "2026-05", SPEND_CAP_USD + 1  # blew LAST month's budget
@@ -968,16 +953,10 @@ def test_focus_and_rally_are_mutually_exclusive_per_command():
     async def run(visible, inp):
         bot = FakeBot()
 
-        async def fake_chat(http, system, transcript, force, tools, session=""):
-            return (
-                "",
-                [{"name": "command", "input": inp}],
-                1,
-                1,
-                {"flat_cost": 0.0, "cin": 0.0, "cout": 0.0},
-            )
+        async def fake_act(system, user, toolset, **kwargs):
+            return {"name": "command", "args": inp}
 
-        A._chat = fake_chat
+        A.llm.act = fake_act
         p = {
             "id": 1,
             "q": 5,

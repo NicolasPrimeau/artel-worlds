@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import re
 import logging
 import os
@@ -10,7 +9,7 @@ import httpx
 
 from .config import DEFAULT
 from .control import LOW_ENERGY, STRATEGIES, Bot
-from .sdkchat import sdk_chat
+from . import llm
 
 log = logging.getLogger("phalanx")
 
@@ -21,83 +20,14 @@ log = logging.getLogger("phalanx")
 # deterministic seek-and-destroy Bot. The whole demo is: same arena, same guns — the only
 # thing Artel has that Red doesn't is each other, through Artel.
 #
-# The model is a pure env swap. PHALANX_LLM_PROVIDER=anthropic uses the Messages API
-# (Haiku); =openai uses any OpenAI-compatible chat endpoint — Gemini Flash, Groq, DeepSeek,
-# etc. — set PHALANX_LLM_URL, PHALANX_MODEL and PHALANX_LLM_KEY to point it anywhere cheaper.
+# Every LLM call routes through the shared llmrouter (phalanx/llm.py): a round-robin mesh over
+# free, capable, tool-calling providers (Groq / Cerebras / SambaNova / NVIDIA / Gemini) with
+# per-model 429 cooldowns and telemetry. No provider is special-cased here — model choice, key
+# resolution, failover and the capable-grade floor all live in llm.py.
 
 ARTEL_URL = os.environ.get("ARTEL_URL", "https://artel.run").rstrip("/")
 PHALANX_PROJECT = os.environ.get("PHALANX_PROJECT", "phalanx")
-# Default is Gemini 2.5 Flash over Google's OpenAI-compatible endpoint. OpenAI is out: its
-# 10k requests/day quota dies mid-stream under continuous play. The reflex floors in decide()
-# cover Gemini's occasional tool-calling misses. Set PHALANX_LLM_PROVIDER=anthropic
-# (+ ANTHROPIC_API_KEY) for Claude, or point PHALANX_LLM_URL / PHALANX_MODEL / PHALANX_LLM_KEY
-# at any other OpenAI-compatible provider.
-PROVIDER = os.environ.get("PHALANX_LLM_PROVIDER", "openai")
-MODEL = os.environ.get(
-    "PHALANX_MODEL", "haiku" if PROVIDER == "claude-sdk" else "gemini-3.1-flash-lite"
-)
-# claude-sdk runs on the subscription OAuth token (monthly Agent SDK credit, pauses when
-# spent) — the token itself is read by the CLI from the environment; here it only needs
-# to be truthy so the endpoint counts as armed.
-LLM_KEY = (
-    os.environ.get("PHALANX_LLM_KEY", "")
-    or os.environ.get("ANTHROPIC_API_KEY", "")
-    or (os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "") if PROVIDER == "claude-sdk" else "")
-)
-_DEFAULT_URL = (
-    "https://api.anthropic.com/v1/messages"
-    if PROVIDER == "anthropic"
-    else "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-)
-LLM_URL = os.environ.get("PHALANX_LLM_URL", _DEFAULT_URL)
-LLM_VERSION = os.environ.get("PHALANX_LLM_VERSION", "2023-06-01")
 SPEND_CAP_USD = float(os.environ.get("PHALANX_SPEND_CAP_USD", "20"))  # per MONTH
-REASONING = os.environ.get("PHALANX_REASONING", "none")  # gemini thinking effort; none = off
-
-
-def _make_ep(provider: str, model: str, url: str, key: str, version: str, cin: str, cout: str):
-    return {
-        "provider": provider,
-        "model": model,
-        "url": url,
-        "key": key,
-        "version": version,
-        "cin": float(cin) / 1_000_000,  # $/input token
-        "cout": float(cout) / 1_000_000,  # $/output token
-    }
-
-
-# Primary driver, plus a SECOND provider used only when the primary rate-limits or errors — so a
-# 429 on one provider fails the decision over to another LLM instead of dropping the tank to a
-# scripted move. Blue stays model-driven end to end. Default fallback is Gemini Flash-Lite
-# (cheapest) over Google's OpenAI-compatible endpoint; set PHALANX_LLM2_KEY to arm it.
-PRIMARY = _make_ep(
-    PROVIDER,
-    MODEL,
-    LLM_URL,
-    LLM_KEY,
-    LLM_VERSION,
-    os.environ.get("PHALANX_COST_IN", "0.25"),
-    os.environ.get("PHALANX_COST_OUT", "1.50"),
-)
-_LLM2_KEY = os.environ.get("PHALANX_LLM2_KEY", "")
-FALLBACK = (
-    _make_ep(
-        os.environ.get("PHALANX_LLM2_PROVIDER", "openai"),
-        os.environ.get("PHALANX_LLM2_MODEL", "gemini-3.5-flash"),
-        os.environ.get(
-            "PHALANX_LLM2_URL",
-            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-        ),
-        _LLM2_KEY,
-        os.environ.get("PHALANX_LLM2_VERSION", "2023-06-01"),
-        os.environ.get("PHALANX_LLM2_COST_IN", "1.50"),
-        os.environ.get("PHALANX_LLM2_COST_OUT", "9.00"),
-    )
-    if _LLM2_KEY
-    else None
-)
-_ENDPOINTS = [PRIMARY] + ([FALLBACK] if FALLBACK else [])
 # Hard ceiling on a tank's WHOLE decision (all tool rounds together) so a slow model can never
 # stall the synchronous tick — past it the tank falls back to a reflex move instead of freezing.
 DECIDE_DEADLINE = float(os.environ.get("PHALANX_DECIDE_DEADLINE", "12"))
@@ -119,9 +49,6 @@ COHESION_HEXES = int(
 FOLLOW_COOLDOWN = int(
     os.environ.get("PHALANX_FOLLOW_COOLDOWN", "10")
 )  # min ticks before a follow_me is re-announced — a standing order, not a per-turn shout
-WARM_KEEPALIVE = float(
-    os.environ.get("PHALANX_WARM_KEEPALIVE", "300")
-)  # seconds between keepalive pings that hold the claude-sdk CLI sessions warm through idle
 
 # The commander layer: each tank's MOTOR is the same deterministic Bot red uses (targeting,
 # range bands, pathing, prudence — identical competence on both sides). The LLM agent COMMANDS
@@ -277,236 +204,6 @@ def _open_dir(wallset: set, want: int) -> int:
         if AXIAL_DIRS[d] not in wallset:
             return d
     return want
-
-
-# --- provider adapters: a neutral transcript in/out, provider wire format hidden here ---
-def _build_payload(
-    ep: dict,
-    system: str,
-    transcript: list[dict],
-    force_act: bool = False,
-    tools: list | None = None,
-) -> tuple[str, dict, dict]:
-    toolset = tools if tools is not None else TOOLS
-    if ep["provider"] == "anthropic":
-        messages = []
-        for e in transcript:
-            if e["role"] == "user":
-                messages.append({"role": "user", "content": e["text"]})
-            elif e["role"] == "assistant":
-                blocks = [{"type": "text", "text": e["text"]}] if e.get("text") else []
-                blocks += [
-                    {"type": "tool_use", "id": c["id"], "name": c["name"], "input": c["input"]}
-                    for c in e["calls"]
-                ]
-                messages.append({"role": "assistant", "content": blocks})
-            else:
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "tool_result", "tool_use_id": r["id"], "content": r["output"]}
-                            for r in e["results"]
-                        ],
-                    }
-                )
-        # prompt caching: the system prompt + tool schema are byte-identical every command, so
-        # mark them as a cache breakpoint — the repeated prefix bills at ~0.1x after the first
-        # write. Only the small per-turn brief (after the breakpoint) is ever fresh input.
-        _tools = [
-            {"name": t["name"], "description": t["description"], "input_schema": t["schema"]}
-            for t in toolset
-        ]
-        if _tools:
-            _tools[-1] = {**_tools[-1], "cache_control": {"type": "ephemeral"}}
-        payload = {
-            "model": ep["model"],
-            "max_tokens": 320,
-            "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-            "tools": _tools,
-            "tool_choice": {"type": "tool", "name": toolset[0]["name"]}
-            if force_act
-            else {"type": "any"},
-            "messages": messages,
-        }
-        headers = {
-            "x-api-key": ep["key"],
-            "anthropic-version": ep["version"],
-            "content-type": "application/json",
-        }
-        return ep["url"], payload, headers
-
-    messages = [{"role": "system", "content": system}]
-    for e in transcript:
-        if e["role"] == "user":
-            messages.append({"role": "user", "content": e["text"]})
-        elif e["role"] == "assistant":
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": e.get("text") or None,
-                    "tool_calls": [
-                        {
-                            "id": c["id"],
-                            "type": "function",
-                            "function": {"name": c["name"], "arguments": json.dumps(c["input"])},
-                        }
-                        for c in e["calls"]
-                    ],
-                }
-            )
-        else:
-            for r in e["results"]:
-                messages.append({"role": "tool", "tool_call_id": r["id"], "content": r["output"]})
-    payload = {
-        "model": ep["model"],
-        "max_tokens": 320,
-        "tools": [
-            {
-                "type": "function",
-                "function": {
-                    "name": t["name"],
-                    "description": t["description"],
-                    "parameters": t["schema"],
-                },
-            }
-            for t in toolset
-        ],
-        "tool_choice": {"type": "function", "function": {"name": toolset[0]["name"]}}
-        if force_act
-        else "required",
-        "messages": messages,
-    }
-    if REASONING and "gemini" in ep["model"]:
-        # Gemini 2.5 models think by default and bill the hidden reasoning tokens as
-        # output — at $2.50/M that burns the monthly budget in hours. An arena turn does
-        # not need chain-of-thought; the reflex floors catch any sloppy miss.
-        payload["reasoning_effort"] = REASONING
-    headers = {
-        "authorization": f"Bearer {ep['key']}",
-        "content-type": "application/json",
-        "user-agent": "artel-worlds/1.0",  # Groq's Cloudflare 403s the default python UA
-    }
-    return ep["url"], payload, headers
-
-
-# cumulative prompt-cache instrumentation: how much of the input we've sent has been served
-# from the provider's cache (cheap) vs paid fresh — the answer to "are we caching enough"
-_CACHE = {"cached_in": 0, "input": 0}
-
-
-def _parse(ep: dict, data: dict) -> tuple[str, list[dict], int, int, int]:
-    # last element is cached INPUT tokens — what prompt caching saved us this call
-    if ep["provider"] == "anthropic":
-        usage = data.get("usage", {})
-        text, calls = "", []
-        for block in data.get("content", []):
-            if block.get("type") == "text":
-                text += block.get("text", "")
-            elif block.get("type") == "tool_use":
-                calls.append(
-                    {
-                        "id": block.get("id"),
-                        "name": block.get("name"),
-                        "input": block.get("input", {}),
-                    }
-                )
-        # anthropic bills cache reads separately from fresh input; count both as input seen
-        fresh = usage.get("input_tokens", 0)
-        cached = usage.get("cache_read_input_tokens", 0)
-        return text, calls, fresh + cached, usage.get("output_tokens", 0), cached
-
-    usage = data.get("usage", {})
-    msg = (data.get("choices") or [{}])[0].get("message", {})
-    calls = []
-    for c in msg.get("tool_calls") or []:
-        fn = c.get("function", {})
-        try:
-            inp = json.loads(fn.get("arguments") or "{}")
-        except Exception:
-            inp = {}
-        calls.append({"id": c.get("id"), "name": fn.get("name"), "input": inp})
-    # gemini/openai-compat report implicitly-cached prefix tokens here (already inside prompt_tokens)
-    cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
-    return (
-        msg.get("content") or "",
-        calls,
-        usage.get("prompt_tokens", 0),
-        usage.get("completion_tokens", 0),
-        cached,
-    )
-
-
-# rate-limit memory: when an endpoint 429s, remember it and stop paying a wasted request
-# (plus latency) per decision against a dead quota. A daily-quota 429 sidelines the endpoint
-# for 15 minutes; a per-minute one for 20 seconds. Counters are surfaced in /debug.
-THROTTLED: dict[str, int] = {}
-_down_until: dict[str, float] = {}
-_DOWN_DAILY = 900.0
-# a per-minute (TPM) throttle clears in well under a minute — bench the endpoint only briefly
-# so we get back on the cheap primary as soon as the token budget frees up, riding the instant
-# in-call failover in the meantime rather than waiting it out.
-_DOWN_BURST = float(os.environ.get("PHALANX_DOWN_BURST", "8"))
-
-
-def _mark_throttled(ep: dict, body: str) -> None:
-    THROTTLED[ep["model"]] = THROTTLED.get(ep["model"], 0) + 1
-    cooldown = _DOWN_DAILY if ("per day" in body or "RPD" in body) else _DOWN_BURST
-    _down_until[ep["model"]] = asyncio.get_event_loop().time() + cooldown
-
-
-def _live_endpoints() -> list[dict]:
-    now = asyncio.get_event_loop().time()
-    eps = [ep for ep in _ENDPOINTS if ep["key"] and _down_until.get(ep["model"], 0) <= now]
-    # everything sidelined: try them all anyway rather than instantly giving up to reflex
-    return eps or [ep for ep in _ENDPOINTS if ep["key"]]
-
-
-async def _chat(
-    http: httpx.AsyncClient,
-    system: str,
-    transcript: list[dict],
-    force_act: bool = False,
-    tools: list | None = None,
-    session: str = "",
-) -> tuple[str, list[dict], int, int, dict]:
-    # ask the first live provider; on a rate-limit/error fail the SAME turn over to the next
-    # IMMEDIATELY — no retry-backoff against a dead quota. Raises only when all are exhausted.
-    last: tuple[dict, httpx.Response] | None = None
-    sdk_err: Exception | None = None
-    for ep in _live_endpoints():
-        if ep["provider"] == "claude-sdk":
-            try:
-                return await sdk_chat(ep, system, transcript, tools, session)
-            except Exception as e:
-                # a paused credit or SDK failure rolls straight to the next provider; back
-                # off long so every call doesn't pay the spawn cost against a dead credit
-                _mark_throttled(ep, "per day")
-                log.warning("claude-sdk failed: %s", str(e)[:200])
-                sdk_err = e
-                continue
-        url, payload, headers = _build_payload(ep, system, transcript, force_act, tools)
-        r = await http.post(url, headers=headers, json=payload)
-        if r.status_code < 300:
-            text, calls, tin, tout, cached = _parse(ep, r.json())
-            _CACHE["cached_in"] += cached
-            _CACHE["input"] += tin
-            return text, calls, tin, tout, ep
-        if r.status_code == 429:
-            _mark_throttled(ep, r.text[:300])
-        log.warning("LLM %s HTTP %s: %s", ep["model"], r.status_code, r.text[:200])
-        last = (ep, r)
-    if last is None:
-        if sdk_err is not None:
-            raise RuntimeError(f"claude-sdk: {sdk_err}")
-        raise RuntimeError("no llm endpoint configured")
-    raise RuntimeError(f"llm http {last[1].status_code}")
-
-
-async def _post_llm(
-    http: httpx.AsyncClient, url: str, headers: dict, payload: dict
-) -> httpx.Response:
-    return await http.post(url, headers=headers, json=payload)
 
 
 def _headers(agent: dict) -> dict:
@@ -744,58 +441,9 @@ async def _board(http: httpx.AsyncClient, agent: dict) -> str:
 
 
 async def _oneshot(http: httpx.AsyncClient, sys: str, user: str, max_tokens: int = 60) -> str:
-    for ep in _live_endpoints():
-        if ep["provider"] == "claude-sdk":
-            try:
-                text, _, _, _, _ = await sdk_chat(ep, sys, [{"role": "user", "text": user}], None)
-                return text.strip()
-            except Exception as e:
-                _mark_throttled(ep, "per day")
-                log.warning("claude-sdk oneshot failed: %s", str(e)[:200])
-                continue
-        if ep["provider"] == "anthropic":
-            payload = {
-                "model": ep["model"],
-                "max_tokens": max_tokens,
-                "system": sys,
-                "messages": [{"role": "user", "content": user}],
-            }
-            headers = {
-                "x-api-key": ep["key"],
-                "anthropic-version": ep["version"],
-                "content-type": "application/json",
-            }
-        else:
-            payload = {
-                "model": ep["model"],
-                "max_tokens": max_tokens,
-                "messages": [
-                    {"role": "system", "content": sys},
-                    {"role": "user", "content": user},
-                ],
-            }
-            if REASONING and "gemini" in ep["model"]:
-                # without this, hidden thinking eats the whole max_tokens budget and the
-                # visible lesson/plan arrives truncated to two words
-                payload["reasoning_effort"] = REASONING
-            headers = {
-                "authorization": f"Bearer {ep['key']}",
-                "content-type": "application/json",
-                "user-agent": "artel-worlds/1.0",  # Groq's Cloudflare 403s the default python UA
-            }
-        r = await _post_llm(http, ep["url"], headers, payload)
-        if r.status_code >= 300:
-            if r.status_code == 429:
-                _mark_throttled(ep, r.text[:300])
-            continue
-        data = r.json()
-        if ep["provider"] == "anthropic":
-            blocks = data.get("content", [])
-            return "".join(b.get("text", "") for b in blocks if b.get("type") == "text").strip()
-        return (
-            (data.get("choices") or [{}])[0].get("message", {}).get("content", "") or ""
-        ).strip()
-    return ""
+    # plain-text completion (huddle plan, post-match lesson) — the router owns model choice and
+    # failover; http is unused now but kept in the signature so callers stay unchanged.
+    return (await llm.complete(sys, user, max_tokens=max_tokens)).strip()
 
 
 async def _reflect(
@@ -1033,13 +681,17 @@ async def command(
     system = (SOLO_SYSTEM if solo else SYSTEM).format(mates=" and ".join(mate_ids) or "your team")
     toolset = TOOLS_SOLO if solo else TOOLS
 
-    text, calls, tin, tout, ep = await _chat(
-        http, system, [{"role": "user", "text": user}], True, toolset, session=agent["id"]
-    )
-    cost = ep.get("flat_cost", tin * ep["cin"] + tout * ep["cout"])
+    action = await llm.act(system, user, toolset, timeout=LLM_TIMEOUT)
+    # free-tier pool: no per-token billing. The router keeps a notional spend estimate in
+    # llm.spend() for the ops board; the per-decision ledger cost is zero.
+    cost = 0.0
     plan = ""
     comms: list[dict] = []
-    cmd = next((c for c in calls if c["name"] == "command"), None)
+    cmd = (
+        {"name": "command", "input": action.get("args") or {}}
+        if action and action.get("name") == "command"
+        else None
+    )
     if cmd:
         inp = cmd["input"]
         if counts is not None:
@@ -1332,7 +984,7 @@ class Squad:
 
     @property
     def enabled(self) -> bool:
-        has_llm = bool(LLM_KEY) or bool(FALLBACK and FALLBACK["key"])
+        has_llm = llm.enabled()
         import datetime
 
         now_month = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m")
@@ -1539,33 +1191,13 @@ class Squad:
             log.warning("phalanx commander %s skipped a beat: %s", agent["id"], self.last_error)
 
     async def warm(self) -> None:
-        """Pre-establish each commander's claude-sdk CLI session (serialized cold-starts via
-        sdkchat's connect lock) so a match begins with warm, fast sessions — instead of three
-        ~20s spawns colliding when a viewer arrives and pegging the shared CPU. No-op unless
-        the live provider is claude-sdk."""
-        if self.solo or PROVIDER != "claude-sdk" or not self.enabled:
-            return
-        if self._http is None:
-            self._http = httpx.AsyncClient(timeout=httpx.Timeout(LLM_TIMEOUT))
-        for a in self.agents:
-            mate_ids = [x["id"] for x in self.agents if x["id"] != a["id"]]
-            system = SYSTEM.format(mates=" and ".join(mate_ids) or "your team")
-            try:
-                await sdk_chat(
-                    PRIMARY, system, [{"role": "user", "text": "Reply READY."}], TOOLS, a["id"]
-                )
-            except Exception as e:
-                log.warning("phalanx warm %s: %s", a["id"], str(e)[:160])
+        """No-op: the router speaks plain stateless HTTP, so there is no per-commander CLI
+        session to cold-start or hold open. Kept for call-site compatibility."""
+        return
 
     async def keepalive(self) -> None:
-        """Hold the warm sessions open through idle (and silently reconnect drops) so phalanx
-        is ready before anyone watches — the whole point of keeping the CLI warm off-camera."""
-        while True:
-            try:
-                await self.warm()
-            except Exception:
-                pass
-            await asyncio.sleep(WARM_KEEPALIVE)
+        """No-op: nothing to keep warm now that commanders route over stateless HTTP."""
+        return
 
     def current_assignment(self) -> dict[int, dict]:
         return dict(self._assign)
@@ -1726,28 +1358,20 @@ class Squad:
 
     def status(self) -> dict:
         """A snapshot of squad health for the /debug endpoint and logs."""
+        router_spend = llm.spend()
         return {
             "enabled": self.enabled,
             "agents": [a["id"] for a in self.agents],
             "assigned_tanks": list(self._assign),
-            "provider": PROVIDER,
-            "model": MODEL,
-            "llm_url": LLM_URL,
-            "llm_key_set": bool(LLM_KEY),
-            "fallback_model": FALLBACK["model"] if FALLBACK else None,
-            "fallback_key_set": bool(FALLBACK and FALLBACK["key"]),
+            "model": llm.describe(),
+            "min_grade": llm.MIN_GRADE,
+            "llm_key_set": llm.enabled(),
             "spent_usd": round(self.spent, 4),
             "cap_usd": SPEND_CAP_USD,
-            "cache_ratio": round(_CACHE["cached_in"] / max(1, _CACHE["input"]), 3),
-            "cached_in": _CACHE["cached_in"],
-            "input_tok": _CACHE["input"],
+            "router_spend_usd": round(router_spend.get("usd", 0.0), 4),
+            "router_tokens": {"in": router_spend.get("in", 0), "out": router_spend.get("out", 0)},
             "last_error": self.last_error,
-            "throttled_429s": dict(THROTTLED),
-            "endpoints_down": {
-                m: round(t - asyncio.get_event_loop().time(), 1)
-                for m, t in _down_until.items()
-                if t > asyncio.get_event_loop().time()
-            },
+            "models": llm.metrics(),
         }
 
     def stop(self) -> None:
