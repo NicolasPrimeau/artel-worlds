@@ -1119,6 +1119,26 @@ class Squad:
             if m:
                 bot.orders["regroup"] = (int(m.group(1)), int(m.group(2)))
 
+        # doctrine: a massed 3v1 wins, three spread 1v1s lose. When the unit has a committed
+        # rally, physically CLOSE any tank that isn't in a real fight onto it — otherwise spread
+        # tanks each sit poking their own long-range duel and never mass (they announce the rally
+        # but never move). "Real fight" is a CLOSE clear shot or being hit, not merely an enemy at
+        # max range; a live focus and a teammate's distress both outrank this, and the commander
+        # can still override on its next command.
+        rally_pt = self._rally_pt.get("cell") if self._rally_pt else None
+        close_fight = p.get("hit_taken") or any(
+            v["kind"] == "enemy" and v.get("clear_shot") and v["dist"] <= 4
+            for v in p.get("visible", [])
+        )
+        if (
+            rally_pt
+            and not distress
+            and not close_fight
+            and not bot.orders.get("focus")
+            and _hexdist(p["q"], p["r"], rally_pt[0], rally_pt[1]) > 2
+        ):
+            bot.orders["regroup"] = (int(rally_pt[0]), int(rally_pt[1]))
+
         # command cadence: routine every COMMAND_EVERY ticks (staggered per tank), plus
         # immediately on alarms — taking fire, or fresh contact the team has not heard of
         idx = list(self._assign).index(tank_id) if tank_id in self._assign else 0
