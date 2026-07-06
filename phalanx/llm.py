@@ -57,10 +57,12 @@ _DEFAULT_POOL = [
 ]
 _POOL = [s for s in _env("POOL", ",".join(_DEFAULT_POOL)).split(",") if s.strip()]
 
-# A tactical commander must reason about space and coordination, not just answer fast — so the
-# router is held to the CAPABLE grade (gpt-oss-120b, llama-3.3-70b, gemini-2.5-flash, glm-4.7),
-# never the fast/flash-lite tier. Override with PHALANX_MIN_GRADE.
-MIN_GRADE = _env("MIN_GRADE", "capable")
+# A tactical commander needs a real model, so the router floor is BALANCED — capable (gpt-oss-120b,
+# llama-3.3-70b) plus the balanced tier (qwen3-32b, gpt-oss-20b, glm-4.7), never the fast/flash-lite
+# tier. Balanced is included so groq's per-model rate buckets (gpt-oss-20b, qwen3-32b) and cerebras
+# glm-4.7 share the load — without them a 2-provider capable-only pool 429s hard. Override with
+# PHALANX_MIN_GRADE=capable to tighten again. Every eligible model still supports tool calling.
+MIN_GRADE = _env("MIN_GRADE", "balanced")
 
 # An arena turn is a single tool decision against a tight max_tokens — chain-of-thought is not
 # needed and, on gemini-2.5, hidden thinking eats the whole budget and returns an empty command.
