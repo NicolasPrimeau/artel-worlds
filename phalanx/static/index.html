@@ -119,6 +119,11 @@
   #winner.show { display:flex; animation:pop .35s ease; }
   #winner .dot { width:13px; height:13px; border-radius:50%; }
   @keyframes pop { from { transform:translate(-50%,-50%) scale(.8); opacity:0; } }
+  /* honour motion sensitivity: still the decorative UI motion (the arena replay is content, kept) */
+  @media (prefers-reduced-motion: reduce) {
+    #comms .ch .dot, #commslog li, #commslog li.fresh, #winner.show { animation:none; }
+    .team .bar i { transition:none; }
+  }
   /* mobile: slim full-width panels, winner overlay stays mid-arena and unobstructed */
   @media (max-width:640px) {
     /* phone: every overlay shrinks so the arena keeps the most pixels */

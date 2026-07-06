@@ -77,8 +77,7 @@ SYSTEM = (
     "cover and angles, never strung out alone. A still, unhit tank in the zone repairs — let "
     "hurt tanks recover behind a screen, keep pressure on hurt enemies.\n"
     "ONE move order per command: focus (when you can engage) OR exactly one of regroup / "
-    "follow_me / follow (when you must move the unit) — regroup to hold fixed ground, "
-    "follow_me to advance or fall back together on the move. Never stack move orders. say: "
+    "follow_me / follow (when you must move the unit). Never stack move orders. say: "
     "ONLY a genuinely new threat or a call for help — a few plain words, no "
     "coordinates — and only when it matters; silence most turns. objective: your one "
     "medium-term aim on the board, changed rarely. lesson: one rule after a clear win or "
@@ -588,7 +587,7 @@ async def command(
     solo: bool = False,
     distress: dict | None = None,
     focus_state: dict | None = None,
-) -> tuple[float, str, str]:
+) -> tuple[float, str, str, list[dict]]:
     # ONE commander call: read the Artel picture, set standing orders on the bot, do the
     # Artel traffic. The bot drives every tick regardless — a failed or skipped command
     # call costs nothing but staleness.
@@ -639,24 +638,14 @@ async def command(
                 "\nALLY UNDER FIRE — focus their attacker and regroup on the fight; this "
                 "outranks everything else."
             )
+    # Terse triggers: the doctrine for adopting each call lives in SYSTEM — per turn the
+    # commander only needs the signal, not a re-explanation.
     if focus_call:
-        user += (
-            f"\nTEAM FOCUS CALL — {focus_call}. Converge: focus that SAME enemy id (carry "
-            f"focus_at so your tank can hunt it) and mass the unit's guns on it, unless you "
-            f"hold a clearly stronger target right now."
-        )
+        user += f"\nTEAM FOCUS CALL — {focus_call}. Adopt it (carry focus_at) unless you hold a stronger target."
     if rally_call:
-        user += (
-            f"\nTEAM RALLY CALL — {rally_call}. Form up: regroup to that SAME cell and "
-            f"maneuver onto the called ground with the unit, unless you are winning a fight "
-            f"right where you stand."
-        )
+        user += f"\nTEAM RALLY CALL — {rally_call}. Adopt it unless you're winning where you stand."
     if follow_call:
-        user += (
-            f"\nTEAM FOLLOW CALL — {follow_call}. Fall in: set follow on that teammate id and "
-            f"move with them as one body, unless you are the one leading or winning a fight "
-            f"where you stand."
-        )
+        user += f"\nTEAM FOLLOW CALL — {follow_call}. Adopt it unless you're leading or winning where you stand."
     if board:
         user += f"\nTEAM BOARD — current objectives: {board}"
     if not solo and objective is not None:
