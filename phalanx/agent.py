@@ -1074,13 +1074,17 @@ class Squad:
             idx = list(self._assign).index(tank_id) if tank_id in self._assign else tank_id
             bot = self._bots[tank_id] = Bot(tank_id, self.label, STRATEGIES[idx % len(STRATEGIES)])
 
-        # doctrine default between command calls: a fresh distress call with no standing
-        # orders pulls an unengaged tank toward the fight — the commander can override
+        # doctrine default between command calls: a teammate UNDER FIRE outranks a stale
+        # movement order. Pull an UNENGAGED tank toward the distress even if it's sitting on an
+        # old rally/post — this used to require NO orders at all, so a tank holding a stale rally
+        # ignored an ally's call for help and did nothing but hold (the system prompt's #1 rule is
+        # "a teammate under fire outranks all"). A live focus (an actual fight) is preserved; the
+        # commander can still override on its next command.
         engaged = p.get("hit_taken") or any(
             v["kind"] == "enemy" and v["dist"] <= p.get("fire_range", 7)
             for v in p.get("visible", [])
         )
-        if distress and not engaged and not bot.orders:
+        if distress and not engaged and not bot.orders.get("focus"):
             m = _POS.search(distress.get("body", ""))
             if m:
                 bot.orders["regroup"] = (int(m.group(1)), int(m.group(2)))
@@ -1101,6 +1105,10 @@ class Squad:
             ((p.get("tick", 0) + idx) % COMMAND_EVERY == 0 and interesting)
             or bool(p.get("hit_taken"))
             or bool(fresh)
+            # a teammate UNDER FIRE re-commands every FREE tank off-cadence — waiting up to
+            # COMMAND_EVERY ticks to answer a call for help is how the unit fails to mass. The
+            # in-flight guard below still caps it to one command at a time per tank.
+            or (distress is not None and distress.get("victim") != agent["id"] and not engaged)
         )
         # commands are ASYNC: the bot drives this very tick while its commander thinks in the
         # background; orders land when ready (standing orders by nature — a tick of latency is
