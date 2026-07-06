@@ -993,3 +993,19 @@ def test_squad_focus_commitment_blocks_quick_overrides():
     assert _accept_focus(state, 5, 11)  # same target -> always fine (teammates converging)
     assert not _accept_focus(state, 3, 11)  # a DIFFERENT target too soon -> blocked
     assert _accept_focus(state, 3, 10 + FOCUS_COOLDOWN)  # after the cooldown -> allowed
+
+
+def test_squad_rally_commitment_makes_the_unit_converge():
+    from phalanx.agent import RALLY_COOLDOWN, _accept_rally_squad
+
+    state = {}
+    assert _accept_rally_squad(state, (9, 9), 10, False)  # first rally commits the unit
+    state.update(cell=(9, 9), tick=10)
+    assert _accept_rally_squad(state, (10, 9), 11, False)  # near the same cell -> refresh, fine
+    assert not _accept_rally_squad(
+        state, (2, 2), 11, False
+    )  # different cell too soon -> converge on held
+    assert _accept_rally_squad(
+        state, (2, 2), 11, True
+    )  # ...unless the caller is UNDER FIRE (re-anchor)
+    assert _accept_rally_squad(state, (2, 2), 10 + RALLY_COOLDOWN, False)  # or the cooldown lapsed

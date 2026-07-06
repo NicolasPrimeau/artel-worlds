@@ -587,6 +587,7 @@ async def command(
     solo: bool = False,
     distress: dict | None = None,
     focus_state: dict | None = None,
+    rally_state: dict | None = None,
 ) -> tuple[float, str, str, list[dict]]:
     # ONE commander call: read the Artel picture, set standing orders on the bot, do the
     # Artel traffic. The bot drives every tick regardless — a failed or skipped command
@@ -748,9 +749,21 @@ async def command(
                         bot.orders.pop("focus_at", None)
                         focus = 0
                         focus_set = False  # the focus was dropped — no phantom focus event
-                    if not _accept_rally(bot, cell, p.get("tick", 0)):
+                    tick_now = p.get("tick", 0)
+                    # SQUAD rally: if the unit is already forming up elsewhere, this tank
+                    # CONVERGES on that cell instead of splitting the squad onto a new one.
+                    if rally_state is not None and not _accept_rally_squad(
+                        rally_state, cell, tick_now, bool(p.get("hit_taken"))
+                    ):
+                        cur = rally_state.get("cell")
+                        if cur:
+                            bot.orders["regroup"] = (int(cur[0]), int(cur[1]))
                         continue
-                    bot._rally = (p.get("tick", 0), cell)
+                    if not _accept_rally(bot, cell, tick_now):
+                        continue
+                    bot._rally = (tick_now, cell)
+                    if rally_state is not None:
+                        rally_state["cell"], rally_state["tick"] = cell, tick_now
                     rally_cell = cell
                     # broadcast the rally OVER ARTEL so teammates HEAR it and choose to form
                     # up — the unit MANEUVERS together because the other LLMs decide to move
@@ -856,6 +869,22 @@ def _accept_focus(state: dict, target: int, tick: int) -> bool:
     return True
 
 
+def _accept_rally_squad(state: dict, cell, tick: int, urgent: bool) -> bool:
+    # rally is a SQUAD commitment, like focus: once the unit is forming up on one cell a
+    # different commander can't splinter it onto another until the cooldown lapses — so the
+    # three tanks converge on ONE point instead of each calling its own (the "not coordinating"
+    # failure). A near-identical cell always refreshes; a tank UNDER FIRE re-anchors the unit
+    # where the fight actually is.
+    cur = state.get("cell")
+    if not cur:
+        return True
+    if _hexdist(cur[0], cur[1], cell[0], cell[1]) <= 3:
+        return True
+    if urgent:
+        return True
+    return tick - state.get("tick", -999) >= RALLY_COOLDOWN
+
+
 def _comms_from(
     inp: dict, bot, p: dict, rally_cell=None, focus_set=False, follow_lead=None
 ) -> list[dict]:
@@ -957,6 +986,7 @@ class Squad:
         self._walls: dict[int, set] = {}  # per-tank remembered walls (own sightings only)
         self._distress: dict | None = None  # squad-wide last UNDER FIRE call (sticky ~5 ticks)
         self._focus: dict = {}  # squad-wide focus commitment {target, tick} — gates overrides
+        self._rally_pt: dict = {}  # squad-wide rally commitment {cell, tick} — the unit forms up as one
         self._bots: dict[int, Bot] = {}  # the motors: same Bot red runs, one per tank
         self._cmd_tasks: dict[int, asyncio.Task] = {}  # in-flight commander calls (async)
         self._commanded: set[int] = set()  # tanks that got at least one command this match
@@ -1166,6 +1196,7 @@ class Squad:
                     self.solo,
                     distress,
                     self._focus,
+                    self._rally_pt,
                 ),
                 timeout=DECIDE_DEADLINE,
             )
@@ -1212,6 +1243,7 @@ class Squad:
             self._beacons = {}
             self._distress = None
             self._focus = {}
+            self._rally_pt = {}
             self._bots = {}
             self._cmd_tasks = {}
             self._commanded = set()
@@ -1236,6 +1268,7 @@ class Squad:
         self._beacons = {}
         self._distress = None
         self._focus = {}
+        self._rally_pt = {}
         self._bots = {}
         self._cmd_tasks = {}
         self._commanded = set()
