@@ -41,6 +41,9 @@ _KEYS = {
 # The pool the router cycles through, each entry "provider:model". Spread across every free tier
 # that has a key so concurrent per-tank calls land in independent rate buckets. Override with
 # PHALANX_POOL. Every model here supports tool calling (the command decision is a forced tool).
+# Gemini is deliberately EXCLUDED: it's an AI Studio key whose Google project may have billing
+# enabled (unlike Groq/Cerebras, which are card-free free tiers) — keep phalanx unambiguously $0.
+# Re-add "gemini:gemini-2.5-flash" via PHALANX_POOL if that project is confirmed free-tier.
 _DEFAULT_POOL = [
     "groq:openai/gpt-oss-120b",
     "groq:llama-3.3-70b-versatile",
@@ -51,8 +54,6 @@ _DEFAULT_POOL = [
     "sambanova:gpt-oss-120b",
     "sambanova:Meta-Llama-3.3-70B-Instruct",
     "nvidia:meta/llama-3.3-70b-instruct",
-    "gemini:gemini-2.5-flash",
-    "gemini:gemini-flash-lite-latest",
 ]
 _POOL = [s for s in _env("POOL", ",".join(_DEFAULT_POOL)).split(",") if s.strip()]
 
