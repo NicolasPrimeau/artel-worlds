@@ -7,9 +7,9 @@ from __future__ import annotations
 import asyncio
 import os
 
-for _line in open("/home/nprimeau/projects/Artel/.env"):
-    if _line.startswith("GROQ_API_KEY="):
-        os.environ["PITCH_LLM_KEY"] = _line.split("=", 1)[1].strip()
+from ._env import require
+
+os.environ["PITCH_LLM_KEY"] = require("GROQ_API_KEY")
 os.environ["PITCH_MODEL"] = "openai/gpt-oss-120b"
 os.environ.setdefault("PITCH_LLM_URL", "https://api.groq.com/openai/v1/chat/completions")
 

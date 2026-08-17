@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Generate 10 office worker sprite sheets (64x112, 16x16 tiles, 4 dir x 7 rows)."""
 
+from pathlib import Path
+
 from PIL import Image, ImageDraw
 
-OUTPUT_DIR = "/home/nprimeau/projects/artel-worlds/vibequest/static/assets"
+OUTPUT_DIR = str(Path(__file__).resolve().parent)
 
 CHARACTERS = [
     {

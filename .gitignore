@@ -11,6 +11,7 @@ build/
 *.db-wal
 *.db-shm
 .env
+.env.meta.json
 phalanx_state.json
 
 # local runtime state (server fallback when /data is absent)
