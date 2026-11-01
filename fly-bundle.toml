@@ -1,4 +1,4 @@
-app = "artel-worlds-bundle"
+app = "artel-worlds"
 primary_region = "yyz"
 
 [build]
@@ -31,6 +31,5 @@ primary_region = "yyz"
     type = "http"
 
 [mounts]
-  source = "bundle_data"
+  source = "worlds_data"
   destination = "/data"
-  initial_size = "1gb"
