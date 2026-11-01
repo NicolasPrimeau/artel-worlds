@@ -19,11 +19,11 @@ _GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/comp
 # primary (Groq by default)
 _KEY = os.environ.get("PITCH_LLM_KEY", "")
 _URL = os.environ.get("PITCH_LLM_URL", "https://api.groq.com/openai/v1/chat/completions")
-MODEL = os.environ.get("PITCH_MODEL", "llama-3.3-70b-versatile")
+MODEL = os.environ.get("PITCH_MODEL", "openai/gpt-oss-120b")
 # fallback (Gemini by default)
 _KEY2 = os.environ.get("PITCH_LLM2_KEY", "")
 _URL2 = os.environ.get("PITCH_LLM2_URL", _GEMINI_URL)
-MODEL2 = os.environ.get("PITCH_MODEL2", "gemini-2.0-flash")
+MODEL2 = os.environ.get("PITCH_MODEL2", "gemini-2.5-flash-lite")
 
 # token pricing (USD per million) and the since-boot spend cap
 _COST_IN = float(os.environ.get("PITCH_COST_IN_PER_M", "0.15")) / 1e6

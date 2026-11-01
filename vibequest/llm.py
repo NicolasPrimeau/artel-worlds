@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import re
 
-import llmrouter
-
 from . import env
-from llmrouter import Request, Router, build_models, parse_json
+from llmrouter import Request, Router, parse_json, pool
 
 _THINK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
@@ -36,70 +34,17 @@ def _clean(text) -> str:
     return t.strip()
 
 
-_KEYS = {
-    "groq": env("LLM_KEY"),
-    "cerebras": env("CEREBRAS_KEY"),
-    "sambanova": env("SAMBANOVA_KEY"),
-    "gemini": env("LLM2_KEY"),
-    "openai": env(
-        "OPENAI_KEY"
-    ),  # set this + add "openai:gpt-4o-mini" to POOL for stronger narration
-}
-
-_DEFAULT_POOL = [
-    "groq:llama-3.3-70b-versatile",
-    "groq:llama-3.1-8b-instant",
-    "groq:meta-llama/llama-4-scout-17b-16e-instruct",
-    "groq:openai/gpt-oss-120b",
-    "groq:openai/gpt-oss-20b",
-    "groq:qwen/qwen3-32b",
-    "cerebras:gpt-oss-120b",
-    "cerebras:zai-glm-4.7",
-    "sambanova:Meta-Llama-3.3-70B-Instruct",
-    "gemini:gemini-2.5-flash",
-    "gemini:gemini-flash-lite-latest",
-    "openai:gpt-5-nano",
-]
-_POOL = [s for s in env("POOL", ",".join(_DEFAULT_POOL)).split(",") if s.strip()]
-
-# the router's built-in table doesn't know newer models — they'd default to grade "fast" and get
-# skipped for narration. Register them as capable (top grade) + paid so they're eligible.
-for _m in ("gpt-5-nano", "gpt-5-mini", "gpt-4.1-mini"):
-    llmrouter.CAPS.setdefault(_m, llmrouter.Caps(tier="paid", grade="capable"))
-
 ROUTER = Router(
-    build_models(_POOL, _KEYS),
+    pool(env("POOL")),
     concurrency=int(env("CONCURRENCY", "6")),
     cooldown=float(env("COOLDOWN", "8.0")),
-    cost_in_per_m=float(env("COST_IN_PER_M", "0.15")),
-    cost_out_per_m=float(env("COST_OUT_PER_M", "0.60")),
 )
-
-# dedicated narration engine: the story beats (resolve_decision, plan_arc) route ONLY here, so they
-# consistently use one good model. Falls back to the free pool if the key/model isn't configured.
-_NARRATION_SPEC = env("NARRATION_MODEL", "openai:gpt-5-nano")
-_narration_models = build_models([_NARRATION_SPEC], _KEYS)
-NARRATION = (
-    Router(
-        _narration_models,
-        concurrency=int(env("CONCURRENCY", "6")),
-        cooldown=float(env("COOLDOWN", "8.0")),
-        cost_in_per_m=float(env("NARR_COST_IN_PER_M", "0.05")),
-        cost_out_per_m=float(env("NARR_COST_OUT_PER_M", "0.40")),
-    )
-    if _narration_models
-    else ROUTER
-)
+NARRATION = ROUTER
 
 SPEND = ROUTER.spend
 
 
 async def _narrate(req: Request) -> str:
-    # story beats route to the dedicated NARRATION engine first; if it yields nothing (its model is
-    # down or throttled), fail over to the full ROUTER pool rather than dropping to a templated stub.
-    raw = await NARRATION.complete(req)
-    if raw or NARRATION is ROUTER:
-        return raw
     return await ROUTER.complete(req)
 
 
@@ -233,7 +178,6 @@ JSON: {{"narrative":"...","consequence":"...","reactions":[{{"name":"...","role"
     req = Request(
         system="Respond only with valid JSON. No fantasy language.",
         user=prompt,
-        min_grade="capable",
     )
     raw = await ROUTER.complete(req)
     parsed = parse_json(raw)
@@ -344,7 +288,6 @@ JSON: {{"fit":<0-100 int>,"narrative":"...","reactions":[{{"name":"...","role":"
     req = Request(
         system="Respond only with valid JSON. No fantasy language.",
         user=prompt,
-        min_grade="capable",
     )
     raw = await ROUTER.complete(req)
     parsed = parse_json(raw)
@@ -433,8 +376,6 @@ JSON: {{"fit":int,"surreal":0,"breakthrough":bool,"derailed":bool,"narrative":".
     req = Request(
         system="Respond only with valid JSON. No fantasy language.",
         user=prompt,
-        min_grade="capable",
-        allow_paid=True,
         temperature=1.0,  # gpt-5 reasoning models only accept the default temperature
         max_tokens=768,  # a JSON beat, not an essay — cap runaway output
         deadline=30.0,  # bound total retry latency so a beat can't hang the resolve for minutes
@@ -492,7 +433,7 @@ HERO: {protagonist}
 State the FIRST OBSTACLE the hero meets on this delve — a specific thing standing in THE HERO'S OWN way to the quest. The hero must be the one blocked and the one who has to act. Make it something they beat by ACTING on a clear target — usually a PERSON blocking or refusing them (someone to persuade, pressure, outrank, or bribe), sometimes a physical thing to force or slip past. NEVER an abstract "confirm / verify / find out" task with no one to act on. ONE present-tense sentence, ≤14 words, plain literal language a DM would say out loud. No invented fantasy nouns.
 Also give "opening": the ≤10-word line the blocker says to the hero the moment they walk up.
 JSON: {{"situation":"...","opening":"..."}}"""
-    req = Request(system="Respond only with valid JSON.", user=prompt, min_grade="fast")
+    req = Request(system="Respond only with valid JSON.", user=prompt)
     raw = await ROUTER.complete(req)
     parsed = parse_json(raw) or {}
     situation = _clean(parsed.get("situation", "")) or complication or quest_hook
@@ -520,8 +461,6 @@ JSON: {{"beats":["...","...","...","...","..."]}}"""
     req = Request(
         system="Respond only with valid JSON.",
         user=prompt,
-        min_grade="capable",
-        allow_paid=True,
         temperature=1.0,
         max_tokens=512,  # five short beats — cap runaway output
         deadline=30.0,  # bound total retry latency
@@ -554,7 +493,6 @@ JSON: {{"beats":["...","...","...","..."]}}"""
     req = Request(
         system="Respond only with valid JSON. No fantasy language.",
         user=prompt,
-        min_grade="capable",
     )
     raw = await ROUTER.complete(req)
     parsed = parse_json(raw) or {}
@@ -640,7 +578,6 @@ One sentence only. No setup, no explanation."""
     req = Request(
         system="Respond with one sentence only. No preamble, no quotation marks.",
         user=prompt,
-        min_grade="fast",
         timeout=5.0,
     )
     return _clean(await ROUTER.complete(req))
@@ -669,7 +606,6 @@ Reply with only the index number."""
     req = Request(
         system="Respond with a single integer matching one of the option indices. Nothing else.",
         user=prompt,
-        min_grade="fast",
         timeout=3.0,
     )
     raw = _clean(await ROUTER.complete(req))
@@ -742,9 +678,7 @@ PEOPLE YOU COULD GO TALK TO:
 
 Pick the ONE person most useful to your goal right now. Then write ONE natural sentence, third person, describing {agent_name} heading off to them — like a line of narration, not a justification. Name them. ≤14 words. e.g. "Pam heads for Operations to track down who waters the south plant."
 JSON: {{"npc_id":"<exact id from the list>","intent":"<one natural narration sentence>"}}"""
-    req = Request(
-        system="Respond only with valid JSON. No fantasy language.", user=prompt, min_grade="fast"
-    )
+    req = Request(system="Respond only with valid JSON. No fantasy language.", user=prompt)
     raw = await ROUTER.complete(req)
     parsed = parse_json(raw) or {}
     valid = {n["id"] for n in npcs}
@@ -784,7 +718,6 @@ JSON: {{"narrative":"short beat with the reply","line":"<{npc_name}'s reply, ≤
     req = Request(
         system="Respond only with valid JSON. No fantasy language.",
         user=prompt,
-        min_grade="capable",
     )
     raw = await ROUTER.complete(req)
     parsed = parse_json(raw) or {}

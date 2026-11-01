@@ -681,11 +681,7 @@ def test_command_decision_routes_through_router_as_forced_tool(monkeypatch):
     assert out == {"name": "command", "args": {"focus": 7}}
 
     req = captured["req"]
-    # the standing-orders decision must be a FORCED tool call on the capable grade — the old
-    # force_act semantics, now owned by the router.
-    assert req.requires_tools is True
     assert req.tool_choice == "required"
-    assert req.min_grade == L.MIN_GRADE  # commander floor, whatever it's configured to
     assert req.tools[0]["function"]["name"] == "command"  # phalanx schema -> OpenAI tool shape
 
 

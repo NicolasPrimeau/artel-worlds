@@ -3,53 +3,17 @@ from __future__ import annotations
 
 from . import env
 
-from llmrouter import Request, Router, build_models, parse_json
+from llmrouter import Request, Router, parse_json, pool
 
-# Verglas's binding to the shared llmrouter. The generic Router owns round-robin, 429-skip, capability
-# filtering and telemetry; this module just resolves Verglas's keys/pool from the environment and exposes
-# the small functional surface the meeting code already calls. Verglas doesn't use tool calling — it parses
-# JSON out of plain completions — so requests leave requires_tools=False.
+# Verglas's binding to the shared OpenRouter client: it resolves the pool from the environment and
+# exposes the small functional surface the meeting code already calls.
 
-_KEYS = {
-    "groq": env("LLM_KEY"),
-    "cerebras": env("CEREBRAS_KEY"),
-    "sambanova": env("SAMBANOVA_KEY"),
-    "nvidia": env("NVIDIA_KEY"),
-    "gemini": env("LLM2_KEY"),
-}
-
-# the pool the router cycles through, each entry "provider:model". The default spreads across every free
-# tier that has a key so concurrent calls land in independent rate buckets. Override with VERGLAS_POOL.
-_DEFAULT_POOL = [
-    "groq:openai/gpt-oss-120b",
-    "groq:llama-3.3-70b-versatile",
-    "groq:llama-3.1-8b-instant",
-    "groq:qwen/qwen3-32b",
-    "groq:openai/gpt-oss-20b",
-    "groq:meta-llama/llama-4-scout-17b-16e-instruct",
-    "cerebras:gpt-oss-120b",
-    "cerebras:zai-glm-4.7",
-    "sambanova:gpt-oss-120b",
-    "sambanova:Meta-Llama-3.3-70B-Instruct",
-    "nvidia:meta/llama-3.3-70b-instruct",
-    "gemini:gemini-2.5-flash",
-    "gemini:gemini-flash-lite-latest",
-]
-_POOL = [s for s in env("POOL", ",".join(_DEFAULT_POOL)).split(",") if s.strip()]
-
-
-def _shape(user: str, model: str) -> str:
-    # Qwen3 reasons unless told not to; centralise that quirk in the router rather than the agent code.
-    return user + ("\n/no_think" if "qwen" in model.lower() else "")
-
+_POOL = pool(env("POOL"))
 
 ROUTER = Router(
-    build_models(_POOL, _KEYS),
+    _POOL,
     concurrency=int(env("CONCURRENCY", "8")),
     cooldown=float(env("COOLDOWN", "8.0")),
-    cost_in_per_m=float(env("COST_IN_PER_M", "0.15")),
-    cost_out_per_m=float(env("COST_OUT_PER_M", "0.60")),
-    shaper=_shape,
 )
 
 SPEND = ROUTER.spend  # the server persists/reads this dict; same object, so it stays in sync

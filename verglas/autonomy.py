@@ -231,6 +231,5 @@ def build_request(g: Game, a, inbox: list | None = None) -> Request:
         user=_context(g, a, inbox or []),
         temperature=0.7,
         timeout=12.0,
-        requires_tools=True,
         tools=build_tools(g, a),
     )

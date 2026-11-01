@@ -20,10 +20,8 @@ log = logging.getLogger("phalanx")
 # deterministic seek-and-destroy Bot. The whole demo is: same arena, same guns — the only
 # thing Artel has that Red doesn't is each other, through Artel.
 #
-# Every LLM call routes through the shared llmrouter (phalanx/llm.py): a round-robin mesh over
-# free, capable, tool-calling providers (Groq / Cerebras / SambaNova / NVIDIA / Gemini) with
-# per-model 429 cooldowns and telemetry. No provider is special-cased here — model choice, key
-# resolution, failover and the capable-grade floor all live in llm.py.
+# Every LLM call routes through the shared OpenRouter client (phalanx/llm.py), which owns model
+# choice, fallback and telemetry.
 
 ARTEL_URL = os.environ.get("ARTEL_URL", "https://artel.run").rstrip("/")
 PHALANX_PROJECT = os.environ.get("PHALANX_PROJECT", "phalanx")
@@ -1414,7 +1412,6 @@ class Squad:
             "agents": [a["id"] for a in self.agents],
             "assigned_tanks": list(self._assign),
             "model": llm.describe(),
-            "min_grade": llm.MIN_GRADE,
             "llm_key_set": llm.enabled(),
             "spent_usd": round(self.spent, 4),
             "cap_usd": SPEND_CAP_USD,

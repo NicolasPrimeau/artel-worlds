@@ -79,46 +79,6 @@ def test_broadcast_prunes_dead_clients(monkeypatch):
     assert live in server._clients and live.sent
 
 
-def test_narrate_fails_over_to_router_when_narration_empty(monkeypatch):
-    from vibequest import llm
-
-    class FakeRouter:
-        def __init__(self, out):
-            self.out = out
-            self.calls = 0
-
-        async def complete(self, req):
-            self.calls += 1
-            return self.out
-
-    narr, pool = FakeRouter(""), FakeRouter("a beat from the pool")
-    monkeypatch.setattr(llm, "NARRATION", narr)
-    monkeypatch.setattr(llm, "ROUTER", pool)
-    out = asyncio.run(llm._narrate(llm.Request(system="s", user="u")))
-    assert out == "a beat from the pool"
-    assert narr.calls == 1 and pool.calls == 1
-
-
-def test_narrate_skips_router_when_narration_answers(monkeypatch):
-    from vibequest import llm
-
-    class FakeRouter:
-        def __init__(self, out):
-            self.out = out
-            self.calls = 0
-
-        async def complete(self, req):
-            self.calls += 1
-            return self.out
-
-    narr, pool = FakeRouter("primary beat"), FakeRouter("unused")
-    monkeypatch.setattr(llm, "NARRATION", narr)
-    monkeypatch.setattr(llm, "ROUTER", pool)
-    out = asyncio.run(llm._narrate(llm.Request(system="s", user="u")))
-    assert out == "primary beat"
-    assert pool.calls == 0  # no needless second call
-
-
 def test_narrate_no_double_call_when_narration_is_router(monkeypatch):
     from vibequest import llm
 

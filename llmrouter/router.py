@@ -3,21 +3,23 @@ from __future__ import annotations
 import asyncio
 import datetime
 import json
+import os
 import re
 import time
 from dataclasses import dataclass
 
 import httpx
 
-from .models import Model
+# Every world's LLM calls go through OpenRouter. It owns provider choice and fallback between the
+# models in a request; this client adds the world-side concerns: free-only enforcement, a pause
+# after a 429 so a spent quota isn't hammered, and the per-model telemetry the ops board shows.
 
-# A generic LLM router shared across worlds. Agents are decoupled from any specific model: they hand a
-# standardized Request to the router, which round-robins it across a pool of OpenAI-compatible models,
-# skips any model still cooling down from a 429, and honours per-request requirements (tool support,
-# free-vs-paid). It records per-model telemetry so the ops board can show exactly what's throttled.
-
-
-GRADE_RANK = {"fast": 0, "balanced": 1, "capable": 2}
+URL = "https://openrouter.ai/api/v1/chat/completions"
+DEFAULT_MODELS = (
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/nemotron-3.5-lightning:free",
+    "google/gemma-4-31b-it:free",
+)
 
 
 @dataclass
@@ -26,22 +28,11 @@ class Request:
     user: str
     temperature: float = 0.7
     timeout: float = 16.0
-    requires_tools: bool = False  # if set, only models whose caps mark tool support are eligible
-    allow_paid: bool = False  # if unset (default), paid-tier models are never routed to
-    min_grade: str = (
-        "fast"  # "fast" | "balanced" | "capable" — filters to models at or above this tier
-    )
     tools: list | None = None  # OpenAI tool schemas; when set, act() returns the model's tool call
-    tool_choice: str | None = (
-        None  # "auto" (default) | "required" | "none" — force a tool call when the caller needs one
-    )
-    reasoning_effort: str | None = (
-        None  # request reasoning off/low/…; the router maps it to each provider's supported knob
-    )
-    max_tokens: int | None = None  # cap on completion length; None = provider default (unbounded)
-    deadline: float | None = (
-        None  # overall wall-clock budget (s) across all retries; None = no bound
-    )
+    tool_choice: str | None = None  # "auto" (default) | "required" | "none"
+    reasoning_effort: str | None = None  # "none" turns reasoning off where the model allows it
+    max_tokens: int | None = None
+    deadline: float | None = None  # overall wall-clock budget (s) across attempts
 
 
 class RateLimited(Exception):
@@ -49,207 +40,137 @@ class RateLimited(Exception):
         self.retry_after = retry_after
 
 
+def pool(spec: str | None) -> list[str]:
+    return [m.strip() for m in (spec or "").split(",") if m.strip()] or list(DEFAULT_MODELS)
+
+
+def _stat() -> dict:
+    return {"calls": 0, "ok": 0, "throttled": 0, "errors": 0, "recent": []}
+
+
 class Router:
     def __init__(
         self,
-        models: list[Model],
+        models: list[str] | None = None,
         *,
+        key: str | None = None,
         concurrency: int = 8,
         cooldown: float = 8.0,
-        max_cooldown: float = 30.0,
-        max_wait: float = 3.0,
+        max_cooldown: float = 60.0,
         window: int = 5,
-        cost_in_per_m: float = 0.15,
-        cost_out_per_m: float = 0.60,
-        shaper=None,
     ):
-        self.models = list(models)
+        self.models = list(models or DEFAULT_MODELS)
+        paid = [m for m in self.models if not m.endswith(":free")]
+        if paid:
+            raise ValueError(f"paid models are not allowed: {paid}")
+        self.key = os.environ.get("OPENROUTER_API_KEY", "") if key is None else key
         self._cooldown = cooldown
         self._max_cooldown = max_cooldown
-        self._max_wait = max_wait
         self._window = window
-        self._cost_in = cost_in_per_m / 1e6
-        self._cost_out = cost_out_per_m / 1e6
-        self._shaper = shaper  # optional fn(user, model_id) -> user, for per-model request shaping
         self._sem = asyncio.Semaphore(concurrency)
-        self._lock = asyncio.Lock()
-        self._cursor = 0
+        self._paused_until = 0.0
+        self._stats = {m: _stat() for m in self.models}
         self.spend = {"usd": 0.0, "in": 0, "out": 0, "calls": 0, "days": {}}
 
     def enabled(self) -> bool:
-        return bool(self.models)
+        return bool(self.key)
 
     def describe(self) -> str:
-        if not self.models:
+        if not self.enabled():
             return "no LLM configured"
-        provs = dict.fromkeys(m.provider for m in self.models)
-        return f"{len(self.models)}-model round-robin mesh: " + ", ".join(
-            f"{p}×{sum(1 for m in self.models if m.provider == p)}" for p in provs
-        )
+        return f"OpenRouter: {len(self.models)} free models"
 
     def metrics(self) -> list[dict]:
-        # per-model view for the ops board: counters, the rolling outcome window, and live throttle state
-        now = time.monotonic()
-        out = []
-        for m in self.models:
-            cooling = m.cooldown > now
-            out.append(
-                {
-                    "provider": m.provider,
-                    "model": m.model,
-                    "tier": m.tier,
-                    "grade": m.grade,
-                    "tools": m.tools,
-                    "calls": m.calls,
-                    "ok": m.ok,
-                    "throttled": m.throttled,
-                    "errors": m.errors,
-                    "recent": list(m.recent),
-                    "cooling": cooling,
-                    "cools_in": round(m.cooldown - now, 1) if cooling else 0.0,
-                }
-            )
-        return out
-
-    def _eligible(self, req: Request) -> list[Model]:
-        min_rank = GRADE_RANK.get(req.min_grade, 0)
+        wait = self._paused_until - time.monotonic()
         return [
-            m
-            for m in self.models
-            if (not req.requires_tools or m.tools)
-            and (req.allow_paid or m.tier == "free")
-            and GRADE_RANK.get(m.grade, 0) >= min_rank
+            {
+                "provider": "openrouter",
+                "model": model,
+                "tier": "free",
+                "tools": True,
+                **{k: (list(v) if k == "recent" else v) for k, v in stat.items()},
+                "cooling": wait > 0,
+                "cools_in": round(wait, 1) if wait > 0 else 0.0,
+            }
+            for model, stat in self._stats.items()
         ]
 
-    async def _pick(self, eligible: list[Model]) -> Model | None:
-        # round-robin over the eligible subset, skipping models still cooling from a 429. If every
-        # eligible model is cooling, return the one that frees up soonest rather than failing outright.
-        if not eligible:
-            return None
-        ids = {id(m) for m in eligible}
-        async with self._lock:
-            now = time.monotonic()
-            n = len(self.models)
-            soonest: Model | None = None
-            for _ in range(n):
-                m = self.models[self._cursor % n]
-                self._cursor = (self._cursor + 1) % n
-                if id(m) not in ids:
-                    continue
-                if m.cooldown <= now:
-                    return m
-                if soonest is None or m.cooldown < soonest.cooldown:
-                    soonest = m
-            return soonest
-
-    def _record(self, m: Model, status: str) -> None:
-        m.calls += 1
-        if status == "ok":
-            m.ok += 1
-        elif status == "429":
-            m.throttled += 1
-        else:
-            m.errors += 1
-        m.recent.append(status)
-        del m.recent[: -self._window]
+    def _record(self, model: str, status: str) -> None:
+        stat = self._stats.setdefault(model, _stat())
+        stat["calls"] += 1
+        key = {"ok": "ok", "429": "throttled"}.get(status, "errors")
+        stat[key] += 1
+        stat["recent"].append(status)
+        del stat["recent"][: -self._window]
 
     def _account(self, usage: dict) -> None:
-        pin = int(usage.get("prompt_tokens", 0) or 0)
-        pout = int(usage.get("completion_tokens", 0) or 0)
-        cost = pin * self._cost_in + pout * self._cost_out
-        self.spend["usd"] = round(self.spend["usd"] + cost, 6)
-        self.spend["in"] += pin
-        self.spend["out"] += pout
+        cost = float(usage.get("cost", 0) or 0)
+        self.spend["usd"] += cost
+        self.spend["in"] += int(usage.get("prompt_tokens", 0) or 0)
+        self.spend["out"] += int(usage.get("completion_tokens", 0) or 0)
         self.spend["calls"] += 1
         day = datetime.date.today().isoformat()
-        self.spend["days"][day] = round(self.spend["days"].get(day, 0.0) + cost, 6)
+        self.spend["days"][day] = self.spend["days"].get(day, 0.0) + cost
         for old in sorted(self.spend["days"])[:-30]:
             del self.spend["days"][old]
 
-    async def _call(self, h: httpx.AsyncClient, m: Model, req: Request) -> dict:
-        # one POST; returns the assistant message (content and/or tool_calls). Raises on 429 / bad status.
-        user = self._shaper(req.user, m.model) if self._shaper else req.user
+    def _payload(self, req: Request) -> dict:
         payload = {
-            "model": m.model,
+            "model": self.models[0],
+            "models": self.models,
             "temperature": req.temperature,
+            "usage": {"include": True},
             "messages": [
                 {"role": "system", "content": req.system},
-                {"role": "user", "content": user},
+                {"role": "user", "content": req.user},
             ],
         }
-        # Reasoning control lives in the router: each provider exposes a DIFFERENT knob (or none),
-        # so a caller can't safely set one field itself. We keep reasoning minimal per provider by
-        # default; req.reasoning_effort overrides the effort where the target model supports it, and
-        # is silently dropped for models (llama/qwen/glm/…) that expose no knob — sending one 400s.
-        eff = req.reasoning_effort
-        if "gpt-5" in m.model:
-            # gpt-5 reasoning models reject custom temperature, and reason for thousands of tokens by
-            # default (slow + costly). Force the default temp and minimal reasoning for chat use.
-            payload["temperature"] = 1
-            payload["reasoning_effort"] = eff or "minimal"
-        elif "gpt-oss" in m.model:
-            # gpt-oss reasoning models default to medium effort (slow); keep them snappy. Their knob
-            # accepts only low/medium/high — anything else (e.g. "none") 400s, so clamp to "low".
-            payload["reasoning_effort"] = eff if eff in ("low", "medium", "high") else "low"
-        elif "gemini-2.5" in m.model:
-            # gemini 2.5 THINKS by default; with a tight max_tokens the hidden reasoning eats the whole
-            # budget and returns an empty (tool) response. "none" turns thinking off. Do it for tool
-            # calls (or when the caller asks); leave plain-text callers on the model default.
-            if eff is not None:
-                payload["reasoning_effort"] = eff
-            elif req.tools:
-                payload["reasoning_effort"] = "none"
+        if req.reasoning_effort == "none":
+            payload["reasoning"] = {"enabled": False}
+        elif req.reasoning_effort:
+            payload["reasoning"] = {"effort": req.reasoning_effort, "exclude": True}
         if req.max_tokens:
-            # OpenAI reasoning models (gpt-5) reject `max_tokens` and require `max_completion_tokens`
-            # (which also budgets reasoning tokens); other OpenAI-compatible providers take max_tokens.
-            key = "max_completion_tokens" if "gpt-5" in m.model else "max_tokens"
-            payload[key] = req.max_tokens
+            payload["max_tokens"] = req.max_tokens
         if req.tools:
             payload["tools"] = req.tools
             payload["tool_choice"] = req.tool_choice or "auto"
-        r = await h.post(m.url, headers={"Authorization": f"Bearer {m.key}"}, json=payload)
+            payload["provider"] = {"require_parameters": True}
+        return payload
+
+    async def _call(self, h: httpx.AsyncClient, req: Request) -> tuple[dict, str]:
+        r = await h.post(
+            URL, headers={"Authorization": f"Bearer {self.key}"}, json=self._payload(req)
+        )
         if r.status_code == 429:
             raise RateLimited(float(r.headers.get("retry-after", "0") or 0))
         if r.status_code >= 300:
             raise httpx.HTTPStatusError("bad status", request=r.request, response=r)
         data = r.json()
         self._account(data.get("usage") or {})
-        return data["choices"][0]["message"]
+        return data["choices"][0]["message"], data.get("model") or self.models[0]
 
     async def _run(self, req: Request, extract):
-        # shared round-robin/cooldown loop; `extract(msg)` returns the result or None (a miss → next model).
-        # returns (result, model_id) on success, (None, None) on miss — callers that don't want the model
-        # just unwrap the first element.
-        eligible = self._eligible(req)
-        if not eligible:
+        if not self.enabled() or time.monotonic() < self._paused_until:
             return None, None
-        tries = max(4, len(eligible) + 1)
         start = time.monotonic()
         async with self._sem, httpx.AsyncClient(timeout=req.timeout) as h:
-            for _ in range(tries):
-                # bound total latency: a large pool × per-attempt timeout can otherwise stack into
-                # minutes of retries. Stop starting new attempts once the deadline is exhausted.
+            for _ in range(2):
                 if req.deadline is not None and time.monotonic() - start > req.deadline:
                     break
-                m = await self._pick(eligible)
-                if m is None:
-                    return None, None
-                wait = m.cooldown - time.monotonic()
-                if wait > 0:
-                    await asyncio.sleep(min(wait, self._max_wait))
+                model = self.models[0]
                 try:
-                    got = extract(await self._call(h, m, req))
+                    message, model = await self._call(h, req)
+                    got = extract(message)
+                    self._record(model, "ok" if got is not None else "err")
                     if got is not None:
-                        self._record(m, "ok")
-                        return got, m.model
-                    self._record(m, "err")
+                        return got, model
                 except RateLimited as ex:
-                    m.cooldown = time.monotonic() + min(
-                        max(ex.retry_after, self._cooldown), self._max_cooldown
-                    )
-                    self._record(m, "429")
-                except Exception:
-                    self._record(m, "err")
+                    wait = min(max(ex.retry_after, self._cooldown), self._max_cooldown)
+                    self._paused_until = time.monotonic() + wait
+                    self._record(model, "429")
+                    break
+                except (httpx.HTTPError, KeyError, IndexError, ValueError):
+                    self._record(model, "err")
         return None, None
 
     @staticmethod
@@ -266,7 +187,7 @@ class Router:
                 continue
             try:
                 args = json.loads(fn.get("arguments") or "{}")
-            except Exception:
+            except ValueError:
                 args = {}
             return {"name": name, "args": args if isinstance(args, dict) else {}}
         return None
@@ -276,12 +197,11 @@ class Router:
         return res or ""
 
     async def complete_m(self, req: Request) -> tuple:
-        # like complete(), but returns (text, model_id) so callers can show which model spoke
         res, model = await self._run(req, self._text)
         return (res or ""), model
 
     async def act_m(self, req: Request) -> tuple:
-        return await self._run(req, self._tool)  # (action|None, model_id|None)
+        return await self._run(req, self._tool)
 
     async def complete_many_m(self, reqs: list[Request]) -> list[tuple]:
         return await asyncio.gather(*(self.complete_m(r) for r in reqs))
@@ -290,7 +210,6 @@ class Router:
         return await asyncio.gather(*(self.act_m(r) for r in reqs))
 
     async def act(self, req: Request) -> dict | None:
-        # returns the first tool call as {"name": str, "args": dict}, or None if no model produced one.
         res, _ = await self._run(req, self._tool)
         return res
 
@@ -308,5 +227,5 @@ def parse_json(text: str) -> dict | None:
     try:
         out = json.loads(m.group(0))
         return out if isinstance(out, dict) else None
-    except Exception:
+    except ValueError:
         return None
