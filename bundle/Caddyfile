@@ -1,0 +1,23 @@
+{
+	admin off
+	auto_https off
+}
+
+:8000 {
+	@phalanx host phalanx.artel.run
+	reverse_proxy @phalanx 127.0.0.1:8102
+
+	@pitch host pitch.artel.run
+	reverse_proxy @pitch 127.0.0.1:8103
+
+	@verglas host verglas.artel.run
+	reverse_proxy @verglas 127.0.0.1:8104
+
+	@vibequest host vibequest.artel.run
+	reverse_proxy @vibequest 127.0.0.1:8105
+
+	@watchtower host watchtower.artel.run
+	reverse_proxy @watchtower 127.0.0.1:8106
+
+	reverse_proxy 127.0.0.1:8101
+}
