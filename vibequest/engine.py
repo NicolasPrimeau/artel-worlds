@@ -1590,6 +1590,7 @@ class PlayedCard:
 
 MIN_RESOLUTIONS = 5
 MAX_RESOLUTIONS = 12
+MIN_SCENE_ROUNDS = 2  # no wall falls to a single card, so a quest can't end in five plays
 MAX_SCENE_ROUNDS = 3  # rounds of cards/interaction at one wall before it gives way
 SCENE_THRESHOLD = 5  # ACTION progress that fills the bar and breaks the wall (≈2 clean hits)
 MELTDOWN_THRESHOLD = 12  # surreal level at which reality comes apart and the run ends

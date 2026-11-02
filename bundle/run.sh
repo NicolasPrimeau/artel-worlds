@@ -17,6 +17,9 @@ artel() {
     HOST=127.0.0.1 PORT=8100 DB_PATH=/data/artel/artel.db \
     FASTEMBED_CACHE_PATH=/data/fastembed_cache RUN_INLINE_ARCHIVIST=0 \
     AGENT_KEYS="$ALL" HF_HUB_DISABLE_XET_DOWNLOAD=1 \
+    DEMO_MODE=true PUBLIC_URL=https://live.artel.run \
+    UI_PASSWORD="$(head -c 32 /dev/urandom | base64)" \
+    REGISTRATION_KEY="$(head -c 32 /dev/urandom | base64)" \
     setpriv --reuid=artel --regid=artel --init-groups \
     sh -c 'cd /app && exec python -m artel.server' &
 }
@@ -44,6 +47,8 @@ FREE=nvidia/nemotron-3-ultra-550b-a55b:free
 OPENROUTER=https://openrouter.ai/api/v1/chat/completions
 
 world automata.server 8101 AUTOMATA_STATE_DIR=/data/worlds \
+  WORLDS_UI_PASSWORD="${WORLDS_UI_PASSWORD:?}" WORLDS_UI_SECRET="${WORLDS_UI_SECRET:?}" \
+  WORLDS_ADMIN_TOKEN="${WORLDS_ADMIN_TOKEN:-}" \
   ARTEL_AGENT_ID="$AUTOMATA_IDS" ARTEL_KEY="$AUTOMATA_KEYS" \
   PHALANX_DEBUG_URL=http://127.0.0.1:8102 PITCH_DEBUG_URL=http://127.0.0.1:8103 \
   VERGLAS_DEBUG_URL=http://127.0.0.1:8104 VIBEQUEST_DEBUG_URL=http://127.0.0.1:8105 \

@@ -58,6 +58,7 @@ class Router:
         cooldown: float = 8.0,
         max_cooldown: float = 60.0,
         window: int = 5,
+        reasoning: str | None = None,
     ):
         self.models = list(models or DEFAULT_MODELS)
         paid = [m for m in self.models if not m.endswith(":free")]
@@ -67,6 +68,7 @@ class Router:
         self._cooldown = cooldown
         self._max_cooldown = max_cooldown
         self._window = window
+        self._reasoning = reasoning
         self._sem = asyncio.Semaphore(concurrency)
         self._paused_until = 0.0
         self._stats = {m: _stat() for m in self.models}
@@ -125,10 +127,11 @@ class Router:
                 {"role": "user", "content": req.user},
             ],
         }
-        if req.reasoning_effort == "none":
+        effort = req.reasoning_effort or self._reasoning
+        if effort == "none":
             payload["reasoning"] = {"enabled": False}
-        elif req.reasoning_effort:
-            payload["reasoning"] = {"effort": req.reasoning_effort, "exclude": True}
+        elif effort:
+            payload["reasoning"] = {"effort": effort, "exclude": True}
         if req.max_tokens:
             payload["max_tokens"] = req.max_tokens
         if req.tools:

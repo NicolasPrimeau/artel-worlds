@@ -4,6 +4,23 @@
 }
 
 :8000 {
+	header Cache-Control no-cache
+
+	@artelwrite {
+		host live.artel.run
+		not method GET HEAD OPTIONS
+	}
+	respond @artelwrite 403
+
+	@artelroot {
+		host live.artel.run
+		path /
+	}
+	redir @artelroot /ui 302
+
+	@artel host live.artel.run
+	reverse_proxy @artel 127.0.0.1:8100
+
 	@phalanx host phalanx.artel.run
 	reverse_proxy @phalanx 127.0.0.1:8102
 

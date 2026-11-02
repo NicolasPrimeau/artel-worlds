@@ -17,6 +17,7 @@ log = logging.getLogger("vibequest.artel")
 ARTEL_URL = os.environ.get("ARTEL_URL", "https://artel.run").rstrip("/")
 PROJECT = "vibequest"
 _API_KEY = env("ARTEL_KEY")
+_AGENT_ID = env("ARTEL_AGENT_ID")
 
 _http: httpx.AsyncClient | None = None
 
@@ -33,7 +34,7 @@ def _client() -> httpx.AsyncClient:
 
 
 def _headers() -> dict:
-    return {"X-API-Key": _API_KEY, "Content-Type": "application/json"}
+    return {"X-API-Key": _API_KEY, "X-Agent-Id": _AGENT_ID, "Content-Type": "application/json"}
 
 
 async def search_memory(query: str, limit: int = 5) -> str:

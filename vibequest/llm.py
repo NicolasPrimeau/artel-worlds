@@ -34,8 +34,11 @@ def _clean(text) -> str:
     return t.strip()
 
 
+LIVE_MODELS = "nvidia/nemotron-3.5-lightning:free,google/gemma-4-31b-it:free"
+
 ROUTER = Router(
-    pool(env("POOL")),
+    pool(env("POOL", LIVE_MODELS)),
+    reasoning="none",
     concurrency=int(env("CONCURRENCY", "6")),
     cooldown=float(env("COOLDOWN", "8.0")),
 )
@@ -330,6 +333,8 @@ async def resolve_decision(
     story_so_far: str = "",
     story_facts: list[str] | None = None,
     planned_next: str = "",
+    can_clear: bool = True,
+    final_wall: bool = False,
 ) -> dict:
     facts = ("KNOWN: " + " | ".join(story_facts[-8:])) if story_facts else ""
     history = f"STORY SO FAR: {story_so_far}" if story_so_far else ""
@@ -349,6 +354,16 @@ async def resolve_decision(
     else:
         cards_block = "The party hesitates — the hero acts on instinct. FIT ~60."
     people = ", ".join(f"{n['id']}={n['name']}" for n in roster) if roster else ""
+    breakthrough_rule = (
+        "true only if the encounter is clearly CLEARED."
+        if can_clear
+        else "must be false. This obstacle cannot fall to one move, so leave it standing with a catch."
+    )
+    breakthrough_rule += (
+        " If this is false the goal is NOT done: next_situation must name what still blocks it, never that it is finished."
+        if final_wall
+        else " The quest is NOT over: never narrate the goal as finished or closed."
+    )
     prompt = f"""{_TONE_MINI}
 
 QUEST (the hero's goal, never drift): {quest_hook}
@@ -365,7 +380,7 @@ You're the DM. Narrate this beat as JSON:
 - fit (int 0-100)
 - narrative: REQUIRED. 1-2 sentences — the hero's action and its concrete RESULT, clear on its own. If breakthrough is false but the move SEEMED to work (someone agreed, a barrier gave), NAME THE CATCH — why they're still stuck.
 - reactions: 0-1 ≤10-word quote ({{"name","line"}}), consistent with the narrative. [] if no person is involved (a thing/environment obstacle) — never invent a bystander.
-- breakthrough: true only if the encounter is clearly CLEARED.
+- breakthrough: {breakthrough_rule}
 - surreal: 0-3, how much reality had to bend to make the move work (0 = a sane, fitting move; 3 = a person-tactic forced onto an object). When >0, narrate the absurdity deadpan.
 - established: 0-1 durable fact (or []).
 - next_situation: REQUIRED, ≤14 words, DIFFERENT from the encounter and FOLLOWING from the result. If CLEARED: the next obstacle (rework PLANNED "{planned_next}"; if the move was wrong/chaotic set derailed=true and deviate). If NOT: the SAME obstacle visibly changed by the catch/escalation. Never restate it unchanged.
@@ -378,7 +393,8 @@ JSON: {{"fit":int,"surreal":0,"breakthrough":bool,"derailed":bool,"narrative":".
         user=prompt,
         temperature=1.0,  # gpt-5 reasoning models only accept the default temperature
         max_tokens=768,  # a JSON beat, not an essay — cap runaway output
-        deadline=30.0,  # bound total retry latency so a beat can't hang the resolve for minutes
+        timeout=6.0,
+        deadline=6.0,  # the server caps the whole resolve; see RESOLVE_BUDGET
     )
     raw = await _narrate(req)
     parsed = parse_json(raw) or {}
@@ -621,9 +637,10 @@ async def narrate_quest_end(
     history = f"WHAT HAPPENED: {story_so_far}" if story_so_far else ""
     prompt = f"""{_TONE}
 
-Recap how this quest went in 2 short sentences — what {protagonist.split(":")[0]} was after, and how it actually ended ({outcome}). Dry, deadpan, specific to what happened. Under 45 words. No em dashes.
 GOAL: {quest_hook}
-{history}"""
+{history}
+
+Write the ending now. Do NOT continue or repeat the lines above. Recap in 2 short new sentences what {protagonist.split(":")[0]} was after and how it actually ended ({outcome}). Dry, deadpan, specific. Under 45 words. No em dashes."""
 
     req = Request(system="Respond in plain prose. No fantasy language.", user=prompt)
     return _clean(await ROUTER.complete(req))

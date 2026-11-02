@@ -19,6 +19,7 @@ from .engine import (
     MIN_RESOLUTIONS,
     MAX_RESOLUTIONS,
     SCENE_THRESHOLD,
+    MIN_SCENE_ROUNDS,
     MAX_SCENE_ROUNDS,
     MELTDOWN_THRESHOLD,
     agent_mood,
@@ -48,6 +49,10 @@ PRESSURE_DURATION = 3
 BATCH_WINDOW = (
     4.5  # decision point: gather the crowd's cards (duplicates add weight) before resolving
 )
+RESOLVE_BUDGET = (
+    7.5  # longest the model can hold a turn: 4.5 batch + 7.5 + 2.7 pauses stays under 15s
+)
+CLOSING_BUDGET = 6.0  # the end screen must not wait on a slow closing line
 DECISION_TIMEOUT = 60.0  # time to read the encounter + play before the DM auto-resolves it
 MAX_AUTO_STREAK = 8  # consecutive DM-only auto-resolves (no human card) before pausing, to cap
 # idle LLM spend from an abandoned-but-open tab. A human /play or a new viewer resumes it.
@@ -71,6 +76,7 @@ def _is_beat(text: object) -> bool:
 
 _vote_options: list[QuestState] | None = None
 _votes: dict[int, int] = {}
+_all_voted = asyncio.Event()
 _voted: dict[str, int] = {}  # player_id -> choice, so each viewer votes once (changeable)
 _deal_type_idx: int = 0
 _decision_at: float = 0.0  # monotonic time the current wall opened (for the no-card timeout)
@@ -300,21 +306,26 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
     }
     if llm.enabled():
         try:
-            result = await llm.resolve_decision(
-                situation=situation,
-                cards=plays,
-                quest_hook=state.quest.hook,
-                protagonist=_character_desc(state),
-                roster=roster,
-                mood=agent_mood(state.quest),
-                surreal=state.quest.surreal,
-                npc_context=npc_context,
-                story_so_far=_story_so_far(state),
-                story_facts=list(state.quest.facts),
-                planned_next=planned_next,
+            result = await asyncio.wait_for(
+                llm.resolve_decision(
+                    situation=situation,
+                    cards=plays,
+                    quest_hook=state.quest.hook,
+                    protagonist=_character_desc(state),
+                    roster=roster,
+                    mood=agent_mood(state.quest),
+                    surreal=state.quest.surreal,
+                    npc_context=npc_context,
+                    story_so_far=_story_so_far(state),
+                    story_facts=list(state.quest.facts),
+                    planned_next=planned_next,
+                    can_clear=state.quest.scene_rounds + 1 >= MIN_SCENE_ROUNDS,
+                    final_wall=nxt >= len(arc),
+                ),
+                timeout=RESOLVE_BUDGET,
             )
         except Exception as exc:
-            log.warning("resolve_decision failed: %s", exc)
+            log.warning("resolve_decision failed: %r", exc)
 
     # fit drives the meters: high fit -> progress, clash -> surreal
     fit = int(result.get("fit", 50))
@@ -380,7 +391,7 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
 
                 asyncio.create_task(_delayed())
 
-    narrative = result.get("narrative", "")
+    narrative = result.get("narrative", "") or "It helps a little, but the problem is still there."
     if _is_beat(narrative):  # the actual RESULT is part of the story — future turns must see it
         state.quest.beats.append(narrative)
     if _is_beat(result.get("consequence")):
@@ -397,9 +408,11 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
         },
     )
     if artel.enabled():
-        await artel.write_memory(
-            f"Quest: {state.quest.hook}. Cards: {', '.join(p['name'] for p in plays)}. {narrative}",
-            tags=["vibequest", "resolution"],
+        asyncio.create_task(
+            artel.write_memory(
+                f"Quest: {state.quest.hook}. Cards: {', '.join(p['name'] for p in plays)}. {narrative}",
+                tags=["vibequest", "resolution"],
+            )
         )
 
     state.quest.result_history.append(classify_window(prog_delta, mom_delta))
@@ -459,7 +472,7 @@ async def _resolve_window(state: GameState, auto: bool = False) -> None:
     #     fills (scene_progress >= threshold), on an LLM breakthrough, or after a hard round cap so
     #     a scene can never grind forever. The displayed progress bar now means what it shows. ---
     state.quest.scene_rounds += 1
-    wall_broken = (
+    wall_broken = state.quest.scene_rounds >= MIN_SCENE_ROUNDS and (
         state.quest.scene_progress >= SCENE_THRESHOLD
         or bool(result.get("breakthrough"))
         or state.quest.scene_rounds >= MAX_SCENE_ROUNDS
@@ -593,13 +606,19 @@ async def _end_quest(state: GameState) -> None:
         asyncio.create_task(artel.write_memory(chron, tags=["vibequest", "chronicle", outcome_str]))
     closing = ""
     if llm.enabled():
-        closing = await llm.narrate_quest_end(
-            quest_hook=state.quest.hook,
-            outcome=state.quest.outcome or "unclear",
-            momentum=state.quest.momentum,
-            protagonist=_character_desc(state),
-            story_so_far=_story_so_far(state),
-        )
+        try:
+            closing = await asyncio.wait_for(
+                llm.narrate_quest_end(
+                    quest_hook=state.quest.hook,
+                    outcome=state.quest.outcome or "unclear",
+                    momentum=state.quest.momentum,
+                    protagonist=_character_desc(state),
+                    story_so_far=_story_so_far(state),
+                ),
+                timeout=CLOSING_BUDGET,
+            )
+        except Exception as exc:
+            log.warning("narrate_quest_end failed: %r", exc)
     state.log_event("quest_end", closing or f"The quest concludes. Outcome: {state.quest.outcome}.")
     # build the next-quest vote up front so the end screen shows verdict + recap + options together
     q1, _ = make_quest(_rng)
@@ -607,6 +626,7 @@ async def _end_quest(state: GameState) -> None:
     _vote_options = [q1, q2]
     _votes = {0: 0, 1: 0, 2: 0}
     _voted = {}
+    _all_voted.clear()
     await _broadcast(
         {
             "type": "quest_complete",
@@ -624,7 +644,10 @@ async def _end_quest(state: GameState) -> None:
             "state": _state_snapshot(state, include_world=False),
         }
     )
-    await asyncio.sleep(VOTE_TIMEOUT)
+    try:
+        await asyncio.wait_for(_all_voted.wait(), timeout=VOTE_TIMEOUT)
+    except asyncio.TimeoutError:
+        pass
     winner_idx = max(_votes, key=lambda k: _votes[k]) if any(_votes.values()) else 2
     chosen = None if winner_idx == 2 else _vote_options[winner_idx]
     _vote_options = None
@@ -1218,6 +1241,8 @@ def create_app() -> FastAPI:
         _voted[pid] = choice
         _votes[choice] = _votes.get(choice, 0) + 1
         await _broadcast({"type": "vote_update", "votes": dict(_votes)})
+        if _ready and len(_voted) >= len(_ready):
+            _all_voted.set()
         return JSONResponse({"ok": True, "votes": dict(_votes)})
 
     @app.post("/play")
