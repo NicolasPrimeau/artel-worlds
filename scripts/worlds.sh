@@ -8,7 +8,7 @@
 #   ./scripts/worlds.sh down       stop the machine, keep the volume
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP=artel-worlds
 
 die() { echo "error: $*" >&2; exit 1; }
