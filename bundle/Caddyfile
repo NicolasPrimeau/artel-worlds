@@ -6,6 +6,9 @@
 :8000 {
 	header Cache-Control no-cache
 
+	@reset path /reset
+	respond @reset 403
+
 	@artelwrite {
 		host live.artel.run
 		not method GET HEAD OPTIONS
