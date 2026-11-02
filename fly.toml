@@ -4,29 +4,29 @@ primary_region = "yyz"
 [http_service]
   internal_port = 8000
   force_https = true
-  auto_stop_machines = false
+  auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 0
 
   [http_service.concurrency]
     type = "requests"
-    hard_limit = 200
-    soft_limit = 150
-
-[mounts]
-  source = "worlds_data"
-  destination = "/data"  # persists only the operator pause flag; the world stays in-memory
+    hard_limit = 250
+    soft_limit = 200
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "512mb"  # Claude CLI genome-authoring for LLM tribes (claude-sdk provider)
+  memory = "1gb"
 
 [checks]
   [checks.health]
-    grace_period = "15s"
-    interval = "10s"
+    grace_period = "60s"
+    interval = "30s"
     method = "GET"
     path = "/health"
     port = 8000
     timeout = "5s"
     type = "http"
+
+[mounts]
+  source = "worlds_data"
+  destination = "/data"

@@ -9,40 +9,6 @@ on:
   workflow_dispatch:
     inputs:
       deploy:
-        description: "Deploy the worlds to Fly (they bill for as long as they run)"
-        type: boolean
-        default: false
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.12", "3.13"]
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-
-      - uses: astral-sh/setup-uv@v8.2.0
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install dependencies
-        run: uv sync --dev
-
-      - name: Lint
-        if: matrix.python-version == '3.13'
-        run: uv run ruff check .
-
-      - name: Format check
-        if: matrix.python-version == '3.13'
-        run: uv run ruff format --check .
-
-      - name: Test
-        run: uv run python -m pytest tests/ -v
-
-  deploy:
     needs: test
     if: github.event_name == 'workflow_dispatch' && inputs.deploy
     runs-on: ubuntu-latest
@@ -51,80 +17,9 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Deploy Automata
-        # immediate strategy: these apps run a single machine with a volume, so a rolling deploy
-        # has nowhere to place the new machine and fails / silently no-ops. Recreate in place.
+      - name: Deploy Artel Worlds
+        # immediate strategy: one machine with a volume, so a rolling deploy has nowhere to
+        # place the new machine. Recreate in place.
         run: flyctl deploy --app artel-worlds --remote-only --yes --strategy immediate
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
-  deploy-phalanx:
-    needs: test
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Deploy Phalanx
-        run: flyctl deploy --app artel-phalanx --config fly-phalanx.toml --remote-only --yes --strategy immediate
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
-  deploy-watchtower:
-    needs: test
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Deploy Watchtower
-        run: flyctl deploy --app artel-watchtower --config fly-watchtower.toml --remote-only --yes --strategy immediate
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
-  deploy-pitch:
-    needs: test
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Deploy Pitch
-        run: flyctl deploy --app artel-pitch --config fly-pitch.toml --remote-only --yes
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
-  deploy-verglas:
-    needs: test
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Deploy Verglas
-        # single machine + volume (in-memory game) → immediate, like the other stateful worlds
-        run: flyctl deploy --app artel-alibi --config fly-verglas.toml --remote-only --yes --strategy immediate
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
-  deploy-vibequest:
-    needs: test
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Deploy VibeQuest
-        run: flyctl deploy --app artel-vibequest --config fly-vibequest.toml --remote-only --yes --strategy immediate
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_API_TOKEN: }

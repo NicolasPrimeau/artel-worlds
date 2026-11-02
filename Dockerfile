@@ -1,31 +1,29 @@
-FROM python:3.13-slim
+FROM ghcr.io/nicolasprimeau/artel:edge
 
-COPY --from=ghcr.io/astral-sh/uv:0.11.11 /uv /usr/local/bin/uv
+USER root
 
-WORKDIR /app
+COPY --from=caddy:2.8-alpine /usr/bin/caddy /usr/local/bin/caddy
+
+WORKDIR /worlds
 
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev
 
+COPY llmrouter/ llmrouter/
 COPY automata/ automata/
+COPY phalanx/ phalanx/
+COPY pitch/ pitch/
+COPY verglas/ verglas/
+COPY vibequest/ vibequest/
+COPY watchtower/ watchtower/
+COPY bundle/ bundle/
 
-ENV PATH="/app/.venv/bin:$PATH"
-
-# Claude Code CLI (native binary) for the claude-sdk provider; no token in the image,
-# inert unless AUTOMATA_LLM_PROVIDER=claude-sdk
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
-    && curl -fsSL https://claude.ai/install.sh | bash \
-    && install -m 0755 /root/.local/bin/claude /usr/local/bin/claude \
-    && apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
-
-ENV DISABLE_AUTOUPDATER=1
-
-RUN useradd --create-home --uid 1000 app && chown -R app /app
-USER app
+RUN chmod +x bundle/run.sh && chown -R artel /worlds
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=5 \
+HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=5 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"
 
-CMD ["uvicorn", "automata.server:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/worlds/bundle/run.sh"]
+CMD []
